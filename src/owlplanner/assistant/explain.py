@@ -101,6 +101,7 @@ CONSTRAINT_FAMILIES = {
     "cash_flow": {"class": "structural", "label": "yearly net cash-flow balance"},
     "taxable_income": {"class": "structural", "label": "yearly federal taxable-income identity"},
     "state_taxable_income": {"class": "structural", "label": "yearly state taxable-income identity"},
+    "state_credit_cap": {"class": "structural", "label": "state personal credit limited to the state tax"},
     "account_carryover": {"class": "structural", "label": "account balance carryover dynamics"},
     "withdrawal_limit": {"class": "structural", "label": "withdrawals limited to account balance"},
     "surplus_deposit": {"class": "structural", "label": "surplus-to-deposit split between spouses"},
@@ -135,10 +136,9 @@ CONSTRAINT_FAMILIES = {
     "ltcg_q01_zero": {"class": "artifact", "label": "LTCG 15% shutoff big-M (MILP mode)"},
     "ltcg_zl_monotone": {"class": "artifact", "label": "LTCG regime-binary ordering"},
     "ltcg_partition_hi": {"class": "artifact", "label": "LTCG partition anti-degeneracy bound"},
-    "niit_floor": {"class": "artifact", "label": "NIIT floor big-M"},
-    "niit_j_zero": {"class": "artifact", "label": "NIIT shutoff big-M"},
-    "niit_magi_cap": {"class": "artifact", "label": "NIIT MAGI-threshold big-M"},
-    "niit_surplus_cap": {"class": "artifact", "label": "NIIT surplus cap big-M"},
+    "niit_excess": {"class": "artifact", "label": "NIIT excess-over-threshold big-M"},
+    "niit_nii": {"class": "artifact", "label": "NIIT investment-income big-M"},
+    "niit_nii_cap": {"class": "artifact", "label": "NIIT cap at 3.8% of investment income"},
     "irmaa_amo": {"class": "artifact", "label": "IRMAA bracket exactly-one selector"},
     "irmaa_bracket_lb": {"class": "artifact", "label": "IRMAA bracket bound big-M"},
     "irmaa_bracket_ub": {"class": "artifact", "label": "IRMAA bracket bound big-M"},
@@ -173,6 +173,7 @@ def build_explanation(plan) -> dict:
         "binding_constraints": _binding_constraints(plan, dd),
         "roth_conversions": _roth_analysis(plan, cols),
         "tax_brackets": _bracket_analysis(plan),
+        "state_tax_brackets": _state_bracket_analysis(plan),
         "account_depletion": _depletion(plan),
         "caveats": [
             "Only the first year's decisions are executed. Later years are projections under "
@@ -334,6 +335,81 @@ def _year0_bracket(plan):
     }
 
 
+def _has_state_tax(plan):
+    """True when the plan's state levies an income tax (the state LP was built and solved)."""
+    return bool(getattr(plan, "_st_lp", False)) and getattr(plan, "st_f_tn", None) is not None
+
+
+def _state_bracket(plan, n):
+    """Top state bracket reached in year n: rate, headroom (None when open-ended), fill flag."""
+    f = plan.st_f_tn
+    filled = [t for t in range(f.shape[0]) if f[t, n] > 1.0]
+    # No bracket to report in a year without a state income tax (after a move, or before one).
+    if not filled or not np.any(plan.st_theta_tn[:, n] > 0):
+        return None
+    t_top = max(filled)
+    width = plan.st_DeltaBar_tn[:, n]
+    # Padding brackets have zero width, so the top real bracket is the last one with any.
+    open_ended = not np.any(width[t_top + 1 :] > 0)
+    headroom = None if open_ended else max((width[t_top] - f[t_top, n]) / plan.gamma_n[n], 0.0)
+    return {
+        "top_bracket_rate_pct": _round(plan.st_theta_tn[t_top, n] * 100, 3),
+        "headroom": None if headroom is None else _round(headroom),
+        "filled_to_boundary": headroom is not None and headroom < 1.0,
+    }
+
+
+def _state_tax_parts(plan, n):
+    """Recapture and local tax inside st_T_n for year n (today's $), only where present."""
+    out = {}
+    for key, attr in (("recapture", "st_recap_n"), ("local_tax", "lt_T_n")):
+        arr = getattr(plan, attr, None)
+        if arr is not None and arr[n] > 0:
+            out[key] = _round(float(arr[n]) / plan.gamma_n[n])
+    return out
+
+
+def _state_exclusion(plan, n):
+    """Income-tiered retirement exclusion claimed in year n (NJ line 28c), and the tier ceiling the
+    year's state income is held at when it sits within a dollar of one; only where claimed."""
+    rx = getattr(plan, "st_rx_n", None)
+    if rx is None or rx[n] <= 0:
+        return {}
+    out = {"retirement_exclusion": _round(float(rx[n]) / plan.gamma_n[n])}
+    limits = plan.st_rx_limit_kn[:, n]
+    held = [lim for lim in limits if np.isfinite(lim) and abs(plan.st_agi_n[n] - lim) <= 1.0]
+    if held:
+        out["exclusion_ceiling"] = _round(float(held[0]) / plan.gamma_n[n])
+    return out
+
+
+def _loc(locality):
+    """{"locality": locality} when there is one, else nothing."""
+    return {"locality": locality} if locality else {}
+
+
+def _residence(plan, n):
+    """(state, locality) in force in year n."""
+    by_year = getattr(plan, "_residence_by_year", None)
+    return by_year()[n] if by_year else (plan.state, "")
+
+
+def _year0_state_tax(plan):
+    """This year's state income tax and state bracket position."""
+    state, locality = _residence(plan, 0)
+    out = {"state": state, "state_tax": _round(float(plan.st_T_n[0]) / plan.gamma_n[0])}
+    if locality:
+        out["locality"] = locality
+    out.update(_state_tax_parts(plan, 0))
+    out.update(_state_exclusion(plan, 0))
+    bracket = _state_bracket(plan, 0)
+    if bracket:
+        out["top_bracket_rate_pct"] = bracket["top_bracket_rate_pct"]
+        out["headroom_in_bracket"] = bracket["headroom"]
+        out["filled_to_boundary"] = bracket["filled_to_boundary"]
+    return out
+
+
 def _year0_thresholds(plan):
     """Proximity to the tax cliffs this year's income can trigger (primal headroom,
     not duals: marginal prices are the wrong tool for discrete threshold effects)."""
@@ -422,6 +498,9 @@ def _this_year(plan, dd, cols):
     bracket = _year0_bracket(plan)
     if bracket:
         out["tax_bracket"] = bracket
+
+    if _has_state_tax(plan) and np.any(plan.st_theta_tn[:, 0] > 0):
+        out["state_tax"] = _year0_state_tax(plan)
 
     thresholds = _year0_thresholds(plan)
     if thresholds:
@@ -713,6 +792,66 @@ def _bracket_analysis(plan):
         "(today's $). filled_to_boundary years are where the optimizer deliberately fills "
         "the bracket — typically with Roth conversions — and stops at the edge.",
     }
+
+
+def _state_bracket_analysis(plan):
+    """Per-year state income tax and state bracket fill, or None without a state income tax."""
+    if not _has_state_tax(plan):
+        return None
+    gamma = plan.gamma_n
+    moves = list(getattr(plan, "state_moves", ()))
+    rows = []
+    for n in range(plan.N_n):
+        bracket = _state_bracket(plan, n)
+        excl = _state_exclusion(plan, n)
+        if not bracket and not excl:
+            continue
+        # A year the exclusion takes to zero tax is shown too: it is where the exclusion matters most.
+        bracket = bracket or {"top_bracket_rate_pct": 0.0, "headroom": None, "filled_to_boundary": False}
+        state, locality = _residence(plan, n)
+        row = {"year": int(plan.year_n[n]), "state": state, **_loc(locality)}
+        row.update(
+            {
+                "state_tax_today": _round(float(plan.st_T_n[n]) / gamma[n]),
+                "top_bracket_rate_pct": bracket["top_bracket_rate_pct"],
+                "headroom_in_bracket_today": bracket["headroom"],
+                "filled_to_boundary": bracket["filled_to_boundary"],
+            }
+        )
+        row.update({f"{k}_today": v for k, v in _state_tax_parts(plan, n).items()})
+        row.update({f"{k}_today": v for k, v in excl.items()})
+        rows.append(row)
+    out = {
+        "state": plan.state,
+        "total_state_tax_today": _round(float(np.sum(plan.st_T_n / gamma[: plan.N_n]))),
+        "by_year": rows,
+        "note": "Top state income-tax bracket reached each year, the state tax paid and the room "
+        "left in that bracket (today's $). Years without a state income tax are omitted. "
+        "State taxable income is not federal taxable income: it "
+        "starts from gross income, includes capital gains, and takes the state's own standard "
+        "deduction and exemptions (Social Security, pensions, retirement income, where the state "
+        "allows them). Headroom is absent in the open-ended top bracket. In a year filled to the "
+        "boundary, the next dollar of income, such as a Roth conversion, is taxed at a higher "
+        "state rate. state_tax includes any benefit recapture and local (city) tax, also shown "
+        "separately; inside a recapture phase-in the marginal state rate is above the bracket rate. "
+        "retirement_exclusion is an exclusion of retirement income that steps down with total income "
+        "(New Jersey's pension and other retirement income exclusion); exclusion_ceiling marks a year "
+        "held at one of its income ceilings, where the next dollar would lose part of the exclusion.",
+    }
+    if getattr(plan, "locality", ""):
+        out["locality"] = plan.locality
+    if moves:
+        first = moves[0]
+        out["move"] = {"year": int(first.year), "state": first.state, **_loc(first.locality)}
+        if len(moves) > 1:
+            out["moves"] = [{"year": int(m.year), "state": m.state, **_loc(m.locality)} for m in moves]
+        for m in moves:
+            dest = (m.state or "no state") + (f" ({m.locality})" if m.locality else "")
+            out["note"] += f" The household moves to {dest} in {m.year}."
+        out["note"] += (
+            " The residence on December 31 taxes the whole year, so the year of a move is taxed by the new state."
+        )
+    return out
 
 
 def _depletion(plan):

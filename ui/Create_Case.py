@@ -20,6 +20,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from datetime import date
 from io import StringIO
 import streamlit as st
 
@@ -36,12 +37,25 @@ def _state_choices():
     return [""] + _ts.valid_states()
 
 
+@st.cache_data
+def _locality_choices(state):
+    from owlplanner import tax_local as _tl
+
+    return [""] + _tl.valid_localities(state) if state else [""]
+
+
 def _loadHFPExample(file):
     if file:
         hfp_name = tomlex.getHFPName(file)
         mybytesio = tomlex.loadWagesExample(file)
         if mybytesio is not None:
             owb.readHFP(mybytesio, file=hfp_name)
+
+
+def _deleteCase():
+    kz.deleteCurrentCase()
+    # Close the popover so a second click cannot delete the next case.
+    st.session_state["delete_case_popover"] = False
 
 
 def _render_case_loader():
@@ -148,6 +162,68 @@ else:
     )
     with col3:
         kz.getSelectbox("State of residence (for state taxes)", _state_choices(), "state", help=_state_help)
+        kz.initCaseKey("locality", "")
+        localities = _locality_choices(kz.getCaseKey("state") or "")
+        if kz.getCaseKey("locality") not in localities:
+            kz.setCaseKey("locality", "")  # the state changed to one without that city
+            st.session_state.pop(kz.genCaseKey("locality"), None)
+        if len(localities) > 1:
+            kz.getSelectbox(
+                "City income tax (optional)",
+                localities,
+                "locality",
+                help="Adds the city's resident income tax on top of the state's. Blank means the rest of the state.",
+            )
+        thisyear = date.today().year
+        kz.initCaseKey("stateMoveEnabled", False)
+        kz.initCaseKey("stateMoveYear", thisyear + 5)
+        kz.initCaseKey("stateMoveState", "")
+        kz.initCaseKey("stateMoveLocality", "")
+        kz.initCaseKey("stateMovesMore", [])
+        _move_help = (
+            "Model a change of residence during the plan. "
+            "The residence on December 31 taxes the whole year, "
+            "so the year of the move is taxed by the new state and city."
+        )
+        kz.getToggle("Move to another state during the plan", "stateMoveEnabled", help=_move_help)
+        if kz.getCaseKey("stateMoveEnabled"):
+            mcol1, mcol2 = st.columns(2, gap="small", vertical_alignment="top")
+            with mcol1:
+                kz.getIntNum(
+                    "Year of the move",
+                    "stateMoveYear",
+                    min_value=thisyear + 1,
+                    max_value=thisyear + 100,
+                    help="First calendar year taxed by the new state. It must fall within the plan.",
+                )
+            with mcol2:
+                kz.getSelectbox(
+                    "New state",
+                    _state_choices(),
+                    "stateMoveState",
+                    help="State of residence from that year on. Leave blank to stop modeling state taxes.",
+                )
+                move_localities = _locality_choices(kz.getCaseKey("stateMoveState") or "")
+                if kz.getCaseKey("stateMoveLocality") not in move_localities:
+                    kz.setCaseKey("stateMoveLocality", "")
+                    st.session_state.pop(kz.genCaseKey("stateMoveLocality"), None)
+                if len(move_localities) > 1:
+                    kz.getSelectbox(
+                        "New city income tax (optional)",
+                        move_localities,
+                        "stateMoveLocality",
+                        help="City income tax from that year on. Blank means the rest of the state.",
+                    )
+            if (kz.getCaseKey("stateMoveState"), kz.getCaseKey("stateMoveLocality")) == (
+                kz.getCaseKey("state"),
+                kz.getCaseKey("locality"),
+            ):
+                st.warning("The new residence is the starting one.", icon=":material/warning:")
+            if kz.getCaseKey("stateMovesMore"):
+                st.info(
+                    f"The case file has {len(kz.getCaseKey('stateMovesMore'))} further move(s), kept as they are.",
+                    icon=":material/info:",
+                )
 
     kz.initCaseKey("description", "")
     helpmsg = "Provide a short distinguishing description for the case."
@@ -286,11 +362,9 @@ Then, click on the `Create case` button once all parameters on this page are set
 
     with col3:
         helpmsg = "`Delete case` removes all parameters associated with the case."
-        with st.popover("Delete case :material/delete:", help=helpmsg):
+        with st.popover("Delete case :material/delete:", help=helpmsg, key="delete_case_popover", on_change="rerun"):
             st.warning("This cannot be undone.", icon=":material/warning:")
-            if st.button("Confirm delete", type="primary"):
-                kz.deleteCurrentCase()
-                st.rerun()
+            st.button("Confirm delete", type="primary", on_click=_deleteCase)
 
 # Show progress bar at bottom (only when a case is selected)
 if ret is not None:

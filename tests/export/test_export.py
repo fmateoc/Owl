@@ -755,3 +755,28 @@ def test_save_workbook_preserves_zero_columns_when_hide_enabled(joe_plan):
     ws = wb[joe_plan.inames[0] + "'s Accounts"]
     headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
     assert any("HSA" in str(h) for h in headers)
+
+
+def test_build_summary_dic_records_owl_version(alex_jamie_plan):
+    """The summary, and so the saved Summary sheet, names the Owl that produced it."""
+    from owlplanner.version import __version__
+
+    dic = build_summary_dic(alex_jamie_plan)
+    assert dic["Owl version"].startswith(f"{__version__} (")
+
+
+def test_build_summary_dic_records_solve_time(alex_jamie_plan):
+    """Every summary reports the last solve's wall-clock time, with its CPU time."""
+    import re
+
+    duration = r"(\d+\.\d s|\d+m \d\ds)"
+    dic = build_summary_dic(alex_jamie_plan)
+    assert re.fullmatch(rf"{duration} wall clock \(CPU {duration}\)", dic["Solve time"]), dic["Solve time"]
+    assert alex_jamie_plan.lastSolveWallTime > 0 and alex_jamie_plan.lastSolveCPUTime > 0
+
+
+def test_duration_format():
+    from owlplanner.export import _duration
+
+    assert _duration(8.24) == "8.2 s"
+    assert _duration(125.2) == "2m 05s"

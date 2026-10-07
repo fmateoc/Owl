@@ -645,6 +645,12 @@ def getSolveParameters():
     options["withLTCG"] = "optimize" if ltcgopt else "loop"
     niitopt = getCaseKey("optimizeNIIT")
     options["withNIIT"] = "optimize" if niitopt else "loop"
+    # Local search: the preset sets every applicable family to MILP; otherwise the strategy
+    # applies to whichever families are on.
+    if getCaseKey("localSearch"):
+        options["breakpointMethod"] = "local-search"
+    elif getCaseKey("mipStrategy") == "local-search":
+        options["mipStrategy"] = "local-search"
     # SS taxability — "loop", "optimize", or numeric fixed fraction.
     ss_mode = getCaseKey("ssTaxabilityMode")
     if ss_mode == "value":
@@ -670,6 +676,14 @@ def getSolveParameters():
         getCaseKey("swapRothConvertersFirst"),
         swapYear,
     )
+
+    # Stop Roth conversions mid-plan: the toggle and year become stopRothConversions (absent = no end).
+    if getCaseKey("stopRothConversionsEnabled"):
+        options["stopRothConversions"] = int(getCaseKey("stopRothConversions") or date.today().year)
+
+    # Part D premiums are included unless the Run Options toggle turns them off.
+    part_d = getCaseKey("includeMedicarePartD")
+    options["includeMedicarePartD"] = True if part_d is None else bool(part_d)
 
     # Build minTaxableBalance list from per-spouse UI values (today's $k)
     ni = 2 if getCaseKey("status") == "married" else 1

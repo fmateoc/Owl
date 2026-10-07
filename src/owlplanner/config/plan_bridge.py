@@ -115,8 +115,8 @@ def _apply_fixed_income_to_plan(plan: "Plan", known: dict, icount: int) -> None:
         known["fixed_income"].get("pension_monthly_amounts", [0] * icount),
         dtype=np.float32,
     )
-    pension_ages = np.array(known["fixed_income"].get("pension_ages", [65.0]))
-    pension_indexed = known["fixed_income"].get("pension_indexed", [True])
+    pension_ages = np.array(known["fixed_income"].get("pension_ages", [65.0] * icount))
+    pension_indexed = known["fixed_income"].get("pension_indexed", [True] * icount)
     survivor_frac = known["fixed_income"].get("pension_survivor_fraction")
     if survivor_frac is not None:
         survivor_frac = [float(x) for x in survivor_frac]
@@ -276,6 +276,21 @@ def _apply_solver_options_to_plan(plan: "Plan", known: dict) -> None:
     plan.yOBBBA = max(plan.yOBBBA, this_year)
 
 
+def _apply_state_to_plan(plan, known, always=False):
+    """Set the state of residence, its locality and any later moves from ``basic_info``.
+
+    With *always*, also applied when there is no state, so that clearing it clears the plan's.
+    """
+    bi = known["basic_info"]
+    state = bi.get("state", "")
+    moves = bi.get("moves") or []
+    if always or state or moves:
+        try:
+            plan.setStateTax(state, moves, bi.get("locality", ""))
+        except (ValueError, KeyError, TypeError) as e:
+            raise ValueError(f"Invalid state in config: {e}") from e
+
+
 def _apply_aca_to_plan(plan: "Plan", known: dict) -> None:
     """Apply ACA settings and other qualified medical expenses from config to plan."""
     other_med = float(known.get("optimization_parameters", {}).get("other_medical_expenses", 0.0))
@@ -357,12 +372,7 @@ def config_to_plan(
     _apply_optimization_to_plan(p, known)
     _apply_solver_options_to_plan(p, known)
     _apply_aca_to_plan(p, known)
-    state = known["basic_info"].get("state", "")
-    if state:
-        try:
-            p.setStateTax(state)
-        except ValueError as e:
-            raise ValueError(f"Invalid state in config: {e}") from e
+    _apply_state_to_plan(p, known)
 
     res = known.get("results", {})
     p.setDefaultPlots(res.get("default_plots", "nominal"))
@@ -393,12 +403,8 @@ def apply_config_to_plan(plan: "Plan", diconf: dict) -> None:
     _apply_optimization_to_plan(plan, known)
     _apply_solver_options_to_plan(plan, known)
     _apply_aca_to_plan(plan, known)
-    state = known["basic_info"].get("state", "")
-    if state:
-        try:
-            plan.setStateTax(state)
-        except ValueError as e:
-            raise ValueError(f"Invalid state in config: {e}") from e
+    # Always applied, so that clearing the state or the move in the UI clears it on the plan.
+    _apply_state_to_plan(plan, known, always=True)
 
     res = known.get("results", {})
     plan.setDefaultPlots(res.get("default_plots", "nominal"))
@@ -427,6 +433,13 @@ def plan_to_config(myplan: "Plan") -> dict:
         "start_date": myplan.startDate,
         "state": getattr(myplan, "state", ""),
     }
+    if getattr(myplan, "locality", ""):
+        diconf["basic_info"]["locality"] = myplan.locality
+    if getattr(myplan, "state_moves", ()):
+        diconf["basic_info"]["moves"] = [
+            {"year": m.year, "state": m.state, **({"locality": m.locality} if m.locality else {})}
+            for m in myplan.state_moves
+        ]
 
     # Savings Assets
     diconf["savings_assets"] = {}
@@ -609,7 +622,10 @@ def clone(plan: "Plan", newname=None, *, expectancy=None, verbose=True, logstrea
         newplan = config_to_plan(diconf, verbose=verbose, logstreams=eff_logstreams, loadHFP=False)
         # Re-apply HFP from in-memory raw data (no file I/O; HFP timeLists re-conditioned for new horizon)
         if getattr(plan, "rawHFP", None):
-            newplan.readHFP(plan.rawHFP, filename_for_logging=plan.hfpFileName)
+            newplan.readHFP(plan.rawHFP, filename_for_logging=plan.hfpFileName, houseTables=False)
+        # Debts and fixed assets are dated by calendar year, not by horizon: copy the plan's own
+        # tables, which carry any edits made since the workbook was read (the UI edits them in place).
+        newplan.houseLists = copy.deepcopy(getattr(plan, "houseLists", {}) or {})
 
     if newname is None:
         # Strip any existing " (copy)" or " (copy N)" suffix so repeated cloning

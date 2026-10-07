@@ -172,6 +172,14 @@ def test_metrics_column_map_fmt_values():
 # ---------------------------------------------------------------------------
 
 
+def test_plan_to_dict_records_the_engine(solved_single):
+    from owlplanner import __version__
+
+    engine = plan_to_dict(solved_single)["engine"]
+    assert engine["version"] == __version__
+    assert "commit" in engine
+
+
 def test_plan_to_dict_top_level_keys(solved_single):
     d = plan_to_dict(solved_single)
     for key in (
@@ -204,7 +212,7 @@ def test_plan_to_dict_reports_a_small_residual_on_a_converged_plan(solved_single
     d = plan_to_dict(solved_single)
     residual = d["fixed_point_residual_today_dollars"]
     assert residual, "no residual reported"
-    assert set(residual) <= {"SS", "IRMAA", "NIIT", "ACA", "deduction"}
+    assert set(residual) <= {"SS", "IRMAA", "NIIT", "ACA", "deduction", "LTCG"}
     for family, value in residual.items():
         assert value < 1_000.0, f"{family} residual {value:,.2f} on a converged plan"
 

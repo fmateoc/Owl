@@ -33,6 +33,7 @@ from scipy.optimize import linprog
 from . import fixedassets as fxasst
 from . import mylogging as log
 from . import progress
+from .version import engine_provenance
 from . import rates
 from . import utils as u
 from .config.plan_bridge import clone
@@ -856,6 +857,7 @@ def run_conversion_regret_sweep(
         plan.mylog.print(f"{n_failed} of {total} scenario baselines failed to solve.", tag="WARNING")
 
     return {
+        "engine": engine_provenance(),
         "grid": grid,
         "start_years": np.array(years),
         "v_star": v_star,
@@ -990,6 +992,7 @@ def summarize_conversion_regret(
             )
             convergence["v_star_osc_max"] = float(np.round(osc.max(), 2))
     out = {
+        "engine": result.get("engine"),  # the engine that produced the sweep, not this one
         "n_scenarios": n_scenarios,
         "n_failed_baselines": int((~ok).sum()),
         "max_achieved_gap": None if gaps is None else float(np.max(gaps)),
@@ -1663,6 +1666,7 @@ def run_stochastic_spending(
     _, frontier_g_y1, frontier_prob_y1, frontier_shortfall_y1 = _compute_efficient_frontier(bases_year1)
 
     return {
+        "engine": engine_provenance(),
         "bases": bases,
         "bases_year1": bases_year1,
         "start_years": start_years,
@@ -1897,7 +1901,6 @@ def run_spending_bequest_frontier(
     plan.mylog.setVerbose(False)
     if progcall is None:
         progcall = progress.Progress(plan.mylog)
-    quiet = progress.Progress(None)  # the inner runs must not each draw their own bar
 
     K, R = len(grid), len(rates_pct)
     base_basis = np.full(K, np.nan)
@@ -1948,9 +1951,10 @@ def run_spending_bequest_frontier(
                     _, _, _, fixed, _ = _frontier_base_solve(plan, opts, with_duals=False)
                     if np.isfinite(fixed):
                         fixed_assets = fixed
+                level_bar = _LevelProgress(progcall, k, K)
                 try:
                     res = run_stochastic_spending(
-                        plan, opts, scenario_method, ystart=ystart, yend=yend, N=N, progcall=quiet, seed=seed
+                        plan, opts, scenario_method, ystart=ystart, yend=yend, N=N, progcall=level_bar, seed=seed
                     )
                 except RuntimeError as exc:
                     plan.mylog.print(
@@ -1976,7 +1980,10 @@ def run_spending_bequest_frontier(
                         g_at_success[k, j] = g
                         lam_at_success[k, j] = lam
 
-            progcall.show(k + 1, K)
+            if scenario_method == "deterministic":
+                progcall.show(k + 1, K)
+            else:
+                level_bar.finish_level()  # a level that failed outright still moves the bar
 
     finally:
         progcall.finish()
@@ -2006,6 +2013,7 @@ def run_spending_bequest_frontier(
                 frontier_g[k, :], frontier_prob[k, :], frontier_shortfall[k, :] = f
 
     return {
+        "engine": engine_provenance(),
         "bequest_grid": np.array(grid),
         "bequest_dollars": np.array(grid) * unit_fac,
         "base_basis": base_basis,
@@ -2035,6 +2043,57 @@ def run_spending_bequest_frontier(
         "year_n": plan.year_n,
         "n_d": plan.n_d,
     }
+
+
+class _LevelProgress:
+    """Report one bequest level's scenarios on the frontier's bar, as a share of every level's.
+
+    The frontier repeats a stochastic run per level, so a bar that moved once per level sat
+    still through every level's scenarios. Each level's run reports (n, N) scenarios done; on
+    the outer bar that is k*N + n of K*N, the K levels all having the same N scenarios.
+    """
+
+    def __init__(self, outer, k, K):
+        self.outer, self.k, self.K, self.N = outer, k, K, None
+
+    def start(self):
+        pass  # the outer bar is already showing
+
+    def show(self, n, N):
+        self.N = N
+        self.outer.show(self.k * N + n, self.K * N)
+
+    def finish(self):
+        pass  # the outer bar outlives each level
+
+    def finish_level(self):
+        """Move the outer bar to the end of this level, whether or not its run reported."""
+        if self.N:
+            self.outer.show((self.k + 1) * self.N, self.K * self.N)
+        else:
+            self.outer.show(self.k + 1, self.K)
+
+
+def frontier_reach_sentence(lo, hi, n_failed, what):
+    """One sentence saying how large a bequest the frontier found reachable, or None.
+
+    lo is the largest bequest level traced that solved, hi the first level above it that did
+    not (None when none did), n_failed how many levels failed, and what names the source of
+    the bequest ("savings", or "this plan" when nothing sits outside the savings accounts).
+    """
+    if lo is None:
+        if hi is None:
+            return None
+        return f"No bequest level traced is reachable: even ${hi:,.0f} is more than {what} can leave."
+    if hi is None and not n_failed:
+        return f"Every bequest level traced is reachable, so {what} can leave at least ${lo:,.0f}."
+    if hi is None:
+        # Nothing failed above the best success, but something below it did, so the levels
+        # are not simply reachable up to a ceiling.
+        levels = "level" if n_failed == 1 else "levels"
+        subject = what[0].upper() + what[1:]
+        return f"{subject} can leave at least ${lo:,.0f}, but {n_failed} lower {levels} did not solve."
+    return f"The largest bequest {what} can leave is between ${lo:,.0f} and ${hi:,.0f}."
 
 
 def summarize_spending_bequest_frontier(result, *, target_success_rate_pct=90.0):
@@ -2169,6 +2228,7 @@ def summarize_spending_bequest_frontier(result, *, target_success_rate_pct=90.0)
     gaps = np.asarray(result["max_gap"], float)
 
     return {
+        "engine": result.get("engine"),  # the engine that produced the frontier, not this one
         "scenario_method": result["scenario_method"],
         "n_scenarios": int(result["n_scenarios"]),
         "success_rates": rates_pct,

@@ -352,7 +352,8 @@ of 25/36 of~1\% per month for claiming before the spousal FRA (which mirrors
 the own FRA schedule) and no bonus for deferral beyond FRA.
 
 The survivor benefit is the greater of the deceased spouse's actual benefit and
-82.5\% of the deceased's PIA, reduced if the survivor claims before their own
+82.5\% of the deceased's PIA; a spouse who died before claiming leaves the full PIA,
+plus the delayed retirement credits earned up to death. It is reduced if the survivor claims before their own
 survivor FRA (minimum 71.5\% at age~60, interpolated linearly in the claiming month).
 Unlike the retirement benefit, it earns no delayed retirement credits past the
 survivor FRA, so deferring beyond that date is never advantageous.
@@ -407,8 +408,7 @@ The SSA earnings test is not modeled; users are assumed to be fully retired
 before their FRA.
 The survivor claiming date is a user setting rather than an optimized decision:
 the model evaluates whichever date is specified, but does not search for the one
-that maximizes the objective. A worker who dies before claiming is credited with
-the 82.5\% PIA floor rather than the benefit accrued to the date of death.
+that maximizes the objective.
 The Windfall Elimination Provision (WEP) and Government Pension Offset (GPO)
 were repealed by the Social Security Fairness Act (signed January~5, 2025) and therefore
 require no modeling.
@@ -860,7 +860,7 @@ pass until they converge.
 The total LTCG tax is derived from the bracket allocation after solving.
 Reference: \cite{irs409}.
 
-An optional exact MIP formulation is available via \code{withLTCG="optimize"}.
+An optional MIP formulation is available via \code{withLTCG="optimize"}.
 In this mode, the ordinary taxable income $G_n$ is embedded as a continuous
 LP variable together with binary variables that select the applicable LTCG
 bracket in each year, replacing the self-consistent loop refinement of
@@ -902,15 +902,12 @@ The threshold is fixed in nominal dollars; its real impact over time is
 correctly reflected in the model.
 Reference: \cite{irc1411}.
 
-An optional exact MIP formulation is available via \code{withNIIT="optimize"}.
+An optional MIP formulation is available via \code{withNIIT="optimize"}.
 In this mode, MAGI is embedded as a continuous LP variable together with a
-binary variable $z^j_n$ that selects whether the NIIT threshold is exceeded
-each year.
-The full IRS $\min(\cdot,\cdot)$ cap---capping the NIIT base at net investment
-income when ordinary income drives MAGI well above the threshold---is modeled
-exactly without a second binary via a continuous surplus variable
-$\delta^j_n \ge 0$; because the optimizer minimizes taxes, it naturally drives
-$\delta^j_n$ to its upper bound, reproducing the correct IRS value.
+binary variable $z^j_n$ that selects, each year, which term of the IRS
+$\min(\cdot,\cdot)$ bounds the tax: the excess of MAGI over the threshold, or
+net investment income. Because the optimizer minimizes taxes, it picks the
+smaller, reproducing the IRS value over every income range.
 
 \subsection*{Limitations and assumptions}
 
@@ -995,14 +992,55 @@ Bracket rates and widths, standard deductions, Social Security treatment, and
 retirement-income and pension exemption caps for all 50 states and the District
 of Columbia are read from a data table (\code{data/taxes_state.toml}) with
 separate entries for Single and Married Filing Jointly filers; the filing
-status switches to Single at the passing of a spouse, and bracket widths and
-deductions are indexed to inflation through $\gamma_n$.
-State taxable income is derived from federal AGI (the federal standard
-deduction plus ordinary taxable income and capital gains), minus the exempted
-portion of Social Security, pension exemptions, the state standard deduction,
-and any capped retirement-income exemption.
-A per-state \code{income\_base} field in the data table selects whether the
-state starts from federal AGI (the default) or federal taxable income.
+status switches to Single at the passing of a spouse. Each state says whether its
+bracket widths, its deduction and its exemption caps grow with inflation through
+$\gamma_n$ (\code{brackets_indexed}, \code{deduction_indexed},
+\code{exemptions_indexed}); amounts its statute fixes in nominal dollars (New
+York, New Jersey, \ldots) stay nominal. Per-filer personal and 65+ exemptions
+add to the state deduction for each living filer, and personal credits reduce
+the state tax, down to zero, through a credit variable bounded by the year's
+state tax.
+State taxable income is derived from quantities already present in the model:
+federal AGI (federal ordinary taxable income plus the federal standard
+deduction, plus capital gains, which most states tax as ordinary income), minus
+the exempted portion of Social Security, pension exemptions, the state
+standard deduction, and any capped retirement-income exemption.
+New York recaptures the benefit of its lower brackets above \$107{,}650 of state
+AGI: a supplemental amount $R_n$, a function of the state AGI and taxable income
+that phases in over \$50{,}000 of AGI tier by tier (rule in \code{tax\_state.state\_recapture},
+reproducing the IT-201-I tax computation worksheets), is added to the state tax.
+Like the NIIT it is a self-consistent-loop parameter: $R_n$ enters the cash flow as
+a constant from the previous iterate.
+New Jersey excludes retirement income in steps of total income (NJ-1040 lines
+28a--28c): with line-27 income $L_n$ up to \$100{,}000 a married couple aged 62
+or more excludes its pensions, IRA withdrawals and Roth conversions up to
+\$100{,}000, half of them up to \$125{,}000, a quarter up to \$150{,}000, and
+nothing above; with wages of at most \$3{,}000 the unused part covers other
+income, so the exclusion becomes the same share of $L_n$. Because the steps are
+cliffs, the tier is chosen by binaries $z^x_{kn}$, $\sum_k z^x_{kn} = 1$, in the
+disaggregated form of the disjunction: $L_n = \sum_k L_{kn}$ with
+$c_{k-1} z^x_{kn} \le L_{kn} \le c_k z^x_{kn}$, the eligible base split the same
+way into $B_{kn} \le L_{kn}$, and the exclusion bounded by
+$\sum_k s_k B_{kn}$ and the cap. Only the copy above the last ceiling needs the
+income ceiling as a bound, so inside the ceilings the relaxation is the concave
+envelope of the staircase. The optimizer can then hold $L_n$ at a ceiling when the
+exclusion is worth more than the income above it.
+The binaries are free only in years whose $L_n$ in the previous iterate was at most
+1.5 times the top ceiling (the first iterate is solved without the exclusion, and the
+set only grows); without a time limit set by the user, a MILP carrying them stops
+after 60 seconds and its tiers are kept for the remaining iterations.
+A city tax can sit on top of the state's (\code{locality}, data in
+\code{data/taxes\_local.toml}): either a set of brackets on the state taxable
+income, which adds bracket variables $f^{\ell}_{tn}$ with
+$\sum_t f^{\ell}_{tn} = \sum_t f^{s}_{tn}$, or a surcharge that scales the
+state's own marginal rates by $1+\varsigma_n$.
+The state can change during the plan: each year takes its brackets, deduction,
+and exemptions from the state in force on December 31, and the bracket
+dimension is padded to the longest schedule with zero-width brackets at the top
+rate. No part-year apportionment is made.
+A state that allows the federal standard deduction itself
+(\code{standard\_deduction = "federal"} in the data table) takes that year's
+federal amount, including the additional amount for age 65 and over.
 The resulting state tax joins the cash-flow constraint alongside its federal
 counterpart.
 The LP formulation is given in Sec.~(\ref{Sec:StateTax}).
@@ -1039,8 +1077,9 @@ Owl resolves this circularity through a self-consistent (SC) iteration
 loop: nonlinear quantities are fixed at their previous-iteration values
 during each LP solve, then recomputed from the new solution, and the
 process repeats until convergence.
-For quantities that require exact simultaneous treatment, binary variables
-and MIP reformulations replace the SC loop entirely.
+Threshold quantities can instead be carried inside the optimization as binary
+variables (MIP reformulations); the loop still iterates the quantities that remain
+nonlinear in the solution.
 
 \section{Planning Horizon and Time Steps}
 
@@ -1237,31 +1276,27 @@ a damped update.
 The loop typically converges in fewer than fifteen iterations for
 well-posed plans.
 
-Five optional MIP formulations replace portions of the SC loop with exact
-binary constraints, eliminating the corresponding nonlinearity entirely:
+Five optional MIP formulations replace portions of the SC loop with binary
+constraints, carrying the corresponding thresholds inside the optimization:
 \begin{itemize}[nosep]
   \item \code{withSSTaxability="optimize"} --- models SS taxability as an
-    exact piecewise-linear MIP using binary variables $z^\sigma$ to select
+    piecewise-linear MIP using binary variables $z^\sigma$ to select
     the correct taxability threshold (0\%, 50\%, or 85\%) each year.
   \item \code{withLTCG="optimize"} --- uses binary variables $z^l$ to select
     the correct 0\%, 15\%, or 20\% LTCG bracket each year, rather than
     approximating bracket thresholds from the previous SC iteration.
   \item \code{withNIIT="optimize"} --- uses a binary variable $z^j$ to
-    determine whether MAGI exceeds the NIIT threshold each year, and a
-    continuous surplus variable $\delta^j$ to enforce the IRS NII cap
-    ($\min(\mathbb{G}-\mathbb{G}^{\mathrm{NIIT}},\,\mathbb{I}+Q)$) without a
-    second binary.
+    select, each year, which term of the IRS minimum
+    ($\min(\mathbb{G}-\mathbb{G}^{\mathrm{NIIT}},\,\mathbb{I}+Q)$) bounds the tax.
   \item \code{withACA="optimize"} --- folds ACA premium bracket selection and
     MAGI into the MIP, replacing the per-iteration SC approximation.
   \item \code{withMedicare="optimize"} --- models IRMAA bracket selection
-    using binary variables $z^m$, guaranteeing the globally optimal bracket
-    assignment each year.
+    using binary variables $z^m$ to select each year's bracket.
 \end{itemize}
-Each exact formulation eliminates the corresponding SC-loop approximation at
-the cost of additional binary variables.
+Each formulation removes the corresponding SC-loop approximation at the cost of
+additional binary variables.
 When multiple flags are active simultaneously, the resulting MILP can be large;
-the \code{withDecomposition} option (Section~\ref{sec:decomposition}) provides
-sequential (relax-and-fix) and Benders strategies to reduce solve time.
+Section~\ref{sec:decomposition} describes the two strategies that solve it.
 
 \section{Filing Status and the Death of a Spouse}
 
@@ -1302,63 +1337,64 @@ An optional interface to \textbf{MOSEK}, a commercial solver requiring a
 separate license, is also supported and generally provides faster solution
 times for large MIP problems.
 
-\section{MIP Decomposition}
+\section{MIP Strategies: Branch-and-Bound and Local Search}
 \label{Sec:MIPDecomp}
 \label{sec:decomposition}
 
-When multiple \code{"optimize"} flags are active simultaneously---for example,
-\code{withLTCG}, \code{withMedicare}, \code{withACA}, \code{withSSTaxability},
-and \code{withNIIT} all set to \code{"optimize"}---the monolithic MILP can
-accumulate on the order of 300 binary variables from the five bracket-selector
-families ($z^m$, $z^a$, $z^\sigma$, $z^l$, $z^j$). These are the only binaries
-a plan carries; with every tax mode left in loop mode the problem is a pure
-linear program.
-Solve times grow substantially with this binary count.
-The \code{withDecomposition} option partitions the MILP into two interacting
-subproblems that are solved sequentially, separating bracket selection from
-continuous planning:
-\begin{itemize}[nosep]
-  \item \textbf{Master problem} --- selects the bracket binary families
-    $z^m$, $z^a$, $z^\sigma$, $z^l$, $z^j$.
-  \item \textbf{Subproblem} --- solves the continuous planning problem (all
-    LP variables), with bracket assignments fixed by the master.
-\end{itemize}
-Two decomposition strategies are available.
+When the \code{"optimize"} flags are active simultaneously---\code{withSSTaxability},
+\code{withMedicare}, \code{withACA}, \code{withLTCG} and \code{withNIIT}---the MILP
+carries on the order of 300 binary variables from the five bracket-selector families
+($z^\sigma$, $z^m$, $z^a$, $z^l$, $z^j$); with every tax mode in loop mode the problem
+is a pure linear program. The option \code{mipStrategy} selects how those binaries are
+solved within each iteration of the SC loop.
 
-\paragraph*{Sequential (relax-and-fix).}
-The LP relaxation (all binaries relaxed to $[0,1]$) is solved first.
-The bracket binary families are then rounded to 0 or 1 in a fixed order
-($z^l \to z^\sigma \to z^j \to z^m \to z^a$).
-Finally, the reduced problem is solved with all bracket binaries fixed.
-This is a fast heuristic and is not guaranteed to be globally optimal, but
-in practice it produces near-optimal or optimal solutions.
+\paragraph*{Branch-and-bound} (\code{mipStrategy="branch-and-bound"}, the default) hands
+the whole MILP to the solver's complete search. It stops when the relative gap between the
+incumbent and the best bound falls below \code{gap}, or at \code{maxTime}, so its answer is
+certified only to that gap. It is not exact in a wider sense either: it is solved inside the
+SC loop, which still iterates the quantities that remain nonlinear in the solution
+(investment income, gain fractions, the OBBBA phaseout). Solve times grow quickly with the
+binary count; on the bequest cases studied, a median of about six minutes per solve with
+MOSEK, and HiGHS is far slower.
 
-\paragraph*{Benders decomposition.}
-Classical Benders decomposition~\cite{benders1962} provides a certified global
-optimum.
-Starting from an initial bracket assignment, the subproblem LP is solved and its
-dual variables $\pi$ are used to generate a Benders optimality cut
-\begin{equation}
-    \eta \ge \alpha + \bm{\beta}^\top z,
-    \qquad
-    \alpha = \theta_{\mathrm{LP}} - \bm{\beta}^\top z^*,
-    \quad
-    \beta_j = -\sum_i \pi_i A_{ij},
-\end{equation}
-where $\theta_{\mathrm{LP}}$ is the subproblem LP objective and $A_{ij}$ are
-the constraint coefficients of master column $j$.
-The cut is added to the master; the master MIP is re-solved for a new bracket
-assignment and a lower bound on $\eta$.
-An upper bound is obtained by solving the subproblem MIP.
-The loop terminates when the gap between the upper and lower bounds falls within
-the solver's MIP gap tolerance.
-In practice the algorithm converges in one to three iterations.
-If the LP relaxation gap cannot be closed, Benders falls back to the sequential
-strategy.
+\paragraph*{Local search} (\code{mipStrategy="local-search"}) is a fix-and-optimize
+heuristic. Within each SC iteration it solves a sequence of small restricted problems, each
+with most binaries pinned:
+\begin{enumerate}[nosep]
+  \item \emph{A feasible starting plan.} The previous iteration's binaries (an LP); failing
+    that, a repair from the self-consistent loop's own plan, with its withdrawals and
+    conversions held in a narrow band and the binaries free. The full MILP is never solved:
+    if every attempt fails, the loop's plan is kept.
+  \item \emph{Moves.} (a) $z^\sigma$ pinned, the other families freed one at a time;
+    (b) the other families pinned, $z^\sigma$ free within a local-branching ball of at most
+    $k$ flips from the current plan; (a$'$) when neither moved, the other families freed
+    jointly; (c) every family's binaries freed in the years where the plan's own income
+    implies a different cost than the one charged (the fixed-point residual).
+  \item Repeat until no move improves the objective.
+\end{enumerate}
+Every restricted problem contains the current plan, so each is feasible and none returns a
+worse plan: the search descends monotonically. Before searching, the plan is solved once in
+loop mode; that plan seeds the search and is also its floor, so the result is never worse
+than the loop's. Each restricted solve is capped by branch-and-bound nodes
+(\code{localSearchStepNodes}; 3{,}000 with HiGHS, 20{,}000 with MOSEK, which count nodes
+differently) rather than by time, so that the same case gives the same answer on any machine;
+\code{localSearchStepTime} (60\,s) is only a backstop. The search has a budget
+(\code{localSearchTime}, 300\,s), and $k$ is \code{localSearchRadius} (4). The preset
+\code{breakpointMethod="local-search"} replaces a fixed Social Security taxable fraction with the
+IRS formula: local search keeps the problem well behaved without it. Local search carries no certificate and can stop short of the optimum, chiefly on the
+unrestricted problem, which has the most freedom. Claiming-age selectors
+(\code{withSSAges="optimize"}) and withdrawal-ordering gates are not searched; such cases are
+solved by branch-and-bound.
 
-Both strategies support HiGHS and MOSEK.
-The option is \code{withDecomposition = "none" | "sequential" | "benders"};
-the default is \code{"none"} (monolithic MILP).
+The preset \code{breakpointMethod = "local-search"} (or \code{"branch-and-bound"}) sets every
+applicable family to \code{"optimize"} and selects the strategy in one step.
+
+In tests of a prototype with HiGHS, on the shipped examples (with a benchmark ACA premium
+added where someone is under 65), local search was never worse than the loop and improved
+17 of 23 cases. Over 72 historical start years of a bequest-maximizing case swept over
+first-year Roth conversions (1,261 cells), the cells whose regret came out negative---an
+artifact of the solver, since a restricted plan cannot beat an unrestricted one---fell from
+124 with the loop to 47 with local search, at a median of 28\,s per solve.
 
 \chapter{Indices, variables, and parameters}
 In the next sections, the indices, variables, and parameters are
@@ -1580,13 +1616,9 @@ while parameters are prescribed by the user, historical data, or tax laws.
 	  \item $z^l_{0n}$, $z^l_{1n}$ --- LTCG bracket-room indicators ($z^l=1$ iff
 	    ordinary income $G_n$ is below the 15\% or 20\% threshold); present when
 	    \code{withLTCG="optimize"}.
-	  \item $z^j_n$ --- NIIT threshold indicator ($z^j=1$ iff MAGI exceeds
-	    $\mathbb{G}^{\mathrm{NIIT}}$); present when \code{withNIIT="optimize"}.
-	  \item $\delta^j_n$ --- continuous NII surplus,
-	    $\delta^j_n = \max(0,\,\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}} - \mathbb{I}_n - Q_n)$;
+	  \item $z^j_n$ --- NIIT branch selector ($z^j=1$ when net investment income,
+	    rather than the excess of MAGI over $\mathbb{G}^{\mathrm{NIIT}}$, bounds the tax);
 	    present when \code{withNIIT="optimize"}.
-	    Driven to its upper bound by the minimizing optimizer to enforce the IRS
-	    NII cap without a second binary.
 	\end{itemize}
 	See the corresponding constraint subsections for the big-$\mathcal{M}$ formulations.
 \end{description}
@@ -1620,7 +1652,7 @@ Parameter values are either set by the user, historical data, or by the tax code
 	in year $n$.  It is computed by the self-consistent loop and enters the LP as a
 	fixed parameter each iteration.
 	When a cost basis is provided via \code{setCostBasis()},
-	$\psi_{in} = 1 - K_{in}/b_{i0n}$ (see Eq.~(\ref{Eq:GainFrac})).
+	$\psi_{in} = (1 - K_{in}/b_{i0n})/\alpha_{i00n}$, capped at 1 (see Eq.~(\ref{Eq:GainFrac})).
 	Otherwise, $\psi_{in} = \max(0,\tau_{0(n-1)}-\mu)$, i.e., only the most
 	recent year's price appreciation is treated as a gain (Eq.~(\ref{Eq:Qx2})).
 \item [$\sigma_n$]
@@ -2005,20 +2037,29 @@ Intermediate variables are represented in roman uppercase letters, or in double 
 	where
 	\begin{equation}
 		\label{Eq:GainFrac}
-		\psi_{in} = \max\!\left(0,\;1 - \frac{K_{in}}{b_{i0n}}\right)
+		\psi_{in} = \min\!\left(1,\;\frac{1}{\alpha_{i00n}}\max\!\left(0,\;1 - \frac{K_{in}}{b_{i0n}}\right)\right)
 	\end{equation}
-	is the fraction of the taxable account balance that represents unrealized gain.
+	is the fraction of the equity holdings that represents unrealized gain.
+	Bond and cash returns are taxed every year, so those holdings sit at their basis and
+	the account's whole unrealized gain $b_{i0n} - K_{in}$ is carried by the equity share
+	$\alpha_{i00n} b_{i0n}$; the realized gain $\alpha_{i00n}\psi_{in} w_{i0n}$ is then
+	$(1 - K_{in}/b_{i0n})\,w_{i0n}$.
 	Equation~(\ref{Eq:Qx2}) is recovered when $\psi_{in} = \max(0,\tau_{0(n-1)}-\mu)$,
 	the fallback used in the absence of a known basis.
 	The basis evolves between self-consistent iterations via the pro-rata (average-cost) rule
 	\begin{equation}
 		\label{Eq:BasisUpdate}
-		K_{i,n+1} = K_{in}\!\left(1 - \frac{w_{i0n}}{b_{i0n}}\right) + \kappa_{i0n} + d_{in},
+		K_{i,n+1} = K_{in}\!\left(1 - \frac{w_{i0n}}{b_{i0n}}\right) + \kappa_{i0n} + d_{in}
+		+ \Big(\alpha_{i00n}\mu + \sum_{k\ge1}\alpha_{i0kn}\max(0, \tau_{kn})\Big)
+		  \big(b_{i0n} - w_{i0n} + d_{in} + \tfrac{1}{2}\kappa_{i0n}\big),
 	\end{equation}
 	initialized at $K_{i0}$ from \code{setCostBasis()}.
 	Each withdrawal reduces the total basis in proportion to the account fraction
 	liquidated; fixed contributions $\kappa_{i0n}$ and surplus deposits $d_{in}$ are
 	new purchases added at full cost (zero embedded gain).
+	The last term is the year's dividends and interest: they are taxed as they are earned
+	and stay in the account, so they are reinvested at full cost too; leaving them out
+	would tax them a second time on sale.
 
 \item [$\mathbb{G}_n$]
 	Modified adjusted gross income (MAGI) for year $n$, on the adjusted-gross-income
@@ -2134,8 +2175,8 @@ Intermediate variables are represented in roman uppercase letters, or in double 
 	In the default SC-loop mode $J_n$ is a derived quantity, recomputed after each
 	LP solve from the current $\mathbb{G}_n$ and held fixed during the solve.
 	When \code{withNIIT="optimize"} is selected, $J_n$ and $\mathbb{G}_n$ become
-	LP decision variables, and a binary variable $z^j_n$ exactly determines whether
-	the NIIT threshold is exceeded (see the Net Investment Income Tax subsection of
+	LP decision variables, and a binary variable $z^j_n$ selects which term of the
+	IRS minimum bounds the tax (see the Net Investment Income Tax subsection of
 	the Constraints chapter).
 
 \item [$K_{in}$]
@@ -2728,55 +2769,28 @@ In this case, the objective function will need to consider the sum over all year
 	threshold $\mathbb{G}^{\mathrm{NIIT}}$, and $J_n$ becomes a continuous LP
 	variable.
 
-	\subsubsection*{Threshold indicator}
-	The big-$\mathcal{M}$ constraints enforcing $z^j_n = 1$ iff
-	$\mathbb{G}_n \ge \mathbb{G}^{\mathrm{NIIT}}$ are
-	\begin{eqnarray}
-		J_n &\le& z^j_n\,\mathcal{M}^j_n, \label{Eq:NIIT_Jub} \\
-		\mathbb{G}_n &\le& \mathbb{G}^{\mathrm{NIIT}} + z^j_n\,\mathcal{M}^j_n, \label{Eq:NIIT_Mub}
-	\end{eqnarray}
-	with $\mathcal{M}^j_n = 3\,\bar{\mathcal{B}}^{20}_n$.
-	Constraint~(\ref{Eq:NIIT_Jub}) forces $J_n = 0$ when $z^j_n = 0$;
-	Constraint~(\ref{Eq:NIIT_Mub}) forces $\mathbb{G}_n \le \mathbb{G}^{\mathrm{NIIT}}$
-	when $z^j_n = 0$, so the optimizer assigns $z^j_n = 0$ only when the
-	threshold is not exceeded.
-
-	\subsubsection*{NII cap via a surplus variable}
+	\subsubsection*{One binary for the minimum}
 	The IRS formula is
-	$J_n = 0.038\,\min(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}},\;\mathbb{I}_n + Q_n)$,
+	$J_n = 0.038\,\max\!\bigl(0,\,\min(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}},\;\mathbb{I}_n + Q_n)\bigr)$,
 	where $\mathbb{I}_n + Q_n$ is net investment income (NII).
 	High ordinary income (e.g.\ large RMDs or Roth conversions) can push
 	$\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}}$ above NII, in which case the NIIT
-	base is capped at NII.
-	This $\min(\cdot,\cdot)$ is modeled \emph{without a second binary} by
-	introducing a continuous surplus variable $\delta^j_n \ge 0$.
-	Since the optimizer minimizes taxes and $J_n$ is a cost, it is naturally
-	driven to its lower bound; making that lower bound depend on $\delta^j_n$
-	means the optimizer simultaneously maximizes $\delta^j_n$, driving it to
-	$\max\!\bigl(0,\,\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}} - \mathbb{I}_n - Q_n\bigr)$.
-	The two constraints are
+	base is capped at NII; with large investment income, MAGI can instead exceed the
+	threshold by less than NII, and the base is the excess.
+	Since $J_n$ is a cost the optimizer minimizes, it settles on the largest of its
+	lower bounds, and the binary $z^j_n$ selects which term of the minimum bounds it:
 	\begin{eqnarray}
-		J_n + 0.038\,\delta^j_n
-		  &\ge& 0.038\,(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}})
-		        - \mathcal{M}^j_n(1-z^j_n), \label{Eq:NIIT_lb} \\
-		\delta^j_n - G_n - e_n + t^\sigma_n
-		  &\le& \textstyle\sum_i\bar{\zeta}_{in}
-		        - \mathbb{G}^{\mathrm{NIIT}} - \mathbb{I}_n
-		        + \mathcal{M}^j_n(1-z^j_n). \label{Eq:NIIT_cap}
+		J_n &\ge& 0.038\,(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}}) - z^j_n\,\mathcal{M}^j_n, \label{Eq:NIIT_excess} \\
+		J_n &\ge& 0.038\,(\mathbb{I}_n + \mathbb{G}_n - G_n - e_n) - (1-z^j_n)\,\mathcal{M}^j_n, \label{Eq:NIIT_nii}
 	\end{eqnarray}
-	Constraint~(\ref{Eq:NIIT_lb}) is the combined MAGI/NII floor: when
-	$z^j_n=1$ it forces $J_n \ge 0.038\,(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}} - \delta^j_n)$.
-	Constraint~(\ref{Eq:NIIT_cap}) bounds the surplus:
-	$\delta^j_n \le \mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}} - \mathbb{I}_n - Q_n$
-	when $z^j_n=1$.
-	The $Q_n$ and Social Security terms cancel because, on the AGI basis,
-	$\mathbb{G}_n = G_n + e_n + Q_n$ and $\mathrm{NII}_n = \mathbb{I}_n + Q_n$, so
-	$\mathbb{G}_n - \mathrm{NII}_n = G_n + e_n - \mathbb{I}_n$; thus
-	Constraint~(\ref{Eq:NIIT_cap}) involves only ordinary income,
-	deduction headroom, and the SC-loop parameter $\mathbb{I}_n$.
-	Together, Constraints~(\ref{Eq:NIIT_lb})--(\ref{Eq:NIIT_cap}) reproduce
-	$J_n = 0.038\,\min(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}},\,\mathbb{I}_n + Q_n)$
-	without any additional binary variables.
+	with $J_n \ge 0$ and $\mathcal{M}^j_n = 0.038\,\max(\bar{\mathcal{C}}_n,\,\mathbb{G}^{\mathrm{NIIT}})$,
+	where $\bar{\mathcal{C}}_n$ bounds the year's income.
+	The optimizer picks the branch with the smaller bound, so
+	$J_n = 0.038\,\max\!\bigl(0,\,\min(\mathbb{G}_n - \mathbb{G}^{\mathrm{NIIT}},\,\mathrm{NII}_n)\bigr)$
+	over every income range.
+	The $Q_n$ term of NII is written through MAGI because, on the AGI basis,
+	$\mathbb{G}_n = G_n + e_n + Q_n$, so $\mathrm{NII}_n = \mathbb{I}_n + \mathbb{G}_n - G_n - e_n$,
+	with $\mathbb{I}_n$ the SC-loop parameter.
 
 	\subsubsection*{MAGI equality}
 	An equality constraint links the NIIT MAGI (AGI basis) to ordinary income,
@@ -2831,24 +2845,23 @@ In this case, the objective function will need to consider the sum over all year
 	retirement-income exemption, variable $r^{s}_n$, bounded by the
 	inflation-adjusted per-person cap $\bar{c}^{\,r}_n$ as
 	$0 \le r^{s}_n \le \bar{c}^{\,r}_n$, exempts eligible retirement income.
-	State taxable income is tied to the federal AGI through the equality
+	State taxable income is tied to the federal quantities through the equality
 	\begin{equation}
 		\label{Eq:StateTI}
 		\sum_{t=0}^{N_s-1} f^{s}_{tn} + e^{s}_n + r^{s}_n
 		- e_n - \sum_{t=0}^{N_t-1} f_{tn} - \sum_{p=0}^{2} q_{pn}
 		= -E^{\sigma}_n - E^{\pi}_n,
 	\end{equation}
-	where $e_n$ is the federal standard deduction, so the state base is
-	federal AGI ($e_n + \sum_t f_{tn} + \sum_p q_{pn}$) rather than federal
-	taxable income.  (A state whose statute begins from federal taxable
-	income sets \code{income\_base = "federal\_taxable"} in the data table,
-	which omits $e_n$.)
+	where $e_n$ is the federal standard deduction, so that the state base is
+	federal AGI, $e_n + \sum_t f_{tn} + \sum_p q_{pn}$, rather than federal
+	taxable income; the state then applies its own deduction $e^{s}_n$.
 	$E^{\sigma}_n = R_n\sum_i \bar\zeta_{in}$ when the state does not tax
 	Social Security --- removing the federally taxable portion embedded in
-	Eq.~(\ref{Eq:C6}), with $R_n$ the self-consistent taxability ratio --- and
-	$E^{\sigma}_n = 0$ otherwise; when Social Security taxability is optimised
-	(\code{withSSTaxability="optimize"}), the exclusion is applied through the
-	$t^{\sigma}_n$ variable instead of the $R_n$ parameter, and where
+	Eq.~(\ref{Eq:C6}), with $R_n$ the self-consistent taxability ratio ---
+	and $E^{\sigma}_n = 0$ otherwise; when Social Security taxability is
+	optimised (\code{withSSTaxability="optimize"}) the exclusion is applied
+	through the taxable-benefit variable $t^{\sigma}_n$ instead of the
+	parameter $R_n$.
 	$E^{\pi}_n = \min\left(\sum_i \bar{\pi}_{in},\; N_i\,\bar{c}^{\,\pi}_n\right)$
 	applies the state pension exemption with per-person cap $\bar{c}^{\,\pi}_n$.
 	The retirement-income exemption cannot exceed the tax-deferred income
@@ -3168,6 +3181,14 @@ In this case, the objective function will need to consider the sum over all year
 		+ \bar{S}^{\mathrm{aca}}_n\, z_{6n}^{\mathrm{aca}},
 		\qquad n \in \{0, \ldots, n_{\mathrm{aca}}-1\}.
 	\end{equation}
+	The net premium is $\min(\bar{S}^{\mathrm{aca}}_n,\ \bar{\mathcal{C}}^{\mathrm{aca}}_r\,\mathbb{G}_n)$,
+	and the bound $m^{\mathrm{aca}}_n \le \bar{S}^{\mathrm{aca}}_n$ would otherwise make every MAGI
+	below 400\% FPL with $\bar{\mathcal{C}}^{\mathrm{aca}}_r\,\mathbb{G}_n > \bar{S}^{\mathrm{aca}}_n$
+	infeasible. Because the applicable percentage only rises with $r$, every MAGI above the first point
+	$\mathbb{G}^*_n$ where the charge reaches the SLCSP pays the full premium. The thresholds are
+	therefore clipped, $\bar{\mathcal{L}}^{\mathrm{aca}}_{rn} \leftarrow
+	\min(\bar{\mathcal{L}}^{\mathrm{aca}}_{rn},\,\mathbb{G}^*_n)$, so those incomes fall in bracket~6;
+	brackets left with zero width have their binary fixed to zero.
 	For $n \ge n_{\mathrm{aca}}$, $m^{\mathrm{aca}}_n = 0$ (Medicare-eligible; no ACA cost).
 	The variable $m^{\mathrm{aca}}_n$ is added to the cash-flow constraint Eq.~(\ref{Eq:C4})
 	alongside $m_n$ when \code{withACA="optimize"} is active.
@@ -3939,10 +3960,8 @@ Tag family & Indices & Formulation \\
 \code{ltcg_room20_mip}, \code{ltcg_q01_zero} & $(n)$ & Eq.~(\ref{Eq:LTCGmq2}) \\
 \code{ltcg_zl_monotone} & $(n)$ & Sec.~(\ref{Sec:LTCG}) \\
 \code{ltcg_partition_hi} & $(n)$ & Eq.~(\ref{Eq:LTCG_partition}) \\
-\code{niit_floor} & $(n)$ & Eq.~(\ref{Eq:NIIT_lb}) \\
-\code{niit_j_zero} & $(n)$ & Eq.~(\ref{Eq:NIIT_Jub}) \\
-\code{niit_magi_cap} & $(n)$ & Eq.~(\ref{Eq:NIIT_Mub}) \\
-\code{niit_surplus_cap} & $(n)$ & Eq.~(\ref{Eq:NIIT_cap}) \\
+\code{niit_excess} & $(n)$ & Eq.~(\ref{Eq:NIIT_excess}) \\
+\code{niit_nii} & $(n)$ & Eq.~(\ref{Eq:NIIT_nii}) \\
 \code{irmaa_amo} & $(n)$ & Eq.~(\ref{Eq:SOS1}) \\
 \code{irmaa_bracket_lb}, \code{irmaa_bracket_ub} & $(n,q)$ & Eq.~(\ref{Eq:MedDecomph}) \\
 \code{aca_amo} & $(n)$ & Sec.~(\ref{Sec:ACA}) \\
@@ -4074,6 +4093,18 @@ churn). The second line penalizes withdrawals $w_{1jn}$ from the second individu
 otherwise equivalent. The weight $\varepsilon$ is chosen small (e.g.\ of order
 $10^{-9}$ in the same units as $y$) so that the primary objective dominates; it is
 often enabled by default when optimizing Medicare (IRMAA) to stabilize bracket selection.
+
+The bracket variables $f_{tn}$ (and their state, local and capital-gains counterparts) are a
+relaxation that fills the low brackets first only because tax costs the objective something.
+In a year whose cash has no value---typically late surplus that can only raise a bequest above
+its floor---every split of income across brackets is optimal, and a solver may fill the top
+bracket first, reporting tax the plan does not owe.
+When an iterate of the self-consistent loop shows such a year, the loop adds a tie-break of
+$10^{-4}$ per today's dollar of bracket tax, $c[q_f(t,n)] \mathrel{+}= 10^{-4}\,\theta^x_{tn}/\gamma_n$,
+for the remaining iterations; a final iterate that first shows one is re-solved with spending and
+binaries pinned and the same tie-break. The term is left off otherwise, because even this small a
+cost changes which fixed point the loop settles on in cases that never needed it.
+A post-solve check warns if any year is still filled out of order.
 
 
 \chapter{Rate models for return scenarios}
@@ -4908,10 +4939,8 @@ A statement such as ``convert \$45k--\$60k this year in 87\% of scenarios''
 is more decision-relevant than any single-scenario schedule.
 Each scenario is solved with perfect foresight of its own return path, so the
 spread \emph{understates} true decision uncertainty; a two-stage stochastic
-formulation committing the first-year decisions across scenarios --- the
-natural extension on top of the existing Benders infrastructure of
-Sec.~(\ref{Sec:MIPDecomp}) --- would price that uncertainty exactly and is
-left as future work.
+formulation committing the first-year decisions across scenarios would price
+that uncertainty and is left as future work.
 
 \chapter{Stochastic Spending Optimization and Longevity Risk}
 \label{chap:stochastic-spending}
@@ -5301,7 +5330,15 @@ The spousal/survivor offset is then updated as
 so that the difference between the total benefit and the own benefit
 at the chosen age is passed to the next LP iteration as a fixed income term.
 The variable $\bar{\zeta}_{in}$ in the plan is simultaneously updated to
-$\bar{\zeta}_{in}^{\mathrm{new}}$ for use in taxability and MAGI computations.
+$\bar{\zeta}_{in}^{\mathrm{new}}$ for reporting and for the SC-loop quantities
+computed after each solve.
+Within each LP, every row that charges tax or premiums on benefits uses the
+benefit variable rather than $\bar{\zeta}_{in}$: taxable income carries
+$\Psi_n(\delta^\mathrm{sp}_{in} + b^\mathrm{ss}_{in})$, and so do the
+IRMAA MAGI rows and the state SS exclusion, while the ACA MAGI rows carry the full
+$\delta^\mathrm{sp}_{in} + b^\mathrm{ss}_{in}$.
+Each candidate claiming age is therefore charged the tax on its own benefits,
+at the taxable share $\Psi_n$ of the previous iterate.
 
 \paragraph*{Convergence and oscillation.}
 \label{sec:ss-scloop}
@@ -5336,6 +5373,11 @@ streams as in the base mode.
           They are approximated through the SC loop, which may require several
           iterations for couple cases and can oscillate when the two partners'
           optimal ages are mutually dependent.
+    \item With \code{withSSTaxability="optimize"}, the provisional-income and
+          taxable-SS rows still use the previous iterate's benefits
+          $\bar{\zeta}_{in}$, because the taxable-SS formula takes the minimum
+          of the benefit and the provisional-income excess, which would need
+          another binary per year once the benefit is a variable.
     \item The survivor benefit is assumed to be claimed in the year of the
           spouse's death; the strategy of deferring the survivor benefit to a
           later age is not optimized.

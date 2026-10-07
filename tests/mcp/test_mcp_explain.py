@@ -20,12 +20,12 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _solved_plan(**opts):
+def _solved_plan(state="CA", **opts):
     plan = _build_plan_from_params(
         names=["Pat"],
         birth_dates=["1960-07-01"],
         life_expectancy=[88],
-        state="CA",
+        state=state,
         taxable=[200_000],
         tax_deferred=[800_000],
         roth=[100_000],
@@ -242,3 +242,116 @@ def test_explain_results_downgrades_milp_tax_modes():
     # The loop-mode solve still produces the full explanation.
     assert "this_year" in data["explanation"]
     assert "bequest_floor" in data["explanation"]["shadow_prices"]
+
+
+@pytest.mark.toml
+def test_build_explanation_reports_state_tax():
+    """An income-tax state gets its tax and bracket fill, consistent with the solved plan."""
+    plan = _solved_plan()
+    ex = build_explanation(plan)
+    g = plan.gamma_n[: plan.N_n]
+
+    year0 = ex["this_year"]["state_tax"]
+    assert year0["state"] == "CA"
+    assert year0["state_tax"] == pytest.approx(plan.st_T_n[0] / g[0], abs=0.01)
+
+    st = ex["state_tax_brackets"]
+    assert st["state"] == "CA"
+    assert st["total_state_tax_today"] == pytest.approx(float((plan.st_T_n / g).sum()), rel=1e-6)
+    assert st["total_state_tax_today"] > 0
+    top_rate = 100 * float(plan.st_theta_tn.max())
+    for row in st["by_year"]:
+        assert 0 < row["top_bracket_rate_pct"] <= top_rate + 1e-9
+        assert row.get("headroom_in_bracket_today", 0) >= 0
+    # Each reported year's tax is the plan's own state tax for that year.
+    by_year = {r["year"]: r["state_tax_today"] for r in st["by_year"]}
+    for n, year in enumerate(plan.year_n):
+        if int(year) in by_year:
+            assert by_year[int(year)] == pytest.approx(plan.st_T_n[n] / g[n], abs=0.01)
+
+
+@pytest.mark.toml
+def test_build_explanation_reports_state_move():
+    """After a move from CA to FL, each reported year names its state and FL years are omitted."""
+    plan = _solved_plan()
+    move_year = int(plan.year_n[0]) + 5
+    plan.setStateTax("CA", [(move_year, "FL")])
+    plan.solve("maxSpending", {"units": "1", "withDuals": True, "bequest": 400_000})
+    st = build_explanation(plan)["state_tax_brackets"]
+    assert st["state"] == "CA"
+    assert st["move"] == {"year": move_year, "state": "FL"}
+    assert st["by_year"] and all(r["state"] == "CA" and r["year"] < move_year for r in st["by_year"])
+
+    # Starting with no state and moving to CA: no first-year state tax, CA years reported.
+    plan.setStateTax("", [(move_year, "CA")])
+    plan.solve("maxSpending", {"units": "1", "withDuals": True, "bequest": 400_000})
+    ex = build_explanation(plan)
+    assert "state_tax" not in ex["this_year"]
+    rows = ex["state_tax_brackets"]["by_year"]
+    assert rows and all(r["state"] == "CA" and r["year"] >= move_year for r in rows)
+
+
+@pytest.mark.toml
+def test_build_explanation_omits_state_tax_without_income_tax():
+    """A no-income-tax state gets no state sections."""
+    ex = build_explanation(_solved_plan(state="TX"))
+    assert "state_tax" not in ex["this_year"]
+    assert "state_tax_brackets" not in ex
+
+
+def _ny_plan(moves=(), locality="Yonkers"):
+    plan = _build_plan_from_params(
+        names=["Pat"],
+        birth_dates=["1960-07-01"],
+        life_expectancy=[88],
+        state="NY",
+        taxable=[200_000],
+        tax_deferred=[2_500_000],
+        roth=[100_000],
+        hsa=None,
+        cost_basis=None,
+        ss_monthly_pias=[2500],
+        ss_ages=[67],
+        pension_monthly_amounts=None,
+        pension_ages=None,
+        rate_method="conservative",
+    )
+    plan.setStateTax("NY", moves, locality)
+    plan.solve("maxSpending", options={"units": "1", "withDuals": True, "bequest": 400_000})
+    assert plan.caseStatus == "solved"
+    return plan
+
+
+@pytest.mark.toml
+def test_build_explanation_reports_locality_and_recapture():
+    """The recapture and local tax inside st_T_n are shown with the year's state tax."""
+    plan = _ny_plan()
+    ex = build_explanation(plan)
+    PlanExplanation.model_validate(ex)
+    g = plan.gamma_n[: plan.N_n]
+    year0 = ex["this_year"]["state_tax"]
+    assert year0["locality"] == "Yonkers" and year0["local_tax"] > 0
+    st = ex["state_tax_brackets"]
+    assert st["locality"] == "Yonkers" and "moves" not in st
+    rows = {r["year"]: r for r in st["by_year"]}
+    assert all(r["state"] == "NY" and r["locality"] == "Yonkers" for r in rows.values())
+    recap = [n for n in range(plan.N_n) if plan.st_recap_n[n] > 1 and int(plan.year_n[n]) in rows]
+    assert recap, "test needs a year with NY recapture"
+    for n in recap:
+        assert rows[int(plan.year_n[n])]["recapture_today"] == pytest.approx(plan.st_recap_n[n] / g[n], abs=0.01)
+
+
+@pytest.mark.toml
+def test_build_explanation_labels_each_year_with_its_state_after_a_move():
+    from datetime import date
+
+    move = date.today().year + 6
+    plan = _ny_plan(moves=[(move, "FL")])
+    ex = build_explanation(plan)
+    PlanExplanation.model_validate(ex)
+    st = ex["state_tax_brackets"]
+    assert st["move"] == {"year": move, "state": "FL"} and "moves" not in st  # one move: upstream's field
+    rows = {r["year"]: r for r in st["by_year"]}
+    assert all(r["state"] == "NY" and r["locality"] == "Yonkers" for y, r in rows.items() if y < move)
+    assert any(y < move for y in rows)
+    assert not any(y >= move for y in rows)  # years without a state income tax are omitted (upstream)

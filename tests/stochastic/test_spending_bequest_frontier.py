@@ -512,8 +512,12 @@ class TestSpendingUnits:
     def test_the_exchange_rate_carries_both_units(self, result):
         s = summarize_spending_bequest_frontier(result)
         for e in s["exchange_rate"]:
+            # Both fields are stored round(..., 6), so two independently rounded numbers can
+            # differ by up to 1e-6 with nothing wrong. A relative tolerance alone is finer than
+            # that on these values -- rel=1e-4 of 0.0074 is 7.4e-7 -- so the check was passing
+            # on where the values happened to land. The absolute floor covers the rounding.
             assert e["spending_year1_per_dollar_of_bequest"] == pytest.approx(
-                e["spending_per_dollar_of_bequest"] * s["xi_0"], rel=1e-4
+                e["spending_per_dollar_of_bequest"] * s["xi_0"], rel=1e-4, abs=2e-6
             )
 
     def test_an_older_cached_result_still_summarizes(self, result):
@@ -523,3 +527,32 @@ class TestSpendingUnits:
         assert s["xi_0"] == pytest.approx(1.0)
         for row in s["frontier"]:
             assert row["spending_year1_today_dollars"] == pytest.approx(row["spending_today_dollars"], abs=0.02)
+
+
+class _RecordingProgress:
+    def __init__(self):
+        self.calls = []
+
+    def start(self):
+        pass
+
+    def show(self, n, N):
+        self.calls.append((n, N))
+
+    def finish(self):
+        pass
+
+
+@pytest.mark.toml
+def test_progress_counts_every_scenario_of_every_level(case, opts):
+    """The bar advances per scenario across all levels, not once per bequest level."""
+    bar = _RecordingProgress()
+    levels, ystart, yend = [0, 1000], 1970, 1972
+    run_spending_bequest_frontier(
+        case, opts, levels, scenario_method="historical", ystart=ystart, yend=yend, with_duals=False, progcall=bar
+    )
+    total = len(levels) * (yend - ystart + 1)
+    assert {N for _, N in bar.calls} == {total}
+    done = [n for n, _ in bar.calls]
+    assert done == sorted(done) and done[-1] == total
+    assert len(set(done)) == total  # every scenario of every level moved the bar

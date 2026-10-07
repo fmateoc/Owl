@@ -117,35 +117,33 @@ def getHFP(exdir, case, check_exists=True):
 # neither: jack+jill 102_515 -> 102_577 (the loop now waits for its fed-back quantities to
 # settle) and kim+sam-spending 186_583 -> 186_590 under HiGHS.
 #
-# Updated after the AGI-base state-tax fix (state taxable income now starts from federal AGI
-# rather than federal taxable income). Cases with state tax shifted: john+sally bequest
-# 84_252 -> 20_219 (MN), kim+sam-spending 186_583 -> 185_390 (CA), kim+sam-bequest
-# 1_976_280 -> 1_917_651 (CA), robin 44_365 -> 44_069 (NY). No-tax states unchanged.
+# jack+jill, joe and robin moved (-42, -469, -56) when taxable cost basis started counting taxed,
+# reinvested dividends and interest and putting the unrealized gain in the equity share.
 # kim+sam-spending returned to 186_583 under HiGHS when residualTol became a per-year bar: at
 # $50/yr it converges where it did before the exit test, while MOSEK still settles at 186_519.
 EXPECTED_OBJECTIVE_VALUES = {
     "Case_john+sally": {
         "net_spending_basis": 145_000,
-        "bequest": 20_219,
+        "bequest": 16_803,
     },
     "Case_jack+jill": {
-        "net_spending_basis": 102_577,
+        "net_spending_basis": 102_535,
         "bequest": 400_000,
     },
     "Case_joe": {
-        "net_spending_basis": 93_044,
+        "net_spending_basis": 92_575,
         "bequest": 300_000,
     },
     "Case_kim+sam-spending": {
-        "net_spending_basis": 185_390,
+        "net_spending_basis": 185_952,
         "bequest": 0,
     },
     "Case_kim+sam-bequest": {
         "net_spending_basis": 145_000,
-        "bequest": 1_917_651,
+        "bequest": 1_944_071,
     },
     "Case_robin": {
-        "net_spending_basis": 44_069,
+        "net_spending_basis": 44_013,
         "bequest": 50_000,
     },
 }
@@ -162,18 +160,26 @@ def test_reproducibility():
     Also verifies that the associated HFP (Household Financial Profile) file
     is successfully loaded for each case.
     """
-    # Two cases still land on a different SC-loop fixed point under MOSEK than under HiGHS.
-    # Re-measured on darwin after the residual exit test met the state bracket audit.
-    if _active_solver() == "MOSEK":
-        # MOSEK keeps the pre-removal fixed point on this oscillatory case.
-        # TODO: re-measure MOSEK values after the AGI-base state-tax fix; these are stale.
-        EXPECTED_OBJECTIVE_VALUES["Case_john+sally"]["bequest"] = 82_934
-        EXPECTED_OBJECTIVE_VALUES["Case_kim+sam-spending"]["net_spending_basis"] = 186_519
-        # Two overrides that used to live here are gone because the solvers now agree:
-        # jack+jill (both 102_577 once the loop waits for its quantities to settle) and
-        # kim+sam-bequest (both 1_976_280 after the CA bracket update). The latter also used to
-        # carry a win32 split of ~1_014 below darwin, measured 2026-08-28; win32 has not been
-        # re-measured since, so no platform override is kept for it.
+    # No case needs a MOSEK override any more; HiGHS and MOSEK agree within rel_tol on all of them.
+    # History of the overrides that used to live here:
+    # - john+sally: gone when the default epsilon became 5e-7 (re-measured on darwin); the two
+    #   solvers agreed at 82_934 where they used to differ by 1,318. Stronger tie-breaking leaves
+    #   fewer near-equivalent optima for a solver to choose between, so some of the
+    #   solver-to-solver spread was degeneracy rather than anything about the solvers.
+    # - jack+jill: gone once the loop waits for its quantities to settle (both 102_577).
+    # - kim+sam-bequest: gone after the CA bracket update (both 1_976_280 then). It also used to
+    #   carry a win32 split of ~1_014 below darwin, measured 2026-08-28; win32 has not been
+    #   re-measured since, so no platform override is kept for it.
+    # - kim+sam-spending (MOSEK 186_315): gone 2026-09-28 when the state base stopped also
+    #   deducting the federal standard deduction. The solvers now land at 185_390 (HiGHS) and
+    #   185_400 (MOSEK). That change re-pinned john+sally, kim+sam-* and robin (MN, CA, NY);
+    #   jack+jill and joe live in no-income-tax states and did not move.
+    # - kim+sam-* re-pinned 2026-10-03 when CA's $153 personal credit per filer, and its $153 senior
+    #   credit per filer 65+, were modeled. kim+sam-spending 185_390 -> 185_952 (HiGHS 185_948.93,
+    #   MOSEK 185_955.12): +$302/yr from the personal credit, then +$257/yr from the senior one,
+    #   which the couple (born 1964/1965) only reaches after three years. kim+sam-bequest
+    #   1_917_689 -> 1_944_071 (both solvers 1_944_071.20): the same credits compounding into the
+    #   estate (1_917_623.62 with them switched off).
 
     exdir = "./examples/"
     rel_tol = 5e-4  # Relative tolerance — widened from 1e-4 to tolerate HiGHS version

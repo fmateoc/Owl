@@ -156,6 +156,8 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
         qcds += [{"person": name, **r} for r in _runs(plan.qcd_in[i], first_year)]
         big_ticket_items += [{"person": name, **r} for r in _runs(plan.Lambda_in[i], first_year)]
 
+    state_moves = [{"year": m.year, "state": m.state or None, "locality": m.locality or None} for m in plan.state_moves]
+
     opening_balance_sheet = {
         "savings_total": savings_total,
         "fixed_assets_total": fixed_assets_total,
@@ -171,6 +173,8 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
         "case_name": plan._name,
         "filing_status": plan.filingStatus,
         "state": plan.state or None,
+        **({"locality": plan.locality} if plan.locality else {}),
+        "state_moves": state_moves,
         "individuals": individuals,
         "time_horizon": {
             "start_year": int(plan.year_n[0]),

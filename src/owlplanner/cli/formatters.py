@@ -12,6 +12,7 @@ import json
 import numpy as np
 
 from owlplanner.export import plan_metrics, balance_sheet_arrays
+from owlplanner.version import engine_provenance
 
 
 class _NumpyEncoder(json.JSONEncoder):
@@ -83,6 +84,25 @@ def _metrics_to_summary(m: dict) -> dict:
         "liquidation_capgains_rate": round(m["liquidation_capgains_rate"], 4),
         "time_horizon_years": int(m["time_horizon_years"]),
         "cumulative_inflation_factor": round(m["inflation_factor"], 4),
+    }
+
+
+def plan_convergence(plan) -> dict:
+    """How the self-consistent loop ended, and how far the plan is from the model its own income implies.
+
+    "solved" says the loop stopped, not that the answer is self-consistent. Reporting the
+    residual lets a caller tell a converged plan from one that merely ran out of patience,
+    without re-deriving the tax quantities itself.
+    """
+    residual = {
+        family: _round(v["abs_sum"]) for family, v in getattr(plan, "fixedPointResidual", {}).items()
+    }
+    return {
+        "convergence": plan.convergenceType,
+        # How the tax breakpoints were solved: "loop", "branch-and-bound (...)", "local search (...)",
+        # or "local search -> loop" when the search kept the loop's plan.
+        "breakpoint_method": getattr(plan, "breakpointMethodUsed", "loop"),
+        "fixed_point_residual_today_dollars": residual,
     }
 
 
@@ -162,24 +182,19 @@ def plan_to_dict(plan) -> dict:
                 }
             roth_schedule.append(entry)
 
-    # ---- how far the plan is from the model its own income implies ------
-    # "solved" says the loop stopped, not that the answer is self-consistent. Reporting the
-    # residual lets a caller tell a converged plan from one that merely ran out of patience,
-    # without re-deriving the tax quantities itself.
-    residual = {
-        family: _round(v["abs_sum"]) for family, v in getattr(plan, "fixedPointResidual", {}).items()
-    }
-
     # ---- top-level document ---------------------------------------------
     state = plan.state if plan.state else "none"
+    state_moves = [{"year": m.year, "state": m.state or "none", "locality": m.locality} for m in plan.state_moves]
     return {
+        "engine": engine_provenance(),
         "status": plan.caseStatus,
-        "convergence": plan.convergenceType,
-        "fixed_point_residual_today_dollars": residual,
+        **plan_convergence(plan),
         "case_name": plan._name,
         "objective": plan.objective,
         "individuals": list(plan.inames),
         "state": state,
+        **({"locality": plan.locality} if plan.locality else {}),
+        "state_moves": state_moves,
         "start_year": int(plan.year_n[0]),
         "end_year": int(plan.year_n[-1]),
         "time_horizon_years": N,

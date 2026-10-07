@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ###########################################################################
+import copy
 import numpy as np
 import pandas as pd
 from datetime import date, datetime
@@ -33,11 +34,15 @@ import time
 import textwrap
 
 from . import amorepair
+from . import localsearch
 from . import utils as u
 from . import tax_federal as tx
 from . import tax_state
+from . import tax_local
+from . import residency
 from . import abcapi as abc
 from . import rates
+from .version import __version__, engine_commit
 from . import config
 from . import hfp_io
 from . import export
@@ -124,13 +129,63 @@ REL_TOL = 5e-5
 # households. Calibrated over the shipped cases -- anything from $25 to $200 a year behaves the
 # same on all seventeen, so this sits in the middle of a flat region rather than on an edge.
 RESIDUAL_TOL = 50.0
+# IRMAA and ACA brackets apply above their thresholds, not at them: in the binary formulations each
+# higher bracket starts this many dollars above its threshold, so a MAGI on a threshold cannot be
+# charged the higher bracket. More than the residual's $1 of slack at a threshold.
+BRACKET_MARGIN = 2.0
 TIME_LIMIT = 900
-EPSILON = 1e-8
+# The NJ exclusion's tier binaries are free only in years whose state income, in the previous
+# iterate, was at most this multiple of the top tier ceiling; elsewhere the exclusion is off.
+RX_WINDOW = 1.5
+# Default cap, in branch-and-bound nodes, on a HiGHS MILP that carries free exclusion tier binaries,
+# when neither maxTime nor mipMaxNodes is given: large-balance cases can take far longer to prove
+# optimal, so the plan is returned with its gap. A node cap, like upstream's local search steps,
+# gives the same plan on any machine; it replaced a 60 s time cap (2026-10-06), which the $1.5M+$1.0M
+# couple reached at 20,809 nodes on the 4-core container. TIME_LIMIT stays the backstop.
+RX_NODE_LIMIT = 20_000
+# MOSEK counts nodes differently and was not recalibrated: it keeps the former 60 s time cap.
+RX_MOSEK_TIME_LIMIT = 60
+# Lexicographic weight on Roth conversions, and the loop's main conditioning term. At 1e-8 it
+# breaks ties only nominally: the conversion schedule stays free to migrate between near-equivalent
+# years, and since a conversion moves provisional income directly, each move can flip a Social
+# Security tier or an IRMAA bracket -- the loop ends up chasing its own schedule. Case_chris+pat
+# converts in 5 years but 16 different years see its schedule move during the search.
+#
+# Measured over the shipped cases. 2e-7 fixes nothing; 5e-7 and 1e-6 both eliminate every
+# max-iteration case, so the threshold lies between. 5e-7 is the cheaper side of it and needs
+# fewer iterations overall (171 against 175, and 222 undamped). The cost is real, not an artifact
+# of convergence: chris+pat's exact answer is above every epsilon result, so the penalty distorts
+# rather than corrects -- about 0.1-0.25% on the four cases that move, and nothing at all on the
+# nine that are already well behaved. Larger values start eating the economics: at 1e-3 the
+# measured Roth conversion regret falls 23%, which is the conditioning consuming the quantity
+# being measured, and at 1e-2 conversion years are deleted outright.
+EPSILON = 5e-7
 # Tie-break for degenerate directions inside a MIP. EPSILON is sized for the simplex, which
 # resolves ties exactly; a branch-and-bound gap swallows anything smaller than the optimality
 # tolerance, so a MIP tie-break has to be visible above it while staying far below any real
 # cost in the objective. See the t^sigma_n preference in _buildObjective.
 MIP_TIEBREAK = 1e-4
+# Tie-break on the tax a year's brackets charge, per today's dollar of tax. The bracket variables are
+# a relaxation, tight only while the year's cash has a price: where it has none (late surplus that
+# can only swell a bequest above its floor), any split of income across brackets is optimal and the
+# solver can fill the top one first, reporting tax the plan does not owe. The self-consistent
+# loop switches tax pricing this size on from the first iterate that fills a year out of order (the
+# degenerate fill also stalls convergence, through the LTCG residual), and _repairBracketOrder
+# re-solves an accepted LP that first goes out of order in the final iterate. It stays off otherwise:
+# always on, it moved the fixed point the loop settles on in cases that were never out of order
+# (morgan +1.5% spending, john+sally -4% bequest). EPSILON (5e-7) is too small: the reduced costs it
+# makes sit at HiGHS's dual feasibility tolerance and the fill stays.
+TAX_TIEBREAK = MIP_TIEBREAK
+# Value of a dollar left to non-spouse heirs at the first death, in final-objective dollars. Default
+# max(PARTIAL_BEQUEST_WEIGHT, 2 x gap): below the gap that money is invisible to the solver, which
+# can then spend it on taxes not owed.
+PARTIAL_BEQUEST_WEIGHT = 0.01
+# Retries when HiGHS reports a MIP infeasible, cheapest first. Presolve rule bit 12 is HiGHS's own
+# numbering and may change between versions; presolve off is the backstop.
+_HIGHS_INFEASIBLE_RETRIES = (
+    ("presolve_rule_off", 1 << 12, "presolve rule 12 off"),
+    ("presolve", "off", "presolve off"),
+)
 LTCG_CONSISTENCY_MAX_PASSES = 5  # max monolithic re-solves to clear stale LTCG bracket room
 LTCG_CONSISTENCY_TOL = 1.0  # allowed U_n - 0.20*Q_n slack ($) before a re-solve is needed
 
@@ -215,6 +270,31 @@ def _checkConfiguration(func=None, *, requireRates=True):
     return decorate if func is None else decorate(func)
 
 
+def _fixedAcrossIterations(builder):
+    """
+    Decorator for a constraint builder whose rows are the same on every iteration of
+    the self-consistent loop: the rows and bounds it adds on the first build of a solve
+    are replayed on the later ones instead of being rebuilt.
+
+    Only for builders that read nothing the loop updates between iterations: M_n, ACA_n,
+    J_n, Psi_n, G_n, Q_n, I_n, the gain fraction, and sigmaBar_n (which follows MAGI).
+    Rebuilding those rows was most of the cost of each iteration's LP.
+    """
+
+    @wraps(builder)
+    def wrapper(self, *args):
+        saved = self._fixedRows.get(builder.__name__)
+        if saved is None:
+            ncons, nranges = self.A.ncons, len(self.B.ind)
+            builder(self, *args)
+            self._fixedRows[builder.__name__] = (self.A.rowsSince(ncons), self.B.rangesSince(nranges))
+        else:
+            self.A.extendRows(saved[0])
+            self.B.extendRanges(saved[1])
+
+    return wrapper
+
+
 def _timer(func):
     """
     Decorator to report CPU and Wall time.
@@ -234,6 +314,9 @@ def _timer(func):
         # per-solve figure with their own total.
         if func.__name__ == "solve":
             self.lastSolveWallTime = rt
+            # CPU time of the whole process, solver threads included: with MOSEK on several
+            # threads it can be several times the wall time.
+            self.lastSolveCPUTime = pt
         self.mylog.vprint(
             f"CPU time used: {int(pt / 60)}m{pt % 60:.1f}s, Wall time: {int(rt / 60)}m{rt % 60:.1f}s.", tag="INFO"
         )
@@ -247,11 +330,10 @@ class Plan:
     This is the main class of the Owl Project.
     """
 
-    # Class-level counter for unique Plan IDs
     # SC-loop parameters: the NL quantities the loop feeds back into each LP solve.
-    # Adding a new loop-fed cost (e.g. state recapture) means adding its attribute name here;
+    # Adding a new loop-fed cost means adding its attribute name here;
     # snapshot/restore/blend and the iteration trace pick it up automatically.
-    _SC_PARAMS = ("M_n", "ACA_n", "J_n", "Psi_n")
+    _SC_PARAMS = ("M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "RXF_n")
 
     def _snapshot_sc(self):
         "Copy the current SC-loop parameters into a dict."
@@ -278,6 +360,7 @@ class Plan:
         for name in self._SC_PARAMS:
             trace[f"{name}_lp"].append(sc_lp[name])
 
+    # Class-level counter for unique Plan IDs
     _id_counter = 0
 
     @classmethod
@@ -385,6 +468,7 @@ class Plan:
         self.mu = 0.0172  # Dividend rate (decimal)
         self.taxable_basis_i = None  # Per-person initial cost basis (N_i,); None = legacy cap-gain approx
         self.gain_fraction_in = None  # (N_i, N_n) unrealized gain fraction; updated each SC iteration
+        self._fixedRows = {}  # Rows of the loop-invariant constraint builders; reset by solve()
         self.nu = 0.300  # Heirs tax rate (decimal)
         self.liquidationTaxRate = 0.240  # Assumed ordinary tax rate on tax-deferred/HSA if liquidated (decimal)
         self.liquidationCapGainsRate = 0.150  # Assumed capital-gains tax rate on fixed-asset disposition (decimal)
@@ -400,11 +484,29 @@ class Plan:
         self._aca_lp = False  # True when withACA="optimize" is active
         self.maca_n = np.zeros(self.N_n)  # ACA LP cost variable extraction result
         self.state = ""  # Two-letter US state for state income tax ("" = none)
+        self.locality = ""  # Locality within the state, e.g. "NYC" ("" = none)
+        self.state_moves = []  # Later moves, as residency.Residence(year, state, locality)
+        self.N_lt = 0  # Number of local tax brackets (0 when no locality has a bracket schedule)
+        self.lt_surcharge_n = np.zeros(self.N_n)  # Local surcharge as a fraction of net state tax
+        self.lt_T_n = np.zeros(self.N_n)  # Local income tax per year (included in st_T_n)
+        self.STR_n = np.zeros(self.N_n)  # State benefit recapture per year (SC-loop parameter; in st_T_n)
+        self.st_recap_n = np.zeros(self.N_n)  # Recapture charged in the solved plan (part of st_T_n)
+        self._str_active = False  # True when the state recaptures the benefit of its lower brackets
+        self.st_rx_n = np.zeros(self.N_n)  # Income-tiered retirement exclusion claimed (NJ line 28c)
+        self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
+        self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
         self.st_T_n = np.zeros(self.N_n)  # State income tax per year (N_n,)
+        self.st_credit_n = np.zeros(self.N_n)  # State personal credit available per year (N_n,)
+        self.st_c_n = np.zeros(self.N_n)  # State personal credit used per year (N_n,)
         self._st_lp = False  # True when state income tax LP is active
         self.N_st = 0  # Number of state tax brackets (0 when no state set)
         self.st_re_cap_in = np.zeros((self.N_i, self.N_n))  # State retirement income exemption caps
-        self.st_conv_ok = True  # Whether Roth conversions count toward the state exemption
+        # Per-year state flags (the state of residence can differ by year; see tax_state.st_schedule).
+        self.st_conv_ok_n = np.ones(self.N_n, dtype=bool)  # Roth conversions count toward the exemption
+        self.st_tax_ss_n = np.zeros(self.N_n, dtype=bool)  # The state taxes Social Security
+        self.st_fed_sd_n = np.zeros(self.N_n, dtype=bool)  # The state follows the federal standard deduction
+        self.st_senior_bonus_n = np.zeros(self.N_n, dtype=bool)  # ...including the OBBBA senior bonus
+        self.st_pension_eligible_n = np.ones(self.N_n, dtype=bool)  # Pensions share the retirement exemption
         self.st_re_in = np.zeros((self.N_i, self.N_n))  # State retirement exemption claimed per person
         self.n_aca = 0  # Number of ACA-eligible plan years (LP mode)
         self.other_medical_k = 0.0  # Annual non-Medicare QMEs in today's dollars ($)
@@ -507,6 +609,7 @@ class Plan:
         # Wall time of the most recent solve(), in seconds; None until one has run.
         # Used to turn a solve count into an estimated duration for this specific case.
         self.lastSolveWallTime = None
+        self.lastSolveCPUTime = None
         # Why the last solve produced no plan, in words; empty when it succeeded.
         self.solverMessage = ""
         # Whether the solver certified that no solution exists, as opposed to failing.
@@ -517,6 +620,14 @@ class Plan:
         # Per-family distance between the model solved and the model this plan's own income
         # implies, today's dollars; set by _computeFixedPointResidual after a successful solve.
         self.fixedPointResidual = {}
+        # How the last solve treated the tax thresholds ("loop", "branch-and-bound (...)",
+        # "local search (...)"), and the local search's step log when it ran.
+        self.breakpointMethodUsed = "loop"
+        self.localSearchLog = []
+        self._localSearch = None
+        self.bracketOrderExcess = 0.0
+        # Whether the objective prices tax (TAX_TIEBREAK); switched on by _scSolve when needed.
+        self._tax_tiebreak_on = False
         # Achieved MIP gap of the accepted solution (0 when solved to optimality,
         # larger when a time limit truncated the search; -1 before any solve)
         self.solverGap = -1.0
@@ -805,6 +916,19 @@ class Plan:
         """Unrealized gain fraction in [0, 1] from average-cost basis and account balance."""
         return min(1.0, max(0.0, 1.0 - float(basis) / max(1.0, float(balance))))
 
+    @staticmethod
+    def _equity_gain_fraction(basis, balance, alpha0):
+        """Unrealized gain fraction of the equity share of a taxable account, in [0, 1].
+
+        The model taxes bond and cash returns every year, so those holdings sit at their basis and
+        the account's whole unrealized gain, balance - basis, is in the equities. The gain fraction
+        is applied to the equity share of each withdrawal (alpha0 * w), so it is the whole-account
+        fraction divided by alpha0; realized gains are then (1 - basis/balance) * w.
+        """
+        if alpha0 <= 0:
+            return 0.0
+        return min(1.0, Plan._gain_fraction_from_basis(basis, balance) / float(alpha0))
+
     def setExpirationYearOBBBA(self, yOBBBA):
         """
         Set year at which OBBBA is speculated to expire and rates go back to something like pre-TCJA.
@@ -1001,6 +1125,7 @@ class Plan:
         u.require_list(ages, "ages", self.N_i)
         if indexed is None:
             indexed = [False] * self.N_i
+        u.require_list(indexed, "indexed", self.N_i)
         if survivor_fraction is None:
             survivor_fraction = [0.0] * self.N_i
         u.require_list(survivor_fraction, "survivor_fraction", self.N_i)
@@ -1611,7 +1736,7 @@ class Plan:
             self.mylog.vprint(f"ACA coverage starts in calendar year {self.aca_start_year}.")
         self.caseStatus = "modified"
 
-    def setStateTax(self, state):
+    def setStateTax(self, state, moves=None, locality=""):
         """
         Set two-letter US state abbreviation for state income tax modeling.
 
@@ -1626,14 +1751,40 @@ class Plan:
         ----------
         state : str
             Two-letter state abbreviation (e.g. 'MN', 'CA', 'TX'). Case-insensitive.
+            This is the state of residence in the first plan year.
+        moves : list, optional
+            Later changes of residence, as ``[{"year": 2031, "state": "FL"}]`` (or
+            ``[(2031, "FL")]``); an entry may also name a ``locality`` (third tuple item).
+            From that calendar year to the next move or the end of the plan, the household
+            lives in the new state ("" for none) and locality: the residence on December 31
+            taxes the whole year, so the year of the move is taxed by the new residence.
+            Each year must fall after the first plan year and within the plan. Upstream Owl
+            takes at most one move; this fork takes several. Omitted or empty, the household
+            stays in ``state`` throughout.
+        locality : str
+            City or county whose income tax applies on top of the state's, e.g. 'NYC' or
+            'Yonkers' for NY (see data/taxes_local.toml). Blank for none.
         """
-        from . import tax_state as ts
-
-        state = state.upper().strip() if state else ""
-        if state and state not in ts.valid_states():
-            raise ValueError(f"Unknown state '{state}'. Use a valid two-letter abbreviation from: {ts.valid_states()}")
+        state, locality = residency.normalize(state, locality)
+        moves = sorted(residency.as_residence(m) for m in (moves or []))
+        residency.residence_by_year(state, locality, moves, int(self.year_n[0]), self.N_n)  # validates
         self.state = state
+        self.locality = locality
+        self.state_moves = moves
+        for m in moves:
+            where = f"'{m.state}'" + (f", {m.locality}" if m.locality else "")
+            self.mylog.vprint(f"Residence from {m.year}: {where}.")
         self.caseStatus = "modified"
+
+    def _residence_by_year(self):
+        "(state, locality) in force in each plan year."
+        return residency.residence_by_year(
+            self.state, self.locality, self.state_moves, int(self.year_n[0]), self.N_n
+        )
+
+    def _states_n(self):
+        """State of residence in each plan year ("" for none)."""
+        return [state for state, _ in self._residence_by_year()]
 
     def setInterpolationMethod(self, method, center=15, width=5):
         """
@@ -1782,7 +1933,7 @@ class Plan:
 
         self.mylog.vprint(f"Interpolating asset allocation ratios using '{self.interpMethod}' method.")
 
-    def readHFP(self, filename, filename_for_logging=None):
+    def readHFP(self, filename, filename_for_logging=None, houseTables=True):
         """
         Load the Household Financial Profile (HFP) from file.
 
@@ -1825,13 +1976,24 @@ class Plan:
         filename_for_logging : str, optional
             Explicit filename for logging purposes. If provided, this will be used
             in log messages instead of trying to extract it from filename.
+        houseTables : bool, optional
+            False reads the per-person sheets only and leaves the Debts and Fixed Assets
+            tables, and their raw sheets, as they are.
         """
         try:
-            returned_filename, self.timeLists, self.houseLists, self.rawHFP, self.hfpAbsentCols = hfp_io.read(
-                filename, self.inames, self.horizons, self.mylog, filename=filename_for_logging
+            returned_filename, self.timeLists, houseLists, rawHFP, self.hfpAbsentCols = hfp_io.read(
+                filename, self.inames, self.horizons, self.mylog, filename=filename_for_logging,
+                houseTables=houseTables,
             )
         except Exception as e:
             raise Exception(f"Unsuccessful read of Household Financial Profile: {e}") from e
+        if houseTables:
+            self.houseLists = houseLists
+            self.rawHFP = rawHFP
+        else:
+            # Keep the household sheets already held; replace the per-person ones.
+            kept = {k: v for k, v in (self.rawHFP or {}).items() if k in ("Debts", "Fixed Assets")}
+            self.rawHFP = {**kept, **rawHFP}
 
         # Use filename_for_logging if provided, otherwise use returned filename
         self.hfpFileName = filename_for_logging if filename_for_logging is not None else returned_filename
@@ -2253,6 +2415,21 @@ class Plan:
             self.yobs, self.i_d, self.n_d, self.N_n, gamma_n, MAGI_n, self.yOBBBA
         )
 
+        # In a year whose state follows the federal standard deduction, the state deduction is
+        # this year's federal amount, age-65 additions included; the OBBBA senior bonus only where
+        # the state conforms. Other years keep the state's own deduction and exemptions.
+        if any(self._states_n()) and np.any(self.st_fed_sd_n):
+            fed_bonus = self.st_fed_sd_n & self.st_senior_bonus_n
+            fed_no_bonus = self.st_fed_sd_n & ~self.st_senior_bonus_n
+            st_sigma = self._st_sigma_own_n.copy()
+            st_sigma[fed_bonus] = self.sigmaBar_n[fed_bonus]
+            if np.any(fed_no_bonus):
+                # Infinite MAGI phases the senior bonus out entirely.
+                no_bonus = np.full(self.N_n, np.inf)
+                sigma_nb = tx.taxParams(self.yobs, self.i_d, self.n_d, self.N_n, gamma_n, no_bonus, self.yOBBBA)[0]
+                st_sigma[fed_no_bonus] = sigma_nb[fed_no_bonus]
+            self.st_sigmaBar_n = st_sigma
+
         if not self._adjustedParameters:
             self.mylog.vprint("Adjusting parameters for inflation.")
             self.DeltaBar_tn = self.Delta_tn * gamma_n[:-1]
@@ -2328,7 +2505,7 @@ class Plan:
 
             if self.slcsp_annual > 0:
                 n_aca_start = max(0, self.aca_start_year - int(self.year_n[0])) if self.aca_start_year > 0 else 0
-                self.n_aca, self.Lbar_aca_nr, self.cap_pct_aca_r, self.slcsp_aca_n = tx.acaVals(
+                self.n_aca, self.Lbar_aca_nr, self.tangents_aca_nrk, self.slcsp_aca_n = tx.acaVals(
                     self.yobs, self.horizons, gamma_n, self.slcsp_annual, self.N_n, n_aca_start=n_aca_start
                 )
             else:
@@ -2463,17 +2640,25 @@ class Plan:
         vm.add_if(ltcg_lp, "gn", self.N_n)  # G_n: ordinary taxable income (LTCG MILP)
         vm.add_if(niit_lp, "magi", self.N_n)  # MAGI_n LP variable (NIIT MILP)
         vm.add_if(niit_lp, "Jn", self.N_n)  # J_n: NIIT tax LP variable (NIIT MILP)
-        vm.add_if(niit_lp, "niis", self.N_n)  # NII surplus: max(0, MAGI-T-NII), no binary needed
         vm.add_if(ssa_lp, "ssb", self.N_i, self.N_n)  # SS own-benefit LP var (SS age optimize)
         # State income tax LP variables (continuous, before binary block).
         # No-income-tax states (FL, TX, AK, ...) have all-zero brackets, so st_T_n is
         # identically zero regardless of st_f/st_e/st_re — skip these vars entirely.
-        st_lp = bool(self.state) and bool(np.any(self.st_theta_tn > 0))
+        st_lp = any(self._states_n()) and bool(np.any(self.st_theta_tn > 0))
         self._st_lp = st_lp
         st_re_lp = st_lp and np.any(self.st_re_cap_in > 0)
         vm.add_if(st_lp, "st_f", self.N_st, self.N_n)  # state bracket allocations
         vm.add_if(st_lp, "st_e", self.N_n)  # state standard deduction headroom
         vm.add_if(st_re_lp, "st_re", self.N_i, self.N_n)  # retirement income exemption (per person)
+        rx_lp = st_lp and self._rx_active
+        N_rx = self.st_rx_limit_kn.shape[0] + 1 if rx_lp else 0  # tiers plus "above the last ceiling"
+        vm.add_if(rx_lp, "st_rx", self.N_n)  # income-tiered retirement exclusion
+        vm.add_if(rx_lp, "rxl", self.N_n, N_rx)  # state total income, split by tier (zero outside it)
+        vm.add_if(rx_lp, "rxb", self.N_n, N_rx)  # eligible income, split the same way
+        lt_lp = st_lp and self.N_lt > 0 and bool(np.any(self.lt_theta_tn > 0))
+        vm.add_if(lt_lp, "lt_f", self.N_lt, self.N_n)  # local bracket allocations
+        st_c_lp = st_lp and bool(np.any(self.st_credit_n > 0))
+        vm.add_if(st_c_lp, "st_c", self.N_n)  # state personal credit used (<= credit, <= state tax)
         vm.mark_binary_start()
         vm.add_if(medi, "zm", Nmed, self.N_irmaa)  # IRMAA bracket selection binaries
         vm.add_if(ss_lp, "zs", self.N_n, 2)  # z^σ family (2 per year) for SS min() ops
@@ -2482,6 +2667,7 @@ class Plan:
         vm.add_if(niit_lp, "zj", self.N_n)  # N_n NIIT threshold binaries
         vm.add_if(ssa_lp, "zssa", self.N_i, self._ssa_N_K)  # claiming-month selectors (SS age)
         vm.add_if(ordering, "zo", 2, self.N_n)  # withdrawal-ordering gates (taxable_first)
+        vm.add_if(rx_lp, "zx", self.N_n, N_rx)  # exclusion tier selectors
         self.vm = vm
 
         self.nvars = vm.nvars
@@ -2518,6 +2704,7 @@ class Plan:
         self._add_safety_net(options)
         self._add_roth_maturation_constraints()
         self._add_withdrawal_limits()
+        self._add_hsa_medical_cap()
         self._add_withdrawal_ordering(options)
         self._add_objective_constraints(objective, options)
         self._add_initial_balances()
@@ -2528,6 +2715,7 @@ class Plan:
         self._add_taxable_income(options)
         if self._st_lp:
             self._add_state_taxable_income()
+            self._add_local_taxable_income()
         self._configure_ss_taxability_lp(options)
         self._configure_ss_age_variables()
         self._configure_ltcg_constraints()
@@ -2539,6 +2727,7 @@ class Plan:
         self._configure_NIIT_binary_variables(options)
         self._build_objective_vector(objective, options)
 
+    @_fixedAcrossIterations
     def _add_rmd_inequalities(self):
         """
         Enforce Required Minimum Distributions (RMDs) on tax-deferred accounts (j=1) only.
@@ -2565,6 +2754,7 @@ class Plan:
                     # floor on the withdrawal that has to be taken as taxable income.
                     self.A.addNewRow(rowDic, -self.qcd_in[i, n], np.inf, tag=("rmd", i, n))
 
+    @_fixedAcrossIterations
     def _add_tax_bracket_bounds(self):
         for t in range(self.N_t):
             for n in range(self.N_n):
@@ -2575,30 +2765,71 @@ class Plan:
             self.B.setRange(self.vm["e"].idx(n), 0, self.sigmaBar_n[n])
 
     def _add_state_tax_bounds(self):
-        """Set variable bounds for state income tax LP variables."""
+        """Set variable bounds for state income tax LP variables.
+
+        Not cached across iterations: st_sigmaBar_n follows MAGI where the state conforms
+        to the federal standard deduction with the OBBBA senior bonus.
+        """
         vm = self.vm
         for t in range(self.N_st):
             for n in range(self.N_n):
                 self.B.setRange(vm["st_f"].idx(t, n), 0, self.st_DeltaBar_tn[t, n])
         for n in range(self.N_n):
             self.B.setRange(vm["st_e"].idx(n), 0, self.st_sigmaBar_n[n])
+        if "st_c" in vm:
+            for n in range(self.N_n):
+                self.B.setRange(vm["st_c"].idx(n), 0, self.st_credit_n[n])
         if "st_re" in vm:
             for i in range(self.N_i):
                 for n in range(self.N_n):
                     cap = self.st_re_cap_in[i, n]
                     self.B.setRange(vm["st_re"].idx(i, n), 0, cap if np.isfinite(cap) else 1e9)
+        if "st_rx" in vm:
+            # Years without an eligible filer, or outside the free set (RXF_n), keep every tier variable
+            # at zero and claim nothing; their rows are skipped, so income there is unconstrained.
+            N_rx = self.st_rx_limit_kn.shape[0] + 1
+            for n in range(self.N_n):
+                claimable = bool(self.st_rx_elig_in[:, n].any()) and self.RXF_n[n] >= 0.5
+                self.B.setRange(vm["st_rx"].idx(n), 0, self.st_rx_cap_n[n] if claimable else 0)
+                fixed = self._rx_fixed is not None and self._rx_fixed[1][n]
+                for k in range(N_rx):
+                    live = claimable and (k == N_rx - 1 or np.isfinite(self.st_rx_limit_kn[k, n]))
+                    if live and fixed:
+                        z = float(self._rx_fixed[0][n, k])
+                        self.B.setRange(vm["zx"].idx(n, k), z, z)
+                    else:
+                        self.B.setRange(vm["zx"].idx(n, k), 0, 1 if live else 0)
+                    self.B.setRange(vm["rxl"].idx(n, k), 0, np.inf if live else 0)
+                    self.B.setRange(vm["rxb"].idx(n, k), 0, np.inf if live else 0)
+
+    def _add_local_taxable_income(self):
+        """Local bracket allocations add up to the state taxable income, in years with a local schedule."""
+        vm = self.vm
+        if "lt_f" not in vm:
+            return
+        for n in range(self.N_n):
+            for t in range(self.N_lt):
+                self.B.setRange(vm["lt_f"].idx(t, n), 0, self.lt_DeltaBar_tn[t, n])
+            if not np.any(self.lt_DeltaBar_tn[:, n] > 0):
+                continue
+            row = self.A.newRow()
+            for t in range(self.N_lt):
+                row.addElem(vm["lt_f"].idx(t, n), 1)
+            for t in range(self.N_st):
+                row.addElem(vm["st_f"].idx(t, n), -1)
+            self.A.addRow(row, 0, 0, tag=("local_taxable_income", n))
 
     def _add_state_taxable_income(self):
         """Equality constraint: state bracket allocations = state AGI - deductions.
 
-        State AGI = federal AGI (e_n + G_n via f[t,n] + Q_n via q[p,n])
-                  - SS exclusion (when state does not tax SS)
+        State AGI = gross ordinary income (G_n + e_n: federal brackets f[t,n] plus the
+                    federal standard deduction e_n, so the federal deduction is not
+                    also taken against the state base)
+                  + capital gains (Q_n via q[p,n], taxed as ordinary by most states)
+                  - SS exclusion (when state does not tax SS: subtract the taxable SS that
+                    G_n carries -- the tss_n variable under withSSTaxability="optimize",
+                    the Psi_n * zetaBar_n parameter otherwise)
                   - pension exemption cap (parameter)
-
-        When ``income_base == "agi"`` (default), the base is federal AGI: the federal
-        standard deduction e_n is added back to the federal taxable-income quantities.
-        When ``income_base == "federal_taxable"``, the base starts from federal taxable
-        income (e_n omitted), for states that begin from that figure.
 
         The LP then subtracts the state standard deduction (st_e) and retirement income
         exemption (st_re), with st_e and st_re bounded to prevent negative state tax.
@@ -2608,19 +2839,23 @@ class Plan:
         pension exemption). Unused amounts do not transfer between spouses.
         """
         vm = self.vm
-        ss_lp = "tss" in vm  # withSSTaxability="optimize": taxable SS is an LP variable
-        agi_base = getattr(self, "st_income_base", "agi") == "agi"
+        # Under withSSTaxability="optimize", taxable SS is the tss variable, so exclude it
+        # through tss: Psi_n there lags the LP by one self-consistent iteration.
+        ss_lp = "tss" in vm
+        # SS adjustment: federal G_n contains taxable SS; remove it in years whose state excludes SS.
+        # With withSSAges="optimize" the own benefit is the ssb variable (added to the row below),
+        # and only the spousal/survivor offset is a parameter.
+        ssb_lp = not ss_lp and "ssb" in vm
+        if ss_lp:
+            ss_excl_n = np.zeros(self.N_n)
+        else:
+            ss_par_n = np.sum(self._ssa_spousal_offset if ssb_lp else self.zetaBar_in, axis=0)
+            ss_excl_n = np.where(self.st_tax_ss_n, 0.0, self.Psi_n * ss_par_n)
+        # Pension exemption (parameter): each person's pension up to their own cap.
+        pe_adj_n = np.sum(np.minimum(self.piBar_in, self.st_pe_cap_in), axis=0)
+        rhs_n = -ss_excl_n - pe_adj_n
         for n in range(self.N_n):
-            # SS adjustment: remove taxable SS from the state base when the state excludes SS.
-            if ss_lp:
-                # When tss is an LP variable, exclude SS through tss (coefficient +1 on
-                # the row subtracts it from the base) instead of the stale Psi_n parameter.
-                ss_excl = 0.0
-            else:
-                ss_excl = 0.0 if self.st_tax_ss else self.Psi_n[n] * float(np.sum(self.zetaBar_in[:, n]))
-            # Pension exemption (parameter): each person's pension up to their own cap.
-            pe_adj = float(np.sum(np.minimum(self.piBar_in[:, n], self.st_pe_cap_in[:, n])))
-            rhs = -ss_excl - pe_adj
+            rhs = float(rhs_n[n])
 
             row = self.A.newRow()
             for t in range(self.N_st):
@@ -2629,29 +2864,136 @@ class Plan:
             if "st_re" in vm:
                 for i in range(self.N_i):
                     row.addElem(vm["st_re"].idx(i, n), 1)  # retirement income exemption
-            if agi_base:
-                row.addElem(vm["e"].idx(n), -1)  # add back federal standard deduction → AGI base
+            if "st_rx" in vm:
+                row.addElem(vm["st_rx"].idx(n), 1)  # income-tiered retirement exclusion
             for t in range(self.N_t):
-                row.addElem(vm["f"].idx(t, n), -1)  # subtract G_n (federal ordinary income)
+                row.addElem(vm["f"].idx(t, n), -1)  # subtract G_n (federal taxable ordinary income)
+            row.addElem(vm["e"].idx(n), -1)  # add back the federal standard deduction
             for p in range(self.N_p):
                 row.addElem(vm["q"].idx(p, n), -1)  # subtract Q_n (capital gains)
-            if ss_lp and not self.st_tax_ss:
-                row.addElem(vm["tss"].idx(n), 1)  # subtract taxable SS from state base
+            if ss_lp and not self.st_tax_ss_n[n]:
+                row.addElem(vm["tss"].idx(n), 1)  # exclude taxable SS (LP variable)
+            elif ssb_lp and not self.st_tax_ss_n[n]:
+                for i in range(self.N_i):
+                    row.addElem(vm["ssb"].idx(i, n), self.Psi_n[n])  # exclude Psi_n * own benefit
             self.A.addRow(row, rhs, rhs, tag=("state_taxable_income", n))
+
+        # A personal credit only offsets tax: the credit used stays below the year's state tax,
+        # which includes any benefit recapture (STR_n, a loop parameter).
+        if "st_c" in vm:
+            for n in range(self.N_n):
+                row = self.A.newRow({vm["st_c"].idx(n): 1})
+                for t in range(self.N_st):
+                    row.addElem(vm["st_f"].idx(t, n), -self.st_theta_tn[t, n])
+                self.A.addRow(row, -np.inf, float(self.STR_n[n]), tag=("state_credit_cap", n))
 
         # Eligible-income cap: each person can't exempt more than their own retirement income.
         if "st_re" in vm:
-            # Pensions share the retirement exemption unless the state has a separate pension one.
-            pension_eligible = tax_state.get_state_entry(self.state, 0).get("pension_exemption", 0) == 0
+            # Pensions share the retirement exemption unless that year's state has a separate one.
             for i in range(self.N_i):
                 for n in range(self.N_n):
                     row = self.A.newRow({vm["st_re"].idx(i, n): 1})
                     row.addElem(vm["w"].idx(i, 1, n), -1)
-                    if self.st_conv_ok:
+                    if self.st_conv_ok_n[n]:
                         row.addElem(vm["x"].idx(i, n), -1)
-                    rhs = self.piBar_in[i, n] if pension_eligible else 0
+                    rhs = self.piBar_in[i, n] if self.st_pension_eligible_n[n] else 0
                     self.A.addRow(row, -np.inf, rhs, tag=("state_ret_exempt_cap", i, n))
 
+        if "st_rx" in vm:
+            self._add_state_tiered_exclusion()
+
+    def _add_state_tiered_exclusion(self):
+        """Income-tiered retirement exclusion (NJ-1040 lines 28a-28c), exact, one binary per tier.
+
+        Total income (line 27) is the state taxable income plus its deductions and exclusions, so the
+        rows stay in state terms: L = sum(st_f) + st_e + sum(st_re) + st_rx. The base is what the
+        share applies to:
+
+        - tax-deferred withdrawals + Roth conversions + pensions + annuities of the filers old enough
+          (line 28a); or
+        - L itself, when wages are within the earned-income limit and every filer is old enough: the
+          unused cap then covers other income too (line 28b, Worksheet D).
+
+        The tier is a disjunction, written in its disaggregated (convex-hull) form rather than with a
+        big-M on L: L and the base are split into per-tier copies rxl[k] and rxb[k], each zero unless
+        zx[k] = 1, with lim[k-1] zx[k] <= rxl[k] <= lim[k] zx[k] and rxb[k] <= rxl[k]. Then
+        st_rx <= sum_k share[k] rxb[k], and in the first (100%) tier also st_rx <= cap. The last copy
+        is income above the last ceiling, where nothing is excluded; only it needs a bound from the
+        income ceiling. Inside the ceilings the relaxation is the concave envelope of the staircase,
+        which a big-M on L would give up.
+
+        The rows exist only in the free years (RXF_n, see _tiered_exclusion_free); elsewhere the
+        exclusion is off. Above the top ceiling the relaxation can still claim nearly the whole cap,
+        which left a $2.5M case unproven after ten minutes, so years far above it are left out.
+        """
+        vm = self.vm
+        K = self.st_rx_limit_kn.shape[0]  # tiers with a ceiling; copy K is above the last one
+
+        for n in range(self.N_n):
+            elig = np.flatnonzero(self.st_rx_elig_in[:, n])
+            cap = float(self.st_rx_cap_n[n])
+            if elig.size == 0 or cap <= 0 or self.RXF_n[n] < 0.5:
+                continue
+            limits = self.st_rx_limit_kn[:, n]
+            shares = self.st_rx_share_kn[:, n]
+            tiers = [k for k in range(K) if np.isfinite(limits[k])]
+            last = float(limits[tiers[-1]])
+            top = max(float(self._ceiling_n[n]), 2 * last)
+            zx, rxl, rxb = vm["zx"], vm["rxl"], vm["rxb"]
+
+            # Exactly one tier.
+            self.A.addNewRow({zx.idx(n, k): 1 for k in tiers + [K]}, 1, 1, tag=("state_exclusion_one", n))
+
+            # L = sum of its copies.
+            row = self.A.newRow()
+            for t in range(self.N_st):
+                row.addElem(vm["st_f"].idx(t, n), 1)
+            row.addElem(vm["st_e"].idx(n), 1)
+            if "st_re" in vm:
+                for i in range(self.N_i):
+                    row.addElem(vm["st_re"].idx(i, n), 1)
+            row.addElem(vm["st_rx"].idx(n), 1)
+            for k in tiers + [K]:
+                row.addElem(rxl.idx(n, k), -1)
+            self.A.addRow(row, 0, 0, tag=("state_exclusion_income", n))
+
+            # Each copy lies in its tier's range when selected, and is zero otherwise.
+            lower = 0.0
+            for k in tiers + [K]:
+                upper = float(limits[k]) if k < K else top
+                self.A.addNewRow({rxl.idx(n, k): 1, zx.idx(n, k): -upper}, -np.inf, 0, tag=("state_excl_hi", n, k))
+                if lower > 0:
+                    self.A.addNewRow({rxl.idx(n, k): 1, zx.idx(n, k): -lower}, 0, np.inf, tag=("state_excl_lo", n, k))
+                lower = upper
+                self.A.addNewRow({rxb.idx(n, k): 1, rxl.idx(n, k): -1}, -np.inf, 0, tag=("state_exclusion_base", n, k))
+
+            # The copies of the base add up to no more than the base (line 20a); with the other-income
+            # extension the base is L, which rxb[k] <= rxl[k] already says. An inequality, so a year
+            # whose eligible income exceeds L (a capital loss) stays feasible: the base is then L.
+            if not self.st_rx_other_n[n]:
+                row = self.A.newRow({rxb.idx(n, k): 1 for k in tiers + [K]})
+                for i in elig:
+                    row.addElem(vm["w"].idx(i, 1, n), -1)
+                    row.addElem(vm["x"].idx(i, n), -1)
+                fixed = float(np.sum(self.piBar_in[elig, n] + self.spiaBar_in[elig, n]))
+                self.A.addRow(row, -np.inf, fixed, tag=("state_exclusion_split", n))
+
+            # st_rx <= sum_k share[k] rxb[k]; in a tier excluding 100%, also no more than the cap.
+            row = self.A.newRow({vm["st_rx"].idx(n): 1})
+            for k in tiers:
+                row.addElem(rxb.idx(n, k), -float(shares[k]))
+            self.A.addRow(row, -np.inf, 0, tag=("state_exclusion_share", n))
+            full = [k for k in tiers if shares[k] >= 1 and cap < limits[k]]
+            if full:
+                row = self.A.newRow({vm["st_rx"].idx(n): 1})
+                for k in tiers:
+                    if k in full:
+                        row.addElem(zx.idx(n, k), -cap)
+                    else:
+                        row.addElem(rxb.idx(n, k), -float(shares[k]))
+                self.A.addRow(row, -np.inf, 0, tag=("state_exclusion_cap", n))
+
+    @_fixedAcrossIterations
     def _add_defunct_constraints(self):
         if self.N_i == 2:
             for n in range(self.n_d, self.N_n):
@@ -2660,6 +3002,7 @@ class Plan:
                 for j in range(self.N_j):
                     self.B.setRange(self.vm["w"].idx(self.i_d, j, n), 0, 0)
 
+    @_fixedAcrossIterations
     def _add_roth_maturation_constraints(self):
         """
         Enforce the Roth 5-year seasoning rule for conversions and contribution gains.
@@ -2682,6 +3025,7 @@ class Plan:
         # Assume 10% per year for contributions and conversions for past 5 years.
         # Future years will use the assumed returns.
         oldTau1 = 1.10
+        Tau1_in = 1 + np.sum(self.alpha_ijkn[:, 2, :, : self.N_n] * self.tau_kn, axis=1)
         for i in range(self.N_i):
             h = self.horizons[i]
             for n in range(h):
@@ -2694,9 +3038,8 @@ class Plan:
                 for dn in range(1, 6):
                     nn = n - dn
                     if nn >= 0:  # Past of future is now or in the future: use variables or parameters.
-                        Tau1 = 1 + np.sum(self.alpha_ijkn[i, 2, :, nn] * self.tau_kn[:, nn], axis=0)
                         # Ignore market downs.
-                        cgains *= max(1, Tau1)
+                        cgains *= max(1, Tau1_in[i, nn])
                         row.addElem(self.vm["x"].idx(i, nn), -cgains)
                         # If a contribution, it has only penalty on gains, not on deposited amount.
                         rhs += (cgains - 1) * self.kappa_ijn[i, 2, nn]
@@ -2709,6 +3052,7 @@ class Plan:
 
                 self.A.addRow(row, rhs, np.inf, tag=("roth_maturation", i, n))
 
+    @_fixedAcrossIterations
     def _add_roth_conversion_constraints(self, options):
         """
         Enforce Roth conversion limits and add converted amounts to taxable income.
@@ -2815,6 +3159,7 @@ class Plan:
                 v = self.myRothX_in[i][n]
                 self.B.setRange(self.vm["x"].idx(i, n), v, v)
 
+    @_fixedAcrossIterations
     def _add_safety_net(self, options):
         """
         Enforce minimum taxable account balances (safety net) for each individual.
@@ -2834,6 +3179,7 @@ class Plan:
                 rhs = min_dollar * self.gamma_n[n]
                 self.B.setRange(self.vm["b"].idx(i, 0, n), rhs, np.inf)
 
+    @_fixedAcrossIterations
     def _add_withdrawal_limits(self):
         for i in range(self.N_i):
             # Wierdly enough, setting horizons causes a effects on HiGHS and MOSEK
@@ -2846,6 +3192,7 @@ class Plan:
                     rowDic = {self.vm["w"].idx(i, j, n): -1, self.vm["b"].idx(i, j, n): 1}
                     self.A.addNewRow(rowDic, 0, np.inf, tag=("withdrawal_limit", i, j, n))
 
+    def _add_hsa_medical_cap(self):
         # HSA qualified medical expense cap: sum_i w[i,3,n] - m_n <= M_n[n] + other_medical_n[n]
         # m_n is the Medicare LP variable; fixed to loop-computed value in SC-loop mode.
         # Pre-Medicare years: M_n = m_n = 0, so cap = other_medical_n[n] only.
@@ -2880,6 +3227,7 @@ class Plan:
         ceiling[self.N_n] = wealth
         return 2.0 * np.maximum(ceiling, 1.0)
 
+    @_fixedAcrossIterations
     def _add_withdrawal_ordering(self, options):
         """
         Enforce the conventional withdrawal order — taxable first, then tax-deferred,
@@ -2958,15 +3306,21 @@ class Plan:
         removes feasible plans silently.
         """
         Nn = self.N_n
+        ss_in = self.zetaBar_in
+        if "ssb" in self.vm:
+            # The MAGI rows carry the own benefit of whichever claiming age the MILP picks, which can
+            # exceed the previous iterate's: bound it by the largest candidate.
+            ss_in = np.maximum(ss_in, self._ssa_spousal_offset + np.max(self._ssa_B_own[:, :, :Nn], axis=1))
         fixed = (
             np.sum(self.omega_in + self.other_inc_in + self.netinv_in, axis=0)
-            + np.sum(self.piBar_in + self.spiaBar_in + self.zetaBar_in + self.Lambda_in, axis=0)
+            + np.sum(self.piBar_in + self.spiaBar_in + ss_in + self.Lambda_in, axis=0)
             + self.fixed_assets_ordinary_income_n
             + np.maximum(self.fixed_assets_capital_gains_n, 0.0)
             + self.fixed_assets_tax_free_n
         )
         return self._portfolioCeiling()[:Nn] + fixed
 
+    @_fixedAcrossIterations
     def _add_objective_constraints(self, objective, options):
         if objective == "maxSpending":
             if "bequest" in options:
@@ -2992,6 +3346,7 @@ class Plan:
             spending = u.get_monetary_option(options, "netSpending", 1)
             self.B.setRange(self.vm["g"].idx(0), spending, spending)
 
+    @_fixedAcrossIterations
     def _add_initial_balances(self):
         # Back project balances to the beginning of the year.
         yearSpent = 1 - self.yearFracLeft
@@ -3002,6 +3357,7 @@ class Plan:
                 rhs = self.beta_ij[i, j] / backTau
                 self.B.setRange(self.vm["b"].idx(i, j, 0), rhs, rhs)
 
+    @_fixedAcrossIterations
     def _add_surplus_deposit_linking(self, options):
         for i in range(self.N_i):
             fac1 = u.krond(i, 0) * (1 - self.eta) + u.krond(i, 1) * self.eta
@@ -3019,12 +3375,9 @@ class Plan:
             self.B.setRange(self.vm["s"].idx(self.N_n - 2), 0, 0)
             self.B.setRange(self.vm["s"].idx(self.N_n - 1), 0, 0)
 
+    @_fixedAcrossIterations
     def _add_account_balance_carryover(self):
-        tau_ijn = np.zeros((self.N_i, self.N_j, self.N_n))
-        for i in range(self.N_i):
-            for j in range(self.N_j):
-                for n in range(self.N_n):
-                    tau_ijn[i, j, n] = np.sum(self.alpha_ijkn[i, j, :, n] * self.tau_kn[:, n], axis=0)
+        tau_ijn = np.sum(self.alpha_ijkn[:, :, :, : self.N_n] * self.tau_kn, axis=2)
 
         # Weights are normalized on k: sum_k[alpha*(1 + tau)] = 1 + sum_k[alpha*tau]
         Tau1_ijn = 1 + tau_ijn
@@ -3078,6 +3431,8 @@ class Plan:
             rhs = -self.M_n[n] - self.ACA_n[n]
             if not getattr(self, "_niit_lp", False):
                 rhs -= self.J_n[n]
+            # State recapture is part of the state tax, so a local surcharge applies to it too.
+            rhs -= self.STR_n[n] * (1 + self.lt_surcharge_n[n])
             # Add fixed assets proceeds (positive cash flow)
             rhs += (
                 self.fixed_assets_tax_free_n[n]
@@ -3125,7 +3480,14 @@ class Plan:
             # State income tax from state bracket variables.
             if "st_f" in self.vm:
                 for t in range(self.N_st):
-                    row.addElem(self.vm["st_f"].idx(t, n), self.st_theta_tn[t, n])
+                    # A local surcharge is a share of the state's own tax.
+                    row.addElem(self.vm["st_f"].idx(t, n), self.st_theta_tn[t, n] * (1 + self.lt_surcharge_n[n]))
+                if "st_c" in self.vm:
+                    # A personal credit reduces the state tax paid, and with it any surcharge on that tax.
+                    row.addElem(self.vm["st_c"].idx(n), -(1 + self.lt_surcharge_n[n]))
+            if "lt_f" in self.vm:
+                for t in range(self.N_lt):
+                    row.addElem(self.vm["lt_f"].idx(t, n), self.lt_theta_tn[t, n])
 
             # NIIT: when optimize mode, use LP variable Jn; otherwise already in rhs.
             if getattr(self, "_niit_lp", False):
@@ -3133,6 +3495,7 @@ class Plan:
 
             self.A.addRow(row, rhs, rhs, tag=("cash_flow", n))
 
+    @_fixedAcrossIterations
     def _add_income_profile(self, objective):
         spLo = 1 - self.lambdha
         spHi = 1 + self.lambdha
@@ -3144,6 +3507,8 @@ class Plan:
 
     def _add_taxable_income(self, options=None):
         ss_lp = options is not None and options.get("withSSTaxability", "loop") == "optimize"
+        # Only positive returns are taxable (interest/dividends); losses don't reduce income.
+        fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
         for n in range(self.N_n):
             # Add fixed assets ordinary income
             rhs = self.fixed_assets_ordinary_income_n[n]
@@ -3160,20 +3525,21 @@ class Plan:
                         + self.spiaBar_in[i, n]
                     )
                 else:
+                    ss_const, ssb_idx = self._ss_benefit_terms(i, n)
                     rhs += (
                         self.omega_in[i, n]
                         + self.other_inc_in[i, n]
                         + self.netinv_in[i, n]
-                        + self.Psi_n[n] * self.zetaBar_in[i, n]
+                        + self.Psi_n[n] * ss_const
                         + self.piBar_in[i, n]
                         + self.spiaBar_in[i, n]
                     )
+                    if ssb_idx is not None:
+                        # Taxable SS follows the claiming age the MILP picks (Psi_n lags).
+                        row.addElem(ssb_idx, -self.Psi_n[n])
                 row.addElem(self.vm["w"].idx(i, 1, n), -1)
                 row.addElem(self.vm["x"].idx(i, n), -1)
-                # Only positive returns are taxable (interest/dividends); losses don't reduce income.
-                fak = np.sum(
-                    np.maximum(0, self.tau_kn[1 : self.N_k, n]) * self.alpha_ijkn[i, 0, 1 : self.N_k, n], axis=0
-                )
+                fak = fak_in[i, n]
                 rhs += 0.5 * fak * self.kappa_ijn[i, 0, n]
                 row.addElem(self.vm["b"].idx(i, 0, n), -fak)
                 row.addElem(self.vm["w"].idx(i, 0, n), fak)
@@ -3326,6 +3692,17 @@ class Plan:
             )
             self.B.setRange(tss_idx, 0, 0.85 * zetaBar_n)  # t^σ ≤ 0.85·ζ̄
 
+    def _ss_benefit_terms(self, i, n):
+        """Person i's SS income in year n as (constant part, ssb column index or None).
+
+        With withSSAges="optimize" the own benefit is the LP variable ssb[i, n] and only the
+        spousal/survivor offset is a parameter, so every row that charges tax or premiums on SS
+        sees the benefit of the claiming age the MILP picks. Otherwise all of it is zetaBar.
+        """
+        if "ssb" in self.vm:
+            return self._ssa_spousal_offset[i, n], self.vm["ssb"].idx(i, n)
+        return self.zetaBar_in[i, n], None
+
     def _ssaAgeIsFixed(self, i):
         """
         Return True if individual i's SS claiming age is not a free decision variable.
@@ -3339,6 +3716,7 @@ class Plan:
         not_selected = i not in getattr(self, "_ssa_optimize_set", set(range(self.N_i)))
         return pia_i == 0 or already_claimed or not_selected
 
+    @_fixedAcrossIterations
     def _configure_ss_age_variables(self):
         """
         Add SS claiming-age optimization constraints (withSSAges='optimize' mode).
@@ -3536,20 +3914,23 @@ class Plan:
 
             # (3') Companion upper bound on the same row: prevents q[1,n]/q[2,n] from being
             # inflated along the flat direction shared with f_tn's per-bracket split (q[2,n]
-            # is otherwise unbounded above in loop mode). loss_buf widens the bound so a
-            # capital-loss year (Q_n < 0) stays feasible; tol=$1 matches the
-            # LTCG-consistency-loop tolerance in _scSolve. Two loss sources are covered:
+            # is otherwise unbounded above in loop mode). Without a loss the two rows make the
+            # partition an equality: the brackets hold exactly the year's gains. loss_buf widens
+            # the bound only so a capital-loss year (Q_n < 0) stays feasible, since q >= 0:
             #   - fixed-asset capital loss for year n is a known parameter, so cover it
             #     directly (this keeps iteration 0, where prevQ is None, safe);
             #   - any portfolio loss surfaces in the previous iteration's realized Q_n.
             # prevQ[n] already includes the fixed-asset component, so take the larger.
-            tol = 1.0
+            # No further tolerance: a dollar of room was taken whenever it cost nothing (gains in
+            # the 0% bracket) and inflated the MAGI built from the partition (niit_magi_def), so
+            # the reported MAGI sat a dollar above the income the ACA and IRMAA rows had priced.
             fixed_loss = max(0.0, -float(self.fixed_assets_capital_gains_n[n]))
             prevQ = getattr(self, "Q_n", None)
             prev_loss = 0.0 if prevQ is None else max(0.0, -float(prevQ[n]))
-            loss_buf = max(fixed_loss, prev_loss) + tol
+            loss_buf = max(fixed_loss, prev_loss)
             self.A.addNewRow(row_q, -np.inf, rhs_q + loss_buf, tag=("ltcg_partition_hi", n))
 
+    @_fixedAcrossIterations
     def _add_magi_lp(self, options):
         """
         Add MAGI equality constraints when withNIIT='optimize'.
@@ -3604,83 +3985,85 @@ class Plan:
         """
         Add NIIT big-M binary constraints when withNIIT='optimize'.
 
-        IRS formula: J_n = max(0, 0.038 * min(MAGI_n - T, NII_n))
+        IRS formula: J_n = 0.038 * max(0, min(MAGI_n - T, NII_n))
         where NII_n = I_n + Q_n (net investment income: interest/divs + capital gains).
 
-        Modeled with binary zj_n (zj=1 iff MAGI_n > T) and a continuous surplus niis_n
-        (= max(0, MAGI_n - T - NII_n), the amount by which the MAGI-based exposure
-        exceeds NII):
+        J_n is a cost the optimizer minimizes, so it settles on the largest of its lower bounds.
+        One binary zj_n chooses which term of the min() bounds it:
 
-          (1') J_n + 0.038*niis_n >= 0.038*(MAGI_n - T) - M*(1-zj)  [combined MAGI/NII floor]
-          (2)  J_n <= M*zj                                             [J=0 when below threshold]
-          (3)  MAGI_n <= T + M*zj                                      [MAGI bounded when zj=0]
-          (4)  niis_n <= (MAGI_n - T) - NII_n + M*(1-zj)              [NII cap on surplus]
-               with AGI-basis MAGI = G_n + e_n + Q_n: MAGI_n - NII_n = G_n + e_n - I_n
-               equivalently: niis_n - G_n - e_n <= -T - I_n + M*(1-zj)
-               (Q_n and SS cancel between MAGI and NII; I_n is a SC-loop parameter)
+          (1) J_n >= 0.038*(MAGI_n - T) - M*zj      [zj=0: the excess over the threshold]
+          (2) J_n >= 0.038*NII_n - M*(1-zj)         [zj=1: the investment income]
+          (3) J_n >= 0                              [column bound]
+          (4) J_n <= 0.038*NII_n                    [cap: never more than 3.8% of NII]
 
-        Since J_n is a cost the optimizer minimizes, it naturally drives niis_n to its upper
-        bound (= max(0, MAGI-T-NII)), giving J_n = 0.038*min(MAGI-T, NII). No second binary
-        is needed.
+        Choosing the smaller branch gives J_n = 0.038*max(0, min(MAGI_n - T, NII_n)) over every
+        income range, including T < MAGI_n < T + NII_n. With the AGI-basis MAGI = G_n + e_n + Q_n,
+        NII_n = I_n + Q_n = I_n + MAGI_n - G_n - e_n, so row (2) needs no capital-gains term.
+        I_n (interest and the taxed bond/cash returns of the taxable account, plus rent and trust
+        income) enters as the same LP expression _aggregateResults evaluates, not as the previous
+        iteration's value: sum_i fak_in*(b_i0n + d_in - w_i0n) + netinv_n.
         """
         if not self._niit_lp:
             return
 
-        # I_n from previous SC iteration (interest/div income); falls back to netinv_in only
-        # on the first iteration before _aggregateResults has run.
-        I_n_param = getattr(self, "I_n", None)
-        if I_n_param is None:
-            I_n_param = np.sum(self.netinv_in, axis=0)
+        fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
 
         for n in range(self.N_n):
             # Per-year filing status: couple switches to Single at n_d.
             status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
             T_niit = 200000.0 if status_n == 0 else 250000.0  # NOT inflation-adjusted
 
-            # MAGI and the NII surplus are bounded by the year's income; the tax itself by 3.8%
-            # of it. One constant covers all three rows, sized by the largest of them.
-            M_niit = max(self._ceiling_n[n], T_niit)
+            # Each row is relaxed by at most 3.8% of the year's income: MAGI and NII are both
+            # bounded by the income ceiling.
+            M_niit = 0.038 * max(self._ceiling_n[n], T_niit)
 
             Jn_idx = self.vm["Jn"].idx(n)
             magi_idx = self.vm["magi"].idx(n)
             zj_idx = self.vm["zj"].idx(n)
-            niis_idx = self.vm["niis"].idx(n)
             e_idx = self.vm["e"].idx(n)
 
             # Bounds
             self.B.setRange(Jn_idx, 0, 0.038 * self._ceiling_n[n])
-            self.B.setRange(magi_idx, 0, M_niit)
-            self.B.setRange(niis_idx, 0, M_niit)
+            self.B.setRange(magi_idx, 0, max(self._ceiling_n[n], T_niit))
 
-            # (1') J_n + 0.038*niis_n >= 0.038*(MAGI_n - T) - M*(1-zj)
-            #   → J_n + 0.038*niis_n - 0.038*magi_n - M*zj >= -0.038*T - M
+            # (1) J_n >= 0.038*(MAGI_n - T) - M*zj  →  J_n - 0.038*magi_n + M*zj >= -0.038*T
             self.A.addNewRow(
-                {Jn_idx: 1, niis_idx: 0.038, magi_idx: -0.038, zj_idx: -M_niit},
-                -0.038 * T_niit - M_niit,
+                {Jn_idx: 1, magi_idx: -0.038, zj_idx: M_niit},
+                -0.038 * T_niit,
                 np.inf,
-                tag=("niit_floor", n),
+                tag=("niit_excess", n),
             )
 
-            # (2) J_n <= M*zj  →  J_n - M*zj <= 0
-            self.A.addNewRow({Jn_idx: 1, zj_idx: -M_niit}, -np.inf, 0, tag=("niit_j_zero", n))
-
-            # (3) MAGI_n <= T + M*zj  →  MAGI_n - M*zj <= T
-            self.A.addNewRow({magi_idx: 1, zj_idx: -M_niit}, -np.inf, T_niit, tag=("niit_magi_cap", n))
-
-            # (4) niis_n <= (MAGI_n - T) - (I_n + Q_n) + M*(1-zj)
-            # With the AGI-basis MAGI = G_n + e_n + Q_n, both Q_n and the SS terms cancel:
-            #   MAGI_n - NII_n = (G_n + e_n + Q_n) - (I_n + Q_n) = G_n + e_n - I_n
-            #   niis_n <= G_n + e_n - T - I_n + M*(1-zj)
-            #   niis_n - G_n - e_n + M*zj <= M - T - I_n
-            rhs4 = M_niit - T_niit - float(I_n_param[n])
-            row4 = {niis_idx: 1, e_idx: -1, zj_idx: M_niit}
+            # (2) J_n >= 0.038*(I_n + MAGI_n - G_n - e_n) - M*(1-zj), with I_n as an LP expression
+            #   →  J_n - 0.038*magi_n + 0.038*G_n + 0.038*e_n - 0.038*I_portfolio_n - M*zj
+            #        >= 0.038*netinv_n - M
+            row2 = {Jn_idx: 1, magi_idx: -0.038, e_idx: 0.038, zj_idx: -M_niit}
+            for i in range(self.N_i):
+                fak = fak_in[i, n]
+                if fak == 0:
+                    continue
+                for idx, coef in ((self.vm["b"].idx(i, 0, n), -0.038 * fak),
+                                  (self.vm["d"].idx(i, n), -0.038 * fak),
+                                  (self.vm["w"].idx(i, 0, n), 0.038 * fak)):
+                    row2[idx] = row2.get(idx, 0) + coef
             if "gn" in self.vm:
-                row4[self.vm["gn"].idx(n)] = row4.get(self.vm["gn"].idx(n), 0) - 1
+                g_idx = self.vm["gn"].idx(n)
+                row2[g_idx] = row2.get(g_idx, 0) + 0.038
             else:
                 for t in range(self.N_t):
                     f_idx = self.vm["f"].idx(t, n)
-                    row4[f_idx] = row4.get(f_idx, 0) - 1
-            self.A.addNewRow(row4, -np.inf, rhs4, tag=("niit_surplus_cap", n))
+                    row2[f_idx] = row2.get(f_idx, 0) + 0.038
+            netinv_n = float(np.sum(self.netinv_in[:, n]))
+            self.A.addNewRow(row2, 0.038 * netinv_n - M_niit, np.inf, tag=("niit_nii", n))
+
+            # (4) J_n <= 0.038*NII_n: the tax can never exceed 3.8% of investment income, whichever
+            # branch applies. Rows (1)-(3) only bound J_n from below and rely on its being minimized;
+            # where the plan's money is worth nothing to the objective (e.g. a first spouse's
+            # assets left to non-spouse heirs, when only the final bequest counts) the solver was
+            # free to overpay, and charged $190k-290k a year on under $3,000 of NII.
+            # Same terms as row (2), J_n - 0.038*(I_portfolio + MAGI - G - e), without the switch.
+            row4 = {k: v for k, v in row2.items() if k != zj_idx}
+            self.A.addNewRow(row4, -np.inf, 0.038 * netinv_n, tag=("niit_nii_cap", n))
 
     def _configure_Medicare_binary_variables(self, options):
         if options.get("withMedicare", "loop") != "optimize":
@@ -3755,7 +4138,10 @@ class Plan:
                     + 0.5 * self.kappa_ijn[i, 0, n2] * afac
                 )
                 if not ss_lp:
-                    sumoni += self.Psi_n[n2] * self.zetaBar_in[i, n2]  # taxable SS (SC-loop param)
+                    ss_const, ssb_idx = self._ss_benefit_terms(i, n2)
+                    sumoni += self.Psi_n[n2] * ss_const  # taxable SS (SC-loop param)
+                    if ssb_idx is not None:
+                        row.addElem(ssb_idx, -self.Psi_n[n2])
                 rhs += sumoni
 
             if ss_lp:
@@ -3763,13 +4149,15 @@ class Plan:
 
             self.A.addRow(row, rhs, rhs, tag=("irmaa_magi_def", nn))
 
-        # Bracket bounds: L_{q-1} z_q <= mg_q <= L_q z_q.
+        # Bracket bounds: L_{q-1} z_q <= mg_q <= L_q z_q, the lower one raised by BRACKET_MARGIN
+        # except in the first two years, whose bracket is pinned from the known MAGI above.
         for nn in range(Nmed):
+            margin = BRACKET_MARGIN if self.nm + nn >= 2 else 0.0
             for q in range(self.N_irmaa):
                 mg_idx = self.vm["h"].idx(nn, q)
                 zm_idx = self.vm["zm"].idx(nn, q)
 
-                lower = 0 if q == 0 else self.Lbar_nq[nn, q - 1]
+                lower = 0 if q == 0 else self.Lbar_nq[nn, q - 1] + margin
                 if lower > 0:
                     self.A.addNewRow({mg_idx: 1, zm_idx: -lower}, 0, np.inf, tag=("irmaa_bracket_lb", nn, q))
 
@@ -3780,6 +4168,7 @@ class Plan:
                     upper = self._ceiling_n[self.nm + nn]  # the year's MAGI ceiling
                 self.A.addNewRow({mg_idx: 1, zm_idx: -upper}, -np.inf, 0, tag=("irmaa_bracket_ub", nn, q))
 
+    @_fixedAcrossIterations
     def _add_Medicare_costs(self, options):
         if options.get("withMedicare", "loop") != "optimize":
             # In loop mode, Medicare costs are computed outside the solver (M_n).
@@ -3810,8 +4199,7 @@ class Plan:
           c) Bracket bounds (Big-M): MAGI portion in bracket q is within its FPL thresholds.
 
         Note: ACA uses current-year MAGI (no 2-year lag like Medicare IRMAA).
-        Note: MAGI below 138% FPL qualifies for Medicaid — the LP places it in the lowest
-              bracket at the base contribution rate (2.1%) rather than returning full SLCSP.
+        Note: MAGI below 138% FPL is bracket 0, Medicaid at no premium, as in loop mode.
         """
         if not self._aca_lp:
             return
@@ -3850,11 +4238,14 @@ class Plan:
                 row_magi[d_idx] = row_magi.get(d_idx, 0) - afac
                 row_magi[w0_idx] = row_magi.get(w0_idx, 0) + (afac - bfac)
 
+                ss_const, ssb_idx = self._ss_benefit_terms(i, n)
+                if ssb_idx is not None:
+                    row_magi[ssb_idx] = row_magi.get(ssb_idx, 0) - 1
                 rhs_magi += (
                     self.omega_in[i, n]
                     + self.other_inc_in[i, n]
                     + self.netinv_in[i, n]
-                    + self.zetaBar_in[i, n]  # full SS (not 0.5×SS; ACA uses MAGI)
+                    + ss_const  # full SS (not 0.5×SS; ACA uses MAGI)
                     + self.piBar_in[i, n]
                     + self.spiaBar_in[i, n]
                     + 0.5 * self.kappa_ijn[i, 0, n] * afac
@@ -3866,29 +4257,40 @@ class Plan:
 
             self.A.addNewRow(row_magi, rhs_magi, rhs_magi, tag=("aca_magi_def", nn))
 
-        # c) Bracket bounds: Lbar[nn, r-1]*za[r] <= haca[r] <= Lbar[nn, r]*za[r].
+        # c) Bracket bounds: Lbar[nn, r-1]*za[r] <= haca[r] <= Lbar[nn, r]*za[r], the lower one
+        # raised by BRACKET_MARGIN.
         for nn in range(self.n_aca):
             for r in range(tx.N_ACA_R):
                 haca_idx = self.vm["haca"].idx(nn, r)
                 za_idx = self.vm["za"].idx(nn, r)
 
-                lower = 0 if r == 0 else self.Lbar_aca_nr[nn, r - 1]
+                lower = 0 if r == 0 else self.Lbar_aca_nr[nn, r - 1] + BRACKET_MARGIN
                 if lower > 0:
                     self.A.addNewRow({haca_idx: 1, za_idx: -lower}, 0, np.inf, tag=("aca_bracket_lb", nn, r))
 
                 if r < tx.N_ACA_R - 1:
                     upper = self.Lbar_aca_nr[nn, r]
+                    if upper <= lower:
+                        # Above the MAGI where the contribution reaches the SLCSP (see
+                        # tx._aca_capped_limits): such incomes belong to the full-premium bracket.
+                        self.B.setRange(za_idx, 0, 0)
                 else:
-                    # Last bracket (above 400% FPL): use BigM as upper bound so haca = 0 when za = 0.
+                    # Last bracket (full SLCSP, from 400% FPL or the cap crossing): BigM upper bound
+                    # so haca = 0 when za = 0.
                     upper = self._ceiling_n[nn]  # the year's MAGI ceiling
                 self.A.addNewRow({haca_idx: 1, za_idx: -upper}, -np.inf, 0, tag=("aca_bracket_ub", nn, r))
 
+    @_fixedAcrossIterations
     def _add_ACA_costs(self, options):
         """
         Add ACA cost constraints for the LP/MIP formulation (optimize mode only).
 
-        In optimize mode: maca_n = sum_{r=0}^{5} cap_pct_r * haca[nn,r] + slcsp_aca_n[nn]*za[nn,6].
-        For brackets 0-5: proportional cost. For bracket 6 (above 400% FPL): fixed cost = SLCSP.
+        In optimize mode, for each tangent k:
+            maca_n >= sum_{r=1}^{5} (slope_rk * haca[nn,r] + intercept_rk * za[nn,r]) + slcsp_aca_n[nn] * za[nn,6].
+        Only the selected bracket's terms are nonzero, so row k is that bracket's k-th tangent under
+        its sliding-scale cost pct(MAGI) * MAGI, and maca is their maximum. Bracket 0 (below 138% FPL)
+        is Medicaid, at no cost; bracket 6 (400% and up) pays the full SLCSP. maca is priced slightly
+        in the objective (MIP_TIEBREAK) so it never rises above that maximum where cash has no value.
         In loop mode: maca variable does not exist; ACA_n (SC loop) goes in the cash-flow RHS.
         """
         if not self._aca_lp:
@@ -3898,14 +4300,17 @@ class Plan:
         for n in range(self.n_aca, self.N_n):
             self.B.setRange(self.vm["maca"].idx(n), 0, 0)
 
-        # Cost constraint: maca_n = sum_{r=0}^{5} cap_pct_r * haca[nn,r] + slcsp*za[nn,6].
-        # Bracket 6 (>400% FPL): 2026 rules impose full SLCSP (no PTC), not proportional to MAGI.
+        # Cost: maca_n >= each tangent of the selected bracket (sliding scale), or the full SLCSP in
+        # bracket 6 (>400% FPL: no PTC under 2026 rules). Bracket 0 (Medicaid) adds nothing.
         for nn in range(self.n_aca):
-            row = self.A.newRow({self.vm["maca"].idx(nn): 1})
-            for r in range(tx.N_ACA_R - 1):  # r=0..5 only; bracket 6 uses fixed SLCSP
-                row.addElem(self.vm["haca"].idx(nn, r), -self.cap_pct_aca_r[r])
-            row.addElem(self.vm["za"].idx(nn, tx.N_ACA_R - 1), -self.slcsp_aca_n[nn])
-            self.A.addRow(row, 0, 0, tag=("aca_cost_def", nn))
+            for k in range(self.tangents_aca_nrk.shape[2]):
+                row = self.A.newRow({self.vm["maca"].idx(nn): 1})
+                for r in range(1, tx.N_ACA_R - 1):
+                    slope, intercept = self.tangents_aca_nrk[nn, r, k]
+                    row.addElem(self.vm["haca"].idx(nn, r), -slope)
+                    row.addElem(self.vm["za"].idx(nn, r), -intercept)
+                row.addElem(self.vm["za"].idx(nn, tx.N_ACA_R - 1), -self.slcsp_aca_n[nn])
+                self.A.addRow(row, 0, np.inf, tag=("aca_cost_def", nn, k))
             self.B.setRange(self.vm["maca"].idx(nn), 0, self.slcsp_aca_n[nn])
 
     def _build_objective_vector(self, objective, options):
@@ -3927,6 +4332,17 @@ class Plan:
                 c_arr[self.vm["b"].idx(i, 3, self.N_n)] = -(1 - self.nu)  # HSA: heirs pay ordinary income tax
         else:
             raise RuntimeError("Internal error in objective function.")
+
+        self._add_partial_bequest_weight(c_arr, objective, options)
+
+        if self._tax_tiebreak_on:
+            c_arr += TAX_TIEBREAK * self._tax_cost_vector()
+
+        # The ACA cost in optimize mode is only bounded below (by its tangents), so price it slightly:
+        # in a year whose cash has no value it would otherwise be free to rise (see TAX_TIEBREAK).
+        if "maca" in self.vm:
+            for n in range(self.N_n):
+                c_arr[self.vm["maca"].idx(n)] += MIP_TIEBREAK / self.gamma_n[n]
 
         # Turn on epsilon by default to reduce churn and frontload Roth conversions.
         default_epsilon = EPSILON
@@ -3960,6 +4376,14 @@ class Plan:
                     for n in range(self.N_n):
                         c_arr[self.vm["w"].idx(1, j, n)] += epsilon
 
+            # Take the full state deduction and exemptions even where a personal credit already
+            # cancels the year's state tax: nothing else then prices state taxable income, so the
+            # solver could leave the deduction unused and report a larger taxable income.
+            if "st_c" in self.vm:
+                for t in range(self.N_st):
+                    for n in range(self.N_n):
+                        c_arr[self.vm["st_f"].idx(t, n)] += epsilon
+
             # Pin taxable Social Security in the years where it costs nothing. Nothing in
             # the formulation selects between the two z^σ_0 branches when the year owes no
             # tax on the benefit, and the branch that sets z^σ_0 = 1 forces
@@ -3989,6 +4413,173 @@ class Plan:
         for idx in np.flatnonzero(c_arr):
             c.setElem(idx, c_arr[idx])
         self.c = c
+
+    def _add_partial_bequest_weight(self, c_arr, objective, options):
+        """Value what the first spouse leaves to non-spouse heirs: w today's dollars per dollar.
+
+        With beneficiary fractions below 1, part of the first spouse's accounts leaves the
+        household at the first death. Neither objective counts it, so wherever that money is not
+        needed the solver is indifferent to how much of it remains, and the partial bequest is
+        arbitrary. The weight makes leaving it preferable to spending it to no purpose. The
+        partial bequest is the expression Plan._aggregateResults reports (after the heirs' tax on
+        tax-deferred and HSA money), in today's dollars of the year of the first death.
+        """
+        gap = u.get_numeric_option(options, "gap", GAP, min_value=0)
+        w = u.get_numeric_option(options, "partialBequestWeight", max(PARTIAL_BEQUEST_WEIGHT, 2 * gap), min_value=0)
+        if w == 0 or self.N_i != 2 or self.n_d >= self.N_n or np.all(self.phi_j >= 1):
+            return
+        n_d, nx, i = self.n_d, self.n_d - 1, self.i_d
+        # Both objectives in the units of their own value: maxBequest maximizes final nominal
+        # balances, maxSpending today's-dollar spending.
+        scale = self.gamma_n[self.N_n] / self.gamma_n[n_d] if objective == "maxBequest" else 1.0 / self.gamma_n[n_d]
+        vm = self.vm
+        for j in range(self.N_j):
+            frac = (1 - self.phi_j[j]) * ((1 - self.nu) if j in (1, 3) else 1.0)
+            if frac <= 0:
+                continue
+            Tau1 = 1 + np.sum(self.alpha_ijkn[i, j, :, nx] * self.tau_kn[:, nx])
+            coef = -w * scale * frac * Tau1  # objective is minimized
+            c_arr[vm["b"].idx(i, j, nx)] += coef
+            c_arr[vm["w"].idx(i, j, nx)] -= coef
+            if j == 0:
+                c_arr[vm["d"].idx(i, nx)] += coef
+            elif j == 1:
+                c_arr[vm["x"].idx(i, nx)] -= coef
+            elif j == 2:
+                c_arr[vm["x"].idx(i, nx)] += coef
+
+    def _tax_cost_vector(self):
+        """Tax each bracket variable charges per dollar, in today's dollars, as a dense vector.
+
+        Federal ordinary and capital-gains brackets, state brackets (with any local surcharge on
+        them) and local brackets: the terms the cash-flow row charges on these columns.
+        """
+        cost = np.zeros(self.nvars)
+        vm = self.vm
+        for n in range(self.N_n):
+            deflate = 1.0 / self.gamma_n[n]
+            for t in range(self.N_t):
+                cost[vm["f"].idx(t, n)] = self.theta_tn[t, n] * deflate
+            cost[vm["q"].idx(1, n)] = 0.15 * deflate
+            cost[vm["q"].idx(2, n)] = 0.20 * deflate
+            if "st_f" in vm:
+                for t in range(self.N_st):
+                    cost[vm["st_f"].idx(t, n)] = self.st_theta_tn[t, n] * (1 + self.lt_surcharge_n[n]) * deflate
+            if "lt_f" in vm:
+                for t in range(self.N_lt):
+                    cost[vm["lt_f"].idx(t, n)] = self.lt_theta_tn[t, n] * deflate
+        return cost
+
+    def _bracket_order_excess(self, x=None):
+        """Tax the solution charges beyond what its own income owes with brackets filled bottom-up.
+
+        Returns (years, excess): the plan years whose federal, state or local brackets are filled
+        out of order, and the overcharge summed over the horizon in today's dollars. Zero when the
+        relaxation is tight, which it is wherever the year's cash has a price. Reads the solution
+        vector x when given, the aggregated results otherwise.
+        """
+        vm = self.vm
+        if x is None:
+            f_tn, st_f_tn, lt_f_tn = self.f_tn, self.st_f_tn, self.lt_f_tn
+        else:
+            f_tn = vm["f"].extract(x)
+            st_f_tn = vm["st_f"].extract(x) if "st_f" in vm else np.zeros((self.N_st, self.N_n))
+            lt_f_tn = vm["lt_f"].extract(x) if "lt_f" in vm else np.zeros((self.N_lt, self.N_n))
+
+        def ordered_tax(total, width, rate):
+            tax = 0.0
+            for t in range(len(width)):
+                part = min(max(total, 0.0), width[t])
+                tax += part * rate[t]
+                total -= part
+            return tax
+
+        years = []
+        excess = 0.0
+        schedules = [(f_tn, self.DeltaBar_tn, self.theta_tn)]
+        if self.N_st > 0 and np.any(st_f_tn):
+            schedules.append((st_f_tn, self.st_DeltaBar_tn, self.st_theta_tn))
+        if self.N_lt > 0 and np.any(lt_f_tn):
+            schedules.append((lt_f_tn, self.lt_DeltaBar_tn, self.lt_theta_tn))
+        for n in range(self.N_n):
+            over = 0.0
+            for f, width, rate in schedules:
+                charged = float(np.dot(f[:, n], rate[:, n]))
+                over += charged - ordered_tax(float(np.sum(f[:, n])), width[:, n], rate[:, n])
+            if over > 1.0:
+                years.append(int(self.year_n[n]))
+                excess += over / self.gamma_n[n]
+        return years, excess
+
+    def _repairBracketOrder(self, xx, objfn, objective, options, matricesMatch):
+        """Re-fill out-of-order tax brackets by re-solving the accepted LP with tax priced (TAX_TIEBREAK).
+
+        Spending is pinned (it is the objective, or fixed by netSpending), and so are the binaries;
+        everything else is free, so the tax no longer charged lands where the plan's cash goes,
+        usually a larger bequest. The incumbent stays feasible, so the re-solve cannot fail for want
+        of a solution. Returns the (possibly repaired) vector and its objective value; any failure
+        keeps the solver's own answer, which _check_bracket_order then reports.
+        """
+        years, excess = self._bracket_order_excess(xx)
+        if not years:
+            return xx, objfn
+        if not matricesMatch:
+            self.mylog.vprint(
+                "Leaving the tax brackets as solved: an earlier iterate was accepted, so the "
+                "constraint matrices no longer describe this solution."
+            )
+            return xx, objfn
+
+        c_orig = self.c.arrays()
+        col_lb, col_ub = self.B.arrays()
+        res0 = amorepair.max_row_violation(xx, self.A, col_lb, col_ub)
+        overrides = {}
+        for n in range(self.N_n):
+            j = self.vm["g"].idx(n)
+            overrides[j] = (xx[j], xx[j])
+        for j in range(self.vm.nconts, self.nvars):
+            v = float(np.round(xx[j]))
+            overrides[j] = (v, v)
+        c_tie = np.asarray(c_orig) + TAX_TIEBREAK * self._tax_cost_vector()
+        obj = abc.Objective(self.nvars)
+        for j in np.flatnonzero(c_tie):
+            obj.setElem(int(j), float(c_tie[j]))
+        repair_options = dict(options)
+        repair_options["maxTime"] = min(u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0), 60)
+
+        _, yy, ok, msg, _ = self._run_mip(
+            self.A, self.B, obj, repair_options, col_overrides=overrides, lp_relax=True, update_warm=False
+        )
+        if not ok or yy is None:
+            self.mylog.vprint(f"Bracket-order repair did not solve ({msg}); keeping the original solution.")
+            return xx, objfn
+        yy = np.array(yy)
+        res = amorepair.max_row_violation(yy, self.A, col_lb, col_ub)
+        if res > max(res0, 1.0):
+            self.mylog.print(
+                f"Bracket-order repair rejected: residual {res:.2e} exceeds {max(res0, 1.0):.2e}.", tag="WARNING"
+            )
+            return xx, objfn
+        new_years, new_excess = self._bracket_order_excess(yy)
+        if new_excess >= excess:
+            return xx, objfn
+        self.mylog.vprint(
+            f"Tax brackets re-filled bottom-up in {len(years) - len(new_years)} of {len(years)} year(s); "
+            f"{u.d(excess - new_excess)} of tax the income did not owe removed (today's $)."
+        )
+        return yy, float(np.dot(c_orig, yy))
+
+    def _check_bracket_order(self):
+        """Warn when the solved brackets are filled out of order (see TAX_TIEBREAK)."""
+        years, excess = self._bracket_order_excess()
+        self.bracketOrderExcess = excess
+        if years:
+            self.mylog.print(
+                f"Tax brackets filled out of order in {len(years)} year(s) ({years[0]}-{years[-1]}): "
+                f"reported taxes exceed what this income owes by {u.d(excess)} over the horizon "
+                "(today's $). The objective is unaffected; taxes and bequest are not.",
+                tag="WARNING",
+            )
 
     @_checkConfiguration(requireRates=False)
     @_timer
@@ -4270,6 +4861,8 @@ class Plan:
             "stopRothConversions",
             "swapRothConverters",
             "maxTime",
+            "includeMedicarePartD",  # False drops Part D (and its IRMAA surcharge) from Medicare costs
+            "medicarePartDBasePremium",  # Part D base premium, $/month per person (default 0)
             "numThreads",  # cap MOSEK threads/solve (0=all cores) for matched parallelism
             "units",
             "verbose",
@@ -4281,6 +4874,13 @@ class Plan:
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
             "withDuals",  # Re-solve final LP with binaries fixed to extract shadow prices
             "withdrawalOrder",  # "optimal" (default) or "taxable_first" (naive ordering gates)
+            "mipStrategy",  # "branch-and-bound" (default) or "local-search" for the optimize modes
+            "breakpointMethod",  # preset: "loop" (default), "branch-and-bound" or "local-search"
+            "localSearchTime",  # local search: total time budget per solve (s)
+            "localSearchStepTime",  # local search: time cap per restricted solve (s)
+            "localSearchRadius",  # local search: flips allowed on the SS-taxability binaries
+            "localSearchStepNodes",  # local search: node limit per restricted solve
+            "partialBequestWeight",  # value of a dollar left at the first death (fraction of a dollar)
         ]
         options = {} if options is None else options
 
@@ -4303,6 +4903,10 @@ class Plan:
 
         if objective not in knownObjectives:
             raise ValueError(f"Objective '{objective}' is not one of {knownObjectives}.")
+
+        self._applyBreakpointOptions(myoptions)
+        if self._useLocalSearch(myoptions):
+            return self._localSearchSolve(objective, myoptions)
 
         if objective == "maxBequest" and "netSpending" not in myoptions:
             raise RuntimeError(f"Objective '{objective}' needs netSpending option.")
@@ -4364,26 +4968,54 @@ class Plan:
         self._st_lp = False  # Will be set to True in _buildOffsetMap when state is set
         self._adjustedParameters = False  # Force fresh parameter setup for each solve()
         self._highs_warm_start = None  # MIP warm-start hint; reset each solve(), updated each SC iter
+        self._rx_fixed = None  # (tiers zx, free set) kept from a MILP that hit its time limit; see _run_highs
+        self._rx_refixed_n = np.zeros(self.N_n, dtype=bool)  # kept tiers moved this iterate
+        self._fixedRows = {}  # Rows of the loop-invariant builders, built on the first iteration
         self._dual_data = None  # Shadow prices from binaries-fixed LP re-solve; set when withDuals=True
 
         # Compute state tax parameters when a state is configured.
         # Note: st_ss_thresh_n (AGI threshold for SS exemption, e.g. KS $75k, MO $100k) is
         # returned but not yet used in the LP — those states are currently treated as binary
         # (SS fully exempt or fully taxed). Full threshold modeling is a known limitation.
-        if self.state:
-            sp = tax_state.st_taxParams(
-                self.state, self.N_i, self.n_d, self.N_n, self.gamma_n, self.yobs, mobs=self.mobs
+        self.N_st = 0
+        self.N_lt = 0
+        self.lt_surcharge_n = np.zeros(self.N_n)
+        self.st_fed_sd_n = np.zeros(self.N_n, dtype=bool)
+        self.st_credit_n = np.zeros(self.N_n)
+        self.st_recap = None
+        self._str_active = False
+        self._rx_active = False
+        if any(self._states_n()):
+            residence_n = self._residence_by_year()
+            sp = tax_state.st_schedule(
+                [state for state, _ in residence_n],
+                self.N_i, self.n_d, self.N_n, self.gamma_n, self.yobs, mobs=self.mobs, i_d=self.i_d,
             )
+            lp = tax_local.local_taxParams_schedule(residence_n, self.N_i, self.n_d, self.N_n, self.gamma_n)
+            self.N_lt = lp.N_lt
+            self.lt_theta_tn = lp.theta_tn
+            self.lt_DeltaBar_tn = lp.DeltaBar_tn
+            self.lt_surcharge_n = lp.surcharge_n
             self.N_st = sp.N_st
             self.st_theta_tn = sp.theta_tn
             self.st_DeltaBar_tn = sp.DeltaBar_tn
-            self.st_sigmaBar_n = sp.sigmaBar_n
+            self._st_sigma_own_n = sp.sigmaBar_n  # before federal-deduction conformity
+            self.st_sigmaBar_n = sp.sigmaBar_n.copy()
             self.st_re_cap_in = sp.re_cap_in
             self.st_pe_cap_in = sp.pe_cap_in
-            self.st_conv_ok = sp.conv_ok
-            self.st_tax_ss = sp.tax_ss
-            self.st_income_base = sp.income_base
-            self.st_indexed = sp.indexed
+            self.st_credit_n = sp.credit_n
+            self.st_conv_ok_n = sp.conv_ok_n
+            self.st_tax_ss_n = sp.tax_ss_n
+            self.st_fed_sd_n = sp.fed_sd_n
+            self.st_senior_bonus_n = sp.senior_bonus_n
+            self.st_pension_eligible_n = sp.pension_eligible_n
+            self.st_recap = (sp.recap_start_n, sp.recap_width_n, sp.recap_until_n)
+            self._str_active = bool(np.any(np.isfinite(sp.recap_start_n)))
+            self._set_tiered_exclusion(sp)
+
+        # _adjustParameters reads the Part D options from solverOptions: give it this solve's
+        # options, not the previous solve's (or those loaded with the case).
+        self.solverOptions = myoptions
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
@@ -4405,6 +5037,11 @@ class Plan:
         else:
             raise RuntimeError("Internal error in defining solverMethod.")
 
+        search = getattr(self, "_localSearch", None)
+        if search is not None:
+            search.use_mosek = solverMethod == self._mosekSolve
+            solverMethod = search.solve
+
         self.mylog.vprint(f"Using '{solver}' solver for optimizing {objective}.")
         myoptions_txt = textwrap.fill(f"{myoptions}", initial_indent="\t", subsequent_indent="\t", width=100)
         self.mylog.vprint(f"Solver options:\n{myoptions_txt}.")
@@ -4412,7 +5049,159 @@ class Plan:
 
         self.objective = objective
         self.solverOptions = myoptions
+        self.breakpointMethodUsed = self._breakpointMethodLabel(myoptions)
 
+        return None
+
+    def _breakpointFamilies(self, options):
+        """Labels of the tax families this solve carries as binary variables."""
+        fams = []
+        if options.get("withSSTaxability", "loop") == "optimize":
+            fams.append("SS")
+        if options.get("withMedicare", "loop") == "optimize":
+            fams.append("IRMAA")
+        if options.get("withACA", "loop") == "optimize" and self.slcsp_annual > 0:
+            fams.append("ACA")
+        if options.get("withLTCG", "loop") == "optimize":
+            fams.append("LTCG")
+        if options.get("withNIIT", "loop") == "optimize":
+            fams.append("NIIT")
+        return fams
+
+    def _breakpointMethodLabel(self, options, fallback=False):
+        """How this solve treated the tax thresholds, for the Summary (always present)."""
+        fams = self._breakpointFamilies(options)
+        if not fams:
+            return "loop"
+        if fallback:
+            return "local search -> loop"
+        method = "local search" if options.get("mipStrategy") == "local-search" else "branch-and-bound"
+        return f"{method} ({', '.join(fams)})"
+
+    def _applyBreakpointOptions(self, options):
+        """Validate mipStrategy and expand the breakpointMethod preset in place.
+
+        breakpointMethod="branch-and-bound" or "local-search" sets every applicable family to
+        "optimize" (Medicare unless it is off, ACA when a benchmark premium is set) and mipStrategy
+        to the same value; "loop" changes nothing.
+        """
+        preset = options.get("breakpointMethod", "loop")
+        if preset not in ("loop", "branch-and-bound", "local-search"):
+            raise ValueError(f"breakpointMethod '{preset}' must be 'loop', 'branch-and-bound' or 'local-search'.")
+        if preset != "loop":
+            pinned = options.get("withSSTaxability", "loop")
+            if isinstance(pinned, (int, float)) and not isinstance(pinned, bool):
+                self.mylog.print(
+                    f"breakpointMethod='{preset}' overrides the pinned taxable fraction of Social Security "
+                    f"({float(pinned):.2f}): it is now set by the IRS formula.",
+                    tag="WARNING",
+                )
+            options["withSSTaxability"] = "optimize"
+            options["withLTCG"] = "optimize"
+            options["withNIIT"] = "optimize"
+            if options.get("withMedicare", "loop") not in ("none", "None", False):
+                options["withMedicare"] = "optimize"
+            if self.slcsp_annual > 0:
+                options["withACA"] = "optimize"
+            options["mipStrategy"] = preset
+        strategy = options.get("mipStrategy", "branch-and-bound")
+        if strategy not in ("branch-and-bound", "local-search"):
+            raise ValueError(f"mipStrategy '{strategy}' must be 'branch-and-bound' or 'local-search'.")
+
+    def _useLocalSearch(self, options):
+        """True when this solve should run the local search (not from inside one)."""
+        if getattr(self, "_localSearchSeeding", False) or options.get("mipStrategy") != "local-search":
+            return False
+        if not self._breakpointFamilies(options):
+            return False
+        blockers = []
+        if options.get("withSSAges", "fixed") == "optimize":
+            blockers.append('withSSAges="optimize"')
+        if options.get("withdrawalOrder", "optimal") == "taxable_first":
+            blockers.append('withdrawalOrder="taxable_first"')
+        if blockers:
+            self.mylog.print(
+                f"Local search does not cover {' and '.join(blockers)}: using branch-and-bound.", tag="WARNING"
+            )
+            options["mipStrategy"] = "branch-and-bound"
+            return False
+        return True
+
+    def _objectiveValue(self, objective):
+        return float(self.g_n[0]) if objective == "maxSpending" else float(self.bequest)
+
+    def _fixedPointResidualTotal(self):
+        """Sum over families of the plan's absolute fixed-point residual (today's $)."""
+        return sum(v["abs_sum"] for v in (getattr(self, "fixedPointResidual", None) or {}).values())
+
+    def _localSearchSolve(self, objective, myoptions):
+        """mipStrategy="local-search": solve the loop first, search from its plan, keep the better.
+
+        The loop's plan is both the seed and the floor: the search starts from it and the
+        result is kept only if it beats it. With no feasible starting plan, or no better plan,
+        the loop's plan is what the solve returns, and the Summary says so.
+        """
+        from .localsearch import NoIncumbent
+
+        loop_opts = {k: v for k, v in myoptions.items()
+                     if k not in ("mipStrategy", "breakpointMethod", "localSearchTime",
+                                  "localSearchStepTime", "localSearchRadius", "localSearchStepNodes")}
+        for opt in ("withSSTaxability", "withLTCG", "withNIIT", "withACA"):
+            if loop_opts.get(opt) == "optimize":
+                loop_opts[opt] = "loop"
+        if loop_opts.get("withMedicare") == "optimize":
+            loop_opts["withMedicare"] = "loop"
+
+        def run_loop():
+            self._localSearchSeeding = True
+            try:
+                self.solve(objective, options=dict(loop_opts))
+            finally:
+                self._localSearchSeeding = False
+
+        run_loop()
+        if self.caseStatus != "solved":
+            self.mylog.print("Local search: the self-consistent loop found no plan to start from.", tag="WARNING")
+            self.solverOptions = myoptions
+            self.breakpointMethodUsed = self._breakpointMethodLabel(myoptions, fallback=True)
+            return None
+        floor = self._objectiveValue(objective)
+        floor_resid = self._fixedPointResidualTotal()
+        # The loop's plan is the floor. Keep it as solved, rather than re-solving on fallback: a
+        # second solve starts from state the first one left behind and can settle elsewhere.
+        skip = ("mylog",)
+        loop_state = copy.deepcopy({k: v for k, v in self.__dict__.items() if k not in skip})
+        self.mylog.vprint(f"Local search: the loop's plan is worth {u.d(floor)}; searching from it.")
+
+        self._localSearch = localsearch.LocalSearch(
+            self, self.w_ijn.copy(), self.x_in.copy(),
+            step_time=u.get_numeric_option(myoptions, "localSearchStepTime", localsearch.STEP_TIME, min_value=0),
+            total_time=u.get_numeric_option(myoptions, "localSearchTime", localsearch.TOTAL_TIME, min_value=0),
+            radius=int(u.get_numeric_option(myoptions, "localSearchRadius", localsearch.RADIUS, min_value=0)),
+            step_nodes=int(u.get_numeric_option(myoptions, "localSearchStepNodes", 0, min_value=0)) or None,
+        )
+        found = False
+        self._localSearchSeeding = True  # the search itself must not recurse
+        try:
+            self.solve(objective, options=dict(myoptions))
+            # On a tie, keep the more consistent plan (smaller fixed-point residual).
+            value = self._objectiveValue(objective)
+            consistent_tie = value >= floor * (1 - 1e-9) and self._fixedPointResidualTotal() < floor_resid - 1.0
+            found = self.caseStatus == "solved" and (value > floor * (1 + 1e-9) or consistent_tie)
+        except NoIncumbent:
+            self.mylog.print("Local search: no feasible starting plan; keeping the loop's plan.")
+        finally:
+            self._localSearchSeeding = False
+            self.localSearchLog = self._localSearch.log
+            self._localSearch = None
+
+        if not found:
+            self.mylog.vprint("Local search: no better plan than the loop's; keeping the loop's plan.")
+            log = self.localSearchLog
+            self.__dict__.update(loop_state)
+            self.localSearchLog = log
+        self.solverOptions = myoptions
+        self.breakpointMethodUsed = self._breakpointMethodLabel(myoptions, fallback=not found)
         return None
 
     def _build_sc_loop_policy(self, options):
@@ -4429,9 +5218,13 @@ class Plan:
         max_iterations = int(u.get_numeric_option(options, "maxIter", MAX_ITERATIONS, min_value=1))
         residual_tol = u.get_numeric_option(options, "residualTol", RESIDUAL_TOL, min_value=0)
         self._residual_tol = residual_tol
+        # The version belongs in the log because results move between versions and a captured
+        # log is often all that survives: derived big-M bounds changed values, residualTol became
+        # a per-year bar and changed where the loop stops, and a retried step changed which cases
+        # solve at all -- none of which a saved run says about itself otherwise.
         self.mylog.print(
-            f"Using relTol={rel_tol:.1e}, absTol={abs_tol:.1e}, gap={gap:.1e}, "
-            f"and residualTol={u.d(residual_tol)}/yr."
+            f"Owl {__version__} ({engine_commit() or 'no git'}) using relTol={rel_tol:.1e}, "
+            f"absTol={abs_tol:.1e}, gap={gap:.1e}, and residualTol={u.d(residual_tol)}/yr."
         )
 
         return {
@@ -4456,21 +5249,24 @@ class Plan:
         return trace
 
     def _valid_history_start(self, includeMedicare):
-        return 1 if includeMedicare else 0
+        # Iteration 0 is built from initial guesses (no premiums, LTCG bracket room with no
+        # ordinary income, ...), so it undercharges and its objective looks best.
+        return 1
 
     def _pick_best_valid_index(self, scaled_obj_history, includeMedicare):
         start = self._valid_history_start(includeMedicare)
         valid = scaled_obj_history[start:]
         if not valid:
-            return None
+            # Only iteration 0 solved: a plan still, unless it was built without Medicare premiums.
+            return 0 if scaled_obj_history and not includeMedicare else None
         return start + int(np.argmax(valid))
 
     def _check_obj_convergence(self, it, abs_obj_diff, tol, includeMedicare, scaled_obj_history, residual=0.0):
         """Converged when the objective has settled AND the quantities the loop feeds back have too.
 
         The objective alone is not enough: the LP is built from the previous iterate's Medicare
-        premiums, SS taxable fraction, NIIT and ACA costs, so an iterate whose own income implies
-        different values is not a fixed point, however still the objective looks. `residual` is the
+        premiums, SS taxable fraction, NIIT, ACA costs and LTCG bracket room, so an iterate whose
+        own income implies different values is not a fixed point, however still the objective looks. `residual` is the
         largest of those disagreements, summed over the horizon in today's dollars; residualTol is
         the bar it must clear, expressed per year so that it means the same thing on a short plan
         as on a long one.
@@ -4631,15 +5427,20 @@ class Plan:
             if self.taxable_basis_i[i] == 0:
                 continue  # NaN → legacy fallback for this person
             b0 = self.beta_ij[i, 0]
-            self.gain_fraction_in[i, :] = self._gain_fraction_from_basis(self.taxable_basis_i[i], b0)
+            alpha0 = self.alpha_ijkn[i, 0, 0, 0]
+            self.gain_fraction_in[i, :] = self._equity_gain_fraction(self.taxable_basis_i[i], b0, alpha0)
 
     def _update_gain_fraction(self):
         """Update gain_fraction_in using last SC-iteration balances and withdrawals.
         Both fixed contributions (kappa) and LP surplus deposits (d_in) add to basis at full value
-        because they are new purchases at the current market price.
+        because they are new purchases at the current market price. So do the dividends and the
+        bond/cash returns taxed each year, which stay in the account and are reinvested: leaving
+        them out would tax them a second time on sale.
         Persons with zero basis are skipped (their NaN entries mean legacy fallback)."""
         if self.gain_fraction_in is None:
             return
+        # Same yield the model taxes each year as dividends and interest (see _add_taxable_income).
+        fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
         for i in range(self.N_i):
             if self.taxable_basis_i[i] == 0:
                 continue  # stays NaN → legacy
@@ -4647,13 +5448,18 @@ class Plan:
             for n in range(self.N_n):
                 b_n = self.b_ijn[i, 0, n]
                 w_n = self.w_ijn[i, 0, n]
+                d_n = self.d_in[i, n]
+                kappa_n = self.kappa_ijn[i, 0, n]
+                alpha0 = self.alpha_ijkn[i, 0, 0, n]
                 # New purchases: fixed HFP contributions + LP-decided surplus deposits (both at full basis).
-                c_n = self.kappa_ijn[i, 0, n] + self.d_in[i, n]
-                self.gain_fraction_in[i, n] = self._gain_fraction_from_basis(basis, b_n)
+                c_n = kappa_n + d_n
+                # Reinvested income taxed this year: dividends on equities, all positive returns on the rest.
+                taxed_n = (self.mu * alpha0 + fak_in[i, n]) * (b_n - w_n + d_n + 0.5 * kappa_n)
+                self.gain_fraction_in[i, n] = self._equity_gain_fraction(basis, b_n, alpha0)
                 if b_n > 0:
-                    basis = basis * (1.0 - w_n / b_n) + c_n
+                    basis = basis * (1.0 - w_n / b_n) + c_n + max(0.0, taxed_n)
                 else:
-                    basis = c_n
+                    basis = c_n + max(0.0, taxed_n)
 
     def _scSolve(self, objective, options, solverMethod):
         """
@@ -4696,6 +5502,7 @@ class Plan:
 
         self._computeNLstuff(None, includeMedicare, fixedPsi=fixed_psi)
         self._init_gain_fraction()
+        self._tax_tiebreak_on = False
         sc_lp = self._snapshot_sc()
         while True:
             # Snapshot the NL parameters actually embedded in this iteration's LP constraints.
@@ -4711,7 +5518,7 @@ class Plan:
             # corrected below when a best-of-cycle iterate is accepted instead.
             self.solverGap = solgap
 
-            if (not solverSuccess or objfn is None) and trace["M_n_lp"]:
+            if (not solverSuccess or objfn is None) and trace["solutions"]:
                 # Before giving up, walk the parameter step back. The quantities the loop feeds
                 # back are costs, and the first one is a jump from nothing to the full amount:
                 # on a tight case that step alone can put the next LP outside the feasible
@@ -4769,6 +5576,13 @@ class Plan:
                 self._infeasible = False
                 break
 
+            if self._tax_tiebreak_on:
+                # Report the objective without the tie-break, so iterates compare on the same terms.
+                objfn -= TAX_TIEBREAK * float(np.dot(self._tax_cost_vector(), xx))
+            elif self._bracket_order_excess(xx)[0]:
+                self._tax_tiebreak_on = True
+                self.mylog.vprint(f"Iteration {it} filled tax brackets out of order; pricing tax from now on.")
+
             self._computeNLstuff(xx, includeMedicare, fixedPsi=fixed_psi)
             self._update_gain_fraction()
 
@@ -4794,9 +5608,22 @@ class Plan:
                 else tx.compute_social_security_taxability(self.N_i, self.MAGI_aca_n, ss_n, n_d=self.n_d)
             )
             moves = [np.sum(np.abs(psi_implied - sc_lp["Psi_n"]) * ss_n / g_today)]
-            for _name, _active in (("J_n", True), ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0)):
+            for _name, _active in (
+                ("J_n", True), ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0), ("STR_n", self._str_active)
+            ):
                 if _active:
                     moves.append(np.sum(np.abs(getattr(self, _name) - sc_lp[_name]) / g_today))
+            # LTCG bracket room is set from the previous iterate's ordinary income, so the LP's
+            # gains tax can disagree with the tax this iterate's own income implies.
+            moves.append(np.sum(np.abs(self.U_n - self._ltcg_tax_implied()) / g_today))
+            # Years newly admitted to the exclusion's free set: the next LP can claim up to the cap there.
+            if self._rx_active:
+                added = (self.RXF_n >= 0.5) & (sc_lp["RXF_n"] < 0.5)
+                moves.append(np.sum(self.st_rx_cap_n[added] / g_today[added]))
+                # Years whose kept tier moved down to the statute's (_refix_boundary_tiers): the next LP
+                # can claim more there, so this iterate is not a fixed point.
+                refixed = self._rx_refixed_n
+                moves.append(np.sum(self.st_rx_cap_n[refixed] / g_today[refixed]))
             scResidual = float(max(moves))
 
             has_prev_obj = len(trace["scaledObjectives"]) > 1
@@ -4893,6 +5720,13 @@ class Plan:
             self.mylog.print(f"Self-consistent loop returned after {it + 1} iterations.")
             if solverMsg:
                 self.mylog.print(solverMsg)
+            # The free set the accepted iterate was built with, before anything rebuilds the LP.
+            self.RXF_n = sc_lp["RXF_n"]
+            if self._rx_fixed is not None:
+                # The tiers came from a MILP stopped at its time limit; later solves only kept them, so
+                # that MILP's gap is the one that says how far the plan may be from optimal.
+                self.solverGap = max(self.solverGap, self._rx_fixed[2])
+            xx, objfn = self._repairBracketOrder(xx, objfn, objective, options, matricesMatchSolution)
             xx, objfn = self._restoreExclusions(xx, objfn, objective, options, matricesMatchSolution)
             self.mylog.print(f"Objective: {u.d(objfn * objFac)}")
             # Psi_n is restored BEFORE aggregation, unlike the three below: MAGI_aca_n is
@@ -4920,7 +5754,10 @@ class Plan:
                 self.J_n = sc_lp["J_n"]
             if self.slcsp_annual > 0 and not self._aca_lp:
                 self.ACA_n = sc_lp["ACA_n"]
+            self.STR_n = sc_lp["STR_n"]
+            self._finalize_state_tax()
             self._check_cashflow_balance()
+            self._check_bracket_order()
             self._computeFixedPointResidual(includeMedicare)
             if options.get("withDuals", False):
                 self._computeDuals(xx, options)
@@ -4933,16 +5770,154 @@ class Plan:
 
         return None
 
-    def _computeFixedPointResidual(self, includeMedicare):
-        """Measure how far the solved plan sits from the model its own income implies.
+    def _state_agi_and_ti(self):
+        """State AGI and taxable income of the current solution, per year.
 
-        Every quantity the self-consistent loop carries enters the LP as a constant taken from the
-        previous iterate. The loop stops on the objective, not on those constants, so a plan can be
-        reported while its own income would still move them -- and an "optimal" answer is only
-        optimal for the model that was built. This recomputes each of them from the returned plan
-        and records the difference, in today's dollars, as self.fixedPointResidual:
-        {family: {"sum", "abs_sum", "max_abs"}}. Purely diagnostic: nothing here changes a solution.
+        AGI is federal AGI less the Social Security the state exempts, the pension exemption
+        and the retirement exclusion claimed: the same terms the state_taxable_income row uses.
+        The income-tiered exclusion (st_rx) is not subtracted: its tiers are set on this amount.
         """
+        if self.N_st == 0:
+            return np.zeros(self.N_n), np.zeros(self.N_n)
+        ti = np.sum(self.st_f_tn, axis=0)
+        ss_excl = np.where(self.st_tax_ss_n, 0.0, self.Psi_n * np.sum(self.zetaBar_in, axis=0))
+        pe_adj = np.sum(np.minimum(self.piBar_in, self.st_pe_cap_in), axis=0)
+        agi = self.G_n + self.e_n + self.Q_n - ss_excl - pe_adj - np.sum(self.st_re_in, axis=0)
+        return agi, ti
+
+    def _set_tiered_exclusion(self, sp):
+        """Per-year eligibility for the income-tiered retirement exclusion (NJ-1040 line 28).
+
+        A filer's income is eligible from the year they reach the age by December 31, while alive.
+        The other-income extension needs every living filer eligible and wages within the limit;
+        with one spouse too young only line 28a is taken, which understates the exclusion.
+        """
+        Ni, Nn = self.N_i, self.N_n
+        self.st_rx_limit_kn = sp.rx_limit_kn
+        self.st_rx_share_kn = sp.rx_share_kn
+        self.st_rx_cap_n = sp.rx_cap_n
+        self._rx_active = bool(np.any(sp.rx_cap_n > 0))
+        alive_in = np.array([[n < self.horizons[i] for n in range(Nn)] for i in range(Ni)])
+        age_in = self.year_n[np.newaxis, :] - np.asarray(self.yobs)[:, np.newaxis]
+        self.st_rx_elig_in = alive_in & (age_in >= sp.rx_age_n[np.newaxis, :]) & (sp.rx_cap_n > 0)
+        wages_n = np.sum(self.omega_in, axis=0)
+        all_elig_n = np.all(self.st_rx_elig_in | ~alive_in, axis=0) & self.st_rx_elig_in.any(axis=0)
+        self.st_rx_other_n = all_elig_n & (sp.rx_earned_n >= 0) & (wages_n <= sp.rx_earned_n)
+
+    def _tiered_exclusion_free(self):
+        """Free set for the next iterate: the current one plus the eligible years whose state income is
+        at most RX_WINDOW times the top tier ceiling. It only grows, so the previous iterate stays
+        feasible; the loop does not converge while it changes (see _scSolve), so at convergence every
+        year left out has income far above the last ceiling, where the statute excludes nothing.
+        """
+        if not self._rx_active:
+            return self.RXF_n
+        top_n = np.max(np.where(np.isfinite(self.st_rx_limit_kn), self.st_rx_limit_kn, 0.0), axis=0)
+        near = self.st_rx_elig_in.any(axis=0) & (self.st_agi_n <= RX_WINDOW * top_n) & (top_n > 0)
+        return np.where(near, 1.0, np.where(self.RXF_n >= 0.5, 1.0, 0.0))
+
+    def _refix_boundary_tiers(self):
+        """Move a kept exclusion tier down to the statute's tier when income sits on its floor.
+
+        Tiers kept from a MILP stopped at its time limit (_rx_fixed) pin the tier binaries, and a pinned
+        tier bounds income from below as well as above. A later iterate that wants less income stops on
+        the floor of its tier, which is the ceiling of the tier below, and the statute ("income of the
+        ceiling or less") puts exactly that income in the tier below, with the larger share. Left alone,
+        the plan claims the smaller share there and is held at that income for it.
+
+        Only downward moves at the same income are made: the iterate stays feasible, a larger share can
+        only lower tax, and a tier never moves back up, so this cannot cycle. Returns the years moved.
+        """
+        moved = np.zeros(self.N_n, dtype=bool)
+        if self._rx_fixed is None or not self._rx_active:
+            return moved
+        zx_kept, kept_n = self._rx_fixed[0], self._rx_fixed[1]
+        K = self.st_rx_limit_kn.shape[0]
+        total_n = np.round(self.st_agi_n)  # line 27, in the whole dollars of the return
+        for n in range(self.N_n):
+            if not kept_n[n] or not zx_kept[n].any():
+                continue
+            k_kept = int(np.argmax(zx_kept[n]))
+            k_statute = K
+            for k in range(K):
+                if np.isfinite(self.st_rx_limit_kn[k, n]) and total_n[n] <= self.st_rx_limit_kn[k, n]:
+                    k_statute = k
+                    break
+            if k_statute < k_kept:
+                zx_kept[n, :] = 0.0
+                zx_kept[n, k_statute] = 1.0
+                moved[n] = True
+        if moved.any():
+            years = ", ".join(str(int(y)) for y in self.year_n[moved])
+            self.mylog.vprint(f"Kept exclusion tier moved down to the statute's for income on its floor: {years}.")
+        return moved
+
+    def _tiered_exclusion_implied(self):
+        """Share and amount of the tiered exclusion that the solution's own income implies (a check).
+
+        Returns (share_n, amount_n). The amount is what the return would claim: the share of eligible
+        income (or of total income, with the other-income extension), up to the cap and the income.
+        """
+        Nn = self.N_n
+        share = np.zeros(Nn)
+        amount = np.zeros(Nn)
+        if not self._rx_active:
+            return share, amount
+        total_n = np.round(self.st_agi_n)  # line 27, in the whole dollars of the return
+        for n in range(Nn):
+            if self.st_rx_cap_n[n] <= 0:
+                continue
+            share[n] = tax_state.exclusion_share(total_n[n], self.st_rx_limit_kn[:, n], self.st_rx_share_kn[:, n])
+            elig = self.st_rx_elig_in[:, n]
+            if self.st_rx_other_n[n]:
+                base = total_n[n]
+            else:
+                base = float(np.sum((self.w_ijn[:, 1, n] + self.x_in[:, n] + self.piBar_in[:, n]
+                                     + self.spiaBar_in[:, n])[elig]))
+            amount[n] = min(self.st_rx_cap_n[n], share[n] * base, max(0.0, total_n[n]))
+        return share, amount
+
+    def _state_recapture_implied(self):
+        "Benefit recapture the current solution's own state AGI and taxable income imply."
+        STR = np.zeros(self.N_n)
+        if not self._str_active:
+            return STR
+        start, width, until = self.st_recap
+        for n in range(self.N_n):
+            if np.isfinite(start[n]):
+                STR[n] = tax_state.state_recapture(
+                    self.st_agi_n[n], self.st_ti_n[n], self.st_theta_tn[:, n], self.st_DeltaBar_tn[:, n],
+                    start[n], width[n], until[n],
+                )
+        return STR
+
+    def _finalize_state_tax(self):
+        """Assemble state, recapture and local tax from the pieces of the last aggregation.
+
+        st_T_n is the total sub-federal income tax, so cash-flow identities hold without knowing
+        about recapture or localities; st_recap_n and lt_T_n are its parts. A local surcharge is a
+        share of the state tax including the recapture.
+        """
+        Nn = self.N_n
+        if self.N_st > 0:
+            self.st_T_tn = self.st_f_tn * self.st_theta_tn
+            # Personal credits (st_c) come off the state tax, recapture included, down to zero.
+            state = np.sum(self.st_T_tn, axis=0) + self.STR_n - self.st_c_n
+        else:
+            state = np.zeros(Nn)
+        self.st_recap_n = self.STR_n.copy() if self.N_st > 0 else np.zeros(Nn)
+        self.lt_T_n = self.lt_surcharge_n * state
+        if self.N_lt > 0:
+            self.lt_T_n = self.lt_T_n + np.sum(self.lt_f_tn * self.lt_theta_tn, axis=0)
+        self.st_T_n = state + self.lt_T_n
+
+    def _ltcg_tax_implied(self):
+        """Capital-gains tax the plan's own ordinary income and gains imply, stacked exactly."""
+        Nn = self.N_n
+        return tx.capitalGainTax(self.N_i, self.G_n + self.Q_n, self.Q_n, self.gamma_n[:Nn], self.n_d, Nn)
+
+    def _fixedPointResidualByYear(self, includeMedicare):
+        """Per-year disagreements behind _computeFixedPointResidual: {family: array (today's $)}."""
         Nn = self.N_n
         g = self.gamma_n[:Nn]
         ss = np.sum(self.zetaBar_in, axis=0)
@@ -4962,8 +5937,9 @@ class Plan:
             res["IRMAA"] = (self.medicare_n - M_true) / g
 
         if self.slcsp_annual > 0:
+            # Same dollar of slack: an optimizer parks income at the 400% cliff or the 138% line.
             n_aca_start = max(0, self.aca_start_year - int(self.year_n[0])) if self.aca_start_year > 0 else 0
-            ACA_true = tx.acaCosts(self.yobs, self.horizons, self.MAGI_aca_n, g, self.slcsp_annual, Nn,
+            ACA_true = tx.acaCosts(self.yobs, self.horizons, self.MAGI_aca_n - 1.0, g, self.slcsp_annual, Nn,
                                    n_aca_start=n_aca_start)
             res["ACA"] = (self.aca_costs_n - ACA_true) / g
 
@@ -4971,6 +5947,23 @@ class Plan:
 
         sigma_true = tx.taxParams(self.yobs, self.i_d, self.n_d, Nn, self.gamma_n, self.MAGI_n, self.yOBBBA)[0]
         res["deduction"] = (self.sigmaBar_n - sigma_true) / g
+
+        res["LTCG"] = (self.U_n - self._ltcg_tax_implied()) / g
+        if self._str_active:
+            res["state recapture"] = (self.STR_n - self._state_recapture_implied()) / g
+        return res
+
+    def _computeFixedPointResidual(self, includeMedicare):
+        """Measure how far the solved plan sits from the model its own income implies.
+
+        Every quantity the self-consistent loop carries enters the LP as a constant taken from the
+        previous iterate. The loop stops on the objective, not on those constants, so a plan can be
+        reported while its own income would still move them -- and an "optimal" answer is only
+        optimal for the model that was built. This recomputes each of them from the returned plan
+        and records the difference, in today's dollars, as self.fixedPointResidual:
+        {family: {"sum", "abs_sum", "max_abs"}}. Purely diagnostic: nothing here changes a solution.
+        """
+        res = self._fixedPointResidualByYear(includeMedicare)
 
         self.fixedPointResidual = {
             k: {"sum": float(np.sum(v)), "abs_sum": float(np.sum(np.abs(v))), "max_abs": float(np.max(np.abs(v)))}
@@ -5082,6 +6075,10 @@ class Plan:
         """
         overrides = amorepair.build_polish_overrides(xx, ctx, self.vm.nconts, self.nvars)
         c_polish = amorepair.build_polish_objective(ctx, c_orig, self.gamma_n, self.nvars)
+        # With spending and the terminal balances pinned, a dollar of tax lowers the surplus by a
+        # dollar, so minimizing the surplus alone would pay tax to shed it -- by filling the top
+        # brackets first. Charging tax at twice a surplus dollar rules that trade out.
+        c_polish = c_polish + 2.0 * self._tax_cost_vector()
         polish_options = dict(options)
         polish_options["maxTime"] = min(u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0), 60)
 
@@ -5140,7 +6137,7 @@ class Plan:
         """
         import highspy
 
-        time_limit = u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
+        time_limit = self._time_limit(options)
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
 
@@ -5148,7 +6145,10 @@ class Plan:
         h.setOptionValue("output_flag", bool(verbose))
         h.setOptionValue("mip_rel_gap", float(mygap))
         h.setOptionValue("time_limit", float(time_limit))
-        h.setOptionValue("mip_max_nodes", 1_000_000)
+        # mipMaxNodes is internal: local search caps each restricted solve by nodes, not time,
+        # so that its answer does not depend on machine speed or load (fork: so does RX_NODE_LIMIT).
+        node_limit = self._node_limit(options)
+        h.setOptionValue("mip_max_nodes", node_limit)
         h.setOptionValue("presolve", "on")
 
         inf = highspy.kHighsInf
@@ -5180,8 +6180,22 @@ class Plan:
             h.setSolution(len(c), all_idx, warm_x.astype(np.float64))
 
         h.run()
-
         ms = h.getModelStatus()
+        # HiGHS's MIP presolve can call a feasible model infeasible when big-M coefficients are
+        # large. Retry before believing it.
+        if ms == highspy.HighsModelStatus.kInfeasible and integrality.any():
+            for option, value, label in _HIGHS_INFEASIBLE_RETRIES:
+                self.mylog.vprint(f"HiGHS reported the MIP infeasible; retrying with {label}.")
+                h.clearSolver()
+                h.setOptionValue(option, value)
+                if warm_x is not None:
+                    h.setSolution(len(c), np.arange(len(c), dtype=np.int32), warm_x.astype(np.float64))
+                h.run()
+                ms = h.getModelStatus()
+                if ms != highspy.HighsModelStatus.kInfeasible:
+                    break
+        self._lastMipNodes = int(h.getInfoValue("mip_node_count")[1] or 0)
+
         _, pstatus = h.getInfoValue("primal_solution_status")
         success = (
             ms in (highspy.HighsModelStatus.kOptimal, highspy.HighsModelStatus.kObjectiveBound)
@@ -5191,11 +6205,24 @@ class Plan:
         # postsolve breakdown, an error, a limit) is the solver giving up on a model that
         # may well be solvable, and must not be reported as an impossible plan.
         self._infeasible = ms == highspy.HighsModelStatus.kInfeasible
+        timed_out = success and ms == highspy.HighsModelStatus.kTimeLimit
+        node_capped = success and integrality.any() and self._lastMipNodes >= node_limit
+        if timed_out:
+            self._warn_time_limit(time_limit, h.getInfoValue("mip_gap")[1], mygap)
+        elif node_capped and "mipMaxNodes" not in options:
+            self._warn_node_limit(node_limit, h.getInfoValue("mip_gap")[1], mygap)
 
         if success:
             sol = h.getSolution()
             xx = np.array(sol.col_value, dtype=np.float64)
             obj_val = float(h.getObjectiveValue())
+            if (timed_out or node_capped) and "zx" in self.vm and self._rx_fixed is None and not self._localSearch:
+                # Later iterations keep these exclusion tiers instead of paying the limit again: the loop
+                # then re-solves only the continuous part, and the tax stays statutory for the tiers.
+                # Not inside local search, whose steps are capped by design and pin or search the tiers.
+                gap_capped = float(h.getInfoValue("mip_gap")[1])
+                self._rx_fixed = (np.round(self.vm["zx"].extract(xx)), self.RXF_n >= 0.5, gap_capped)
+                self.mylog.vprint("Keeping the exclusion tiers of this MILP for the remaining iterations.")
             # mip_gap is meaningless on a pure LP; -1 is the convention for those solves.
             gap = h.getInfoValue("mip_gap")[1] if integrality.any() else -1.0
         else:
@@ -5306,9 +6333,14 @@ class Plan:
 
         if col_overrides:
             for col, (lb, ub) in col_overrides.items():
+                key = abc._bound_key(lb, ub)
+                if key == "fx" and lb != ub:
+                    # Within the fixed-bound tolerance but not equal: MOSEK rejects a "fixed"
+                    # variable whose bounds differ, so give it one value.
+                    lb = ub = 0.5 * (lb + ub)
                 vlb[col] = lb
                 vub[col] = ub
-                vkeys[col] = abc._bound_key(lb, ub)
+                vkeys[col] = key
 
         task = mosek.Task()
         task.set_Stream(mosek.streamtype.err, lambda t: self.mylog.vprint(t.strip()))
@@ -5397,6 +6429,8 @@ class Plan:
         )
         task.putdouparam(mosek.dparam.mio_max_time, float(time_limit))
         task.putdouparam(mosek.dparam.mio_tol_rel_gap, float(mygap))
+        if "mipMaxNodes" in options:  # internal: see _run_highs
+            task.putintparam(mosek.iparam.mio_max_num_branches, int(options["mipMaxNodes"]))
         self._apply_mosek_threads(task, options)
 
         # Warm start: an incumbent lets branch-and-bound prune every node that cannot beat it.
@@ -5410,6 +6444,7 @@ class Plan:
         except mosek.Error as e:
             self._infeasible = False
             return None, np.zeros(nvars), False, f"MOSEK: {e.msg}", -1.0
+        self._lastMipNodes = int(task.getintinf(mosek.iinfitem.mio_num_branch)) if int_vars else 0
 
         if int_vars:
             sol = mosek.soltype.itg
@@ -5516,6 +6551,40 @@ class Plan:
             self._highs_warm_start = result[1].copy()
         return result
 
+    def _time_limit(self, options):
+        """Solver time limit: maxTime when given, else TIME_LIMIT."""
+        return u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
+
+    def _node_limit(self, options):
+        """HiGHS node limit: mipMaxNodes when given (local search); otherwise RX_NODE_LIMIT when the
+        MILP carries free tier binaries of the income-tiered exclusion and no maxTime is given (see
+        RX_NODE_LIMIT); else none in practice."""
+        if "mipMaxNodes" in options:
+            return int(options["mipMaxNodes"])
+        if "maxTime" not in options and "zx" in self.vm and np.any(self.RXF_n >= 0.5):
+            return RX_NODE_LIMIT
+        return 1_000_000
+
+    def _warn_node_limit(self, node_limit, gap, target):
+        """Say that a MILP stopped at its node limit and how far its plan may be from optimal."""
+        if gap > target:
+            self.mylog.print(
+                f"MILP stopped at its {node_limit:,} node limit with a gap of {100 * gap:.2f}% "
+                f"(target {100 * target:.2g}%): the plan is feasible but may not be optimal. "
+                "Set maxTime to search longer.",
+                tag="WARNING",
+            )
+
+    def _warn_time_limit(self, time_limit, gap, target):
+        """Say that a MILP stopped on its time limit and how far its plan may be from optimal."""
+        if gap > target:
+            self.mylog.print(
+                f"MILP stopped at its {time_limit:.0f} s time limit with a gap of {100 * gap:.2f}% "
+                f"(target {100 * target:.2g}%): the plan is feasible but may not be optimal. "
+                "Set maxTime to allow more time.",
+                tag="WARNING",
+            )
+
     def _milpSolve(self, objective, options):
         """
         Solve using HiGHS directly via highspy, with MIP warm-start between SC iterations.
@@ -5545,7 +6614,9 @@ class Plan:
         import mosek
 
         self._buildConstraints(objective, options)
-        time_limit = u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
+        time_limit = self._time_limit(options)
+        if "maxTime" not in options and "zx" in self.vm and np.any(self.RXF_n >= 0.5):
+            time_limit = RX_MOSEK_TIME_LIMIT
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
         int_vars = self.B.integralityList()
@@ -5632,6 +6703,8 @@ class Plan:
             self.MAGI_n = np.zeros(self.N_n)
             self.G_n = np.zeros(self.N_n)
             self.J_n = np.zeros(self.N_n)
+            self.STR_n = np.zeros(self.N_n)
+            self.RXF_n = np.zeros(self.N_n)  # the first iterate is solved without the exclusion
             self.M_n = np.zeros(self.N_n)
             self.ACA_n = np.zeros(self.N_n)
             # Seed I_n for first NIIT LP iteration: portfolio part is zero before first solve.
@@ -5640,6 +6713,10 @@ class Plan:
             return
 
         self._aggregateResults(x, short=True)
+        # Uses the Psi_n the LP was built with, so it has to come before _update_Psi_n.
+        self.STR_n = self._state_recapture_implied()
+        self.RXF_n = self._tiered_exclusion_free()
+        self._rx_refixed_n = self._refix_boundary_tiers()
         # Psi_n is derived directly from the tss_n LP variable in _aggregateResults
         # when withSSTaxability=="optimize"; skip the SC-loop update in that case.
         # Also skip when fixedPsi is set (numeric withSSTaxability).
@@ -5828,19 +6905,19 @@ class Plan:
         # Also add net investment income from rent/trust (netinv_in) for NIIT purposes.
         self.I_n = np.maximum(0, np.sum(I_in, axis=0)) + np.sum(self.netinv_in, axis=0)
 
+        # State taxable income and AGI, which the benefit recapture is a function of.
+        self.st_f_tn = vm["st_f"].extract(x) if "st_f" in vm else np.zeros((self.N_st, Nn))
+        self.st_re_in = vm["st_re"].extract(x) if "st_re" in vm else np.zeros((Ni, Nn))
+        self.st_rx_n = vm["st_rx"].extract(x) if "st_rx" in vm else np.zeros(Nn)
+        self.st_agi_n, self.st_ti_n = self._state_agi_and_ti()
+
         # Stop after building minimum required for self-consistent loop.
         if short:
             return
 
-        # Extract state income tax.
-        if "st_f" in vm:
-            self.st_f_tn = vm["st_f"].extract(x)
-            self.st_T_tn = self.st_f_tn * self.st_theta_tn
-            self.st_T_n = np.sum(self.st_T_tn, axis=0)
-        else:
-            self.st_T_n = np.zeros(Nn)
-        # State retirement income exemption claimed by each individual.
-        self.st_re_in = vm["st_re"].extract(x) if "st_re" in vm else np.zeros((Ni, Nn))
+        self.lt_f_tn = vm["lt_f"].extract(x) if "lt_f" in vm else np.zeros((self.N_lt, Nn))
+        self.st_c_n = vm["st_c"].extract(x) if "st_c" in vm else np.zeros(Nn)
+        self._finalize_state_tax()
 
         self.T_tn = self.f_tn * self.theta_tn
         self.T_n = np.sum(self.T_tn, axis=0)
@@ -6517,7 +7594,7 @@ class Plan:
         # All taxes: ordinary income, dividends, NIIT, and state income tax.
         allTaxes = self.T_n + self.U_n + self.J_n
         aca_n = self.aca_costs_n if self.slcsp_annual > 0 else None
-        st_n = self.st_T_n if self.state else None
+        st_n = self.st_T_n if any(self._states_n()) else None
         fig = self._plotter.plot_taxes(
             self.year_n, allTaxes, self.medicare_n, self.gamma_n, value, title, self.inames, A_n=aca_n, ST_n=st_n
         )

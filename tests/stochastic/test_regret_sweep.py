@@ -104,13 +104,13 @@ def test_rejects_bad_arguments(dana):
 # now detects the cycle and terminates as "oscillatory". The manuscript's never-convert regret
 # is computed as v_star - v_noconv, and v_noconv is unchanged, so that headline figure moves
 # from 25_764.84 to 19_475.35. The paper's ordering still holds, but the magnitude does not.
-# Refreshed again after the AGI-base state-tax fix (state taxable income starts from federal AGI
-# rather than federal taxable income). Dana is in CA, so every value shifted down by the
-# additional state tax on the federal standard deduction. maxBequest moved more than
-# maxSpending because the higher tax rate compounds on the larger estate.
 # Refreshed again 2026-09-21 after the state bracket audit moved CA's brackets from 2023 to
 # 2025 values (Dana is in CA). These pins no longer reproduce the paper's published numbers;
 # the paper's sweeps must be rerun under the corrected tax data.
+# Refreshed again 2026-09-28 when the state base stopped also deducting the federal standard
+# deduction, which raised Dana's CA tax. maxSpending v_star 58_248.07 -> 57_848.20 (-0.7%) and
+# x_star 67_974.79 -> 59_924.62; maxBequest v_star 431_374.54 -> 389_539.57 (-9.7%), v_noconv
+# 396_444.36 -> 362_189.09, so never-convert regret goes from 34_930.18 to 27_350.48.
 @pytest.mark.toml
 def test_dana_1966_maxspending_reference(dana):
     """Pin the paper's 1966 maxSpending numbers (Cost-of-Committing sweep, 2026-07-16)."""
@@ -120,11 +120,14 @@ def test_dana_1966_maxspending_reference(dana):
         dana, "maxSpending", opts, [0, 60_000, 120_000], 1966, 1966, include_never_convert=False
     )
     assert res["start_years"].tolist() == [1966]
-    assert _rel(res["v_star"][0], 57_848.20) < RTOL
+    # Re-pinned 2026-10-03 when CA's personal and senior credits ($153 each; Dana is over 65) were
+    # modeled: v_star and the first two pinned solves rose by exactly the $306/yr credit; x_star
+    # did not move.
+    assert _rel(res["v_star"][0], 58_154.20) < RTOL
     assert _rel(res["x_star"][0], 59_924.62) < RTOL
-    assert _rel(res["v_at"][0, 0], 57_834.84) < RTOL
-    assert _rel(res["v_at"][0, 1], 57_848.15) < RTOL
-    assert _rel(res["v_at"][0, 2], 57_521.79) < RTOL
+    assert _rel(res["v_at"][0, 0], 58_140.84) < RTOL
+    assert _rel(res["v_at"][0, 1], 58_154.15) < RTOL
+    assert _rel(res["v_at"][0, 2], 57_802.33) < RTOL
     # Pinned solves can beat the SC-loop baseline only within the noise floor.
     regret = res["v_star"][0] - res["v_at"][0, :]
     assert (regret > -NOISE).all()
@@ -138,11 +141,18 @@ def test_dana_1966_maxbequest_reference(dana):
     opts.pop("bequest", None)
     opts["netSpending"] = 58.0  # $k; the scenario-minimum spending used in the paper
     res = run_conversion_regret_sweep(dana, "maxBequest", opts, [0, 63_636], 1966, 1966)
-    assert _rel(res["v_star"][0], 389_539.57) < RTOL
-    assert _rel(res["x_star"][0], 59_920.91) < RTOL
-    assert _rel(res["v_at"][0, 0], 388_590.35) < RTOL
-    assert _rel(res["v_at"][0, 1], 389_334.77) < RTOL
-    assert _rel(res["v_noconv"][0], 362_189.09) < RTOL
+    # Re-pinned when the default epsilon became 5e-7. These moved +3.1%, and not because the
+    # penalty cost anything: at 1e-8 HiGHS settled on a fixed point 3% below MOSEK's on this
+    # window, and the stronger tie-break brings it up to 431,374.54 against MOSEK's 431,377 --
+    # agreement to 0.0006% where there had been a 3% solver split.
+    # Re-pinned 2026-10-03 when CA's personal and senior credits ($153 each) were modeled: every
+    # bequest rose by about $10.9k per credit (389_539.57 -> 411_381.28 for v_star) and x_star did
+    # not move (59_920.91 -> 59_928.39), as a fixed yearly credit compounding into the estate would do.
+    assert _rel(res["v_star"][0], 411_381.28) < RTOL
+    assert _rel(res["x_star"][0], 59_928.39) < RTOL
+    assert _rel(res["v_at"][0, 0], 410_423.07) < RTOL
+    assert _rel(res["v_at"][0, 1], 411_176.90) < RTOL
+    assert _rel(res["v_noconv"][0], 381_832.42) < RTOL
     # Orderings that carry the paper's story:
     # never converting < skipping year 1 < converting near the optimum <= clairvoyant.
     # The last link leans on NOISE: a pinned solve can come back above the SC-loop

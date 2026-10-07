@@ -64,6 +64,14 @@ class BasicInfo(BaseModel):
     sexes: Optional[List[str]] = Field(default=None, description="Biological sex per individual: 'M' or 'F'")
     start_date: Optional[str] = Field(default="today", description="Plan start date")
     state: str = Field(default="", description="Two-letter US state abbreviation (e.g. 'MN'). Empty = no state tax.")
+    locality: str = Field(
+        default="", description="City or county whose income tax applies on top of the state's (e.g. 'NYC', 'Yonkers')."
+    )
+    moves: List[Dict[str, Any]] = Field(
+        default=[],
+        description="Later changes of residence: [{year = 2031, state = 'FL'}], optionally with a locality. "
+        "The new residence taxes that year and every year after. Upstream Owl takes at most one move.",
+    )
 
 
 class SavingsAssets(BaseModel):
@@ -369,6 +377,19 @@ class SolverOptions(BaseModel):
     withSSAges: Optional[Union[str, List[str]]] = None
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[str] = None
+    mipStrategy: Optional[Literal["branch-and-bound", "local-search"]] = None
+    breakpointMethod: Optional[Literal["loop", "branch-and-bound", "local-search"]] = None
+    localSearchTime: Optional[float] = Field(default=None, ge=0.0, description="Local search: total budget (s).")
+    localSearchStepTime: Optional[float] = Field(
+        default=None, ge=0.0, description="Local search: cap per restricted solve (s)."
+    )
+    localSearchRadius: Optional[int] = Field(default=None, ge=0, description="Local search: SS-taxability flips.")
+    partialBequestWeight: Optional[float] = Field(
+        default=None, ge=0.0, description="Value of a dollar left to non-spouse heirs at the first death (max(0.01, 2 x gap))."
+    )
+    localSearchStepNodes: Optional[int] = Field(
+        default=None, ge=0, description="Local search: node limit per restricted solve (default by solver)."
+    )
 
     # Other
     previousMAGIs: Optional[List[float]] = None

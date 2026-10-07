@@ -1,0 +1,51 @@
+diff --git a/src/owlplanner/config/schema.py b/src/owlplanner/config/schema.py
+index ba561fa..3675939 100644
+--- a/src/owlplanner/config/schema.py
++++ b/src/owlplanner/config/schema.py
+@@ -394,6 +394,22 @@ class SolverOptions(BaseModel):
+     oppCostX: Optional[float] = None
+     units: Optional[str] = None
+ 
++    @field_validator("withSSTaxability", mode="before")
++    @classmethod
++    def _numeric_ss_taxability(cls, v):
++        """
++        Read a pinned fraction given as text as the number.
++
++        `owlcli run/compare --solver-opt withSSTaxability=0.85` passes the string "0.85". Kept as a
++        string, the plan does not pin the fraction and runs the loop instead, without saying so.
++        """
++        if isinstance(v, str):
++            try:
++                return float(v)
++            except ValueError:
++                return v
++        return v
++
+     @model_validator(mode="before")
+     @classmethod
+     def _reject_removed_options(cls, raw: Any) -> Any:
+diff --git a/tests/config/test_solver_opt_numeric.py b/tests/config/test_solver_opt_numeric.py
+new file mode 100644
+index 0000000..c9cee4e
+--- /dev/null
++++ b/tests/config/test_solver_opt_numeric.py
+@@ -0,0 +1,18 @@
++"""A numeric solver option given on the command line arrives as text and must be read as a number."""
++
++from owlplanner.cli.cmd_run import _parse_solver_opts
++from owlplanner.config.schema import parse_solver_options
++
++
++def test_ss_taxability_text_is_read_as_a_number():
++    opts = parse_solver_options(dict(_parse_solver_opts(["withSSTaxability=0.85"])))
++    assert opts["withSSTaxability"] == 0.85 and isinstance(opts["withSSTaxability"], float)
++
++
++def test_ss_taxability_modes_stay_text():
++    for mode in ("loop", "optimize"):
++        assert parse_solver_options({"withSSTaxability": mode})["withSSTaxability"] == mode
++
++
++def test_ss_taxability_number_unchanged():
++    assert parse_solver_options({"withSSTaxability": 0.5})["withSSTaxability"] == 0.5

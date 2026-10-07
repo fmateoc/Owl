@@ -383,6 +383,14 @@ def _state_exclusion(plan, n):
     return out
 
 
+def _state_property_tax_deduction(plan, n):
+    """Property tax deduction claimed in year n (NJ line 41), today's $; only where claimed."""
+    pt = getattr(plan, "st_pt_n", None)
+    if pt is None or pt[n] <= 0.5:
+        return {}
+    return {"property_tax_deduction": _round(float(pt[n]) / plan.gamma_n[n])}
+
+
 def _loc(locality):
     """{"locality": locality} when there is one, else nothing."""
     return {"locality": locality} if locality else {}
@@ -402,6 +410,7 @@ def _year0_state_tax(plan):
         out["locality"] = locality
     out.update(_state_tax_parts(plan, 0))
     out.update(_state_exclusion(plan, 0))
+    out.update(_state_property_tax_deduction(plan, 0))
     bracket = _state_bracket(plan, 0)
     if bracket:
         out["top_bracket_rate_pct"] = bracket["top_bracket_rate_pct"]
@@ -820,6 +829,7 @@ def _state_bracket_analysis(plan):
         )
         row.update({f"{k}_today": v for k, v in _state_tax_parts(plan, n).items()})
         row.update({f"{k}_today": v for k, v in excl.items()})
+        row.update({f"{k}_today": v for k, v in _state_property_tax_deduction(plan, n).items()})
         rows.append(row)
     out = {
         "state": plan.state,
@@ -836,7 +846,9 @@ def _state_bracket_analysis(plan):
         "separately; inside a recapture phase-in the marginal state rate is above the bracket rate. "
         "retirement_exclusion is an exclusion of retirement income that steps down with total income "
         "(New Jersey's pension and other retirement income exclusion); exclusion_ceiling marks a year "
-        "held at one of its income ceilings, where the next dollar would lose part of the exclusion.",
+        "held at one of its income ceilings, where the next dollar would lose part of the exclusion. "
+        "property_tax_deduction is the state's deduction for property taxes or a share of rent "
+        "(New Jersey line 41, from the Housing sheet), taken after the exclusion.",
     }
     if getattr(plan, "locality", ""):
         out["locality"] = plan.locality

@@ -69,9 +69,9 @@ generic = [ [ [ 60, 40, 0, 0,], [ 60, 40, 0, 0,],], [ [ 60, 40, 0, 0,], [ 60, 40
 spending_profile = "flat"
 surviving_spouse_spending_percent = 60
 objective = "maxSpending"
-bequest = 0                             # spend down to $0 at 92
 
 [solver_options]
+bequest = 0                             # spend down to $0 at 92 (read here, not under optimization_parameters)
 withSSAges = "optimize"                 # co-optimize claiming ages
 withMedicare = "optimize"               # IRMAA as endogenous cost
 withACA = "loop"                        # pre-65 marketplace (2027 until each turns 65)

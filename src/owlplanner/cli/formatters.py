@@ -69,6 +69,7 @@ def _metrics_to_summary(m: dict) -> dict:
         "medicare_nominal": r("medicare_nominal"),
         "aca_nominal": r("aca_nominal"),
         "debt_payments_nominal": r("debt_payments_nominal"),
+        "housing_costs_nominal": r("housing_costs_nominal"),
         "final_bequest_nominal": r("final_bequest_nominal"),
         "final_bequest_today_dollars": r("final_bequest_today"),
         "heirs_tax_liability_nominal": r("heirs_tax_liability_nominal"),

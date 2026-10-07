@@ -396,6 +396,22 @@ class SolverOptions(BaseModel):
     oppCostX: Optional[float] = None
     units: Optional[str] = None
 
+    @field_validator("withSSTaxability", mode="before")
+    @classmethod
+    def _numeric_ss_taxability(cls, v):
+        """
+        Read a pinned fraction given as text as the number.
+
+        `owlcli run/compare --solver-opt withSSTaxability=0.85` passes the string "0.85". Kept as a
+        string, the plan does not pin the fraction and runs the loop instead, without saying so.
+        """
+        if isinstance(v, str):
+            try:
+                return float(v)
+            except ValueError:
+                return v
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_options(cls, raw: Any) -> Any:

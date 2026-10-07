@@ -66,7 +66,11 @@ _debtItems = [
     "term",
     "amount",
     "rate",
+    "payoff",
 ]
+
+# Optional house-table columns: a workbook written before they existed still loads (read as 0).
+_optionalHouseItems = {"Debts": ["payoff"]}
 
 
 _debtTypes = [
@@ -398,7 +402,9 @@ def _conditionHouseTables(dfDict, mylog):
     for page in items.keys():
         if page in dfDict:
             df = dfDict[page]
-            df = _checkColumns(df, page, items[page])
+            optional = _optionalHouseItems.get(page, [])
+            required = [c for c in items[page] if c not in optional]
+            df = _checkColumns(df, page, items[page], required_cols=required)
             # Check categorical variables.
             isInList = df["type"].isin(types[page])
             df = df[isInList]
@@ -464,7 +470,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
 
     # Define which columns are integers vs floats
     if tableType == "Debts":
-        int_cols = ["year", "term"]
+        int_cols = ["year", "term", "payoff"]
         float_cols = ["amount", "rate"]
     elif tableType == "Housing":
         int_cols = ["year", "end"]

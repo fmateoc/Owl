@@ -6,7 +6,13 @@ net spending (so the house/rent is comparable: final bequest counts the residenc
 
 Usage: housing_stakes.py exact|default|ls [tax-deferred in $k, e.g. 900,600] [case;case...]
 Case keys: bt, own, rent, ny.
-Lifetime state tax in today's dollars. Housing costs in nominal first-year dollars.
+Prints the objective (final bequest after heirs' tax, today's $), lifetime state tax and lifetime
+property tax deduction claimed (today's $). Housing costs in nominal first-year dollars.
+
+The deduction claimed is only meaningful in years where it lowers the tax: in a year where NJ
+taxable income is zero without it, any amount up to the allowed one gives the same plan, and the
+solver's pick there is arbitrary. Compare the bequest, not the lifetime deduction.
+(Until 2026-10-07 this script printed p.basis, which under maxBequest is the fixed net spending.)
 """
 import io
 import sys
@@ -16,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 import owlplanner as owl
+from owlplanner.export import _compute_estate
 from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF
 
 mode = sys.argv[1]
@@ -64,7 +71,8 @@ def run(state, kind, amount=0.0):
     dt = time.time() - t
     st = float(np.sum(p.st_T_n / p.gamma_n[:-1]))
     ptd = float(np.sum(p.st_pt_n / p.gamma_n[:-1]))
-    return p.basis, st, ptd, dt, p.caseStatus
+    bequest = _compute_estate(p, p.N_n)[3] / p.gamma_n[p.N_n] if p.caseStatus == "solved" else float("nan")
+    return bequest, st, ptd, dt, p.caseStatus
 
 
 label = f"${sum(td) / 1000:.1f}M"
@@ -77,7 +85,7 @@ cases = [
 for key, name, state, kind, amount in cases:
     if only and key not in only:
         continue
-    basis, st, ptd, dt, status = run(state, kind, amount)
-    print(f"| {label} | {name} | bequest {basis:,.0f} | state tax {st:,.0f} | ptd {ptd:,.0f} |"
+    bequest, st, ptd, dt, status = run(state, kind, amount)
+    print(f"| {label} | {name} | bequest {bequest:,.0f} | state tax {st:,.0f} | ptd {ptd:,.0f} |"
           f" {dt:.1f} s |" + ("" if status == "solved" else f" {status}"))
     sys.stdout.flush()

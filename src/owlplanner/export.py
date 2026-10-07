@@ -293,6 +293,7 @@ def _format_debts_sheet(ws):
         col_formats={
             "year": "0",
             "term": "0",
+            "payoff": "0",
             "rate": "#,##0.00",
             "amount": "$#,##0_);[Red]($#,##0)",
         },
@@ -843,6 +844,8 @@ def plan_metrics(plan, N=None) -> dict:
         "aca_nominal": _s(plan.aca_costs_n[:N]),
         "debt_payments_today": _st(plan.debt_payments_n[:N]),
         "debt_payments_nominal": _s(plan.debt_payments_n[:N]),
+        "housing_costs_today": _st(plan.housing_costs_n[:N]),
+        "housing_costs_nominal": _s(plan.housing_costs_n[:N]),
         # Final bequest
         "final_bequest_today": total_estate / float(gamma[N]),
         "final_bequest_nominal": total_estate,
@@ -908,6 +911,8 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "aca_nominal": (f"Total ACA premiums paid{_N}", "usd"),
     "debt_payments_today": (f"Total debt payments{_T}", "usd"),
     "debt_payments_nominal": (f"Total debt payments{_N}", "usd"),
+    "housing_costs_today": (f"Total housing costs{_T}", "usd"),
+    "housing_costs_nominal": (f"Total housing costs{_N}", "usd"),
     "final_bequest_today": (f"Total after-tax value of final bequest{_T}", "usd"),
     "final_bequest_nominal": (f"Total after-tax value of final bequest{_N}", "usd"),
     "heirs_tax_liability_nominal": (f"With heirs assuming tax liability of{_N}", "usd"),

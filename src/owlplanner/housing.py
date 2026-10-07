@@ -55,6 +55,28 @@ def _end_year_paid(end, thisyear, N_n):
     return plan_end + end if end <= 0 else end
 
 
+def rows_left_out(housing_df, N_n, thisyear):
+    """Names of active rows that pay nothing within the plan, with the reason.
+
+    A positive `end` is a calendar year: one before `year` or before the plan start (a term
+    such as 10 typed as `end`, say) leaves the row out, as does a `year` after the plan end.
+    """
+    out = []
+    if u.is_dataframe_empty(housing_df):
+        return out
+    plan_end = thisyear + N_n - 1
+    for _, row in housing_df.iterrows():
+        if not u.is_row_active(row):
+            continue
+        start_year, end = int(row["year"]), int(row["end"])
+        last_paid = _end_year_paid(end, thisyear, N_n)
+        if start_year > plan_end:
+            out.append((str(row["name"]), f"starts in {start_year}, after the plan ends in {plan_end}"))
+        elif last_paid < max(start_year, thisyear):
+            out.append((str(row["name"]), f"ends in {last_paid}, before it starts in {max(start_year, thisyear)}"))
+    return out
+
+
 def get_housing_arrays(housing_df, N_n, gamma_n, thisyear=None):
     """
     Process housing_df into nominal per-year cost arrays.

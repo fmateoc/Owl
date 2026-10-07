@@ -6,6 +6,7 @@ import pytest
 
 import owlplanner as owl
 from owlplanner import housing, tax_state
+from owlplanner.export import plan_metrics
 from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF
 
 THISYEAR = owl.Plan(["A"], ["1960-01-01"], [80], "t", verbose=False).year_n[0]
@@ -187,11 +188,11 @@ def test_deduction_does_not_change_the_exclusion_tier():
     p = _pension_only(housing_rows=rows)
     # The deduction is taken.
     assert p.st_pt_n[0] == pytest.approx(15000.0, abs=1.0)
-    # The tier follows st_agi_n (line 27), which is income before the property tax deduction.
-    share, _ = p._tiered_exclusion_implied()
-    limits = p.st_rx_limit_kn[:, 0]
-    shares = p.st_rx_share_kn[:, 0]
-    assert share[0] == tax_state.exclusion_share(p.st_agi_n[0], limits, shares)
+    # Line 27 (st_agi_n) is about $109k, in the 50% tier; the deduction would take it to about $94k,
+    # in the 100% tier, if it moved the tier. The exclusion claimed must be the statute's, set on line 27.
+    share, implied = p._tiered_exclusion_implied()
+    assert 100000 < p.st_agi_n[0] < 115000 and share[0] == 0.5
+    assert p.st_rx_n[0] == pytest.approx(implied[0], abs=2.0)
     # And taxable income is below line 27 minus the exclusion and exemptions, by the deduction.
     statutory_ti = max(0.0, np.round(p.st_agi_n[0]) - p.st_rx_n[0] - p.st_sigmaBar_n[0])
     assert p.st_ti_n[0] == pytest.approx(statutory_ti - 15000.0, abs=2.0)
@@ -277,3 +278,56 @@ def test_replayed_rows_match_a_fresh_build_with_nj_housing():
     p._fixedRows = {}
     p._buildConstraints(p.objective, p.solverOptions)
     fr._assert_same_lp(fr._lp_arrays(p), replayed)
+
+
+def test_process_before_any_solve():
+    """The UI computes the fixed-asset bequest before the first solve (owlbridge.getFixedAssetsBequestValue)."""
+    p = _plan(state="NJ", housing_rows=_pt_row())
+    fa = pd.DataFrame([{"active": True, "name": "home", "type": "residence", "year": THISYEAR, "basis": 500000.0,
+                        "value": 800000.0, "rate": 0.0, "yod": 0, "commission": 5.0}])
+    p.houseLists["Fixed Assets"] = conditionDebtsAndFixedAssetsDF(fa, "Fixed Assets")
+    p.processDebtsAndFixedAssets()
+    assert p.fixed_assets_bequest_value > 0
+    assert np.all(p.st_ptd_n == 0)  # the state rule is only known once solve() reads the state
+    assert p.housing_property_tax_n[0] == pytest.approx(20000.0)
+
+
+def test_rows_left_out_are_named():
+    df = _rows(
+        _one(name="term typed as end", end=10),
+        _one(name="after the plan", year=THISYEAR + 50),
+        _one(name="fine", end=0),
+        _one(name="inactive", active=False, end=10),
+    )
+    out = housing.rows_left_out(df, 5, THISYEAR)
+    assert [name for name, _ in out] == ["term typed as end", "after the plan"]
+
+
+def test_rows_left_out_warn_in_the_plan():
+    import io
+
+    log = io.StringIO()
+    p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1965-09-15"], [89, 92], "w", verbose=False, logstreams=[log])
+    p.houseLists["Housing"] = _rows(_one(name="typo", end=10))
+    p.processDebtsAndFixedAssets()
+    assert "Housing row 'typo' ends in 10" in log.getvalue()
+    assert np.all(p.housing_costs_n == 0)
+
+
+def test_metrics_and_explanation_report_housing():
+    from owlplanner.assistant.explain import build_explanation
+    from owlplanner.assistant.explain_schema import PlanExplanation
+
+    rows = _pt_row()
+    p = _plan(state="NJ", housing_rows=rows, taxable=(400, 200))
+    p.setSocialSecurity([2800, 2200], [70, 70])
+    p.setPension([4000, 3000], [62, 62], [False, False])
+    p.solve("maxBequest", options={**_bequest_opts(), "withDuals": True})
+    m = plan_metrics(p)
+    assert m["housing_costs_today"] == pytest.approx(20000.0 * p.N_n, rel=1e-6)
+    assert m["housing_costs_nominal"] == pytest.approx(float(np.sum(p.housing_costs_n)))
+    ex = build_explanation(p)
+    PlanExplanation.model_validate(ex)
+    assert ex["this_year"]["state_tax"]["property_tax_deduction"] == pytest.approx(15000.0, abs=1.0)
+    by_year = ex["state_tax_brackets"]["by_year"]
+    assert any(r.get("property_tax_deduction_today", 0) > 0 for r in by_year)

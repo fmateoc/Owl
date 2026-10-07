@@ -1,0 +1,454 @@
+diff --git a/info/PARAMETERS.md b/info/PARAMETERS.md
+index ff30c4c..0e40593 100644
+--- a/info/PARAMETERS.md
++++ b/info/PARAMETERS.md
+@@ -111,7 +111,7 @@ See `examples/Case_jordan+taylor-qcd.toml`, which is `Case_jordan+taylor` with a
+ 
+ #### Optional sheet `Debts`
+ 
+-Columns: `active`, `name`, `type`, `year`, `term`, `amount`, `rate`. Allowed `type` values: `loan`, `mortgage`.
++Columns: `active`, `name`, `type`, `year`, `term`, `amount`, `rate`, and optionally `payoff` (year the remaining balance is paid in full, e.g. the year the home is sold; 0 or absent = run to term). Allowed `type` values: `loan`, `mortgage`.
+ 
+ #### Optional sheet `Fixed Assets`
+ 
+diff --git a/info/modeling-capabilities.md b/info/modeling-capabilities.md
+index b8ad0be..872a5a2 100644
+--- a/info/modeling-capabilities.md
++++ b/info/modeling-capabilities.md
+@@ -20,7 +20,7 @@ This document summarizes all modeling components in Owl (Optimal wealth lab), ho
+ | **Roth accounts** | After-tax contributions. Five-year maturation rule enforced via minimum-balance constraints (recent conversions + contribution gains retained). Age 59½ threshold per individual. Conversion amounts optimized; taxable as ordinary income in year of conversion. Individual years can be held fixed instead of optimized by ticking the *Roth conv fixed* column of the Wages & Contributions table beside the amount in *Roth conv*: the conversion is then pinned to exactly that amount, bypassing the annual cap and the last-two-years restriction, and an amount of `0` pins the year at no conversion. | Contribution principal not separately tracked; some valid early withdrawals of principal conservatively disallowed. Pro-rata rule not modeled. Roth conversions disallowed in last two years of plan horizon (unless that year is held fixed). |
+ | **Health Savings Accounts (HSA)** | Fourth account type. Pre-tax contributions reduce ordinary income, provisional income, and MAGI. Contributions zeroed at Medicare enrollment age (IRC §223: Medicare disqualifies contributions). Withdrawals capped at total qualified medical expenses (QMEs): Medicare costs plus `setMedicalExpenses()` amount (dental, vision, co-pays, etc.). Pre-Medicare years: only the `setMedicalExpenses()` amount is eligible. Spouse inherits intact. | IRS contribution limits not enforced; user responsible. HDHP eligibility assumed, not verified. Catch-up (\$1,000 for 55+) not auto-applied. Mid-year Medicare: entire year zeroed (IRS allows proration). Pre-65 non-qualified penalty (20%) not modeled for withdrawals exceeding QMEs. |
+ | **Fixed assets** | Real estate, annuities, collectibles, etc. An asset is listed from the first year it is present in January, so one bought during 2026 carries `year` 2027, and one sold during its `yod` is still listed that year with the proceeds reaching savings the following January. Disposition generates proceeds split into ordinary income, LTCG, and tax-free portions by asset type. Growth rate from acquisition to disposition year. Sales commission applied. **Type-specific tax treatment:** `residence` — IRC §121 primary residence exclusion applied ($250k single / $500k MFJ); gain above the exclusion is LTCG, excluded gain and basis are tax-free. `fixed annuity` — gain above basis is ordinary income; basis returned tax-free. All other types (`real estate`, `stocks`, `collectibles`, `precious metals`) — full gain is LTCG, basis is tax-free. | Fixed outflows; disposition timing and amount user-specified. No optimization of sale timing. |
+-| **Debts** | Amortized payments from start year for term years. Principal and interest from standard amortization. Enters cash-flow as fixed outflows. | No optimization of paydown vs. invest. Mortgage interest not deducted (standard deduction assumed). |
++| **Debts** | Amortized payments from start year for term years. Principal and interest from standard amortization. Enters cash-flow as fixed outflows. Optional `payoff` year: the remaining balance is paid that year (e.g. when the home is sold) and payments stop. | No optimization of paydown vs. invest. Mortgage interest not deducted (standard deduction assumed). |
+ | **Wages & contributions** | Year-indexed table: wages, other income, net inv, contributions to all account types, Roth conversions, QCDs, big-ticket items. Five-year lookback for Roth maturation. Only the `year` column is required; any other column may be omitted and is read as zero. | User-supplied; no optimization of contribution amounts. HSA contributions zeroed at Medicare age. |
+ | **Qualified Charitable Distributions (QCDs)** | Per-person, per-year amounts from the `QCD` column of the Wages & Contributions table. Excluded from AGI, so they lower federal and state taxable income, Social Security taxability, and the MAGI feeding IRMAA and NIIT. Credited against the RMD dollar-for-dollar, drawn from the tax-deferred balance, and never available as spending. Age 70.5 and the annual per-person limit ($108k in 2025, $115k in 2026, indexed; later years projected at a fixed 3%) are enforced as errors. Reported as a `Charitable giving` slice in the lifetime-allocation and cash-flow-mix charts, as a dedicated *Charitable Giving (QCD)* chart splitting each gift at the RMD it satisfies, as its own worksheet column, and in the case description. | Amount is user-specified, not optimized. IRA-only eligibility not checked: Owl aggregates IRA with 401(k)/403(b) into one tax-deferred account. A 401(k) balance must be rolled over to an IRA first to be eligible, which is a real-world step but a non-event in the model. Anti-abuse offset for deductible IRA contributions after 70.5 not modeled. One-time split-interest-entity QCD (CGA/CRT) not modeled. |
+ | **Social Security benefits** | PIA × age-based adjustment factor. FRA by birth year (65–67). Own, spousal, and survivor benefits computed from PIA and DOB. Benefits are prorated in the year they start, by the claiming month (same as pension). Taxability (0–85%) from provisional income formula converged via the SC loop. Optional trim for trust-fund scenarios. Claiming ages are user-specified by default. Optional: `withSSTaxability="optimize"` replaces the SC-loop taxability approximation with an exact MILP formulation. Optional: `withSSAges="optimize"` co-optimizes SS claiming ages (monthly resolution, 62–70) via MILP. **Survivor benefits:** the survivor's own benefit and the survivor benefit are tracked as separate streams and the larger is paid each year, so a survivor who has not yet claimed keeps their own (still growing) benefit. Amount is set by the deceased's record — the greater of their benefit at death and 82.5% of their PIA (CFR §404.338); a worker who died before claiming leaves the full PIA plus the DRCs earned up to death — and fixed at death (no posthumous DRCs). The reduction is measured against the survivor's own age at filing, linearly from 71.5% at 60 to 100% at the survivor FRA (a distinct schedule from the retirement FRA, up to 4 months earlier); no credit accrues past it. `social_security_survivor_claim_age` sets the timing: `"immediate"` (default), `"fra"`, or an explicit age. | Family maximum benefit cap not modeled. Earnings test not modeled; users assumed fully retired before FRA. Survivor claiming date is user-specified, not optimized. WEP and GPO repealed (2025); not modeled. |
+diff --git a/src/owlplanner/cli/cmd_explain.py b/src/owlplanner/cli/cmd_explain.py
+index 69ac93b..eb11003 100644
+--- a/src/owlplanner/cli/cmd_explain.py
++++ b/src/owlplanner/cli/cmd_explain.py
+@@ -13,6 +13,7 @@ import sys
+ import datetime
+ 
+ import click
++import pandas as pd
+ from pathlib import Path
+ 
+ from owlplanner.config import load_toml, config_to_plan
+@@ -123,15 +124,17 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
+         for _, row in debt_df.iterrows():
+             if not _active(row):
+                 continue
+-            debts.append(
+-                {
+-                    "name": str(row["name"]),
+-                    "type": str(row["type"]),
+-                    "balance": int(round(float(row["amount"]))),
+-                    "rate_pct": round(float(row["rate"]), 4),
+-                    "years_remaining": int(row["term"]),
+-                }
+-            )
++            debt = {
++                "name": str(row["name"]),
++                "type": str(row["type"]),
++                "balance": int(round(float(row["amount"]))),
++                "rate_pct": round(float(row["rate"]), 4),
++                "years_remaining": int(row["term"]),
++            }
++            payoff = int(row["payoff"]) if "payoff" in row.index and pd.notna(row["payoff"]) else 0
++            if payoff > 0:
++                debt["payoff_year"] = payoff
++            debts.append(debt)
+ 
+     # Opening balance sheet (reference-year dollars): savings + fixed assets - debts.
+     savings_total = int(sum(account_balances["total"].values())) if account_balances else 0
+diff --git a/src/owlplanner/debts.py b/src/owlplanner/debts.py
+index a466358..4c48353 100644
+--- a/src/owlplanner/debts.py
++++ b/src/owlplanner/debts.py
+@@ -27,14 +27,42 @@ from datetime import date
+ from . import utils as u
+ 
+ 
++def _payoff_year(debt, start_year, term):
++    """Year the remaining balance is paid in full, or None.
++
++    The optional `payoff` column (0 or absent = none) ends a loan before its term, e.g. in the
++    year the house it finances is sold. A year at or after the end of the term changes nothing.
++    """
++    if "payoff" not in debt.index:
++        return None
++    try:
++        payoff = int(debt["payoff"])
++    except (TypeError, ValueError):
++        return None
++    if payoff <= 0 or not start_year <= payoff < start_year + term:
++        return None
++    return payoff
++
++
+ def _active_loans(debts_df):
+-    """Yield (start_year, term, end_year, principal, rate) for each active loan row."""
++    """Yield (start_year, term, end_year, principal, rate, payoff) for each active loan row.
++
++    Regular payments run for start_year <= year < end_year. With a payoff year, end_year is that
++    year, in which the balance left after the regular payments is paid instead (payoff_amount).
++    """
+     for _, debt in debts_df.iterrows():
+         if not u.is_row_active(debt):
+             continue
+         start_year = int(debt["year"])
+         term = int(debt["term"])
+-        yield start_year, term, start_year + term, float(debt["amount"]), float(debt["rate"])
++        payoff = _payoff_year(debt, start_year, term)
++        end_year = payoff if payoff is not None else start_year + term
++        yield start_year, term, end_year, float(debt["amount"]), float(debt["rate"]), payoff
++
++
++def payoff_amount(principal, annual_rate, term_years, start_year, payoff):
++    """Balance paid in the payoff year: what is left after the regular payments before it."""
++    return calculate_remaining_balance(principal, annual_rate, term_years, payoff - start_year)
+ 
+ 
+ def calculate_monthly_payment(principal, annual_rate, term_years):
+@@ -144,7 +172,7 @@ def get_debt_payments_for_year(debts_df, year):
+     Parameters:
+     -----------
+     debts_df : pd.DataFrame
+-        DataFrame with columns: name, type, year, term, amount, rate
++        DataFrame with columns: name, type, year, term, amount, rate (and optional payoff)
+     year : int
+         Year for which to calculate payments
+ 
+@@ -158,9 +186,11 @@ def get_debt_payments_for_year(debts_df, year):
+ 
+     total_payments = 0.0
+ 
+-    for start_year, term, end_year, principal, rate in _active_loans(debts_df):
++    for start_year, term, end_year, principal, rate, payoff in _active_loans(debts_df):
+         if start_year <= year < end_year:
+             total_payments += calculate_annual_payment(principal, rate, term)
++        elif year == payoff:
++            total_payments += payoff_amount(principal, rate, term, start_year, payoff)
+ 
+     return total_payments
+ 
+@@ -172,7 +202,7 @@ def get_debt_balances_for_year(debts_df, year):
+     Parameters:
+     -----------
+     debts_df : pd.DataFrame
+-        DataFrame with columns: name, type, year, term, amount, rate
++        DataFrame with columns: name, type, year, term, amount, rate (and optional payoff)
+     year : int
+         Year for which to calculate balances
+ 
+@@ -186,7 +216,7 @@ def get_debt_balances_for_year(debts_df, year):
+ 
+     total_balance = 0.0
+ 
+-    for start_year, term, end_year, principal, rate in _active_loans(debts_df):
++    for start_year, term, end_year, principal, rate, _payoff in _active_loans(debts_df):
+         if start_year <= year < end_year:
+             years_elapsed = year - start_year + 1
+             total_balance += calculate_remaining_balance(principal, rate, term, years_elapsed)
+@@ -202,7 +232,7 @@ def get_debt_payments_array(debts_df, N_n, thisyear=None):
+     Parameters:
+     -----------
+     debts_df : pd.DataFrame
+-        DataFrame with columns: name, type, year, term, amount, rate
++        DataFrame with columns: name, type, year, term, amount, rate (and optional payoff)
+     N_n : int
+         Number of years in the plan (length of output array)
+     thisyear : int, optional
+@@ -224,11 +254,13 @@ def get_debt_payments_array(debts_df, N_n, thisyear=None):
+ 
+     payments_n = np.zeros(N_n)
+ 
+-    for start_year, term, end_year, principal, rate in _active_loans(debts_df):
++    for start_year, term, end_year, principal, rate, payoff in _active_loans(debts_df):
+         annual_payment = calculate_annual_payment(principal, rate, term)
+         for n in range(N_n):
+             if start_year <= thisyear + n < end_year:
+                 payments_n[n] += annual_payment
++            elif thisyear + n == payoff:
++                payments_n[n] += payoff_amount(principal, rate, term, start_year, payoff)
+ 
+     return payments_n
+ 
+@@ -241,7 +273,7 @@ def get_debt_balances_array(debts_df, N_n, thisyear=None):
+     Parameters:
+     -----------
+     debts_df : pd.DataFrame
+-        DataFrame with columns: name, type, year, term, amount, rate
++        DataFrame with columns: name, type, year, term, amount, rate (and optional payoff)
+     N_n : int
+         Number of years in the plan (length of output array)
+     thisyear : int, optional
+@@ -263,10 +295,11 @@ def get_debt_balances_array(debts_df, N_n, thisyear=None):
+ 
+     balances_n = np.zeros(N_n)
+ 
+-    for start_year, term, end_year, principal, rate in _active_loans(debts_df):
++    for start_year, term, end_year, principal, rate, payoff in _active_loans(debts_df):
+         for n in range(N_n):
+             year = thisyear + n
+-            if start_year <= year < end_year:
++            # The balance is still owed at the start of the payoff year.
++            if start_year <= year < end_year or year == payoff:
+                 years_elapsed = year - start_year
+                 balances_n[n] += calculate_remaining_balance(principal, rate, term, years_elapsed)
+ 
+@@ -282,7 +315,7 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None):
+     Parameters:
+     -----------
+     debts_df : pd.DataFrame
+-        DataFrame with columns: name, type, year, term, amount, rate
++        DataFrame with columns: name, type, year, term, amount, rate (and optional payoff)
+     N_n : int
+         Number of years in the plan
+     thisyear : int, optional
+@@ -303,7 +336,7 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None):
+     end_year = thisyear + N_n - 1
+     total_balance = 0.0
+ 
+-    for start_year, term, loan_end_year, principal, rate in _active_loans(debts_df):
++    for start_year, term, loan_end_year, principal, rate, _payoff in _active_loans(debts_df):
+         if start_year <= end_year < loan_end_year:
+             years_elapsed = end_year - start_year + 1
+             total_balance += calculate_remaining_balance(principal, rate, term, years_elapsed)
+diff --git a/src/owlplanner/export.py b/src/owlplanner/export.py
+index 959ed5a..dbc3250 100644
+--- a/src/owlplanner/export.py
++++ b/src/owlplanner/export.py
+@@ -293,6 +293,7 @@ def _format_debts_sheet(ws):
+         col_formats={
+             "year": "0",
+             "term": "0",
++            "payoff": "0",
+             "rate": "#,##0.00",
+             "amount": "$#,##0_);[Red]($#,##0)",
+         },
+diff --git a/src/owlplanner/hfp_io.py b/src/owlplanner/hfp_io.py
+index ee15a0b..01a653f 100644
+--- a/src/owlplanner/hfp_io.py
++++ b/src/owlplanner/hfp_io.py
+@@ -66,8 +66,12 @@ _debtItems = [
+     "term",
+     "amount",
+     "rate",
++    "payoff",
+ ]
+ 
++# Optional house-table columns: a workbook written before they existed still loads (read as 0).
++_optionalHouseItems = {"Debts": ["payoff"]}
++
+ 
+ _debtTypes = [
+     "loan",
+@@ -378,7 +382,9 @@ def _conditionHouseTables(dfDict, mylog):
+     for page in items.keys():
+         if page in dfDict:
+             df = dfDict[page]
+-            df = _checkColumns(df, page, items[page])
++            optional = _optionalHouseItems.get(page, [])
++            required = [c for c in items[page] if c not in optional]
++            df = _checkColumns(df, page, items[page], required_cols=required)
+             # Check categorical variables.
+             isInList = df["type"].isin(types[page])
+             df = df[isInList]
+@@ -443,7 +449,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
+ 
+     # Define which columns are integers vs floats
+     if tableType == "Debts":
+-        int_cols = ["year", "term"]
++        int_cols = ["year", "term", "payoff"]
+         float_cols = ["amount", "rate"]
+     else:  # Fixed Assets
+         int_cols = ["year", "yod"]
+diff --git a/tests/assets/test_debt_payoff.py b/tests/assets/test_debt_payoff.py
+new file mode 100644
+index 0000000..e3151cf
+--- /dev/null
++++ b/tests/assets/test_debt_payoff.py
+@@ -0,0 +1,125 @@
++"""Tests for the optional `payoff` column of the Debts sheet: the balance is paid in that year."""
++
++import numpy as np
++import pandas as pd
++import pytest
++
++import owlplanner as owl
++from owlplanner import debts
++from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF
++
++THISYEAR = owl.Plan(["A"], ["1960-01-01"], [80], "t", verbose=False).year_n[0]
++
++
++def _loan(payoff=None, year=2020, term=30, amount=400_000.0, rate=6.0):
++    row = {"active": True, "name": "mtg", "type": "mortgage", "year": year, "term": term,
++           "amount": amount, "rate": rate}
++    if payoff is not None:
++        row["payoff"] = payoff
++    return pd.DataFrame([row])
++
++
++class TestPayoffSchedule:
++    def test_no_column_is_unchanged(self):
++        """A table without the column (an older workbook) runs to term."""
++        df = _loan()
++        pay = debts.get_debt_payments_array(df, 40, 2020)
++        assert np.count_nonzero(pay) == 30
++        assert np.allclose(pay[:30], debts.calculate_annual_payment(400_000.0, 6.0, 30))
++
++    def test_zero_is_no_payoff(self):
++        assert np.allclose(debts.get_debt_payments_array(_loan(0), 40, 2020),
++                           debts.get_debt_payments_array(_loan(), 40, 2020))
++
++    def test_payoff_pays_the_balance_and_stops(self):
++        df = _loan(2030)
++        pay = debts.get_debt_payments_array(df, 40, 2020)
++        annual = debts.calculate_annual_payment(400_000.0, 6.0, 30)
++        balance = debts.calculate_remaining_balance(400_000.0, 6.0, 30, 10)
++        assert np.allclose(pay[:10], annual)
++        assert pay[10] == pytest.approx(balance)
++        assert np.all(pay[11:] == 0)
++
++    def test_payoff_matches_the_balance_at_the_start_of_that_year(self):
++        df = _loan(2030)
++        bal = debts.get_debt_balances_array(df, 40, 2020)
++        pay = debts.get_debt_payments_array(df, 40, 2020)
++        assert bal[10] == pytest.approx(pay[10])  # owed at the start of 2030, paid in 2030
++        assert np.all(bal[11:] == 0)
++        assert debts.get_debt_balances_for_year(df, 2029) == pytest.approx(bal[10])
++        assert debts.get_debt_balances_for_year(df, 2030) == 0.0
++
++    def test_payoff_before_plan_end_leaves_no_balance(self):
++        assert debts.get_remaining_debt_balance(_loan(2030), 15, 2020) == 0.0
++        # A payoff after the plan end leaves the same balance as no payoff.
++        assert debts.get_remaining_debt_balance(_loan(2040), 15, 2020) == pytest.approx(
++            debts.get_remaining_debt_balance(_loan(), 15, 2020))
++
++    def test_payoff_at_or_after_term_changes_nothing(self):
++        for payoff in (2050, 2060):
++            assert np.allclose(debts.get_debt_payments_array(_loan(payoff), 40, 2020),
++                               debts.get_debt_payments_array(_loan(), 40, 2020))
++
++    def test_payoff_in_the_start_year_pays_the_principal(self):
++        pay = debts.get_debt_payments_array(_loan(2020), 5, 2020)
++        assert pay[0] == pytest.approx(400_000.0) and np.all(pay[1:] == 0)
++
++    def test_payments_for_year(self):
++        df = _loan(2030)
++        assert debts.get_debt_payments_for_year(df, 2030) == pytest.approx(
++            debts.calculate_remaining_balance(400_000.0, 6.0, 30, 10))
++        assert debts.get_debt_payments_for_year(df, 2031) == 0.0
++
++
++def test_condition_fills_a_missing_payoff_with_zero():
++    df = conditionDebtsAndFixedAssetsDF(_loan(), "Debts")
++    assert "payoff" in df.columns and df["payoff"].iloc[0] == 0
++
++
++def _plan(payoff):
++    p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1965-09-15"], [89, 92], "payoff", verbose=False)
++    p.setSpendingProfile("flat")
++    p.setAccountBalances(taxable=[600, 600], taxDeferred=[0, 0], taxFree=[0, 0])
++    p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
++    p.setRates("conservative")
++    p.setSocialSecurity([2800, 2200], [70, 70])
++    p.houseLists["Debts"] = conditionDebtsAndFixedAssetsDF(
++        _loan(payoff, year=THISYEAR, term=30, amount=500_000.0, rate=6.5), "Debts")
++    return p
++
++
++def test_plan_pays_off_and_reports_no_debt_after():
++    p = _plan(THISYEAR + 8)
++    p.solve("maxSpending", options={"bequest": 0, "withMedicare": "None", "withSSTaxability": 0.85})
++    assert p.caseStatus == "solved"
++    assert p.debt_payments_n[8] == pytest.approx(debts.calculate_remaining_balance(500_000.0, 6.5, 30, 8))
++    assert np.all(p.debt_payments_n[9:] == 0)
++    assert p.remaining_debt_balance == 0.0
++    assert np.all(p.fixed_assets_debt_balances_remaining_n[9:] == 0)
++
++
++def test_hfp_round_trip_keeps_payoff(tmp_path):
++    p1 = _plan(THISYEAR + 8)
++    fname = str(tmp_path / "HFP_payoff.xlsx")
++    p1.saveHFP(fname, overwrite=True)
++    p2 = _plan(None)
++    p2.readHFP(fname)
++    assert int(p2.houseLists["Debts"]["payoff"].iloc[0]) == THISYEAR + 8
++
++
++def test_hfp_without_payoff_column_loads(tmp_path):
++    """A workbook written before the column existed loads, with no payoff."""
++    p1 = _plan(None)
++    fname = str(tmp_path / "HFP_old.xlsx")
++    p1.saveHFP(fname, overwrite=True)
++    from openpyxl import load_workbook
++
++    wb = load_workbook(fname)
++    ws = wb["Debts"]
++    header = [c.value for c in ws[1]]
++    ws.delete_cols(header.index("payoff") + 1)
++    wb.save(fname)
++    p2 = _plan(None)
++    p2.readHFP(fname)
++    assert int(p2.houseLists["Debts"]["payoff"].iloc[0]) == 0
++    assert float(p2.houseLists["Debts"]["amount"].iloc[0]) == pytest.approx(500_000.0)
+diff --git a/ui/Documentation.py b/ui/Documentation.py
+index ce626b0..408ef7f 100644
+--- a/ui/Documentation.py
++++ b/ui/Documentation.py
+@@ -194,7 +194,8 @@ from a recognized one only by capitalization, spacing, or punctuation: that is r
+ rather than dropped, so a misspelled column never silently becomes zeros.
+ 
+ Two optional **worksheets** (separate tabs) extend the workbook:
+-- **`Debts`** — columns `active`, `name`, `type` (`loan` or `mortgage`), `year`, `term`, `amount`, `rate`.
++- **`Debts`** — columns `active`, `name`, `type` (`loan` or `mortgage`), `year`, `term`, `amount`, `rate`,
++  and optionally `payoff`.
+ - **`Fixed Assets`** — columns `active`, `name`, `type`, `year`, `basis`, `value`, `rate`, `yod`, `commission`
+   (allowed `type` values are listed under *Financial Profile → Debts and Fixed Assets*).
+ 
+@@ -553,9 +554,9 @@ The *Household Financial Profile* workbook can optionally contain a *Debts* shee
+ a *Fixed Assets* sheet to store these data.
+ The *Debts* worksheet looks like the following:
+ 
+-|active|name|type|year|term|amount|rate|
+-|--|--|--|--|--|--|--|
+-| | | | | | | |
++|active|name|type|year|term|amount|rate|payoff|
++|--|--|--|--|--|--|--|--|
++| | | | | | | | |
+ 
+ where:
+ - *active* is a Boolean value (`TRUE` or `FALSE`) that allows you to turn debts on or off in the
+@@ -573,6 +574,10 @@ where:
+ - *rate* is the **annual interest rate** (percentage) for the debt. This rate is used to calculate
+   the fixed annual payment amount based on standard amortization formulas. The payment amount remains
+   constant throughout the loan term.
++- *payoff* (optional; 0 or blank = none) is the **year the remaining balance is paid in full**, for
++  instance the year the home it finances is sold. That year the balance left after the regular payments
++  is paid instead of the regular payment, and nothing is paid after it. A year at or after the end of the
++  term changes nothing. Workbooks without this column load as before.
+ 
+ **Debt Payment Calculation:**
+ - Debt payments are calculated using standard amortization formulas based on the principal amount,
+diff --git a/ui/Financial_Profile.py b/ui/Financial_Profile.py
+index 0ef39f5..a5cc3d7 100644
+--- a/ui/Financial_Profile.py
++++ b/ui/Financial_Profile.py
+@@ -333,6 +333,12 @@ The second table starts at the current year and covers the rest of the plan.""")
+                 min_value=0.0,
+                 step=0.01,
+             ),
++            "payoff": st.column_config.NumberColumn(
++                "payoff",
++                help="Year the remaining balance is paid in full, e.g. the year the home is sold (0 = run to term)",
++                min_value=0,
++                step=1,
++            ),
+         }
+ 
+         edited_debtdf = st.data_editor(

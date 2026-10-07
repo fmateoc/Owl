@@ -80,6 +80,10 @@ class Year0StateTax(BaseModel):
     exclusion_ceiling: Optional[float] = Field(
         default=None, description="Income ceiling of that exclusion's tier at which state income is held (today's $)."
     )
+    property_tax_deduction: Optional[float] = Field(
+        default=None,
+        description="Property tax deduction claimed against state taxable income (today's $); absent when none.",
+    )
     top_bracket_rate_pct: Optional[float] = Field(
         default=None, description="State marginal rate of the highest bracket reached (%); absent with no state tax."
     )
@@ -194,6 +198,10 @@ class StateBracketYear(BaseModel):
     )
     exclusion_ceiling_today: Optional[float] = Field(
         default=None, description="Income ceiling of that exclusion's tier at which state income is held (today's $)."
+    )
+    property_tax_deduction_today: Optional[float] = Field(
+        default=None,
+        description="Property tax deduction claimed against state taxable income (today's $); absent when none.",
     )
     top_bracket_rate_pct: float = Field(description="State marginal rate of the highest bracket reached (%).")
     headroom_in_bracket_today: Optional[float] = Field(

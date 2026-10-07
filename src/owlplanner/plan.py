@@ -494,6 +494,8 @@ class Plan:
         self.st_recap_n = np.zeros(self.N_n)  # Recapture charged in the solved plan (part of st_T_n)
         self._str_active = False  # True when the state recaptures the benefit of its lower brackets
         self.st_rx_n = np.zeros(self.N_n)  # Income-tiered retirement exclusion claimed (NJ line 28c)
+        self.st_ptd_cap_n = np.zeros(self.N_n)  # Property tax deduction cap per year (0 = none); set by solve()
+        self.st_ptd_rent_share_n = np.zeros(self.N_n)  # Percent of rent counted toward it
         self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction allowed (line 41)
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
@@ -2170,6 +2172,8 @@ class Plan:
                 self.housing_property_tax_n,
                 self.housing_rent_n,
             ) = housing.get_housing_arrays(self.houseLists["Housing"], self.N_n, gamma_n, thisyear)
+            for name, why in housing.rows_left_out(self.houseLists["Housing"], self.N_n, thisyear):
+                self.mylog.print(f"Housing row {name!r} {why}: it pays nothing in the plan.", tag="WARNING")
         else:
             self.housing_costs_n = np.zeros(self.N_n)
             self.housing_property_tax_n = np.zeros(self.N_n)

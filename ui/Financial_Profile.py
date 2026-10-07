@@ -333,6 +333,12 @@ The second table starts at the current year and covers the rest of the plan.""")
                 min_value=0.0,
                 step=0.01,
             ),
+            "payoff": st.column_config.NumberColumn(
+                "payoff",
+                help="Year the remaining balance is paid in full, e.g. the year the home is sold (0 = run to term)",
+                min_value=0,
+                step=1,
+            ),
         }
 
         edited_debtdf = st.data_editor(

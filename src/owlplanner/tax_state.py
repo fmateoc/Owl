@@ -79,6 +79,8 @@ class StateTaxParams:
     rx_age_n       -- shape (N_n,) age by December 31 at which a filer's income becomes eligible
     rx_earned_n    -- shape (N_n,) earned income at or below which the unused exclusion also covers
                       other income (NJ line 28b); -1 = no such extension
+    ptd_cap_n      -- shape (N_n,) property tax deduction cap (NJ line 41; 0 = the state has none)
+    ptd_rent_share_n -- shape (N_n,) percent of rent that counts as property tax for that deduction
 
     The flag arrays are per year because the state can change during the plan.
     """
@@ -104,6 +106,8 @@ class StateTaxParams:
     rx_cap_n: np.ndarray
     rx_age_n: np.ndarray
     rx_earned_n: np.ndarray
+    ptd_cap_n: np.ndarray
+    ptd_rent_share_n: np.ndarray
 
 
 @lru_cache(maxsize=1)
@@ -327,6 +331,8 @@ def st_taxParams(
     rx_limit_kn = np.full((N_rx, N_n), -np.inf)
     rx_share_kn = np.zeros((N_rx, N_n))
     rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))  # cap, age, earned-income limit
+    ptd_cap_n = np.zeros(N_n)
+    ptd_rent_share_n = np.zeros(N_n)
 
     thisyear = date.today().year
     filing_status_n = filing_status_by_year(N_i, n_d, N_n)
@@ -357,6 +363,11 @@ def st_taxParams(
                 entry.get("retirement_exclusion_age", 0),
                 earned * ge if earned >= 0 else -1.0,
             ]
+        ptd = entry.get("property_tax_deduction")
+        if ptd is not None:
+            gp = np.asarray(gamma_n, dtype=float) if ptd.get("indexed", False) else np.ones(len(gamma_n))
+            ptd_cap_n[n] = float(ptd["cap"]) * gp[n]
+            ptd_rent_share_n[n] = float(ptd["rent_share"])
 
     # --- Per-filer exemptions, added to the state deduction for each living filer ---
     # personal_exemption applies at any age; senior_exemption from the year a filer reaches its
@@ -435,6 +446,8 @@ def st_taxParams(
         rx_cap_n=rx[0],
         rx_age_n=rx[1],
         rx_earned_n=rx[2],
+        ptd_cap_n=ptd_cap_n,
+        ptd_rent_share_n=ptd_rent_share_n,
     )
 
 
@@ -470,6 +483,8 @@ def st_schedule(
     rx_limit_kn = np.full((N_rx, N_n), -np.inf)
     rx_share_kn = np.zeros((N_rx, N_n))
     rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))
+    ptd_cap_n = np.zeros(N_n)
+    ptd_rent_share_n = np.zeros(N_n)
 
     for n, s in enumerate(states_n):
         if not s:
@@ -491,6 +506,8 @@ def st_schedule(
         rx_limit_kn[:k, n] = p.rx_limit_kn[:, n]
         rx_share_kn[:k, n] = p.rx_share_kn[:, n]
         rx[:, n] = [p.rx_cap_n[n], p.rx_age_n[n], p.rx_earned_n[n]]
+        ptd_cap_n[n] = p.ptd_cap_n[n]
+        ptd_rent_share_n[n] = p.ptd_rent_share_n[n]
 
     return StateTaxParams(
         N_st=N_st,
@@ -508,6 +525,8 @@ def st_schedule(
         rx_cap_n=rx[0],
         rx_age_n=rx[1],
         rx_earned_n=rx[2],
+        ptd_cap_n=ptd_cap_n,
+        ptd_rent_share_n=ptd_rent_share_n,
         credit_n=credit_n,
         **flags,
     )

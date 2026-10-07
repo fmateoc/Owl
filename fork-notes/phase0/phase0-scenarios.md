@@ -65,9 +65,10 @@ owlcli compare otherFiles/Case_us.toml --set 'basic_info.moves=[{"year": 2032, "
 
 NY benefit recapture (above $107,650 of NY AGI) applies automatically, and the Yonkers surcharge
 includes it. NJ's retirement-income exclusion (lines 28a-28c) is modeled exactly (a MILP; see
-`CLAUDE.md`). Not modeled: NYC household and school-tax credits, part-year residency, and property
-tax (Phase 2). So these runs compare income tax only; the
-larger residency difference, property tax, still has to go in as big-ticket items.
+`CLAUDE.md`), and so is the NJ property tax deduction (line 41, Phase 2): homeowners deduct
+property taxes up to $15,000, tenants 18% of rent. Not modeled: NYC household and school-tax
+credits, part-year residency, the $50 NJ property tax credit, NJ ANCHOR/Senior Freeze/Stay NJ,
+and NY STAR (enter those as big-ticket items or net them off the Housing row).
 
 Differences under about 1% between residency variants can be loop noise rather than a real
 difference, with either sign (see `PROGRESS.md`, NJ stakes). Keep the solver options identical
@@ -127,9 +128,42 @@ Two inputs to set per scenario by hand:
 - **Medicare past 65.** Owl charges each spouse Medicare from 65. If B worked past 65 with employer
   coverage and delayed Part B, Owl would overstate those premiums. Not an issue if B stops before 65.
 
-## 5. Rent vs buy (Phase 2; placeholder now)
+## 5. Rent vs buy (Phase 2)
 
-Housing costs go in as negative `big-ticket items`, one HFP workbook per housing scenario.
+Housing costs go in the `Housing` sheet of the HFP workbook (one row per recurring cost: rent,
+property tax, insurance, maintenance, other). Amounts are annual, in `year` dollars; `rate` is
+real growth above inflation (0 = tracks inflation). `end` is the last year paid (0 = through the
+plan end). With a move, split the rows at the move year.
+
+One HFP workbook per housing variant:
+
+- **Rent:** one `rent` row.
+- **Buy:** `big-ticket items` (negative: down payment and closing costs in the purchase year) +
+  `Debts` (mortgage) + `Fixed Assets` (`residence`, `year` = the January after the purchase,
+  `basis`, `rate`, `yod`, `commission`) + `Housing` rows (property tax, insurance, maintenance).
+
+```bash
+uv run python fork-notes/phase0/gen_hfp_us.py otherFiles/HFP_us_rent.xlsx
+uv run python fork-notes/phase0/gen_hfp_us.py otherFiles/HFP_us_buy.xlsx
+owlcli compare otherFiles/Case_us.toml \
+  --set household_financial_profile.HFP_file_name=HFP_us_buy.xlsx
+```
+
+How to read it: home equity cannot be spent in Owl, so under `maxSpending` with `bequest = 0` the
+buy variant leaves the house unspent. Compare with `maxBequest` at the same `netSpending` and read
+`final_bequest_today` (counts the house, net of remaining debt):
+
+```bash
+owlcli compare otherFiles/Case_us.toml \
+  --set household_financial_profile.HFP_file_name=HFP_us_buy.xlsx \
+  --set optimization_parameters.objective=maxBequest \
+  --set optimization_parameters.bequest=0 \
+  --set optimization_parameters.netSpending=80
+```
+
+Second view: `maxSpending` with the residence sold in a chosen year (`yod`) and rent after it.
+Loop noise rules from the residency section apply: local search and the exact-LP cross-check for
+each variant.
 
 ## Healthcare cost sensitivity
 
@@ -150,7 +184,8 @@ needs the Phase 6 sweep.
 
 - [ ] Fill in `otherFiles/Case_us.toml` TODOs (names, dates of birth, balances as of `start_date`, basis, PIAs, SLCSP)
 - [ ] Keep `basic_info.names` and the HFP sheet names identical
-- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages net of contributions, big-ticket items)
+- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages net of contributions, Housing rows)
 - [ ] Fill in `otherFiles/HFP_us_2027.xlsx` for the work-one-more-year variant
+- [ ] Fill in `otherFiles/HFP_us_rent.xlsx` and `otherFiles/HFP_us_buy.xlsx` for rent vs buy
 - [ ] Record the rate method, window or seed with every output
 - [ ] Check each run for a "Cash flow balance" warning

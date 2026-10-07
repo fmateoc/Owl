@@ -79,6 +79,14 @@
 #                               has reached the age, the unused part of the cap also covers other
 #                               income (NJ line 28b): the exclusion becomes pct percent of total
 #                               income, up to the cap. Omit if the state has no such extension.
+#   property_tax_deduction    = { cap, rent_share, indexed } — deduction from taxable income for
+#                               property taxes on the main home (owners) or rent_share percent of
+#                               rent (tenants), up to cap (NJ-1040 line 41: $15,000 / 18%). It
+#                               comes after the retirement exclusion and the exemptions, so it
+#                               does not change the income that sets the exclusion tiers. The
+#                               $50 alternative credit (line 56) is not modeled. Omit for states
+#                               without it. Amounts are not indexed (same figures in the 2020 and
+#                               2025 NJ-1040 instructions).
 #
 # Exemption caps are per person: each spouse's exemption is limited by that spouse's own
 # age and eligible income (tax-deferred withdrawals, Roth conversions, pensions), and an
@@ -1220,6 +1228,8 @@ retirement_exclusion_tiers = [[100000.0, 100.0], [125000.0, 37.5], [150000.0, 18
 retirement_exclusion_cap = 75000
 retirement_exclusion_age = 62
 retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
+# NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
+property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
 
 [NJ_MFJ]
 brackets = [[0.0, 1.4], [20000.0, 1.75], [50000.0, 2.45], [70000.0, 3.5], [80000.0, 5.525], [150000.0, 6.37], [500000.0, 8.97], [1000000.0, 10.75]]
@@ -1239,6 +1249,8 @@ retirement_exclusion_tiers = [[100000.0, 100.0], [125000.0, 50.0], [150000.0, 25
 retirement_exclusion_cap = 100000
 retirement_exclusion_age = 62
 retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
+# NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
+property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
 
 [NM_Single]
 # Audit 2026-09: HB 252 (2025) six-bracket schedule, 1.5%-5.9%; Tax Foundation 2026 table.

@@ -28,6 +28,7 @@ COLUMNS = [
     "taxable ctrb", "401k ctrb", "IRA ctrb", "Roth 401k ctrb", "Roth IRA ctrb", "HSA ctrb",
     "Roth conv", "Roth conv fixed", "QCD", "big-ticket items",
 ]
+HOUSING_COLUMNS = ["active", "name", "type", "year", "end", "amount", "rate"]
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "otherFiles/HFP_us.xlsx")
 if out.exists():
@@ -41,8 +42,11 @@ for name in NAMES:
     ws.append(COLUMNS)
     for year in YEARS:
         ws.append([year] + [0] * (len(COLUMNS) - 1))
+ws = wb.create_sheet("Housing")
+ws.append(HOUSING_COLUMNS)
 wb.save(out)
 
 print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
 print("Fill in: anticipated wages (net of contributions) for the working years;")
-print("         big-ticket items, negative, for housing and long-term-care outflows.")
+print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
+print("         Housing sheet: rent / property tax / insurance / maintenance rows (year, end, amount, rate).")

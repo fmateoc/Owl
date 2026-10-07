@@ -43,7 +43,7 @@ def synced():
 @pytest.mark.toml
 def test_sync_keeps_the_household_tables(synced):
     p, log = synced
-    assert _counts(p) == {"Debts": 1, "Fixed Assets": 1}
+    assert _counts(p) == {"Debts": 1, "Fixed Assets": 1, "Housing": 0}
     assert {"Debts", "Fixed Assets"} <= set(p.rawHFP)
     assert "not found" not in log
 
@@ -53,5 +53,5 @@ def test_clone_with_a_new_lifespan_keeps_debts_and_assets(synced):
     p, _ = synced
     p.houseLists["Fixed Assets"].loc[0, "value"] = 123.0  # an edit made in the UI
     c = clone(p, expectancy=[int(e) + 1 for e in p.expectancy], verbose=False)
-    assert _counts(c) == {"Debts": 1, "Fixed Assets": 1}
+    assert _counts(c) == {"Debts": 1, "Fixed Assets": 1, "Housing": 0}
     assert float(c.houseLists["Fixed Assets"].loc[0, "value"]) == 123.0

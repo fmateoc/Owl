@@ -313,6 +313,19 @@ def _format_fixed_assets_sheet(ws):
     )
 
 
+def _format_housing_sheet(ws):
+    """Format Housing sheet with appropriate column formatting."""
+    _format_col_sheet(
+        ws,
+        col_formats={
+            "year": "0",
+            "end": "0",
+            "rate": "#,##0.00",
+            "amount": "$#,##0_);[Red]($#,##0)",
+        },
+    )
+
+
 def _format_income_tax_sheet(ws):
     """Format Taxes sheet: currency for $ columns, percent for SS % taxed."""
     _format_col_sheet(
@@ -484,6 +497,11 @@ def build_summary_dic(plan, N=None):
     totDebtPayments = np.sum(plan.debt_payments_n[:N], axis=0)
     totDebtPaymentsNow = np.sum(plan.debt_payments_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total debt payments", totDebtPaymentsNow, totDebtPayments)
+
+    if np.any(plan.housing_costs_n > 0):
+        totHousing = np.sum(plan.housing_costs_n[:N], axis=0)
+        totHousingNow = np.sum(plan.housing_costs_n[:N] / plan.gamma_n[:N], axis=0)
+        _summary_currency_pair(dic, "Total housing costs", totHousingNow, totHousing)
 
     if plan.N_i == 2 and plan.n_d < plan.N_n and N == plan.N_n:
         _summary_section(dic, SUMMARY_SECTION_PARTIAL_BEQUEST)
@@ -1004,6 +1022,7 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "FA cap gains": plan.fixed_assets_capital_gains_n,
         "FA tax-free": plan.fixed_assets_tax_free_n,
         "debt pmts": -plan.debt_payments_n,
+        "housing": -plan.housing_costs_n,
         "all wdrwls": np.sum(plan.w_ijn, axis=(0, 1)),
         "all deposits": -np.sum(plan.d_in, axis=0),
         "ord taxes": -plan.T_n,
@@ -1041,6 +1060,7 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "FA cap gains": plan.sources_in["FA cap gains"],
         "FA tax-free": plan.sources_in["FA tax-free"],
         "debt pmts": plan.sources_in["debt pmts"],
+        "housing": plan.sources_in["housing"],
     }
     ws = wb.create_sheet("Household Sources")
     fillsheet(ws, householdSrcDic, "currency", op=lambda x: x[0], scale=inv_gamma, sheet_name="Household Sources")
@@ -1175,6 +1195,8 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
             TxDic["of which recapture"] = plan.st_recap_n
         if np.any(plan.lt_T_n > 0):
             TxDic["of which local"] = plan.lt_T_n
+    if np.any(plan.st_pt_n > 0):
+        TxDic["property tax deduction"] = plan.st_pt_n
     TxDic["Medicare+IRMAA"] = plan.medicare_n
     if np.any(plan.aca_costs_n > 0):
         TxDic["ACA premiums"] = plan.aca_costs_n
@@ -1254,6 +1276,7 @@ def plan_to_csv(plan, basename, mylog):
     planData["FA cap gains"] = plan.fixed_assets_capital_gains_n
     planData["FA tax-free"] = plan.fixed_assets_tax_free_n
     planData["debt pmts"] = -plan.debt_payments_n
+    planData["housing"] = -plan.housing_costs_n
     planData["all wdrwls"] = np.sum(plan.w_ijn, axis=(0, 1))
     planData["all deposits"] = -np.sum(plan.d_in, axis=0)
     planData["ord taxes"] = -plan.T_n

@@ -2,9 +2,7 @@
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
-Fork `fmateoc/Owl`, branch `claude/nifty-tesla-gbq1wt` (2026-10-06: merge of upstream 2026.10.7, NJ exclusion under local search, node cap, local-search tie rule), continued from `claude/project-thread-u0d9t0` (envelope model) and the branches before it (see `CLAUDE.md`), merged with upstream `dev` `5006479` (2026.10.7) and then `b4f1605` (five more fixes: partial-bequest weight 0.1% in the objective for couples with beneficiary fractions below 1, exact-NIIT cap row, local-search steps at a 0.01% gap, solve time in the Summary, lifespan-sampled copies) on 2026-10-06, then `5dd1623` on 2026-10-07 (`785217c`: our local-search tie rule adopted, an unchanged problem not searched again, IRMAA/ACA brackets $2 above their thresholds, partial-bequest weight max(1%, 2 x gap), HiGHS retries a MIP it calls infeasible, new example avery+quinn; `5dd1623`: a loop stopped early no longer returns iteration 0).
-Phase 1 closed 2026-10-07: the fork's `main` was fast-forwarded to this branch (`7551d75`).
-Branch `claude/compassionate-cannon-fb1srw` (2026-10-07, from `main`): Phase 2 plan, then merge of upstream `004c840` (2026.10.8: package upgrades, Streamlit 1.65, `tests/conftest.py` iterates over a copy of `sys.modules`); no conflicts.
+Fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07, from `main`): Phase 2 housing ledger and NJ property tax deduction.
 Plan details: `fork-notes/phase1-revised.md`. Scenario commands: `fork-notes/phase0/phase0-scenarios.md`.
 
 ## Upstream
@@ -140,14 +138,61 @@ When upstream lands #158, merge `dev` and drop our duplicate, as with #149, #155
 
 ## Later phases (from requirements.md)
 
-2 housing ledger (rent vs buy, property tax) · 3 itemized deductions · 4 healthcare cost model · 5 part-time work and SS earnings test · 6 scenario sweep and report · 7 NJ specifics (exclusion done; 65+ exemption done upstream in 2026.10.3; left: property tax deduction/credit up to $15k, which belongs with Phase 2)
+2 housing ledger (rent vs buy, property tax) · 3 itemized deductions · 4 healthcare cost model · 5 part-time work and SS earnings test · 6 scenario sweep and report · 7 NJ specifics (exclusion done; 65+ exemption done upstream in 2026.10.3; property tax deduction done with Phase 2; left: the $50 credit is out by decision)
 
-Next: Phase 2, housing ledger and property tax. **Plan written 2026-10-07: `fork-notes/phase2-plan.md`** (a `Housing` HFP sheet shaped like `Debts`; costs subtracted in the cash flow; NJ line 41 property tax deduction as a bounded LP variable, no binaries). NJ rule verified this session against the 2025 and 2020 NJ-1040 instructions: deduction up to $15,000 after line 39, tenants 18% of rent, $50 credit as the alternative, amounts not indexed. The user agreed to all three recommendations (a `Housing` sheet; rent vs buy read as `maxBequest` at fixed `netSpending` on `final_bequest_today`; the $50 credit left out). No code yet.
+## Phase 2 — housing ledger and property tax (2026-10-07)
+
+| Step | Commit | State |
+|---|---|---|
+| `Housing` sheet and `housing.py` (rent, property tax, insurance, maintenance, other) | this | Done |
+| Cash flow, Summary, Cash Flow sheet, plots, balance check | this | Done |
+| HFP read/write and UI round trip (`houseListHousing`) | this | Done |
+| NJ property tax deduction (line 41) as a bounded LP variable `st_pt` | this | Done |
+| Tests: 19 new (`tests/assets/test_housing.py`), including the big-ticket equivalence, NJ owner/tenant, NY unchanged, move, tier, local search, HFP round trip, constraint replay | this | Done |
+| `gen_hfp_us.py` empty Housing sheet; Scenario 5 (rent vs buy) in `phase0-scenarios.md` | this | Done |
+| Stakes measurement | `fork-notes/model-review/housing_stakes.py` | Exact LP recorded below; local search not re-run |
+| Upstream design issue `fork-notes/issue-housing.md` | — | Not drafted yet |
+
+Housing ledger: an optional `Housing` HFP sheet, one row per recurring cost (`active`, `name`,
+`type`, `year`, `end`, `amount`, `rate`). Amounts are household-level, not scaled at the first
+death; `amount` is in `year` dollars and `rate` is real growth above inflation (0 = tracks
+inflation). Costs are subtracted in the cash flow next to debt payments, so `g_n` means
+non-housing spending and rent vs buy is comparable under `maxSpending`. Key test: the same
+amounts as negative big-ticket items give the same objective (the series is inflated to match).
+
+NJ property tax deduction (verified 2026-10-07 against the 2025 and 2020 NJ-1040 instructions):
+`property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }` in `taxes_state.toml`;
+`st_ptd_n = min(cap, property_tax + rent_share% * rent)`; LP variable `st_pt` in `[0, st_ptd_n]`
+with +1 in the `state_taxable_income` row (same position as `st_e`). It is added to the
+exclusion's `L` so `L` stays at line 27: line 41 comes after line 39 and does not change the
+exclusion tiers. No binaries, so `localsearch.FAMILIES` is unchanged. Not modeled: the $50 credit
+(decision), main-home and multi-unit rules, part-year amounts.
+
+Stakes, 2026-10-07, exact LP (`withMedicare="None"`, `withSSTaxability=0.85`), synthetic couple
+from Phase 1 ($1.5M tax-deferred), `maxBequest` at `netSpending=80` ($k). Lifetime state tax and
+the deduction in today's dollars. Script `fork-notes/model-review/housing_stakes.py exact`.
+
+| Case | Bequest ($/yr basis) | Lifetime state tax | Lifetime `st_pt` | Time |
+|---|---:|---:|---:|---:|
+| NJ, $20k property tax as big-ticket (no deduction) | 80,000 | 11,047 | 0 | 62 s |
+| NJ, $20k property tax as Housing (deduction) | 80,000 | 5,693 | 260,356 | 44 s |
+| NJ, $30k rent as Housing (18% = $5,400) | 80,000 | 4,042 | 102,600 | 34 s |
+| NY, $20k property tax as Housing (no rule) | 80,000 | 48,926 | 0 | 0.1 s |
+
+Reading: the NJ deduction saves about $5.4k lifetime state tax on this couple versus the same
+cost as a big-ticket item (the tenant case pays less tax overall because rent is a smaller
+outflow than $20k property tax at the same `netSpending`, and its deduction is smaller). NY
+without the rule pays far more state tax than NJ with the exclusion and the deduction. The
+deduction is worth less than the plan's bracket arithmetic ($525–956/yr) because the NJ
+exclusion already zeros much of the tax.
+
+Next: Phase 2 leftovers (upstream issue draft, local-search stakes rerun if needed), then Phase 3
+itemized deductions or Phase 5 as the household needs them.
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
 
-2026-10-06, after merging upstream 2026.10.7: 2791 passed, 1 skipped, 1 failed (upstream's new UTF-8 check caught two fork `open()`s; fixed, then that test passed), so 2792 passed. flake8 clean except upstream's `localsearch.py:28` (122 > 120; their CI allows 127). After the local-search fixes and the node cap: 2795 passed, 1 skipped. After merging `5dd1623` (2026-10-07): 2818 passed, 1 skipped; flake8 only upstream's `localsearch.py:31` and `config/schema.py:388`. After merging `004c840` (2026-10-07): 2818 passed, 1 skipped; flake8 the same two upstream lines. After merging `b4f1605`: 2807 passed, 1 skipped (one conflict, in `tests/plan/test_local_search.py`, where both sides appended a test; both kept). The local-search benchmark in `fork-notes/local-search/` was run on `5006479`, before upstream tightened the step gap; not rerun.
+2026-10-07, Phase 2 housing + NJ property tax deduction on `claude/phase2-housing`: **2837 passed, 1 skipped**; flake8 clean on the changed files (upstream's `localsearch.py:31` and `config/schema.py:388` unchanged). Earlier: 2818 passed after merging `004c840` (2026.10.8).
 
 Merge notes (2026-10-06): `tax_federal.py` and `socialsecurity.py` are now identical to upstream. Per-year state flags carry upstream's names. Upstream's explanation omits years without a state income tax and reports the state on every row; the fork follows. Earlier merge notes: NJ's $1,000 exemption per filer aged 65+ came from upstream 2026.10.3; fork-only amounts follow upstream's indexing flags (NY recapture thresholds with `brackets_indexed`, NJ exclusion ceilings/cap with `exemptions_indexed`).

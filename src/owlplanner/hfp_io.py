@@ -98,6 +98,26 @@ _fixedAssetTypes = [
 ]
 
 
+_housingItems = [
+    "active",
+    "name",
+    "type",
+    "year",
+    "end",
+    "amount",
+    "rate",
+]
+
+
+_housingTypes = [
+    "rent",
+    "property tax",
+    "insurance",
+    "maintenance",
+    "other",
+]
+
+
 def _convert_to_string(val):
     """
     Convert value to string for DataFrame string columns.
@@ -373,8 +393,8 @@ def _conditionHouseTables(dfDict, mylog):
     """
     houseDic = {}
 
-    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems}
-    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes}
+    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Housing": _housingItems}
+    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Housing": _housingTypes}
     for page in items.keys():
         if page in dfDict:
             df = dfDict[page]
@@ -394,6 +414,7 @@ def _conditionHouseTables(dfDict, mylog):
 _pctCols = {
     "Debts": ["rate"],
     "Fixed Assets": ["rate", "commission"],
+    "Housing": ["rate"],
 }
 
 
@@ -422,9 +443,9 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
         Conditioned DataFrame with proper columns and no NaN values (except boolean columns default to True)
     """
     # Map table type to column items
-    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems}
+    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Housing": _housingItems}
     if tableType not in items:
-        raise ValueError(f"tableType must be 'Debts' or 'Fixed Assets', got '{tableType}'")
+        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Housing', got '{tableType}'")
 
     columnItems = items[tableType]
 
@@ -444,6 +465,9 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
     # Define which columns are integers vs floats
     if tableType == "Debts":
         int_cols = ["year", "term"]
+        float_cols = ["amount", "rate"]
+    elif tableType == "Housing":
+        int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
     else:  # Fixed Assets
         int_cols = ["year", "yod"]
@@ -576,6 +600,7 @@ def build_hfp_dataframes(plan):
     houseLists = {
         "Debts": plan.houseLists.get("Debts", pd.DataFrame(columns=_debtItems)),
         "Fixed Assets": plan.houseLists.get("Fixed Assets", pd.DataFrame(columns=_fixedAssetItems)),
+        "Housing": plan.houseLists.get("Housing", pd.DataFrame(columns=_housingItems)),
     }
 
     return timeLists, houseLists
@@ -659,15 +684,15 @@ def getTableTypes(tableType):
     Parameters
     ----------
     tableType : str
-        Type of table: "Debts" or "Fixed Assets"
+        Type of table: "Debts", "Fixed Assets" or "Housing"
 
     Returns
     -------
     list
         List of valid types for the specified table
     """
-    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes}
+    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Housing": _housingTypes}
     if tableType not in types:
-        raise ValueError(f"tableType must be 'Debts' or 'Fixed Assets', got '{tableType}'")
+        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Housing', got '{tableType}'")
 
     return types[tableType]

@@ -51,6 +51,7 @@ from . import socialsecurity as socsec
 from . import spending
 from . import debts as debts
 from . import fixedassets as fxasst
+from . import housing as housing
 from . import mylogging as log
 from .config.plan_bridge import clone  # noqa: F401
 from .config.schema import REMOVED_OPTIONS
@@ -493,6 +494,8 @@ class Plan:
         self.st_recap_n = np.zeros(self.N_n)  # Recapture charged in the solved plan (part of st_T_n)
         self._str_active = False  # True when the state recaptures the benefit of its lower brackets
         self.st_rx_n = np.zeros(self.N_n)  # Income-tiered retirement exclusion claimed (NJ line 28c)
+        self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction allowed (line 41)
+        self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
         self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
         self.st_T_n = np.zeros(self.N_n)  # State income tax per year (N_n,)
@@ -549,6 +552,11 @@ class Plan:
         self.debt_payments_n = np.zeros(self.N_n)
         # Remaining debt balance at the start of each year (length N_n)
         self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
+
+        # Recurring housing costs (Housing sheet), nominal $ per year
+        self.housing_costs_n = np.zeros(self.N_n)
+        self.housing_property_tax_n = np.zeros(self.N_n)
+        self.housing_rent_n = np.zeros(self.N_n)
 
         # SPIA arrays.
         self.spiaBar_in = np.zeros((self.N_i, self.N_n))
@@ -1035,6 +1043,7 @@ class Plan:
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
             "debt": float(np.sum(self.debt_payments_n * inv_g)),
+            "housing": float(np.sum(self.housing_costs_n * inv_g)),
             "bti": bti_out,
             # QCDs leave the portfolio for charity without passing through the budget.
             # Counting them here makes the gift visible; the portfolio slice below is a
@@ -1086,6 +1095,7 @@ class Plan:
             "state_taxes": self.st_T_n * inv_g,
             "healthcare": (self.medicare_n + self.aca_costs_n) * inv_g,
             "debt": self.debt_payments_n * inv_g,
+            "housing": self.housing_costs_n * inv_g,
             "bti": np.maximum(0.0, -Lambda_n),
             # See lifetime_allocation: charity is funded from the portfolio residual.
             "charity": np.sum(self.qcd_in, axis=0) * inv_g,
@@ -1961,7 +1971,7 @@ class Plan:
         for every year. A header differing from a recognized one only by case,
         spacing, or punctuation is rejected as a typo rather than dropped.
         Legacy header 'other inc.' is read as 'other inc'.
-        Optional workbook sheets 'Debts' and 'Fixed Assets' follow HFP formats.
+        Optional workbook sheets 'Debts', 'Fixed Assets' and 'Housing' follow HFP formats.
         A template is provided as an example.
         Missing rows (years) are populated with zero values.
 
@@ -2135,7 +2145,7 @@ class Plan:
 
     def processDebtsAndFixedAssets(self):
         """
-        Process debts and fixed assets from houseLists and populate arrays.
+        Process debts, fixed assets and housing costs from houseLists and populate arrays.
         Should be called after setContributions() and before solve().
         """
         thisyear = date.today().year
@@ -2152,10 +2162,29 @@ class Plan:
             self.remaining_debt_balance = 0.0
             self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
+        # Process housing costs (rent, property tax, insurance, maintenance)
+        gamma_n = getattr(self, "gamma_n", None)
+        if "Housing" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Housing"]):
+            (
+                self.housing_costs_n,
+                self.housing_property_tax_n,
+                self.housing_rent_n,
+            ) = housing.get_housing_arrays(self.houseLists["Housing"], self.N_n, gamma_n, thisyear)
+        else:
+            self.housing_costs_n = np.zeros(self.N_n)
+            self.housing_property_tax_n = np.zeros(self.N_n)
+            self.housing_rent_n = np.zeros(self.N_n)
+
+        # NJ property tax deduction (line 41): property taxes + 18% of rent, up to the cap.
+        # Computed after both the housing ledger and the state parameters are in place.
+        self.st_ptd_n = np.minimum(
+            self.st_ptd_cap_n,
+            self.housing_property_tax_n + self.st_ptd_rent_share_n / 100.0 * self.housing_rent_n,
+        )
+
         # Process fixed assets
         if "Fixed Assets" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Fixed Assets"]):
             filing_status = "married" if self.N_i == 2 else "single"
-            gamma_n = getattr(self, "gamma_n", None)
             (self.fixed_assets_tax_free_n, self.fixed_assets_ordinary_income_n, self.fixed_assets_capital_gains_n) = (
                 fxasst.get_fixed_assets_arrays(
                     self.houseLists["Fixed Assets"], self.N_n, gamma_n, thisyear, filing_status
@@ -2266,6 +2295,21 @@ class Plan:
             for row in dataframe_to_rows(df, index=False, header=True):
                 ws.append(row)
             export._format_fixed_assets_sheet(ws)
+
+        # Add Housing sheet if available
+        if "Housing" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Housing"]):
+            ws = wb.create_sheet("Housing")
+            df = self.houseLists["Housing"]
+            for row in dataframe_to_rows(df, index=False, header=True):
+                ws.append(row)
+            export._format_housing_sheet(ws)
+        else:
+            # Create empty Housing sheet with proper columns
+            ws = wb.create_sheet("Housing")
+            df = pd.DataFrame(columns=hfp_io._housingItems)
+            for row in dataframe_to_rows(df, index=False, header=True):
+                ws.append(row)
+            export._format_housing_sheet(ws)
 
         return wb
 
@@ -2650,6 +2694,8 @@ class Plan:
         vm.add_if(st_lp, "st_f", self.N_st, self.N_n)  # state bracket allocations
         vm.add_if(st_lp, "st_e", self.N_n)  # state standard deduction headroom
         vm.add_if(st_re_lp, "st_re", self.N_i, self.N_n)  # retirement income exemption (per person)
+        st_pt_lp = st_lp and bool(np.any(self.st_ptd_n > 0))
+        vm.add_if(st_pt_lp, "st_pt", self.N_n)  # property tax deduction (NJ line 41)
         rx_lp = st_lp and self._rx_active
         N_rx = self.st_rx_limit_kn.shape[0] + 1 if rx_lp else 0  # tiers plus "above the last ceiling"
         vm.add_if(rx_lp, "st_rx", self.N_n)  # income-tiered retirement exclusion
@@ -2776,6 +2822,9 @@ class Plan:
                 self.B.setRange(vm["st_f"].idx(t, n), 0, self.st_DeltaBar_tn[t, n])
         for n in range(self.N_n):
             self.B.setRange(vm["st_e"].idx(n), 0, self.st_sigmaBar_n[n])
+        if "st_pt" in vm:
+            for n in range(self.N_n):
+                self.B.setRange(vm["st_pt"].idx(n), 0, self.st_ptd_n[n])
         if "st_c" in vm:
             for n in range(self.N_n):
                 self.B.setRange(vm["st_c"].idx(n), 0, self.st_credit_n[n])
@@ -2866,6 +2915,8 @@ class Plan:
                     row.addElem(vm["st_re"].idx(i, n), 1)  # retirement income exemption
             if "st_rx" in vm:
                 row.addElem(vm["st_rx"].idx(n), 1)  # income-tiered retirement exclusion
+            if "st_pt" in vm:
+                row.addElem(vm["st_pt"].idx(n), 1)  # property tax deduction (NJ line 41)
             for t in range(self.N_t):
                 row.addElem(vm["f"].idx(t, n), -1)  # subtract G_n (federal taxable ordinary income)
             row.addElem(vm["e"].idx(n), -1)  # add back the federal standard deduction
@@ -2944,7 +2995,8 @@ class Plan:
             # Exactly one tier.
             self.A.addNewRow({zx.idx(n, k): 1 for k in tiers + [K]}, 1, 1, tag=("state_exclusion_one", n))
 
-            # L = sum of its copies.
+            # L = sum of its copies. st_pt is included so L stays at line 27: the property tax
+            # deduction (line 41) comes after line 39 and does not change the exclusion tiers.
             row = self.A.newRow()
             for t in range(self.N_st):
                 row.addElem(vm["st_f"].idx(t, n), 1)
@@ -2953,6 +3005,8 @@ class Plan:
                 for i in range(self.N_i):
                     row.addElem(vm["st_re"].idx(i, n), 1)
             row.addElem(vm["st_rx"].idx(n), 1)
+            if "st_pt" in vm:
+                row.addElem(vm["st_pt"].idx(n), 1)
             for k in tiers + [K]:
                 row.addElem(rxl.idx(n, k), -1)
             self.A.addRow(row, 0, 0, tag=("state_exclusion_income", n))
@@ -3441,6 +3495,8 @@ class Plan:
             )
             # Subtract debt payments (negative cash flow)
             rhs -= self.debt_payments_n[n]
+            # Subtract recurring housing costs (rent, property tax, insurance, maintenance)
+            rhs -= self.housing_costs_n[n]
             row = self.A.newRow({self.vm["g"].idx(n): 1})
             row.addElem(self.vm["s"].idx(n), 1)
             row.addElem(self.vm["m"].idx(n), 1)
@@ -4985,6 +5041,8 @@ class Plan:
         self.st_recap = None
         self._str_active = False
         self._rx_active = False
+        self.st_ptd_cap_n = np.zeros(self.N_n)
+        self.st_ptd_rent_share_n = np.zeros(self.N_n)
         if any(self._states_n()):
             residence_n = self._residence_by_year()
             sp = tax_state.st_schedule(
@@ -5011,6 +5069,8 @@ class Plan:
             self.st_pension_eligible_n = sp.pension_eligible_n
             self.st_recap = (sp.recap_start_n, sp.recap_width_n, sp.recap_until_n)
             self._str_active = bool(np.any(np.isfinite(sp.recap_start_n)))
+            self.st_ptd_cap_n = sp.ptd_cap_n
+            self.st_ptd_rent_share_n = sp.ptd_rent_share_n
             self._set_tiered_exclusion(sp)
 
         # _adjustParameters reads the Part D options from solverOptions: give it this solve's
@@ -5019,10 +5079,10 @@ class Plan:
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
-        self._buildOffsetMap(myoptions)
-
-        # Process debts and fixed assets
+        # Housing costs and the property tax deduction are LP parameters: process them
+        # before the variable map is built, so st_ptd_n is known when st_pt is created.
         self.processDebtsAndFixedAssets()
+        self._buildOffsetMap(myoptions)
 
         solver = myoptions.get("solver", self.defaultSolver)
         if solver == "default":
@@ -5384,6 +5444,7 @@ class Plan:
             + self.medicare_n
             + self.aca_costs_n
             + self.debt_payments_n
+            + self.housing_costs_n
         )
         rhs = (
             np.sum(self.omega_in, axis=0)
@@ -6909,6 +6970,7 @@ class Plan:
         self.st_f_tn = vm["st_f"].extract(x) if "st_f" in vm else np.zeros((self.N_st, Nn))
         self.st_re_in = vm["st_re"].extract(x) if "st_re" in vm else np.zeros((Ni, Nn))
         self.st_rx_n = vm["st_rx"].extract(x) if "st_rx" in vm else np.zeros(Nn)
+        self.st_pt_n = vm["st_pt"].extract(x) if "st_pt" in vm else np.zeros(Nn)
         self.st_agi_n, self.st_ti_n = self._state_agi_and_ti()
 
         # Stop after building minimum required for self-consistent loop.
@@ -7001,6 +7063,7 @@ class Plan:
         sources["FA cap gains"] = self.fixed_assets_capital_gains_n.reshape(1, -1)
         sources["FA tax-free"] = self.fixed_assets_tax_free_n.reshape(1, -1)
         sources["debt pmts"] = -self.debt_payments_n.reshape(1, -1)
+        sources["housing"] = -self.housing_costs_n.reshape(1, -1)
 
         savings = {}
         savings["taxable"] = self.b_ijn[:, 0, :]

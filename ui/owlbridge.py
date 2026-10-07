@@ -1210,9 +1210,9 @@ def _setContributions(plan, action):
         if iname in plan.timeLists:
             original_timeLists[iname] = plan.timeLists[iname].copy()
 
-    # Ensure original_houseLists always has both keys
+    # Ensure original_houseLists always has the household keys
     original_houseLists = {}
-    for key in ["Debts", "Fixed Assets"]:
+    for key in ["Debts", "Fixed Assets", "Housing"]:
         if key in plan.houseLists:
             original_houseLists[key] = plan.houseLists[key].copy()
         else:
@@ -1257,9 +1257,9 @@ def _setContributions(plan, action):
             break
 
     # Compare houseLists if timeLists haven't changed.
-    # Both plan.houseLists and original_houseLists are guaranteed to have both keys.
+    # Both plan.houseLists and original_houseLists are guaranteed to have the keys.
     if not data_changed:
-        for key in ["Debts", "Fixed Assets"]:
+        for key in ["Debts", "Fixed Assets", "Housing"]:
             if len(plan.houseLists[key]) == 0 and len(original_houseLists[key]) == 0:
                 continue
             elif not plan.houseLists[key].equals(original_houseLists[key]):
@@ -1335,9 +1335,10 @@ def readHFP(plan, stFile, file=None):
         kz.setCaseKey("timeList1", plan.timeLists[kz.getCaseKey("iname1")])
         kz.setCaseKey("_timeList1", plan.timeLists[kz.getCaseKey("iname1")])
 
-    # Store houseLists (Debts and Fixed Assets). These are guaranteed to be present in the plan object.
+    # Store houseLists (Debts, Fixed Assets, Housing). These are guaranteed to be present in the plan object.
     kz.setCaseKey("houseListDebts", plan.houseLists["Debts"])
     kz.setCaseKey("houseListFixedAssets", plan.houseLists["Fixed Assets"])
+    kz.setCaseKey("houseListHousing", plan.houseLists.get("Housing"))
 
     # Columns the workbook did not carry, so the page can say so. Absent columns are
     # read as zero, which is a silent change of meaning if the user did not intend it.
@@ -1402,13 +1403,21 @@ def syncHouseLists(plan):
     if plan is None:
         return False
 
-    plan.houseLists = {}
     logger = plan.logger()
     debts = kz.getCaseKey("houseListDebts")
     fixedAssets = kz.getCaseKey("houseListFixedAssets")
+    housing_df = kz.getCaseKey("houseListHousing")
+    # Housing is optional; a case saved before it existed has no key, and the sheet
+    # from the file is kept (the UI does not edit it yet).
+    prior_housing = plan.houseLists.get("Housing") if getattr(plan, "houseLists", None) else None
 
+    plan.houseLists = {}
     plan.houseLists["Debts"] = conditionDebtsAndFixedAssetsDF(debts, "Debts", mylog=logger)
     plan.houseLists["Fixed Assets"] = conditionDebtsAndFixedAssetsDF(fixedAssets, "Fixed Assets", mylog=logger)
+    if housing_df is not None:
+        plan.houseLists["Housing"] = conditionDebtsAndFixedAssetsDF(housing_df, "Housing", mylog=logger)
+    else:
+        plan.houseLists["Housing"] = conditionDebtsAndFixedAssetsDF(prior_housing, "Housing", mylog=logger)
 
     return True
 

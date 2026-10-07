@@ -150,8 +150,8 @@ When upstream lands #158, merge `dev` and drop our duplicate, as with #149, #155
 | NJ property tax deduction (line 41) as a bounded LP variable `st_pt` | this | Done |
 | Tests: 19 new (`tests/assets/test_housing.py`), including the big-ticket equivalence, NJ owner/tenant, NY unchanged, move, tier, local search, HFP round trip, constraint replay | this | Done |
 | `gen_hfp_us.py` empty Housing sheet; Scenario 5 (rent vs buy) in `phase0-scenarios.md` | this | Done |
-| Stakes measurement | `fork-notes/model-review/housing_stakes.py` | Exact LP recorded below; local search not re-run |
-| Upstream design issue `fork-notes/issue-housing.md` | — | Not drafted yet |
+| Stakes measurement | `fork-notes/model-review/housing_stakes.py` | Done (exact LP and local search) |
+| Upstream design issue | `fork-notes/issue-housing.md` | Drafted 2026-10-07; user to file |
 
 Housing ledger: an optional `Housing` HFP sheet, one row per recurring cost (`active`, `name`,
 `type`, `year`, `end`, `amount`, `rate`). Amounts are household-level, not scaled at the first
@@ -168,26 +168,28 @@ exclusion's `L` so `L` stays at line 27: line 41 comes after line 39 and does no
 exclusion tiers. No binaries, so `localsearch.FAMILIES` is unchanged. Not modeled: the $50 credit
 (decision), main-home and multi-unit rules, part-year amounts.
 
-Stakes, 2026-10-07, exact LP (`withMedicare="None"`, `withSSTaxability=0.85`), synthetic couple
-from Phase 1 ($1.5M tax-deferred), `maxBequest` at `netSpending=80` ($k). Lifetime state tax and
-the deduction in today's dollars. Script `fork-notes/model-review/housing_stakes.py exact`.
+Stakes, 2026-10-07, synthetic couple from Phase 1 ($1.5M tax-deferred), `maxBequest` at
+`netSpending=80` ($k). Lifetime state tax and the deduction in today's dollars. "Exact LP" is
+`withMedicare="None"`, `withSSTaxability=0.85`; "LS" is `breakpointMethod="local-search"` (which
+also replaces the pinned SS fraction by the IRS formula). Script
+`fork-notes/model-review/housing_stakes.py exact|ls`.
 
-| Case | Bequest ($/yr basis) | Lifetime state tax | Lifetime `st_pt` | Time |
+| Case | Exact LP state tax | LS state tax | Lifetime `st_pt` (exact / LS) | Time (exact / LS) |
 |---|---:|---:|---:|---:|
-| NJ, $20k property tax as big-ticket (no deduction) | 80,000 | 11,047 | 0 | 62 s |
-| NJ, $20k property tax as Housing (deduction) | 80,000 | 5,693 | 260,356 | 44 s |
-| NJ, $30k rent as Housing (18% = $5,400) | 80,000 | 4,042 | 102,600 | 34 s |
-| NY, $20k property tax as Housing (no rule) | 80,000 | 48,926 | 0 | 0.1 s |
+| NJ, $20k property tax as big-ticket (no deduction) | 11,047 | 12,981 | 0 / 0 | 62 / 215 s |
+| NJ, $20k property tax as Housing (deduction) | 5,693 | 11,890 | 260,356 / 255,451 | 44 / 175 s |
+| NJ, $30k rent as Housing (18% = $5,400) | 4,042 | 12,316 | 102,600 / 118,800 | 34 / 408 s |
+| NY, $20k property tax as Housing (no rule) | 48,926 | 50,495 | 0 / 0 | 0.1 / 218 s |
 
-Reading: the NJ deduction saves about $5.4k lifetime state tax on this couple versus the same
-cost as a big-ticket item (the tenant case pays less tax overall because rent is a smaller
-outflow than $20k property tax at the same `netSpending`, and its deduction is smaller). NY
-without the rule pays far more state tax than NJ with the exclusion and the deduction. The
-deduction is worth less than the plan's bracket arithmetic ($525–956/yr) because the NJ
-exclusion already zeros much of the tax.
+Reading: the NJ deduction saves about $5.4k lifetime state tax on the exact LP versus the same
+cost as a big-ticket item, and about $1.1k under local search (which prices the federal side
+differently). NY pays far more state tax than NJ here because the NJ exclusion is also in the
+fork. The deduction is worth less than the plan's bracket arithmetic ($525–956/yr) because the
+NJ exclusion already zeros much of the tax. LS runs are minutes each (local search over the NJ
+tier binaries).
 
-Next: Phase 2 leftovers (upstream issue draft, local-search stakes rerun if needed), then Phase 3
-itemized deductions or Phase 5 as the household needs them.
+Next: user to file `fork-notes/issue-housing.md`. Then Phase 3 (itemized deductions) or Phase 5
+(part-time work / SS earnings test) as the household needs them.
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 

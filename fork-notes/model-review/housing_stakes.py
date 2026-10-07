@@ -4,7 +4,8 @@ Couple born 1964-03-15 and 1964-09-15, life expectancies 89 and 92, SS $3,000 an
 at 70, $150k taxable each, $75k Roth each, conservative rates, 60/40, maxBequest at a fixed
 net spending (so the house/rent is comparable: final bequest counts the residence).
 
-Usage: housing_stakes.py exact|default|ls [tax-deferred in $k for each spouse, e.g. 900,600]
+Usage: housing_stakes.py exact|default|ls [tax-deferred in $k, e.g. 900,600] [case;case...]
+Case keys: bt, own, rent, ny.
 Lifetime state tax in today's dollars. Housing costs in nominal first-year dollars.
 """
 import io
@@ -29,6 +30,7 @@ if mode == "exact":
     opts.update({"withSSTaxability": 0.85})
 elif mode == "ls":
     opts.update({"breakpointMethod": "local-search"})
+only = sys.argv[3].split(";") if len(sys.argv) > 3 else None
 
 THISYEAR = owl.Plan(["A"], ["1960-01-01"], [80], "t", verbose=False).year_n[0]
 
@@ -67,12 +69,14 @@ def run(state, kind, amount=0.0):
 
 label = f"${sum(td) / 1000:.1f}M"
 cases = [
-    ("NJ pt $20k bigticket", "NJ", "bigticket", 20000.0),
-    ("NJ pt $20k Housing", "NJ", "owner", 20000.0),
-    ("NJ rent $30k Housing", "NJ", "tenant", 30000.0),
-    ("NY pt $20k Housing", "NY", "owner", 20000.0),
+    ("bt", "NJ pt $20k bigticket", "NJ", "bigticket", 20000.0),
+    ("own", "NJ pt $20k Housing", "NJ", "owner", 20000.0),
+    ("rent", "NJ rent $30k Housing", "NJ", "tenant", 30000.0),
+    ("ny", "NY pt $20k Housing", "NY", "owner", 20000.0),
 ]
-for name, state, kind, amount in cases:
+for key, name, state, kind, amount in cases:
+    if only and key not in only:
+        continue
     basis, st, ptd, dt, status = run(state, kind, amount)
     print(f"| {label} | {name} | bequest {basis:,.0f} | state tax {st:,.0f} | ptd {ptd:,.0f} |"
           f" {dt:.1f} s |" + ("" if status == "solved" else f" {status}"))

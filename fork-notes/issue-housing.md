@@ -2,7 +2,7 @@
 
 **Title:** Proposal: a Housing ledger for recurring housing costs, and New Jersey's property tax deduction (line 41) as its first state rule
 
-Status: draft, ready to file. Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in the commit after `3f51ddd`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
+Status: draft, ready to file. Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in `a9093f8`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
 
 ---
 

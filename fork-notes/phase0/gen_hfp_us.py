@@ -30,7 +30,7 @@ COLUMNS = [
 ]
 # Household sheets, headers only (rows are added per scenario; see phase0-scenarios.md, section 5).
 HOUSE_SHEETS = {
-    "Debts": ["active", "name", "type", "year", "term", "amount", "rate", "payoff"],
+    "Debts": ["active", "name", "type", "year", "term", "amount", "rate", "property"],
     "Fixed Assets": ["active", "name", "type", "year", "basis", "value", "rate", "yod", "commission"],
     "Housing": ["active", "name", "type", "year", "end", "amount", "rate"],
 }
@@ -55,4 +55,4 @@ print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(
 print("Fill in: anticipated wages (net of contributions) for the working years;")
 print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
 print("         Housing sheet: rent / property tax / insurance / maintenance rows (year, end, amount, rate).")
-print("         Buying: Debts (mortgage; payoff = the sale year if sold) and Fixed Assets (residence).")
+print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")

@@ -1,7 +1,14 @@
 # Draft upstream issue (mdlacasse/Owl): a mortgage outlives the sale of the home it financed
 
-Status: draft, ready to file (2026-10-07). Repro run on stock `dev` `004c840`; patch
-`fork-notes/issue-debt-payoff.patch` verified on the same commit (see the end).
+Status: **filed as #173 and implemented upstream with a different design** (`431aee0`, merged into
+the fork 2026-10-08; the fork's `payoff` column is dropped). Debts gain an optional `property` column
+naming a residence or real estate in Fixed Assets; the loan is paid off in the year that property is
+sold (balance owed at the start of the sale year, paid that year), and a link that can't be honored
+is a configuration error. The maintainer's reason: a typed year drifts out of step with a `yod`
+counted back from the plan end when the horizon changes. Our payoff mechanics were kept. With the
+link, this repro gives the same numbers as our `payoff` did (on 2026-10-08: spending basis 158,637
+to 161,220, $542,567 paid in 2036; $16/yr lower than below because the plan starts "today").
+The text below is the issue as filed; the patch is kept for the record only.
 
 **Title:** Debts: optional `payoff` year, so that a loan can end when the home it finances is sold
 

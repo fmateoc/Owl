@@ -78,10 +78,13 @@ across variants, and for decisions run each variant with local search and with t
 # local search on both runs (--solver-opt applies to both; --set to the variant only)
 owlcli compare otherFiles/Case_us.toml --set basic_info.state=NJ \
     --solver-opt breakpointMethod=local-search
-# exact LP: a copy of the case file with withMedicare = "None" and withSSTaxability = 0.85
-# in [solver_options] (a numeric option passed by --solver-opt stays a string and is ignored)
-owlcli compare otherFiles/Case_us_exact.toml --set basic_info.state=NJ
+# exact LP on both runs
+owlcli compare otherFiles/Case_us.toml --set basic_info.state=NJ \
+    --solver-opt withMedicare=None --solver-opt withSSTaxability=0.85
 ```
+
+(`--solver-opt withSSTaxability=0.85` pins the fraction since upstream #174, merged 2026-10-08;
+before, it stayed the text "0.85" and silently ran the loop.)
 
 ## 4. Part-time work (Phase 5; placeholder now)
 
@@ -147,12 +150,14 @@ sheets):
   `commission`) + `Housing` rows for the owner's costs (property tax, insurance, maintenance).
 - **Buy with a mortgage** (`HFP_us_buy_mortgage.xlsx`): the same, with only the down payment and
   closing costs as the big-ticket item, and the loan in `Debts` (`mortgage`, `year`, `term`,
-  `amount`, `rate`).
+  `amount`, `rate`, and `property` = the residence's `name`).
 
 Selling within the plan (e.g. before a move): set the residence's `yod` to the sale year, end
 its `Housing` rows the year before, start the next home's rows (or rent) in the sale year, and
-set the loan's `payoff` to the sale year, so that the balance is paid then and the payments stop.
-Without `payoff` the mortgage runs to its term after the house is gone.
+name the residence in the loan's `property` column: the balance owed at the start of the sale year
+is paid that year and the payments stop (upstream #173). With `property` blank the mortgage runs
+to its term after the house is gone. A link Owl cannot honor (a name not in `Fixed Assets`, an
+inactive home under an active loan, a sale before the loan starts) is an error.
 
 How to read it: home equity cannot be spent in Owl, so under `maxSpending` with `bequest = 0` a buy
 variant leaves the house unspent. Compare with `maxBequest` at a fixed `netSpending` and read
@@ -185,11 +190,15 @@ owlcli compare otherFiles/Case_us_housing.toml \
   --set household_financial_profile.HFP_file_name=HFP_us_buy_mortgage.xlsx
 ```
 
-For the exact-LP cross-check, make a second copy with `withMedicare = "None"` and
-`withSSTaxability = 0.85` in `[solver_options]` instead of `breakpointMethod` (put numeric
-options in the file or in `--set solver_options.X=...`: `--solver-opt withSSTaxability=0.85`
-passes the string `"0.85"`, which does not pin the fraction; checked 2026-10-07). Loop noise rules
-from the residency section apply.
+For the exact-LP cross-check, override the base file's method on both runs:
+
+```bash
+owlcli compare otherFiles/Case_us_housing.toml \
+  --set household_financial_profile.HFP_file_name=HFP_us_buy_mortgage.xlsx \
+  --solver-opt breakpointMethod=loop --solver-opt withMedicare=None --solver-opt withSSTaxability=0.85
+```
+
+Loop noise rules from the residency section apply.
 
 Not modeled, so read cash vs mortgage with care: the **mortgage interest deduction** (federal
 itemized deductions and NY's own; Phase 3). Owl assumes the standard deduction, so a mortgage
@@ -198,8 +207,8 @@ looks worse than it would be while itemizing beats the standard deduction (most 
 also turns on the mortgage rate against the assumed returns: with fixed rates it is a point
 estimate; historical or stochastic ranges show the spread.
 
-Second view: `maxSpending` with the residence sold in a chosen year (`yod`), rent after it, and
-`payoff` at the sale year.
+Second view: `maxSpending` with the residence sold in a chosen year (`yod`), rent after it, and the
+loan linked to the residence.
 
 ## Healthcare cost sensitivity
 

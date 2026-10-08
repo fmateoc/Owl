@@ -293,7 +293,6 @@ def _format_debts_sheet(ws):
         col_formats={
             "year": "0",
             "term": "0",
-            "payoff": "0",
             "rate": "#,##0.00",
             "amount": "$#,##0_);[Red]($#,##0)",
         },

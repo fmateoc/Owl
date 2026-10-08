@@ -1,8 +1,8 @@
 """A mortgage outlives the sale of the home it financed.
 
-Usage (repository root): python fork-notes/model-review/debt_payoff_repro.py [payoff]
-With `payoff`, the loan row gets payoff = the sale year (needs the Debts `payoff` column).
-Output for the draft issue fork-notes/issue-debt-payoff.md.
+Usage (repository root): python fork-notes/model-review/debt_payoff_repro.py [link]
+With `link`, the loan names the home in its `property` column (upstream #173, 431aee0), so the
+sale pays it off. Our first proposal was a `payoff` year (fork-notes/issue-debt-payoff.md).
 """
 import sys
 
@@ -23,8 +23,8 @@ p.setSocialSecurity([3000, 2400], [70, 70])
 home = dict(active=True, name="home", type="residence", year=Y, basis=800000.0, value=800000.0,
             rate=0.5, yod=Y + SALE, commission=6.0)
 loan = dict(active=True, name="mtg", type="mortgage", year=Y, term=30, amount=640000.0, rate=6.5)
-if len(sys.argv) > 1 and sys.argv[1] == "payoff":
-    loan["payoff"] = Y + SALE
+if len(sys.argv) > 1 and sys.argv[1] == "link":
+    loan["property"] = "home"
 p.houseLists["Fixed Assets"] = cond(pd.DataFrame([home]), "Fixed Assets")
 p.houseLists["Debts"] = cond(pd.DataFrame([loan]), "Debts")
 p.solve("maxSpending", options={"bequest": 0, "withMedicare": "None", "withSSTaxability": 0.85})

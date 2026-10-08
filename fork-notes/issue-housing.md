@@ -2,7 +2,7 @@
 
 **Title:** Proposal: a Housing ledger for recurring housing costs, and New Jersey's property tax deduction (line 41) as its first state rule
 
-Status: draft, ready to file. Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in `a9093f8`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
+Status: filed by the user (issue number not recorded here; no maintainer response relayed as of 2026-10-08). Since then, the loan payoff it points to landed upstream as a `property` link on Debts (#173). Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in `a9093f8`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
 
 ---
 
@@ -92,4 +92,4 @@ Size, by arithmetic on the NJ MFJ brackets: a full $15,000 deduction saves $525 
 - One NJ + housing case under `breakpointMethod="local-search"`.
 - Full fork suite after the change: 2856 passed, 1 skipped (2818 before Phase 2).
 
-Related, filed separately: `Debts` has no payoff year, so a mortgage outlives the sale of its home (`issue-debt-payoff.md`). Rent vs buy with a planned sale needs both.
+Related, filed separately as #173: a mortgage outlived the sale of its home. Fixed upstream (`431aee0`) by linking a loan to the property it finances; rent vs buy with a planned sale uses that link.

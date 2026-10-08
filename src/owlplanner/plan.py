@@ -2154,10 +2154,13 @@ class Plan:
 
         # Process debts
         if "Debts" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Debts"]):
-            self.debt_payments_n = debts.get_debt_payments_array(self.houseLists["Debts"], self.N_n, thisyear)
-            self.remaining_debt_balance = debts.get_remaining_debt_balance(self.houseLists["Debts"], self.N_n, thisyear)
+            debts_df = self.houseLists["Debts"]
+            # Loans linked to a property are paid off in the year it is sold.
+            payoffs = debts.resolve_payoff_years(debts_df, self.houseLists.get("Fixed Assets"), self.N_n, thisyear)
+            self.debt_payments_n = debts.get_debt_payments_array(debts_df, self.N_n, thisyear, payoffs)
+            self.remaining_debt_balance = debts.get_remaining_debt_balance(debts_df, self.N_n, thisyear, payoffs)
             self.fixed_assets_debt_balances_remaining_n = debts.get_debt_balances_array(
-                self.houseLists["Debts"], self.N_n, thisyear
+                debts_df, self.N_n, thisyear, payoffs
             )
         else:
             self.debt_payments_n = np.zeros(self.N_n)
@@ -4963,6 +4966,9 @@ class Plan:
 
         if objective not in knownObjectives:
             raise ValueError(f"Objective '{objective}' is not one of {knownObjectives}.")
+
+        # Canonical mode names; a value that is none of them is refused, not solved as another.
+        u.normalize_mode_options(myoptions)
 
         self._applyBreakpointOptions(myoptions)
         if self._useLocalSearch(myoptions):

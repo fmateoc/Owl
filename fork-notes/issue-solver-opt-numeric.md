@@ -1,7 +1,11 @@
 # Draft upstream issue (mdlacasse/Owl): `--solver-opt withSSTaxability=0.85` is silently ignored
 
-Status: draft, ready to file (2026-10-07). Repro run on stock `dev` `004c840`; patch
-`fork-notes/issue-solver-opt-numeric.patch` verified on the same commit (see the end).
+Status: **filed as #174 and fixed upstream** (`fcf1b0b`, merged into the fork 2026-10-08; the fork's
+validator and its test are dropped). Upstream's fix is broader: `utils.normalize_mode_option()` reads
+all six mode options (`withMedicare`, `withACA`, `withLTCG`, `withNIIT`, `withSSTaxability`,
+`withdrawalOrder`) to a canonical form or refuses the value, in the schema and in `Plan.solve()`.
+Rechecked on the merged fork: the second command below gives 101,448.13 for both runs.
+The text below is the issue as filed; the patch is kept for the record only.
 
 **Title:** CLI: a numeric `withSSTaxability` given with `--solver-opt` stays a string, and the plan runs the loop instead of the pinned fraction
 

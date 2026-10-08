@@ -1,5 +1,18 @@
 ### Unreleased
 
+#### New: housing ledger and the New Jersey property tax deduction
+
+An optional *Housing* sheet in the HFP workbook holds recurring housing costs, one row per cost
+(`rent`, `property tax`, `insurance`, `maintenance`, `other`), each with a first and last year, an
+annual amount in that year's dollars and a real growth rate. They leave the cash flow like debt
+payments, so net spending means non-housing spending and renting and buying can be compared (with
+`maxBequest` at a fixed net spending, since home equity is not spent). A plan with the sheet gives
+the same objective as the same amounts entered as negative big-ticket items. New Jersey's property
+tax deduction (NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \$15,000,
+not indexed) reads the sheet, as a bounded LP variable after the retirement exclusion, which it
+does not move. The \$50 credit that is its alternative is not modeled. `Plan.st_pt_n` gives the
+deduction by year; it appears in the Taxes sheet and the explanation.
+
 #### New: New Jersey retirement income exclusion
 
 New Jersey excludes pensions, annuities, IRA withdrawals and Roth conversions from income for filers
@@ -99,6 +112,33 @@ takes the new state's credits from its year.
 Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are replaced by a frozen
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
+### Version WIP
+
+#### New: a loan can be paid off by the sale of the property it finances
+
+A mortgage kept being paid for the rest of its term after the house it financed was sold. The
+*Debts* table now has an optional `property` column naming a residence or real estate in *Fixed
+Assets*: the loan is then paid off in the year that property is sold, out of the sale proceeds,
+and nothing is paid after. Tying the loan to the property rather than to a year keeps the two in
+step when the sale year moves, as it does with a `yod` counted back from the end of the plan.
+An empty cell keeps the loan running to its term, so existing workbooks give the same plans. A
+link that cannot be honored is an error rather than a loan quietly run to term: a property that is
+missing, named twice, inactive under an active loan, or sold before the loan starts. In the UI the
+column is a dropdown of the residences and real estate in *Fixed Assets*, and a link to a renamed
+or deleted property stays visible with a warning. The example workbooks carry the column. Thanks
+to Florin Mateoc for the original suggestion (#173).
+
+#### Fixed: a solver option with a value Owl does not know is refused
+
+`withMedicare`, `withACA`, `withLTCG`, `withNIIT`, `withSSTaxability` and `withdrawalOrder`
+select a mode by name, and a value Owl did not know solved as something else without a word.
+`--solver-opt withSSTaxability=0.85` arrived as the text "0.85" and ran the loop instead of
+pinning the fraction; "optimise" or "Loop" ran the loop; `withMedicare` "true" dropped Medicare
+premiums from the plan. Names are now read in any case, numeric text pins the Social Security
+fraction (in [0, 1]), `true`/`false` from older case files still read as `"loop"`/`"none"`, and
+any other value is refused with the valid choices named. Thanks to Florin Mateoc for reporting the
+bug (#174).
+
 ### Version 2026.10.8
 
 #### Documentation: what to add back for a start date after January 1

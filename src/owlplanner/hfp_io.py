@@ -66,11 +66,12 @@ _debtItems = [
     "term",
     "amount",
     "rate",
-    "payoff",
+    "property",
 ]
 
-# Optional house-table columns: a workbook written before they existed still loads (read as 0).
-_optionalHouseItems = {"Debts": ["payoff"]}
+# Optional house-table columns: a workbook written before they existed still loads (read as blank).
+# property: the residence or real estate whose sale pays off the loan (debts.resolve_payoff_years).
+_optionalHouseItems = {"Debts": ["property"]}
 
 
 _debtTypes = [
@@ -469,9 +470,11 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
     df = df[columnItems].copy()
 
     # Define which columns are integers vs floats
+    string_cols = ["name", "type"]
     if tableType == "Debts":
-        int_cols = ["year", "term", "payoff"]
+        int_cols = ["year", "term"]
         float_cols = ["amount", "rate"]
+        string_cols.append("property")
     elif tableType == "Housing":
         int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
@@ -483,8 +486,8 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
     if len(df) == 0:
         dtype_dict = {}
         dtype_dict["active"] = bool
-        for col in ["name", "type"]:
-            dtype_dict[col] = "object"  # string columns
+        for col in string_cols:
+            dtype_dict[col] = "object"
         for col in int_cols:
             dtype_dict[col] = "int64"
         for col in float_cols:
@@ -496,7 +499,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
             if col == "active":
                 # Ensure "active" column is boolean, handling strings/numbers from Excel
                 df[col] = df[col].apply(u.convert_to_bool).astype(bool)
-            elif col in ["name", "type"]:
+            elif col in string_cols:
                 # String columns: ensure they are strings, not lists
                 # Streamlit data_editor can return lists for string columns in some cases
                 df[col] = df[col].apply(_convert_to_string).astype(str)

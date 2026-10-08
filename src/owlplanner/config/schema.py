@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .. import socialsecurity as socsec
+from ..utils import normalize_mode_options
 from .defaults import (
     DEFAULT_DOB,
     DEFAULT_LIFE_EXPECTANCY,
@@ -367,16 +368,16 @@ class SolverOptions(BaseModel):
     noLateSurplus: Optional[bool] = None
 
     # Medicare, ACA, LTCG, NIIT, SS taxability
-    withMedicare: Optional[Union[str, bool]] = None
+    withMedicare: Optional[Literal["none", "loop", "optimize"]] = None
     includeMedicarePartD: Optional[bool] = None
     medicarePartDBasePremium: Optional[float] = None
-    withACA: Optional[str] = None
-    withLTCG: Optional[str] = None
-    withNIIT: Optional[str] = None
-    withSSTaxability: Optional[Union[str, float]] = None
+    withACA: Optional[Literal["loop", "optimize"]] = None
+    withLTCG: Optional[Literal["loop", "optimize"]] = None
+    withNIIT: Optional[Literal["loop", "optimize"]] = None
+    withSSTaxability: Optional[Union[Literal["loop", "optimize"], float]] = None
     withSSAges: Optional[Union[str, List[str]]] = None
     withDuals: Optional[bool] = None
-    withdrawalOrder: Optional[str] = None
+    withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None
     mipStrategy: Optional[Literal["branch-and-bound", "local-search"]] = None
     breakpointMethod: Optional[Literal["loop", "branch-and-bound", "local-search"]] = None
     localSearchTime: Optional[float] = Field(default=None, ge=0.0, description="Local search: total budget (s).")
@@ -396,22 +397,6 @@ class SolverOptions(BaseModel):
     oppCostX: Optional[float] = None
     units: Optional[str] = None
 
-    @field_validator("withSSTaxability", mode="before")
-    @classmethod
-    def _numeric_ss_taxability(cls, v):
-        """
-        Read a pinned fraction given as text as the number.
-
-        `owlcli run/compare --solver-opt withSSTaxability=0.85` passes the string "0.85". Kept as a
-        string, the plan does not pin the fraction and runs the loop instead, without saying so.
-        """
-        if isinstance(v, str):
-            try:
-                return float(v)
-            except ValueError:
-                return v
-        return v
-
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_options(cls, raw: Any) -> Any:
@@ -425,6 +410,20 @@ class SolverOptions(BaseModel):
             for name in raw:
                 if name in REMOVED_OPTIONS:
                     raise ValueError(f"Solver option '{name}' has been removed: {REMOVED_OPTIONS[name]}.")
+        return raw
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_modes(cls, raw: Any) -> Any:
+        """
+        Canonical values for the options that select a mode by name (utils.normalize_mode_option).
+
+        A value that is none of them is refused: the solver compares these options to exact
+        strings, so "optimise", "Loop" or the text "0.85" from the command line would otherwise
+        solve as something else without saying so.
+        """
+        if isinstance(raw, dict):
+            raw = normalize_mode_options(dict(raw))
         return raw
 
 

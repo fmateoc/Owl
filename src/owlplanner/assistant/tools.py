@@ -56,7 +56,7 @@ from owlplanner.data.mortality_tables import MORTALITY_TABLE_KEYS, MORTALITY_TAB
 from owlplanner.socialsecurity import getFRAs, getSelfFactor
 from owlplanner.tax_federal import contributionLimits
 from owlplanner.utils import getUnits
-from owlplanner.utils import derive_swap_roth_converters
+from owlplanner.utils import derive_swap_roth_converters, normalize_mode_options
 
 from owlplanner.rate_models.constants import CONSTRAIN_MEAN_METHODS
 
@@ -288,6 +288,8 @@ def _downgrade_milp_tax_modes(opts):
 
     Returns the list of downgraded option names (empty when nothing changed).
     """
+    # Canonical names first: a case file may spell a mode "Optimize", or withMedicare as true.
+    normalize_mode_options(opts)
     downgraded = []
     for key in _MILP_TAX_MODES:
         if opts.get(key) == "optimize":
@@ -1116,6 +1118,7 @@ def _build_plan_from_params(
                 "term": int(_get_field(d, "years_remaining")),
                 "amount": float(_get_field(d, "balance")),
                 "rate": float(d["rate"]),
+                "property": d.get("property", ""),
             }
             for d in debts
         ]
@@ -1541,7 +1544,9 @@ async def run_from_params(
         debts:          Amortizing loans.  Each entry: {"label": "mortgage", "type": "mortgage",
                         "balance": 350000, "rate": 3.5, "years_remaining": 20}.
                         type is "mortgage" or "loan".  balance = remaining principal today;
-                        rate = annual interest rate in percent.
+                        rate = annual interest rate in percent.  Optional "property": the label
+                        of a residence or real estate in fixed_assets whose sale pays off the
+                        loan (the balance is paid in the sale year, nothing after).
         fixed_assets:   Assets to be sold during or after the plan.  Each entry:
                         {"label": "house", "type": "residence", "value": 800000,
                         "basis": 400000, "rate": 0.0, "sell_year": 2035, "commission": 3.0}.
@@ -1670,8 +1675,9 @@ async def run_from_params(
                         of the estate when heirs inherit (default 30%).  Affects Roth
                         conversion aggressiveness: higher rates make Roth conversions more
                         attractive.  E.g. 22 if heirs are in the 22% bracket.
-        with_aca:       ACA premium modeling mode: "none", "loop" (iterative, default when
-                        slcsp is set), or "optimize" (embed in MIP).  Requires slcsp > 0.
+        with_aca:       How ACA premiums are solved: "loop" (iterative, default) or "optimize"
+                        (embed in MIP).  ACA is modeled whenever slcsp > 0, whatever this
+                        value; omit slcsp to leave ACA out.
         breakpoint_method: How tax breakpoints are solved: "loop" (default),
                         "branch-and-bound", or "local-search" (fix-and-optimize around the loop's
                         plan; never worse than the loop, not a proven optimum). Sets every
@@ -1736,8 +1742,8 @@ async def run_from_params(
                     employer plan or ACA not applicable.
 
     NOTE — ACA marketplace coverage: If any individual is under 65 and not yet on Medicare,
-    ACA marketplace premiums may apply and are NOT modeled unless slcsp is set AND with_aca
-    is provided (e.g. with_aca="loop").  When this situation arises, flag it to the user and
+    ACA marketplace premiums may apply and are NOT modeled unless slcsp is set (with_aca only
+    chooses how they are solved).  When this situation arises, flag it to the user and
     ask whether the person is covered by an employer plan (their own or a working
     spouse's) or needs ACA marketplace coverage.
     """
@@ -3113,7 +3119,8 @@ async def run_stochastic(
         qcds:                 Qualified charitable distributions, same shape. IRA-to-charity:
                               excluded from AGI and credited against the RMD.
         debts:                Debts: [{"label":"mortgage","type":"mortgage","balance":300000,
-                              "rate":3.5,"years_remaining":20}].
+                              "rate":3.5,"years_remaining":20,"property":"house"}].
+                              property (optional): the fixed asset whose sale pays it off.
         fixed_assets:         Assets: [{"label":"house","type":"residence","value":800000,
                               "basis":400000,"sell_year":2040}].
                               Tax treatment: residence applies IRC §121 exclusion ($250k
@@ -4735,7 +4742,7 @@ async def run_historical(
         previous_magis:   Prior-year MAGI per person in $ for Medicare IRMAA (first 2 years).
         with_medicare:    Medicare IRMAA mode: "none", "loop", or "optimize".
         slcsp:            Annual ACA Silver benchmark premium in $/year for pre-65 individuals.
-        with_aca:         ACA premium modeling: "none", "loop", or "optimize". Requires slcsp > 0.
+        with_aca:         How ACA premiums are solved: "loop" or "optimize". Modeled whenever slcsp > 0.
         breakpoint_method: How tax breakpoints are solved: "loop" (default),
                           "branch-and-bound", or "local-search" (fix-and-optimize around the loop's
                           plan; never worse than the loop, not a proven optimum). Sets every
@@ -5070,7 +5077,7 @@ async def run_monte_carlo(
         previous_magis:   Prior-year MAGI per person in $ for Medicare IRMAA (first 2 years).
         with_medicare:    Medicare IRMAA mode: "none", "loop", or "optimize".
         slcsp:            Annual ACA Silver benchmark premium in $/year for pre-65 individuals.
-        with_aca:         ACA premium modeling: "none", "loop", or "optimize". Requires slcsp > 0.
+        with_aca:         How ACA premiums are solved: "loop" or "optimize". Modeled whenever slcsp > 0.
         breakpoint_method: How tax breakpoints are solved: "loop" (default),
                           "branch-and-bound", or "local-search" (fix-and-optimize around the loop's
                           plan; never worse than the loop, not a proven optimum). Sets every

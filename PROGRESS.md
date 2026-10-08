@@ -2,7 +2,7 @@
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
-Fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07, from `main`): Phase 2 housing ledger and NJ property tax deduction, then the review fixes (same day): Debts `payoff` year, a crash before the first solve, Scenario 5 commands, stakes recorded on the objective, `--solver-opt` numeric text.
+Fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07, from `main`): Phase 2 housing ledger and NJ property tax deduction, then the review fixes (same day): Debts `payoff` year, a crash before the first solve, Scenario 5 commands, stakes recorded on the objective, `--solver-opt` numeric text. 2026-10-08: merged upstream `dev` `156d812` (#173 loan linked to the property it finances, #174 mode options normalized, MCP partial bequest); our `payoff` column and `--solver-opt` validator dropped for theirs.
 Plan details: `fork-notes/phase1-revised.md`. Scenario commands: `fork-notes/phase0/phase0-scenarios.md`.
 
 ## Upstream
@@ -28,9 +28,9 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #170 Envelope model | Filed with #171; one conversation with it (the maintainer answered both on #171) |
 | #171 Pinned loop | **Declined**: second model too costly; `withACA="optimize"` captures morgan's gain; maintainer's answer is local search (`breakpointMethod="local-search"`, 2026.10.6). Asked for our findings: measured, reply **posted** by the user 2026-10-06 (`fork-notes/issue-local-search-reply.md`, details `fork-notes/local-search/README.md`). Maintainer (2026-10-07): all three points right; tie rule and repeat reuse in `785217c`, merged (fork's own tie code and test dropped, theirs kept). He also notes the cost basis is still a source of non-convergence with Medicare exact (on his list) |
 | Loop anomaly (NY→FL at year 5) | Not filed (no repro beyond loop noise) |
-| Housing ledger + NJ property tax deduction (design) | Drafted 2026-10-07 (`issue-housing.md`); user to file |
-| Debts `payoff` year (mortgage outlives the sale) | Drafted 2026-10-07 (`issue-debt-payoff.md`, patch verified on `dev` `004c840`); user to file |
-| `--solver-opt withSSTaxability=0.85` ignored (stays text) | Found 2026-10-07; drafted (`issue-solver-opt-numeric.md`, patch verified on `dev` `004c840`); user to file |
+| Housing ledger + NJ property tax deduction (design) | Filed by the user (number not recorded; `issue-housing.md`); no response relayed as of 2026-10-08 |
+| #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
+| #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -136,7 +136,7 @@ Upstream: the pinned loop was filed as #171 and **declined** (2026-10-05/06): a 
 8. Filed 2026-10-04 by the user: #164 ACA 133-150% band, #169 survivor never claimed, #166 cost basis, #168 SS-age taxes (all fixed upstream, merged); #167 partial first year (documented, open); #165 ACA optimize rates (fixed upstream). Not filed: docs/paper drift
 9. #170 envelope model and #171 pinned loop (one conversation) — declined in favor of local search; findings reply posted 2026-10-06
 10. #167 reply posted 2026-10-06
-11. Drafted 2026-10-07, not filed: housing ledger + NJ property tax deduction (design issue), Debts `payoff` year (issue + patch), `--solver-opt` numeric text (issue + patch)
+11. Filed by the user after 2026-10-07: housing ledger + NJ property tax deduction (design issue); #173 loan payoff at a sale (implemented upstream as a `property` link, merged); #174 `--solver-opt` numeric text (fixed upstream, merged)
 
 When upstream lands #158, merge `dev` and drop our duplicate, as with #149, #155, #157 and the 2026.10.5-7 fixes.
 
@@ -157,9 +157,9 @@ When upstream lands #158, merge `dev` and drop our duplicate, as with #149, #155
 | Stakes measurement | `fork-notes/model-review/housing_stakes.py` | Done (exact LP and local search) |
 | Upstream design issue | `fork-notes/issue-housing.md` | Drafted 2026-10-07; user to file |
 | Review fixes: `st_ptd_*` initialized in `__init__` (the UI's Goals page called `processDebtsAndFixedAssets()` before any solve: `AttributeError`); tier test checks the claimed exclusion (it passed with the `L` term removed); warning for Housing rows that pay nothing; `housing_costs_*` in `plan_metrics()`; deduction in the explanation; Housing and `payoff` in the user docs | `a9093f8` | Done |
-| Debts `payoff` year: the balance is paid that year and payments stop (a mortgage used to run to term after its home was sold: $970,856 paid over 20 years instead of $542,567 at the sale) | `a9093f8`; `issue-debt-payoff.md` | Done |
+| Debts `payoff` year: the balance is paid that year and payments stop (a mortgage used to run to term after its home was sold: $970,856 paid over 20 years instead of $542,567 at the sale) | `a9093f8`; `issue-debt-payoff.md` | **Superseded** 2026-10-08 by upstream #173 (`property` link); fork code and tests dropped in the merge |
 | Scenario 5 rewritten: rent / buy with cash / buy with a mortgage; the old commands failed (`optimization_parameters.netSpending` is not read: "needs netSpending option") and compared a `maxSpending` base with a `maxBequest` variant. Template's `bequest` moved to `[solver_options]` (under `[optimization_parameters]` it was ignored; 0 is the default, so no result changed) | `a9093f8` | Done |
-| `--solver-opt withSSTaxability=0.85` stayed the text "0.85" and did not pin (jack+jill: variant 102,545 = unpinned base, instead of 101,448). Validator in `SolverOptions`; residency commands in `phase0-scenarios.md` corrected (local search via `--solver-opt` for both runs; the exact LP from a case file) | `a9093f8`; `issue-solver-opt-numeric.md` | Done |
+| `--solver-opt withSSTaxability=0.85` stayed the text "0.85" and did not pin (jack+jill: variant 102,545 = unpinned base, instead of 101,448). Validator in `SolverOptions`; residency commands in `phase0-scenarios.md` corrected (local search via `--solver-opt` for both runs; the exact LP from a case file) | `a9093f8`; `issue-solver-opt-numeric.md` | **Superseded** 2026-10-08 by upstream #174; fork validator dropped; the exact LP now also goes through `--solver-opt` |
 
 Housing ledger: an optional `Housing` HFP sheet, one row per recurring cost (`active`, `name`,
 `type`, `year`, `end`, `amount`, `rate`). Amounts are household-level, not scaled at the first
@@ -167,7 +167,7 @@ death; `amount` is in `year` dollars and `rate` is real growth above inflation (
 inflation). `end` is the last calendar year paid (0 = the last plan year, negative counts back);
 for a home sold in `yod` = Y the owner's rows end in Y - 1 (with negative values, `end` = `yod`).
 Buying: big-ticket items (price or down payment) + `Fixed Assets` residence + `Debts` mortgage
-(`payoff` = `yod` when sold) + Housing rows; rent: a `rent` row (`phase0-scenarios.md`, section 5). Costs are subtracted in the cash flow next to debt payments, so `g_n` means
+(`property` = the residence's name, so a sale pays it off; upstream #173) + Housing rows; rent: a `rent` row (`phase0-scenarios.md`, section 5). Costs are subtracted in the cash flow next to debt payments, so `g_n` means
 non-housing spending and rent vs buy is comparable under `maxSpending`. Key test: the same
 amounts as negative big-ticket items give the same objective (the series is inflated to match).
 
@@ -206,8 +206,7 @@ Cash vs mortgage (not measured as stakes; mechanics checked on a synthetic NY co
 home, $48k rent, 6.5% mortgage, conservative rates). Not modeled and biased against the mortgage:
 the mortgage interest deduction (Phase 3; federal itemized and NY's own).
 
-Next: user to file `fork-notes/issue-housing.md`, `issue-debt-payoff.md` and
-`issue-solver-opt-numeric.md`. Then Phase 3 (itemized deductions: it decides cash vs mortgage;
+Next: wait for the maintainer on the housing issue. Then Phase 3 (itemized deductions: it decides cash vs mortgage;
 `debts.py` gives the interest per year as payment minus the change in balance) or Phase 5
 (part-time work / SS earnings test) as the household needs them.
 
@@ -215,6 +214,7 @@ Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would l
 
 ## Test status
 
-2026-10-07, review fixes on `claude/phase2-housing`: **2856 passed, 1 skipped** (19 new tests); flake8 as below. Stock `dev` `004c840`: 2709 passed; with `issue-debt-payoff.patch` alone 2721, with `issue-solver-opt-numeric.patch` alone 2712. Before them: Phase 2 housing + NJ property tax deduction: 2837 passed, 1 skipped; flake8 clean on the changed files (upstream's `localsearch.py:31` and `config/schema.py:388` unchanged). Earlier: 2818 passed after merging `004c840` (2026.10.8).
+2026-10-08, after merging upstream `dev` `156d812` (#173, #174): **2891 passed, 1 skipped** (2857 collected before − our 15 payoff/validator tests + upstream's 50 new); flake8 only upstream's `schema.py:389` and `localsearch.py:31`. The merge put upstream's `string_cols.append("property")` (hfp_io) under the fork's Housing branch instead of Debts; moved back by hand.
+2026-10-07, review fixes on `claude/phase2-housing`: 2856 passed, 1 skipped (19 new tests); flake8 as below. Stock `dev` `004c840`: 2709 passed; with `issue-debt-payoff.patch` alone 2721, with `issue-solver-opt-numeric.patch` alone 2712. Before them: Phase 2 housing + NJ property tax deduction: 2837 passed, 1 skipped; flake8 clean on the changed files (upstream's `localsearch.py:31` and `config/schema.py:388` unchanged). Earlier: 2818 passed after merging `004c840` (2026.10.8).
 
 Merge notes (2026-10-06): `tax_federal.py` and `socialsecurity.py` are now identical to upstream. Per-year state flags carry upstream's names. Upstream's explanation omits years without a state income tax and reports the state on every row; the fork follows. Earlier merge notes: NJ's $1,000 exemption per filer aged 65+ came from upstream 2026.10.3; fork-only amounts follow upstream's indexing flags (NY recapture thresholds with `brackets_indexed`, NJ exclusion ceilings/cap with `exemptions_indexed`).

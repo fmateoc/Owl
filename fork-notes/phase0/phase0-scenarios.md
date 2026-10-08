@@ -68,7 +68,7 @@ includes it. NJ's retirement-income exclusion (lines 28a-28c) is modeled exactly
 `CLAUDE.md`), and so is the NJ property tax deduction (line 41, Phase 2): homeowners deduct
 property taxes up to $15,000, tenants 18% of rent. Not modeled: NYC household and school-tax
 credits, part-year residency, the $50 NJ property tax credit, NJ ANCHOR/Senior Freeze/Stay NJ,
-and NY STAR (enter those as big-ticket items or net them off the Housing row).
+and NY STAR (enter those as big-ticket items or net them off the budget's property tax line).
 
 Differences under about 1% between residency variants can be loop noise rather than a real
 difference, with either sign (see `PROGRESS.md`, NJ stakes). Keep the solver options identical
@@ -131,54 +131,59 @@ Two inputs to set per scenario by hand:
 - **Medicare past 65.** Owl charges each spouse Medicare from 65. If B worked past 65 with employer
   coverage and delayed Part B, Owl would overstate those premiums. Not an issue if B stops before 65.
 
-## 5. Rent, buy with cash, or buy with a mortgage (Phase 2)
+## 5. Rent, buy with cash, or buy with a mortgage (Phases 2 and 2b)
 
-Housing costs go in the `Housing` sheet of the HFP workbook (one row per recurring cost: rent,
-property tax, insurance, maintenance, other). Amounts are annual, in `year` dollars; `rate` is
-real growth above inflation (0 = tracks inflation). `year` and `end` are the first and last
-calendar years paid (`end` 0 = through the plan end; negative counts back from it). With a move,
-split the rows at the move year. A row whose positive `end` is before its start pays nothing and
-draws a warning.
+Spending comes from a budget: `spending_profile = "budget"` builds the spending profile from the
+`Budget` sheet of the HFP workbook, one line per item (`core` spending, `rent`, `property tax`,
+`insurance`, `maintenance`, `car`, `travel`, `care`, `other`). `amount` is annual, in today's
+dollars; `rate` is real growth above inflation in percent (0.5 is 0.5%); `year` and `end` are the
+first and last calendar years (`end` 0 = through the plan end; negative counts back from it);
+`survivor` is the percent kept after the first death (blank: the case's 60%, or 100 for the four
+housing types). A line whose positive `end` is before its start adds nothing and draws a warning.
+With a move, split the housing lines at the move year.
 
-One HFP workbook per variant (`gen_hfp_us.py` writes empty `Debts`, `Fixed Assets` and `Housing`
-sheets):
+One HFP workbook per variant (`gen_hfp_us.py` writes empty `Debts`, `Fixed Assets` and `Budget`
+sheets), with the same non-housing lines in each:
 
-- **Rent** (`HFP_us_rent.xlsx`): one `rent` row.
-- **Buy with cash** (`HFP_us_buy_cash.xlsx`): the price plus closing costs as a negative
-  `big-ticket items` amount in the purchase year (one spouse's sheet; nominal $) + `Fixed Assets`
-  (`residence`, `year` = the January after the purchase, `basis` = price, `value`, `rate`, `yod`,
-  `commission`) + `Housing` rows for the owner's costs (property tax, insurance, maintenance).
+- **Rent** (`HFP_us_rent.xlsx`): `core` (and any car, travel, care lines) + one `rent` line.
+- **Buy with cash** (`HFP_us_buy_cash.xlsx`): the same non-housing lines + owner's lines
+  (`property tax`, `insurance`, `maintenance`); the price plus closing costs as a negative
+  `big-ticket items` amount in the purchase year (one spouse's sheet; nominal $); the home in
+  `Fixed Assets` (`residence`, `year` = the January after the purchase, `basis` = price, `value`,
+  `rate`, `yod`, `commission`).
 - **Buy with a mortgage** (`HFP_us_buy_mortgage.xlsx`): the same, with only the down payment and
   closing costs as the big-ticket item, and the loan in `Debts` (`mortgage`, `year`, `term`,
   `amount`, `rate`, and `property` = the residence's `name`).
 
 Selling within the plan (e.g. before a move): set the residence's `yod` to the sale year, end
-its `Housing` rows the year before, start the next home's rows (or rent) in the sale year, and
+its budget lines the year before, start the next home's lines (or rent) in the sale year, and
 name the residence in the loan's `property` column: the balance owed at the start of the sale year
 is paid that year and the payments stop (upstream #173). With `property` blank the mortgage runs
 to its term after the house is gone. A link Owl cannot honor (a name not in `Fixed Assets`, an
 inactive home under an active loan, a sale before the loan starts) is an error.
 
-How to read it: home equity cannot be spent in Owl, so under `maxSpending` with `bequest = 0` a buy
-variant leaves the house unspent. Compare with `maxBequest` at a fixed `netSpending` and read
+How to read it: home equity cannot be spent in Owl, so compare with `maxBequest` and read
 `final_bequest_today` (savings after heirs' tax, plus the house net of commission, minus any debt
-left). `--set` changes the variant only, so the objective and spending level go in the base file:
-copy `otherFiles/Case_us.toml` to `otherFiles/Case_us_housing.toml` and in the copy set
+left). Leave `netSpending` unset: each variant then spends its own budget (its first-year total is
+the spending level), so the non-housing lines are the same in every variant. A `netSpending`
+would scale each budget to that first-year total, by a different factor in each variant. `--set`
+changes the variant only, so the objective goes in the base file: copy `otherFiles/Case_us.toml`
+to `otherFiles/Case_us_housing.toml` and in the copy set
 
 ```toml
 [household_financial_profile]
 HFP_file_name = "HFP_us_rent.xlsx"
 
 [optimization_parameters]
+spending_profile = "budget"
 objective = "maxBequest"
 
 [solver_options]
-netSpending = 80        # $k/yr of non-housing spending to fund, today's $
 breakpointMethod = "local-search"
+# no netSpending: each variant's budget sets its own spending
 ```
 
-then compare each buy variant with the rent base (`netSpending` and `bequest` belong in
-`[solver_options]`; under `[optimization_parameters]` they are silently ignored):
+then compare each buy variant with the rent base:
 
 ```bash
 uv run python fork-notes/phase0/gen_hfp_us.py otherFiles/HFP_us_rent.xlsx
@@ -190,7 +195,8 @@ owlcli compare otherFiles/Case_us_housing.toml \
   --set household_financial_profile.HFP_file_name=HFP_us_buy_mortgage.xlsx
 ```
 
-For the exact-LP cross-check, override the base file's method on both runs:
+`housing_costs_today` in the output is the housing part of net spending. For the exact-LP
+cross-check, override the base file's method on both runs:
 
 ```bash
 owlcli compare otherFiles/Case_us_housing.toml \
@@ -207,8 +213,9 @@ looks worse than it would be while itemizing beats the standard deduction (most 
 also turns on the mortgage rate against the assumed returns: with fixed rates it is a point
 estimate; historical or stochastic ranges show the spread.
 
-Second view: `maxSpending` with the residence sold in a chosen year (`yod`), rent after it, and the
-loan linked to the residence.
+`maxSpending` answers another question with a budget: how large a version of this budget can be
+afforded (every line scales, rent included). Use it for "can we afford this budget" (the basis
+against the budget's first-year total), not to rank rent against buy.
 
 ## Healthcare cost sensitivity
 
@@ -229,7 +236,7 @@ needs the Phase 6 sweep.
 
 - [ ] Fill in `otherFiles/Case_us.toml` TODOs (names, dates of birth, balances as of `start_date`, basis, PIAs, SLCSP)
 - [ ] Keep `basic_info.names` and the HFP sheet names identical
-- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages net of contributions, Housing rows)
+- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages net of contributions, Budget lines)
 - [ ] Fill in `otherFiles/HFP_us_2027.xlsx` for the work-one-more-year variant
 - [ ] Fill in `otherFiles/HFP_us_rent.xlsx`, `HFP_us_buy_cash.xlsx` and `HFP_us_buy_mortgage.xlsx`, and make `otherFiles/Case_us_housing.toml` (section 5)
 - [ ] Record the rate method, window or seed with every output

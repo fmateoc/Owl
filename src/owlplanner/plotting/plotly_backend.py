@@ -56,7 +56,6 @@ _OUTFLOW_COLORS = {
     "state_taxes": "#C62828",
     "healthcare": "#FF9800",
     "debt": "#9E9E9E",
-    "housing": "#8D6E63",
     "bti": "#FF6F00",
     "charity": "#00897B",
     "bequest": "#4CAF50",
@@ -2059,7 +2058,6 @@ class PlotlyBackend(PlotBackend):
             "state_taxes": "State taxes",
             "healthcare": "Healthcare",
             "debt": "Debt payments",
-            "housing": "Housing costs",
             "bti": "Big-ticket items",
             "charity": "Charitable giving",
             "bequest": "Bequest",
@@ -2140,7 +2138,6 @@ class PlotlyBackend(PlotBackend):
             "state_taxes": "State taxes",
             "healthcare": "Healthcare",
             "debt": "Debt payments",
-            "housing": "Housing costs",
             "bti": "Big-ticket items",
             "charity": "Charitable giving",
         }

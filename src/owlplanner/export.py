@@ -32,6 +32,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+from . import budget as budgeting
 from . import config
 from . import utils as u
 from . import tax_federal as tx
@@ -313,17 +314,45 @@ def _format_fixed_assets_sheet(ws):
     )
 
 
-def _format_housing_sheet(ws):
-    """Format Housing sheet with appropriate column formatting."""
+def _format_budget_sheet(ws):
+    """Format Budget sheet (HFP) with appropriate column formatting."""
     _format_col_sheet(
         ws,
         col_formats={
             "year": "0",
             "end": "0",
             "rate": "#,##0.00",
+            "survivor": "0",
             "amount": "$#,##0_);[Red]($#,##0)",
         },
     )
+
+
+def budget_spending(plan, N=None):
+    """
+    Net spending split along the budget's lines, nominal $ per year.
+
+    The budget is the shape of g_n: each line gets its share of the year's budget. Under maxBequest
+    these are the lines' own amounts (inflated); under maxSpending they scale with the basis.
+    Returns ({line name: array}, housing array), or ({}, zeros) without a budget.
+    """
+    N = plan.N_n if N is None else N
+    budget = getattr(plan, "budget", None)
+    g_n = np.asarray(plan.g_n[:N], dtype=float)
+    if budget is None:
+        return {}, np.zeros(N)
+    total = budget.total_n[:N]
+    scale = np.divide(g_n, total, out=np.zeros(N), where=total > 0)
+    lines = {}
+    for name, amount in zip(budget.names, budget.amounts_ln):
+        key = name
+        k = 2
+        while key in lines:
+            key = f"{name} ({k})"
+            k += 1
+        lines[key] = amount[:N] * scale
+    housing = budget.by_type(*budgeting.HOUSEHOLD_TYPES)[:N] * scale
+    return lines, housing
 
 
 def _format_income_tax_sheet(ws):
@@ -498,10 +527,11 @@ def build_summary_dic(plan, N=None):
     totDebtPaymentsNow = np.sum(plan.debt_payments_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total debt payments", totDebtPaymentsNow, totDebtPayments)
 
-    if np.any(plan.housing_costs_n > 0):
-        totHousing = np.sum(plan.housing_costs_n[:N], axis=0)
-        totHousingNow = np.sum(plan.housing_costs_n[:N] / plan.gamma_n[:N], axis=0)
-        _summary_currency_pair(dic, "Total housing costs", totHousingNow, totHousing)
+    _, housing_n = budget_spending(plan, N)
+    if np.any(housing_n > 0):
+        _summary_currency_pair(
+            dic, "Total housing costs (in net spending)", np.sum(housing_n / plan.gamma_n[:N]), np.sum(housing_n)
+        )
 
     if plan.N_i == 2 and plan.n_d < plan.N_n and N == plan.N_n:
         _summary_section(dic, SUMMARY_SECTION_PARTIAL_BEQUEST)
@@ -843,8 +873,8 @@ def plan_metrics(plan, N=None) -> dict:
         "aca_nominal": _s(plan.aca_costs_n[:N]),
         "debt_payments_today": _st(plan.debt_payments_n[:N]),
         "debt_payments_nominal": _s(plan.debt_payments_n[:N]),
-        "housing_costs_today": _st(plan.housing_costs_n[:N]),
-        "housing_costs_nominal": _s(plan.housing_costs_n[:N]),
+        "housing_costs_today": _st(budget_spending(plan, N)[1]),
+        "housing_costs_nominal": _s(budget_spending(plan, N)[1]),
         # Final bequest
         "final_bequest_today": total_estate / float(gamma[N]),
         "final_bequest_nominal": total_estate,
@@ -910,8 +940,8 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "aca_nominal": (f"Total ACA premiums paid{_N}", "usd"),
     "debt_payments_today": (f"Total debt payments{_T}", "usd"),
     "debt_payments_nominal": (f"Total debt payments{_N}", "usd"),
-    "housing_costs_today": (f"Total housing costs{_T}", "usd"),
-    "housing_costs_nominal": (f"Total housing costs{_N}", "usd"),
+    "housing_costs_today": (f"Total housing costs (in net spending){_T}", "usd"),
+    "housing_costs_nominal": (f"Total housing costs (in net spending){_N}", "usd"),
     "final_bequest_today": (f"Total after-tax value of final bequest{_T}", "usd"),
     "final_bequest_nominal": (f"Total after-tax value of final bequest{_N}", "usd"),
     "heirs_tax_liability_nominal": (f"With heirs assuming tax liability of{_N}", "usd"),
@@ -1026,7 +1056,6 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "FA cap gains": plan.fixed_assets_capital_gains_n,
         "FA tax-free": plan.fixed_assets_tax_free_n,
         "debt pmts": -plan.debt_payments_n,
-        "housing": -plan.housing_costs_n,
         "all wdrwls": np.sum(plan.w_ijn, axis=(0, 1)),
         "all deposits": -np.sum(plan.d_in, axis=0),
         "ord taxes": -plan.T_n,
@@ -1064,7 +1093,6 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "FA cap gains": plan.sources_in["FA cap gains"],
         "FA tax-free": plan.sources_in["FA tax-free"],
         "debt pmts": plan.sources_in["debt pmts"],
-        "housing": plan.sources_in["housing"],
     }
     ws = wb.create_sheet("Household Sources")
     fillsheet(ws, householdSrcDic, "currency", op=lambda x: x[0], scale=inv_gamma, sheet_name="Household Sources")
@@ -1225,6 +1253,19 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
     if plan.worksheetShowAges:
         _format_age_cols_in_ws(ws)
 
+    lines, _ = budget_spending(plan)
+    if lines:
+        # Net spending along the budget's lines (the "budget" spending profile).
+        ws = wb.create_sheet("Budget")
+        rawData = {"year": plan.year_n}
+        for name, val in lines.items():
+            rawData[name] = u.roundCents(val * inv_gamma if real else val)
+        rawData["net spending"] = u.roundCents(plan.g_n * inv_gamma if real else plan.g_n)
+        df = pd.DataFrame(rawData)
+        for row in dataframe_to_rows(df, index=False, header=True):
+            ws.append(row)
+        _format_col_sheet(ws, col_formats={c.lower(): "$#,##0_);[Red]($#,##0)" for c in rawData if c != "year"})
+
     jDic = {"taxable": 0, "tax-deferred": 1, "tax-free": 2, "hsa": 3}
     kDic = {"stocks": 0, "C bonds": 1, "T notes": 2, "common": 3}
     year_n = np.append(plan.year_n, [plan.year_n[-1] + 1])
@@ -1280,7 +1321,6 @@ def plan_to_csv(plan, basename, mylog):
     planData["FA cap gains"] = plan.fixed_assets_capital_gains_n
     planData["FA tax-free"] = plan.fixed_assets_tax_free_n
     planData["debt pmts"] = -plan.debt_payments_n
-    planData["housing"] = -plan.housing_costs_n
     planData["all wdrwls"] = np.sum(plan.w_ijn, axis=(0, 1))
     planData["all deposits"] = -np.sum(plan.d_in, axis=0)
     planData["ord taxes"] = -plan.T_n

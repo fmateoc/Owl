@@ -51,7 +51,7 @@ from . import socialsecurity as socsec
 from . import spending
 from . import debts as debts
 from . import fixedassets as fxasst
-from . import housing as housing
+from . import budget as budgeting
 from . import mylogging as log
 from .config.plan_bridge import clone  # noqa: F401
 from .config.schema import REMOVED_OPTIONS
@@ -496,7 +496,8 @@ class Plan:
         self.st_rx_n = np.zeros(self.N_n)  # Income-tiered retirement exclusion claimed (NJ line 28c)
         self.st_ptd_cap_n = np.zeros(self.N_n)  # Property tax deduction cap per year (0 = none); set by solve()
         self.st_ptd_rent_share_n = np.zeros(self.N_n)  # Percent of rent counted toward it
-        self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction allowed (line 41)
+        self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction cap where the budget has housing (line 41)
+        self.st_ptd_share_n = np.zeros(self.N_n)  # Deductible share of net spending (property tax + rent share)
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
         self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
@@ -555,10 +556,8 @@ class Plan:
         # Remaining debt balance at the start of each year (length N_n)
         self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
-        # Recurring housing costs (Housing sheet), nominal $ per year
-        self.housing_costs_n = np.zeros(self.N_n)
-        self.housing_property_tax_n = np.zeros(self.N_n)
-        self.housing_rent_n = np.zeros(self.N_n)
+        # Budget lines (Budget sheet) evaluated over the plan; set when the spending profile is "budget"
+        self.budget = None
 
         # SPIA arrays.
         self.spiaBar_in = np.zeros((self.N_i, self.N_n))
@@ -1045,7 +1044,6 @@ class Plan:
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
             "debt": float(np.sum(self.debt_payments_n * inv_g)),
-            "housing": float(np.sum(self.housing_costs_n * inv_g)),
             "bti": bti_out,
             # QCDs leave the portfolio for charity without passing through the budget.
             # Counting them here makes the gift visible; the portfolio slice below is a
@@ -1097,7 +1095,6 @@ class Plan:
             "state_taxes": self.st_T_n * inv_g,
             "healthcare": (self.medicare_n + self.aca_costs_n) * inv_g,
             "debt": self.debt_payments_n * inv_g,
-            "housing": self.housing_costs_n * inv_g,
             "bti": np.maximum(0.0, -Lambda_n),
             # See lifetime_allocation: charity is funded from the portfolio residual.
             "charity": np.sum(self.qcd_in, axis=0) * inv_g,
@@ -1362,15 +1359,51 @@ class Plan:
         if self.N_i == 2:
             self.mylog.vprint("Securing", u.pc(self.chi, f=0), "of spending amount for surviving spouse.")
 
-        self.xi_n = spending.gen_spending_profile(
-            profile, self.chi, self.n_d, self.N_n, dip=dip, increase=increase, delay=delay
-        )
+        if profile == "budget":
+            # Built from the Budget sheet, which may arrive later (clone copies the household
+            # tables after setting the profile): evaluated again by solve(). Flat until then.
+            self.spendingProfile = profile
+            self.xi_n = np.ones(self.N_n)
+            self._evaluateBudget(strict=False)
+        else:
+            self.xi_n = spending.gen_spending_profile(
+                profile, self.chi, self.n_d, self.N_n, dip=dip, increase=increase, delay=delay
+            )
 
         self.spendingProfile = profile
         self.smileDip = dip
         self.smileIncrease = increase
         self.smileDelay = delay
         self.caseStatus = "modified"
+
+    def _evaluateBudget(self, strict=True):
+        """
+        Evaluate the Budget sheet over the plan and, with the "budget" profile, set xi_n from it.
+
+        With strict, a "budget" profile without active budget lines is an error. With another
+        profile, budget lines are not used, and saying so beats ignoring them silently.
+        """
+        df = self.houseLists.get("Budget") if getattr(self, "houseLists", None) else None
+        has_lines = not u.is_dataframe_empty(df) and any(u.is_row_active(r) for _, r in df.iterrows())
+        if getattr(self, "spendingProfile", None) != "budget":
+            self.budget = None
+            if strict and has_lines:
+                self.mylog.print(
+                    f"The Budget sheet is not used: the spending profile is '{self.spendingProfile}', not 'budget'.",
+                    tag="WARNING",
+                )
+            return
+        if not has_lines:
+            self.budget = None
+            if strict:
+                raise ValueError("Spending profile 'budget' needs active lines in the HFP Budget sheet.")
+            return
+        thisyear = date.today().year
+        for name, why in budgeting.lines_left_out(df, self.N_n, thisyear):
+            self.mylog.print(f"Budget line {name!r} {why}: it adds nothing to the plan.", tag="WARNING")
+        self.budget = budgeting.evaluate(df, self.N_n, self.n_d, 100 * self.chi, thisyear)
+        self.xi_n = budgeting.profile(self.budget)
+        self._adjustedParameters = False
 
     def setReproducible(self, reproducible, seed=None):
         """
@@ -1973,7 +2006,7 @@ class Plan:
         for every year. A header differing from a recognized one only by case,
         spacing, or punctuation is rejected as a typo rather than dropped.
         Legacy header 'other inc.' is read as 'other inc'.
-        Optional workbook sheets 'Debts', 'Fixed Assets' and 'Housing' follow HFP formats.
+        Optional workbook sheets 'Debts', 'Fixed Assets' and 'Budget' follow HFP formats.
         A template is provided as an example.
         Missing rows (years) are populated with zero values.
 
@@ -2147,7 +2180,7 @@ class Plan:
 
     def processDebtsAndFixedAssets(self):
         """
-        Process debts, fixed assets and housing costs from houseLists and populate arrays.
+        Process debts and fixed assets from houseLists and populate arrays.
         Should be called after setContributions() and before solve().
         """
         thisyear = date.today().year
@@ -2167,27 +2200,18 @@ class Plan:
             self.remaining_debt_balance = 0.0
             self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
-        # Process housing costs (rent, property tax, insurance, maintenance)
         gamma_n = getattr(self, "gamma_n", None)
-        if "Housing" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Housing"]):
-            (
-                self.housing_costs_n,
-                self.housing_property_tax_n,
-                self.housing_rent_n,
-            ) = housing.get_housing_arrays(self.houseLists["Housing"], self.N_n, gamma_n, thisyear)
-            for name, why in housing.rows_left_out(self.houseLists["Housing"], self.N_n, thisyear):
-                self.mylog.print(f"Housing row {name!r} {why}: it pays nothing in the plan.", tag="WARNING")
-        else:
-            self.housing_costs_n = np.zeros(self.N_n)
-            self.housing_property_tax_n = np.zeros(self.N_n)
-            self.housing_rent_n = np.zeros(self.N_n)
 
-        # NJ property tax deduction (line 41): property taxes + 18% of rent, up to the cap.
-        # Computed after both the housing ledger and the state parameters are in place.
-        self.st_ptd_n = np.minimum(
-            self.st_ptd_cap_n,
-            self.housing_property_tax_n + self.st_ptd_rent_share_n / 100.0 * self.housing_rent_n,
-        )
+        # NJ property tax deduction (line 41): property taxes + 18% of rent, up to the cap. The budget
+        # is inside net spending, so its deductible part is a share of g_n (_add_property_tax_deduction).
+        self.st_ptd_share_n = np.zeros(self.N_n)
+        if self.budget is not None:
+            deductible = self.budget.by_type(budgeting.PROPERTY_TAX) + self.st_ptd_rent_share_n / 100.0 * (
+                self.budget.by_type(budgeting.RENT)
+            )
+            total = self.budget.total_n
+            self.st_ptd_share_n = np.divide(deductible, total, out=np.zeros(self.N_n), where=total > 0)
+        self.st_ptd_n = np.where(self.st_ptd_share_n > 0, self.st_ptd_cap_n, 0.0)
 
         # Process fixed assets
         if "Fixed Assets" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Fixed Assets"]):
@@ -2303,20 +2327,15 @@ class Plan:
                 ws.append(row)
             export._format_fixed_assets_sheet(ws)
 
-        # Add Housing sheet if available
-        if "Housing" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Housing"]):
-            ws = wb.create_sheet("Housing")
-            df = self.houseLists["Housing"]
-            for row in dataframe_to_rows(df, index=False, header=True):
-                ws.append(row)
-            export._format_housing_sheet(ws)
-        else:
-            # Create empty Housing sheet with proper columns
-            ws = wb.create_sheet("Housing")
-            df = pd.DataFrame(columns=hfp_io._housingItems)
-            for row in dataframe_to_rows(df, index=False, header=True):
-                ws.append(row)
-            export._format_housing_sheet(ws)
+        # Budget sheet (lines of the "budget" spending profile); a blank survivor stays blank
+        ws = wb.create_sheet("Budget")
+        df = self.houseLists.get("Budget")
+        if u.is_dataframe_empty(df):
+            df = pd.DataFrame(columns=hfp_io._budgetItems)
+        df = df.astype(object).where(pd.notna(df), None)
+        for row in dataframe_to_rows(df, index=False, header=True):
+            ws.append(row)
+        export._format_budget_sheet(ws)
 
         return wb
 
@@ -2769,6 +2788,7 @@ class Plan:
         if self._st_lp:
             self._add_state_taxable_income()
             self._add_local_taxable_income()
+            self._add_property_tax_deduction()
         self._configure_ss_taxability_lp(options)
         self._configure_ss_age_variables()
         self._configure_ltcg_constraints()
@@ -2857,6 +2877,20 @@ class Plan:
                         self.B.setRange(vm["zx"].idx(n, k), 0, 1 if live else 0)
                     self.B.setRange(vm["rxl"].idx(n, k), 0, np.inf if live else 0)
                     self.B.setRange(vm["rxb"].idx(n, k), 0, np.inf if live else 0)
+
+    def _add_property_tax_deduction(self):
+        """The property tax deduction is at most its share of net spending (NJ line 41).
+
+        The budget's property tax and rent are inside g_n, which scales with the objective, so
+        the deduction claimed is bounded by st_ptd_share_n * g_n as well as by the cap.
+        """
+        vm = self.vm
+        if "st_pt" not in vm:
+            return
+        for n in range(self.N_n):
+            if self.st_ptd_share_n[n] > 0:
+                row = self.A.newRow({vm["st_pt"].idx(n): 1, vm["g"].idx(n): -self.st_ptd_share_n[n]})
+                self.A.addRow(row, -np.inf, 0, tag=("state_property_tax_deduction", n))
 
     def _add_local_taxable_income(self):
         """Local bracket allocations add up to the state taxable income, in years with a local schedule."""
@@ -3404,7 +3438,11 @@ class Plan:
                 row.addElem(self.vm["b"].idx(i, 3, self.N_n), 1 - self.nu)  # HSA: heirs pay ordinary income tax
             self.A.addRow(row, total_bequest_value, np.inf, tag=("bequest_floor",))
         elif objective == "maxBequest":
-            spending = u.get_monetary_option(options, "netSpending", 1)
+            spending = u.get_monetary_option(options, "netSpending", 0) if "netSpending" in options else 0.0
+            if self.budget is not None and spending <= 0:
+                spending = float(self.budget.total_n[0])  # unset or 0: the budget's first year (xi_0 = 1)
+            elif "netSpending" not in options:
+                spending = u.get_monetary_option(options, "netSpending", 1)
             self.B.setRange(self.vm["g"].idx(0), spending, spending)
 
     @_fixedAcrossIterations
@@ -3502,8 +3540,6 @@ class Plan:
             )
             # Subtract debt payments (negative cash flow)
             rhs -= self.debt_payments_n[n]
-            # Subtract recurring housing costs (rent, property tax, insurance, maintenance)
-            rhs -= self.housing_costs_n[n]
             row = self.A.newRow({self.vm["g"].idx(n): 1})
             row.addElem(self.vm["s"].idx(n), 1)
             row.addElem(self.vm["m"].idx(n), 1)
@@ -4970,11 +5006,17 @@ class Plan:
         # Canonical mode names; a value that is none of them is refused, not solved as another.
         u.normalize_mode_options(myoptions)
 
+        # A "budget" profile is evaluated now, on the plan's current horizon and first death. Under
+        # maxBequest its first year is the spending level unless a positive netSpending is given (see
+        # _add_objective_constraints); the default is not written into the options, which are kept
+        # with the case, so that an edited budget is not scaled to an old total.
+        self._evaluateBudget(strict=True)
+
         self._applyBreakpointOptions(myoptions)
         if self._useLocalSearch(myoptions):
             return self._localSearchSolve(objective, myoptions)
 
-        if objective == "maxBequest" and "netSpending" not in myoptions:
+        if objective == "maxBequest" and "netSpending" not in myoptions and self.budget is None:
             raise RuntimeError(f"Objective '{objective}' needs netSpending option.")
 
         if objective == "maxBequest" and "bequest" in myoptions:
@@ -5089,8 +5131,8 @@ class Plan:
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
-        # Housing costs and the property tax deduction are LP parameters: process them
-        # before the variable map is built, so st_ptd_n is known when st_pt is created.
+        # The property tax deduction's caps are LP parameters: process them before the
+        # variable map is built, so st_ptd_n is known when st_pt is created.
         self.processDebtsAndFixedAssets()
         self._buildOffsetMap(myoptions)
 
@@ -5454,7 +5496,6 @@ class Plan:
             + self.medicare_n
             + self.aca_costs_n
             + self.debt_payments_n
-            + self.housing_costs_n
         )
         rhs = (
             np.sum(self.omega_in, axis=0)
@@ -7073,7 +7114,6 @@ class Plan:
         sources["FA cap gains"] = self.fixed_assets_capital_gains_n.reshape(1, -1)
         sources["FA tax-free"] = self.fixed_assets_tax_free_n.reshape(1, -1)
         sources["debt pmts"] = -self.debt_payments_n.reshape(1, -1)
-        sources["housing"] = -self.housing_costs_n.reshape(1, -1)
 
         savings = {}
         savings["taxable"] = self.b_ijn[:, 0, :]

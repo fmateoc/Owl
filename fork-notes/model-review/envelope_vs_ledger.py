@@ -1,7 +1,9 @@
 """Housing as a fixed ledger vs housing folded into a custom spending profile (xi_n).
 
-Run from the repository root on claude/phase2-housing (needs the Phase 2 Housing ledger).
-Output recorded in fork-notes/phase2b-budget-plan.md (2026-10-08).
+Record of the check behind Phase 2b. It needs Phase 2's Housing ledger, which Phase 2b replaced:
+run it on commit e0ed9d1 or earlier. Output recorded in fork-notes/phase2b-budget-plan.md
+(2026-10-08). The same equivalence is now a test: tests/assets/test_budget.py,
+test_rent_in_the_budget_equals_rent_as_big_ticket_items.
 """
 import io
 

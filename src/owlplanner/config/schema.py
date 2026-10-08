@@ -257,7 +257,9 @@ class OptimizationParameters(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    spending_profile: str = Field(default="smile", description="flat or smile")
+    spending_profile: str = Field(
+        default="smile", description="flat, smile, or budget (built from the HFP Budget sheet)"
+    )
     surviving_spouse_spending_percent: int = Field(default=60, description="Survivor %")
     objective: str = Field(default="maxSpending", description="maxSpending or maxBequest")
     smile_dip: Optional[int] = Field(default=15, description="Smile profile dip %")

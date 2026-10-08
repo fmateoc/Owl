@@ -1,0 +1,196 @@
+diff --git a/src/owlplanner/hfp_io.py b/src/owlplanner/hfp_io.py
+index e6e71cf..ac679b9 100644
+--- a/src/owlplanner/hfp_io.py
++++ b/src/owlplanner/hfp_io.py
+@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ from datetime import date
+ import re
+ import numpy as np
++import openpyxl
+ import pandas as pd
+ 
+ from . import utils as u
+@@ -174,6 +175,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
+         dfDict = finput
+         finput = "dictionary of DataFrames"
+         streamName = "dictionary of DataFrames"
++        pctCells = {}
+     else:
+         if filename is not None:
+             streamName = f"file '{filename}'"
+@@ -188,6 +190,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
+             dfDict = pd.read_excel(finput, sheet_name=None)
+         except Exception as e:
+             raise Exception(f"Could not read file {streamName}: {e}.") from e
++        pctCells = _percentFormattedCells(finput, _pctCols) if houseTables else {}
+ 
+     timeLists, absentCols = _conditionTimetables(dfDict, inames, horizons, mylog)
+     mylog.vprint(f"Successfully read time horizons from {streamName}.")
+@@ -196,7 +199,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
+     # keeps the Debts and Fixed Assets tables itself): return None rather than empty tables.
+     houseLists = None
+     if houseTables:
+-        houseLists = _conditionHouseTables(dfDict, mylog)
++        houseLists = _conditionHouseTables(dfDict, mylog, pctCells)
+         mylog.vprint(f"Successfully read household tables from {streamName}.")
+ 
+     return finput, timeLists, houseLists, dfDict, absentCols
+@@ -372,10 +375,52 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
+     return timeLists, absentCols
+ 
+ 
+-def _conditionHouseTables(dfDict, mylog):
++def _percentFormattedCells(finput, columns):
++    """
++    Rows (0-based, as pandas numbers them) of the cells formatted as a percentage in Excel.
++
++    Returns {sheet: {column: set of rows}} for the given {sheet: [columns]}. A cell shown as
++    4.5% holds 0.045; only such cells are fractions to multiply by 100. Files openpyxl cannot read
++    (xls, ods, ...) give no formats, and their values are read as typed.
++    """
++    out = {}
++    rewind = hasattr(finput, "seek")
++    try:
++        if rewind:
++            finput.seek(0)
++        wb = openpyxl.load_workbook(finput, read_only=True)
++    except Exception:
++        if rewind:
++            finput.seek(0)
++        return out
++    try:
++        for sheet, cols in columns.items():
++            if sheet not in wb.sheetnames:
++                continue
++            rows = wb[sheet].iter_rows()
++            header = [cell.value for cell in next(rows, [])]
++            found = {}
++            for r, row in enumerate(rows):
++                for name, cell in zip(header, row):
++                    if name in cols and "%" in str(getattr(cell, "number_format", "")):
++                        found.setdefault(name, set()).add(r)
++            out[sheet] = found
++    finally:
++        wb.close()
++        if rewind:
++            finput.seek(0)
++    return out
++
++
++def _conditionHouseTables(dfDict, mylog, pctCells=None):
+     """
+     Read debts and fixed assets from Household Financial Profile workbook.
++
++    pctCells: from _percentFormattedCells, the percent-formatted cells of the rate and commission
++    columns, whose values are fractions (0.045 for 4.5%) to read as percent. Other cells are
++    percent already, whatever their size: 0.5 is 0.5%.
+     """
++    pctCells = pctCells or {}
+     houseDic = {}
+ 
+     items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems}
+@@ -388,9 +433,15 @@ def _conditionHouseTables(dfDict, mylog):
+             df = _checkColumns(df, page, items[page], required_cols=required)
+             # Check categorical variables.
+             isInList = df["type"].isin(types[page])
+-            df = df[isInList]
++            df = df[isInList].copy()
++
++            for col, rows in pctCells.get(page, {}).items():
++                mask = df.index.isin(sorted(rows))
++                if mask.any():
++                    df.loc[mask, col] = pd.to_numeric(df.loc[mask, col], errors="coerce") * 100.0
++                    mylog.vprint(f"Read {int(mask.sum())} percent-formatted {col} value(s) in the {page} table.")
+ 
+-            houseDic[page] = conditionDebtsAndFixedAssetsDF(df, page, mylog=mylog, convert_decimal_pct=True)
++            houseDic[page] = conditionDebtsAndFixedAssetsDF(df, page, mylog=mylog)
+         else:
+             houseDic[page] = pd.DataFrame(columns=items[page])
+             mylog.vprint(f"Table for {page} not found. Assuming empty table.")
+diff --git a/tests/config/test_hfp_percent_rates.py b/tests/config/test_hfp_percent_rates.py
+new file mode 100644
+index 0000000..226feb3
+--- /dev/null
++++ b/tests/config/test_hfp_percent_rates.py
+@@ -0,0 +1,81 @@
++"""Rates in the Debts and Fixed Assets sheets: a percent-formatted cell is a fraction, any other is percent."""
++
++import io
++
++import numpy as np
++import openpyxl
++import pandas as pd
++import pytest
++
++import owlplanner as owl
++from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF as cond
++
++
++def _plan():
++    p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1964-09-15"], [89, 92], "rates", verbose=False)
++    y = int(p.year_n[0])
++    p.houseLists["Fixed Assets"] = cond(pd.DataFrame([dict(active=True, name="home", type="residence", year=y,
++                                                           basis=500000.0, value=800000.0, rate=0.5, yod=0,
++                                                           commission=6.0)]), "Fixed Assets")
++    p.houseLists["Debts"] = cond(pd.DataFrame([dict(active=True, name="mtg", type="mortgage", year=y, term=30,
++                                                    amount=400000.0, rate=0.9)]), "Debts")
++    return p
++
++
++def _read(src):
++    q = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1964-09-15"], [89, 92], "rates", verbose=False)
++    q.readHFP(src)
++    return q
++
++
++def test_rates_below_one_percent_survive_a_round_trip(tmp_path):
++    """0.5% real growth and a 0.9% loan were read back as 50% and 90%."""
++    fname = str(tmp_path / "HFP_rates.xlsx")
++    _plan().saveHFP(fname, overwrite=True)
++    q = _read(fname)
++    assert q.houseLists["Fixed Assets"]["rate"].iloc[0] == pytest.approx(0.5)
++    assert q.houseLists["Debts"]["rate"].iloc[0] == pytest.approx(0.9)
++
++
++def _percent_format(fname, sheet, column, value):
++    wb = openpyxl.load_workbook(fname)
++    ws = wb[sheet]
++    k = [c.value for c in ws[1]].index(column)
++    cell = ws.cell(row=2, column=k + 1)
++    cell.value = value
++    cell.number_format = "0.00%"
++    wb.save(fname)
++
++
++def test_percent_formatted_cells_are_fractions(tmp_path):
++    fname = str(tmp_path / "HFP_pct.xlsx")
++    _plan().saveHFP(fname, overwrite=True)
++    _percent_format(fname, "Debts", "rate", 0.045)  # shown as 4.50%
++    _percent_format(fname, "Fixed Assets", "commission", 0.06)  # shown as 6.00%
++    q = _read(fname)
++    assert q.houseLists["Debts"]["rate"].iloc[0] == pytest.approx(4.5)
++    assert q.houseLists["Fixed Assets"]["commission"].iloc[0] == pytest.approx(6.0)
++    assert q.houseLists["Fixed Assets"]["rate"].iloc[0] == pytest.approx(0.5)  # not formatted: as typed
++
++
++def test_uploaded_stream_is_read_and_rewound(tmp_path):
++    """The UI hands over an in-memory upload."""
++    fname = str(tmp_path / "HFP_stream.xlsx")
++    _plan().saveHFP(fname, overwrite=True)
++    _percent_format(fname, "Debts", "rate", 0.045)
++    with open(fname, "rb") as f:
++        buf = io.BytesIO(f.read())
++    q = _read(buf)
++    assert q.houseLists["Debts"]["rate"].iloc[0] == pytest.approx(4.5)
++    assert q.houseLists["Fixed Assets"]["rate"].iloc[0] == pytest.approx(0.5)
++    assert buf.tell() == 0
++
++
++def test_tables_given_as_dataframes_are_read_as_typed():
++    from owlplanner import hfp_io
++
++    log = type("Log", (), {"vprint": lambda self, *a, **k: None, "print": lambda self, *a, **k: None})()
++    p = _plan()
++    house = hfp_io._conditionHouseTables({"Debts": p.houseLists["Debts"]}, log)
++    assert house["Debts"]["rate"].iloc[0] == pytest.approx(0.9)
++    assert np.isclose(house["Debts"]["amount"].iloc[0], 400000.0)

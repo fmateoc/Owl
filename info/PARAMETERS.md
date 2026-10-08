@@ -69,7 +69,7 @@ Reference to the **Household Financial Profile (HFP)** workbook: wages, contribu
 - **Years:** On read, each person’s sheet is trimmed to calendar years from five years before the **current** year through that person’s last plan year (from date of birth and `life_expectancy`). Rows with `year` outside that window are dropped. **Any missing calendar year inside that window—including the terminal year—is inserted with zeros**; you do not need a spreadsheet row for every year. After loading, the in-memory table for each person always ends on that person’s final plan year.
 - **Column headers:** Use the **exact** strings below (lowercase; column order may vary). Only `year` is **required**: list the columns your household actually uses, and any other recognized column that is absent is treated as `0` for every year (a message reports which ones). You may still list every column and enter `0` where a concept does not apply. The legacy header `other inc.` is accepted and normalized to `other inc`. **Any other column** on a person sheet (including helper or calculated columns), and blank or `Unnamed` columns, are **dropped** when the file is read; they are not preserved in the planner. As a safeguard, a header that differs from a recognized one only by capitalization, spacing, or punctuation (e.g. `401K  Ctrb`) is **rejected as a typo** rather than silently dropped, since dropping it would zero real data. A blank template is [HFP_template.xlsx](https://github.com/mdlacasse/Owl/blob/main/examples/HFP_template.xlsx?raw=true).
 - **Units:** All numeric cells on person sheets are **nominal dollars** (full dollars), not thousands. This is independent of `[solver_options]` `units` (`k` / `1` / `M`), which applies to amounts in the TOML case file and solver options such as `bequest` and `netSpending`.
-- **Optional household sheets:** The workbook may include sheets named **`Debts`**, **`Fixed Assets`** and **`Housing`**. If omitted, they are treated as empty. See column lists under *Optional sheets* below.
+- **Optional household sheets:** The workbook may include sheets named **`Debts`**, **`Fixed Assets`** and **`Budget`**. If omitted, they are treated as empty. See column lists under *Optional sheets* below.
 - **Per-year Roth conversion pins:** The `Roth conv` column holds conversion amounts in dollars (never negative): on the five lead-in rows, conversions already performed; on plan years, conversions being proposed. The companion boolean column `Roth conv fixed` decides which of those proposals bind. Left `FALSE` — the default, and what an absent column means — the amount is documentation only and Owl optimizes that year. Set `TRUE`, the conversion is held at exactly the amount beside it, bypassing `maxRothConversion`, `startRothConversions`, `stopRothConversions`, and the last-two-years restriction; an amount of `0` on a flagged year therefore means *no conversion that year*. The flag is ignored on the five lead-in rows, where past conversions always count.
 
 #### Person sheet columns
@@ -118,9 +118,9 @@ Columns: `active`, `name`, `type`, `year`, `term`, `amount`, `rate`, and optiona
 
 Columns: `active`, `name`, `type`, `year`, `basis`, `value`, `rate`, `yod`, `commission`. Allowed `type` values: `collectibles`, `fixed annuity`, `precious metals`, `real estate`, `residence`, `stocks`.
 
-#### Optional sheet `Housing`
+#### Optional sheet `Budget`
 
-Columns: `active`, `name`, `type`, `year`, `end`, `amount`, `rate`. Allowed `type` values: `rent`, `property tax`, `insurance`, `maintenance`, `other`. `year` and `end` are the first and last calendar years paid (`end` 0 = through the last plan year, negative counts back from it); `amount` is annual, in `year` dollars; `rate` is real growth above inflation (%).
+Lines of the `"budget"` spending profile. Columns: `active`, `name`, `type`, `year`, `end`, `amount`, `rate`, and optionally `survivor`. Allowed `type` values: `core`, `rent`, `property tax`, `insurance`, `maintenance`, `car`, `travel`, `care`, `other`. `year` and `end` are the first and last calendar years (`end` 0 = through the last plan year, negative counts back from it); `amount` is annual, in today's dollars; `rate` is real growth above inflation (%, not converted from a decimal); `survivor` is the percent kept after the first death (blank: `surviving_spouse_spending_percent`, or 100 for `rent`, `property tax`, `insurance` and `maintenance`). A sheet named `Housing` (same columns without `survivor`) is read as the Budget sheet.
 
 -------
 
@@ -300,7 +300,7 @@ Parameters controlling the optimization objective and spending profile.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `spending_profile` | string | Type of spending profile. Valid values: `"flat"`, `"smile"` |
+| `spending_profile` | string | Type of spending profile. Valid values: `"flat"`, `"smile"`, `"budget"` (built from the HFP `Budget` sheet: the sum of its lines, divided by its first year; with `maxBequest`, `netSpending` unset or 0 means the budget's first-year total, and another value scales the budget) |
 | `surviving_spouse_spending_percent` | integer | Percentage of spending amount for the surviving spouse (0-100). Default is `60` |
 | `objective` | string | Optimization objective. Valid values: `"maxSpending"`, `"maxBequest"` |
 | `other_medical_expenses` | float | *(Optional)* Annual non-Medicare qualified medical expenses (dental, vision, co-pays, deductibles, etc.) in today's dollars ($k). HSA withdrawals are capped by Medicare + this amount each year. Pre-Medicare years: only this amount is eligible (Medicare costs are zero). Default `0.0`. Corresponds to `plan.setMedicalExpenses()` |

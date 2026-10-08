@@ -32,7 +32,7 @@ COLUMNS = [
 HOUSE_SHEETS = {
     "Debts": ["active", "name", "type", "year", "term", "amount", "rate", "property"],
     "Fixed Assets": ["active", "name", "type", "year", "basis", "value", "rate", "yod", "commission"],
-    "Housing": ["active", "name", "type", "year", "end", "amount", "rate"],
+    "Budget": ["active", "name", "type", "year", "end", "amount", "rate", "survivor"],
 }
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "otherFiles/HFP_us.xlsx")
@@ -54,5 +54,6 @@ wb.save(out)
 print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
 print("Fill in: anticipated wages (net of contributions) for the working years;")
 print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
-print("         Housing sheet: rent / property tax / insurance / maintenance rows (year, end, amount, rate).")
+print("         Budget sheet (spending_profile = \"budget\"): core spending plus rent / property tax / insurance /")
+print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")
 print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")

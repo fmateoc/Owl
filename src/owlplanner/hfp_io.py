@@ -23,9 +23,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from datetime import date
 import re
 import numpy as np
+import openpyxl
 import pandas as pd
 
 from . import utils as u
+from .budget import BUDGET_TYPES
 
 
 # Recognized headers in each excel sheet, one per individual.
@@ -71,7 +73,7 @@ _debtItems = [
 
 # Optional house-table columns: a workbook written before they existed still loads (read as blank).
 # property: the residence or real estate whose sale pays off the loan (debts.resolve_payoff_years).
-_optionalHouseItems = {"Debts": ["property"]}
+_optionalHouseItems = {"Debts": ["property"], "Budget": ["survivor"]}
 
 
 _debtTypes = [
@@ -103,7 +105,7 @@ _fixedAssetTypes = [
 ]
 
 
-_housingItems = [
+_budgetItems = [
     "active",
     "name",
     "type",
@@ -111,16 +113,11 @@ _housingItems = [
     "end",
     "amount",
     "rate",
+    "survivor",
 ]
 
 
-_housingTypes = [
-    "rent",
-    "property tax",
-    "insurance",
-    "maintenance",
-    "other",
-]
+_budgetTypes = list(BUDGET_TYPES)
 
 
 def _convert_to_string(val):
@@ -194,6 +191,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
         dfDict = finput
         finput = "dictionary of DataFrames"
         streamName = "dictionary of DataFrames"
+        pctCells = {}
     else:
         if filename is not None:
             streamName = f"file '{filename}'"
@@ -208,6 +206,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
             dfDict = pd.read_excel(finput, sheet_name=None)
         except Exception as e:
             raise Exception(f"Could not read file {streamName}: {e}.") from e
+        pctCells = _percentFormattedCells(finput, _pctCols) if houseTables else {}
 
     timeLists, absentCols = _conditionTimetables(dfDict, inames, horizons, mylog)
     mylog.vprint(f"Successfully read time horizons from {streamName}.")
@@ -216,7 +215,7 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
     # keeps the Debts and Fixed Assets tables itself): return None rather than empty tables.
     houseLists = None
     if houseTables:
-        houseLists = _conditionHouseTables(dfDict, mylog)
+        houseLists = _conditionHouseTables(dfDict, mylog, pctCells)
         mylog.vprint(f"Successfully read household tables from {streamName}.")
 
     return finput, timeLists, houseLists, dfDict, absentCols
@@ -392,14 +391,66 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
     return timeLists, absentCols
 
 
-def _conditionHouseTables(dfDict, mylog):
+def _percentFormattedCells(finput, columns):
     """
-    Read debts and fixed assets from Household Financial Profile workbook.
+    Rows (0-based, as pandas numbers them) of the cells formatted as a percentage in Excel.
+
+    Returns {sheet: {column: set of rows}} for the given {sheet: [columns]}. A cell shown as
+    4.5% holds 0.045; only such cells are fractions to multiply by 100. Files openpyxl cannot read
+    (xls, ods, ...) give no formats, and their values are read as typed.
     """
+    out = {}
+    rewind = hasattr(finput, "seek")
+    try:
+        if rewind:
+            finput.seek(0)
+        wb = openpyxl.load_workbook(finput, read_only=True)
+    except Exception:
+        if rewind:
+            finput.seek(0)
+        return out
+    try:
+        for sheet, cols in columns.items():
+            if sheet not in wb.sheetnames:
+                continue
+            rows = wb[sheet].iter_rows()
+            header = [cell.value for cell in next(rows, [])]
+            found = {}
+            for r, row in enumerate(rows):
+                for name, cell in zip(header, row):
+                    if name in cols and "%" in str(getattr(cell, "number_format", "")):
+                        found.setdefault(name, set()).add(r)
+            out[sheet] = found
+    finally:
+        wb.close()
+        if rewind:
+            finput.seek(0)
+    return out
+
+
+def _conditionHouseTables(dfDict, mylog, pctCells=None):
+    """
+    Read debts, fixed assets and the budget from Household Financial Profile workbook.
+
+    A "Housing" sheet (the fork's first form of the budget, same columns without `survivor`) is
+    read as the Budget sheet when there is none.
+
+    pctCells: from _percentFormattedCells, the percent-formatted cells of the rate and commission
+    columns, whose values are fractions (0.045 for 4.5%) to read as percent. Other cells are
+    percent already, whatever their size: 0.5 is 0.5%.
+    """
+    pctCells = pctCells or {}
     houseDic = {}
 
-    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Housing": _housingItems}
-    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Housing": _housingTypes}
+    if "Housing" in dfDict:
+        if "Budget" in dfDict:
+            mylog.print("Both a Budget and a Housing sheet: the Housing sheet is ignored.", tag="WARNING")
+        else:
+            mylog.print("Reading the Housing sheet as the Budget sheet (amounts in today's dollars).", tag="WARNING")
+            dfDict = {**dfDict, "Budget": dfDict["Housing"]}
+
+    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Budget": _budgetItems}
+    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Budget": _budgetTypes}
     for page in items.keys():
         if page in dfDict:
             df = dfDict[page]
@@ -408,9 +459,21 @@ def _conditionHouseTables(dfDict, mylog):
             df = _checkColumns(df, page, items[page], required_cols=required)
             # Check categorical variables.
             isInList = df["type"].isin(types[page])
-            df = df[isInList]
+            if page == "Budget" and not isInList.all():
+                dropped = [str(v) for v in df.loc[~isInList, "name"]]
+                mylog.print(
+                    f"Budget lines with an unknown type are left out: {dropped}. Types: {types[page]}.",
+                    tag="WARNING",
+                )
+            df = df[isInList].copy()
 
-            houseDic[page] = conditionDebtsAndFixedAssetsDF(df, page, mylog=mylog, convert_decimal_pct=True)
+            for col, rows in pctCells.get(page, {}).items():
+                mask = df.index.isin(sorted(rows))
+                if mask.any():
+                    df.loc[mask, col] = pd.to_numeric(df.loc[mask, col], errors="coerce") * 100.0
+                    mylog.vprint(f"Read {int(mask.sum())} percent-formatted {col} value(s) in the {page} table.")
+
+            houseDic[page] = conditionDebtsAndFixedAssetsDF(df, page, mylog=mylog)
         else:
             houseDic[page] = pd.DataFrame(columns=items[page])
             mylog.vprint(f"Table for {page} not found. Assuming empty table.")
@@ -418,10 +481,11 @@ def _conditionHouseTables(dfDict, mylog):
     return houseDic
 
 
+# Columns whose percent-formatted cells are fractions to read as percent (see _percentFormattedCells).
+# Budget rates are read as typed: a real growth of 0.5 means 0.5%.
 _pctCols = {
     "Debts": ["rate"],
     "Fixed Assets": ["rate", "commission"],
-    "Housing": ["rate"],
 }
 
 
@@ -450,9 +514,9 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
         Conditioned DataFrame with proper columns and no NaN values (except boolean columns default to True)
     """
     # Map table type to column items
-    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Housing": _housingItems}
+    items = {"Debts": _debtItems, "Fixed Assets": _fixedAssetItems, "Budget": _budgetItems}
     if tableType not in items:
-        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Housing', got '{tableType}'")
+        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Budget', got '{tableType}'")
 
     columnItems = items[tableType]
 
@@ -471,13 +535,15 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
 
     # Define which columns are integers vs floats
     string_cols = ["name", "type"]
+    blank_cols = []  # numbers whose blank cell means "default", kept as NaN
     if tableType == "Debts":
         int_cols = ["year", "term"]
         float_cols = ["amount", "rate"]
         string_cols.append("property")
-    elif tableType == "Housing":
+    elif tableType == "Budget":
         int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
+        blank_cols = ["survivor"]
     else:  # Fixed Assets
         int_cols = ["year", "yod"]
         float_cols = ["basis", "value", "rate", "commission"]
@@ -490,7 +556,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
             dtype_dict[col] = "object"
         for col in int_cols:
             dtype_dict[col] = "int64"
-        for col in float_cols:
+        for col in float_cols + blank_cols:
             dtype_dict[col] = "float64"
         df = df.astype(dtype_dict)
     else:
@@ -511,6 +577,8 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None, convert_decimal_pc
             elif col in float_cols:
                 # Float columns: convert to float64, fill NaN with 0.0
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0).astype("float64")
+            elif col in blank_cols:
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
 
     # Convert decimal percentages to percent format if requested (e.g. 0.045 → 4.5)
     if convert_decimal_pct and len(df) > 0 and tableType in _pctCols:
@@ -609,7 +677,7 @@ def build_hfp_dataframes(plan):
     houseLists = {
         "Debts": plan.houseLists.get("Debts", pd.DataFrame(columns=_debtItems)),
         "Fixed Assets": plan.houseLists.get("Fixed Assets", pd.DataFrame(columns=_fixedAssetItems)),
-        "Housing": plan.houseLists.get("Housing", pd.DataFrame(columns=_housingItems)),
+        "Budget": plan.houseLists.get("Budget", pd.DataFrame(columns=_budgetItems)),
     }
 
     return timeLists, houseLists
@@ -693,15 +761,15 @@ def getTableTypes(tableType):
     Parameters
     ----------
     tableType : str
-        Type of table: "Debts", "Fixed Assets" or "Housing"
+        Type of table: "Debts", "Fixed Assets" or "Budget"
 
     Returns
     -------
     list
         List of valid types for the specified table
     """
-    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Housing": _housingTypes}
+    types = {"Debts": _debtTypes, "Fixed Assets": _fixedAssetTypes, "Budget": _budgetTypes}
     if tableType not in types:
-        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Housing', got '{tableType}'")
+        raise ValueError(f"tableType must be 'Debts', 'Fixed Assets' or 'Budget', got '{tableType}'")
 
     return types[tableType]

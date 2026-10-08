@@ -1,6 +1,6 @@
 # Draft reply on #175 (housing ledger), for the user to post
 
-Status: draft, 2026-10-08. Not posted. Design details: `phase2b-budget-plan.md`.
+Status: **posted** by the user on #175, 2026-10-08. No answer yet. Design details: `phase2b-budget-plan.md`.
 
 ---
 

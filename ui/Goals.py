@@ -27,7 +27,7 @@ import owlbridge as owb
 import case_progress as cp
 
 
-profileChoices = ["flat", "smile"]
+profileChoices = ["flat", "smile", "budget"]
 kz.initCaseKey("spendingProfile", profileChoices[1])
 kz.initCaseKey("survivor", 60)
 kz.initCaseKey("smileDip", 15)
@@ -82,7 +82,9 @@ else:
                 "dollars (the constraint when maximizing bequest). This is the amount spent in "
                 "the **first year**. A non-flat spending profile shapes the years around it, so "
                 "it sits above the spending basis reported in the results summary, and it is the "
-                "figure to compare with the Spending vs Bequest and Spending Optimization pages."
+                "figure to compare with the Spending vs Bequest and Spending Optimization pages. "
+                "With the *budget* profile, 0 spends the budget as written (its first-year total); "
+                "another amount scales every budget line to it."
             )
             ret = kz.getNum("Desired annual net spending (\\$k)", "netSpending", help=helpmsg_spending)
 
@@ -137,7 +139,10 @@ else:
     st.markdown("#### :orange[Spending Profile]")
     col1, col2, col3 = st.columns(3, gap="large", vertical_alignment="top")
     with col1:
-        helpmsg = "Spending can be constant for the duration of the plan or be adjusted for lifestyle."
+        helpmsg = (
+            "Spending can be constant for the duration of the plan or be adjusted for lifestyle. "
+            "'budget' builds the profile from the lines of the Budget sheet in the Household Financial Profile."
+        )
         ret = kz.getRadio("Type of profile", profileChoices, "spendingProfile", help=helpmsg, callback=owb.setProfile)
         if kz.getCaseKey("status") == "married":
             helpmsg = "Percentage of spending required for the surviving spouse."

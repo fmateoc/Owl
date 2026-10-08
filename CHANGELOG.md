@@ -1,17 +1,26 @@
 ### Unreleased
 
-#### New: housing ledger and the New Jersey property tax deduction
+#### New: a budget spending profile, and the New Jersey property tax deduction
 
-An optional *Housing* sheet in the HFP workbook holds recurring housing costs, one row per cost
-(`rent`, `property tax`, `insurance`, `maintenance`, `other`), each with a first and last year, an
-annual amount in that year's dollars and a real growth rate. They leave the cash flow like debt
-payments, so net spending means non-housing spending and renting and buying can be compared (with
-`maxBequest` at a fixed net spending, since home equity is not spent). A plan with the sheet gives
-the same objective as the same amounts entered as negative big-ticket items. New Jersey's property
-tax deduction (NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \$15,000,
-not indexed) reads the sheet, as a bounded LP variable after the retirement exclusion, which it
-does not move. The \$50 credit that is its alternative is not modeled. `Plan.st_pt_n` gives the
-deduction by year; it appears in the Taxes sheet and the explanation.
+`spending_profile = "budget"` builds the spending profile from the lines of an optional *Budget*
+sheet in the HFP workbook: core spending, rent, property tax, insurance, maintenance, a car, travel,
+care, ..., each with a first and last year, an annual amount in today's dollars, a real growth rate
+and the share a survivor keeps (by default the case's survivor percentage, and all of it for housing
+costs). The profile is the lines' sum divided by its first year, so the optimizer and the LP are
+unchanged: budgeting stays outside the optimizer, as upstream suggested on #175. With `maxBequest`,
+net spending unset or 0 means the budget's first-year total (another amount scales the budget); with
+`maxSpending`, the whole budget scales.
+Renting and buying are compared with one budget per variant at a fixed spending level. The results
+workbook has a *Budget* sheet that splits net spending along the lines. A *Housing* sheet (this
+fork's first, ledger form, whose costs were paid outside net spending) is read as budget lines; at a
+fixed spending level the two give the same plan.
+
+New Jersey's property tax deduction (NJ-1040 line 41: property taxes on the main home, or 18% of
+rent, up to \$15,000, not indexed) reads the budget's property tax and rent lines. It is a bounded LP
+variable after the retirement exclusion, which it does not move, and at most the lines' share of the
+year's net spending, so it follows spending under `maxSpending`. The \$50 credit that is its
+alternative is not modeled. `Plan.st_pt_n` gives the deduction by year; it appears in the Taxes sheet
+and the explanation.
 
 #### New: New Jersey retirement income exclusion
 

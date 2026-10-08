@@ -110,7 +110,7 @@ debts, and fixed assets) are held in an optional ancillary *Household Financial 
 **Household Financial Profile**
 > A *Household Financial Profile* (HFP) is an
 optional Excel workbook with one **Wages and Contributions** sheet per person
-and optional household sheets *Debts*, *Fixed Assets* and *Housing*. Time-series fields include wages, *other inc*, *net inv*,
+and optional household sheets *Debts*, *Fixed Assets* and *Budget*. Time-series fields include wages, *other inc*, *net inv*,
 tax-deferred and Roth contributions (*ctrb* columns), *HSA ctrb*, *Roth conv* with its
 *Roth conv fixed* flag, *QCD* (Qualified Charitable Distribution), and *big-ticket items*.
 When no HFP is provided, wages and contributions are assumed to be zero.
@@ -198,8 +198,8 @@ Two optional **worksheets** (separate tabs) extend the workbook:
   and optional `property` (the home or real estate whose sale pays off the loan).
 - **`Fixed Assets`** — columns `active`, `name`, `type`, `year`, `basis`, `value`, `rate`, `yod`, `commission`
   (allowed `type` values are listed under *Financial Profile → Debts and Fixed Assets*).
-- **`Housing`** — columns `active`, `name`, `type` (`rent`, `property tax`, `insurance`, `maintenance`,
-  `other`), `year`, `end`, `amount`, `rate`: recurring housing costs (see *Debts and Fixed Assets*).
+- **`Budget`** — columns `active`, `name`, `type`, `year`, `end`, `amount`, `rate`, and optionally
+  `survivor`: the lines of the *budget* spending profile (see *Debts and Fixed Assets*).
 
 Unlike the person sheets, **all** of the columns above must be present when one of these two sheets
 exists; there is no optional-column behavior here.
@@ -676,36 +676,47 @@ In all cases the **gain is measured against the cost basis using proceeds net of
 commission reduces the taxable gain. Assets instead liquidated at the end of the plan (a *yod* beyond the plan
 duration) pass to heirs with a step-up in basis and are not taxed, as noted above.
 
-##### Housing
-The optional *Housing* worksheet holds recurring housing costs, one row per cost:
+##### Budget
+The optional *Budget* worksheet builds the spending profile from line items when the profile type is
+*budget* (on the **Goals** page). Budgeting is not optimized: the lines set the shape of net spending
+year by year, and the optimizer then works with that shape as it does with *flat* or *smile*.
 
-|active|name|type|year|end|amount|rate|
-|--|--|--|--|--|--|--|
-| | | | | | | |
+|active|name|type|year|end|amount|rate|survivor|
+|--|--|--|--|--|--|--|--|
+| | | | | | | | |
 
 where:
 - *active* and *name* are as for *Debts*.
-- *type* is one of *rent*, *property tax*, *insurance*, *maintenance*, *other*. All are cash outflows;
-  *rent* and *property tax* also feed a state's property tax deduction where the state has one
-  (New Jersey, NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \\$15,000).
-- *year* is the first calendar year the cost is paid. A year before the plan start is read as the plan start.
-- *end* is the last calendar year paid, inclusive. 0 means through the last year of the plan, and a negative
+- *type* is one of *core*, *rent*, *property tax*, *insurance*, *maintenance*, *car*, *travel*, *care*,
+  *other*. Lines of another type are left out, with a warning. *rent* and *property tax* also feed a
+  state's property tax deduction where the state has one (New Jersey, NJ-1040 line 41: property taxes on
+  the main home, or 18% of rent, up to \\$15,000).
+- *year* is the first calendar year of the line. A year before the plan start is read as the plan start.
+- *end* is the last calendar year, inclusive. 0 means through the last year of the plan, and a negative
   value counts back from it (-1 is the year before the last). A positive *end* before *year* or before the
-  plan start leaves the row out, with a warning.
-- *amount* is the annual cost in *year* dollars (today's dollars for a past or current *year*).
-- *rate* is the **real growth** above inflation (%); 0 means the cost tracks inflation.
+  plan start leaves the line out, with a warning.
+- *amount* is the annual amount in **today's dollars**.
+- *rate* is the **real growth** above inflation (%), from *year* on; 0 means the line tracks inflation.
+  It is read as a percent: 0.5 is 0.5%.
+- *survivor* (optional) is the percentage of the line kept after the first death. Blank means the case's
+  survivor percentage, except for *rent*, *property tax*, *insurance* and *maintenance*, which a survivor
+  keeps paying in full.
 
-Housing costs are household-level: they are not reduced at the first death. They are paid out of the cash
-flow like debt payments, so the net spending amount covers non-housing spending only.
+The profile is the sum of the lines, divided by its first year, so the first year must have spending.
+With *maxBequest*, net spending is the budget's first-year total unless a net spending amount (other
+than 0) is given, which then scales the whole budget. With *maxSpending*, the optimizer finds how large a version of the
+budget can be afforded: all lines scale together, housing included. The *Budget* sheet of the results
+workbook shows net spending split along the lines.
 
-To compare renting and buying, use one workbook per variant. *Rent*: a *rent* row.
-*Buy with cash*: the price and closing costs as a negative *big-ticket item* in the purchase year, a
-*residence* in *Fixed Assets*, and the owner's costs (property tax, insurance, maintenance) as *Housing* rows.
-*Buy with a mortgage*: the same, with the down payment as the big-ticket item and the loan in *Debts*.
-When the home is sold within the plan, end its *Housing* rows the year before *yod* and name the home in
-the loan's *property* column, so that the sale pays off the loan. Home equity is not spendable, so compare the variants with *maxBequest* at a fixed
-net spending: the final bequest counts the home, net of any remaining debt.
-Mortgage interest is not deducted (the federal standard deduction is assumed).
+To compare renting and buying, use one workbook per variant, with the same lines apart from housing.
+*Rent*: a *rent* line. *Buy with cash*: the price and closing costs as a negative *big-ticket item* in the
+purchase year, a *residence* in *Fixed Assets*, and the owner's costs (property tax, insurance,
+maintenance) as budget lines. *Buy with a mortgage*: the same, with the down payment as the big-ticket item
+and the loan in *Debts*. When the home is sold within the plan, end its lines the year before *yod* and
+name the home in the loan's *property* column, so that the sale pays off the loan. Home equity is not
+spendable, so compare the variants with *maxBequest* at a fixed net spending: the final bequest counts the
+home, net of any remaining debt. Mortgage interest is not deducted (the federal standard deduction is
+assumed).
 """)
 
     with st.expander(":orange[**Fixed Income**]", expanded=expand_all, type="compact"):
@@ -1444,9 +1455,11 @@ bequest when maximizing spending — when maximizing spending against a bequest 
 should be at least as large as the survivor's safety net.
 
 ##### Spending Profile
-The **type of profile** can be *flat* (constant real spending over time) or *smile* (adjusted for
-lifestyle: a dip in the “slow-go” years, then an increase or decrease over the plan). For *smile*,
-you can set the **smile delay** (years before the dip starts), **smile dip** (%), and **smile increase** (%).
+The **type of profile** can be *flat* (constant real spending over time), *smile* (adjusted for
+lifestyle: a dip in the “slow-go” years, then an increase or decrease over the plan), or *budget*
+(built from the lines of the *Budget* sheet of the Household Financial Profile: see *Debts and Fixed
+Assets*). For *smile*, you can set the **smile delay** (years before the dip starts), **smile dip** (%),
+and **smile increase** (%).
 **Profile slack** controls how far spending can deviate from the profile shape. Spending stays
 within ±slack% of the profile (bilateral bound); set to 0 to pin spending exactly to the profile.
 **Time preference** (0–10 %/year) applies an exponentially decaying weight to future spending

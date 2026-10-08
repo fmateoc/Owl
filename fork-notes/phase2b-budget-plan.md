@@ -1,5 +1,12 @@
 # Phase 2b plan: housing as part of a budget-built spending profile (2026-10-08)
 
+**Status (2026-10-08): the user agreed to all three decisions as recommended and posted
+`issue-175-reply.md`; implemented on `claude/phase2-housing` (see PROGRESS.md). One change from the
+design below: the NJ deduction's bound follows spending exactly, as an LP row `st_pt_n <=
+s_n * g_n` (s_n = the deductible lines' share of the budget's year), instead of using the lines'
+unscaled amounts. Under `maxBequest` the two are the same; under `maxSpending` the row is right
+and the unscaled bound was not.**
+
 Fork-only planning note, after the maintainer's answer on #175 (housing ledger + NJ property tax
 deduction). Goal: keep what the household needs (rent / buy with cash / buy with a mortgage,
 recurring housing costs, NJ's property tax deduction) while moving the generic part to the shape
@@ -70,9 +77,8 @@ the home in Fixed Assets, the mortgage in Debts with its `property` link (#173).
 
 - NJ property tax deduction (line 41): unchanged rule (`st_pt`, bounded LP variable, data in
   `taxes_state.toml`), with its bound computed from the budget's `property tax` and `rent` lines
-  instead of the Housing ledger. Under `maxSpending` the bound uses the lines' own amounts, not
-  scaled by the basis (it understates the deduction when the basis scales the budget up and the
-  property tax is below the $15,000 cap; documented).
+  instead of the Housing ledger: at most the cap, and at most those lines' share of the year's
+  net spending (an LP row, so it follows `g_n` under `maxSpending`; as implemented).
 - The Phase 2 cash-flow term (`housing_costs_n` subtracted next to debt payments) goes away; the
   costs are inside `g_n`.
 

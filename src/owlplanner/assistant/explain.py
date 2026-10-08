@@ -848,7 +848,7 @@ def _state_bracket_analysis(plan):
         "(New Jersey's pension and other retirement income exclusion); exclusion_ceiling marks a year "
         "held at one of its income ceilings, where the next dollar would lose part of the exclusion. "
         "property_tax_deduction is the state's deduction for property taxes or a share of rent "
-        "(New Jersey line 41, from the Housing sheet), taken after the exclusion.",
+        "(New Jersey line 41, from the budget's property tax and rent lines), taken after the exclusion.",
     }
     if getattr(plan, "locality", ""):
         out["locality"] = plan.locality

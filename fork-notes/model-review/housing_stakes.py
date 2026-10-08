@@ -13,6 +13,9 @@ The deduction claimed is only meaningful in years where it lowers the tax: in a 
 taxable income is zero without it, any amount up to the allowed one gives the same plan, and the
 solver's pick there is arbitrary. Compare the bequest, not the lifetime deduction.
 (Until 2026-10-07 this script printed p.basis, which under maxBequest is the fixed net spending.)
+Since 2026-10-08 (Phase 2b) the housing cost is a line of a "budget" spending profile, with core
+spending as the other line, instead of Phase 2's Housing ledger outside net spending; at a fixed
+spending level the two are the same plan.
 """
 import io
 import sys
@@ -42,32 +45,40 @@ only = sys.argv[3].split(";") if len(sys.argv) > 3 else None
 THISYEAR = owl.Plan(["A"], ["1960-01-01"], [80], "t", verbose=False).year_n[0]
 
 
-def housing_df(rows):
-    return conditionDebtsAndFixedAssetsDF(pd.DataFrame(rows), "Housing")
+def budget_df(rows):
+    return conditionDebtsAndFixedAssetsDF(pd.DataFrame(rows), "Budget")
+
+
+def line(name, htype, amount):
+    return {"active": True, "name": name, "type": htype, "year": THISYEAR, "end": 0, "amount": amount,
+            "rate": 0.0, "survivor": np.nan}
 
 
 def run(state, kind, amount=0.0):
     """kind: 'owner' (property tax), 'tenant' (rent), 'bigticket' (same cost, no deduction), or 'none'."""
     p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1964-09-15"], [89, 92], "housing stakes",
                  verbose=False, logstreams=[io.StringIO()])
-    p.setSpendingProfile("flat")
+    budget = kind in ("owner", "tenant")
+    p.setSpendingProfile("budget" if budget else "flat")
     p.setAccountBalances(taxable=[150, 150], taxDeferred=td, taxFree=[75, 75])
     p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
     p.setRates("conservative")
     p.setSocialSecurity([3000, 2400], [70, 70])
-    if kind in ("owner", "tenant"):
+    myopts = dict(opts)
+    if budget:
+        # Core spending (flat, 60% survivor) plus the housing line, which a survivor keeps paying.
+        # netSpending is left to the budget: its first-year total, core + housing.
         htype = "property tax" if kind == "owner" else "rent"
-        p.houseLists["Housing"] = housing_df(
-            [{"active": True, "name": "h", "type": htype, "year": THISYEAR, "end": 0,
-              "amount": amount, "rate": 0.0}]
-        )
+        p.houseLists["Budget"] = budget_df([line("core", "core", 1000.0 * opts["netSpending"]),
+                                            line("h", htype, amount)])
+        myopts.pop("netSpending")
     elif kind == "bigticket":
         # Same cash cost as a negative big-ticket item: no NJ deduction.
         g = p.gamma_n
         p.Lambda_in[0, :] = -amount * g[: p.N_n] / g[0]
     p.setStateTax(state)
     t = time.time()
-    p.solve("maxBequest", options=dict(opts))
+    p.solve("maxBequest", options=myopts)
     dt = time.time() - t
     st = float(np.sum(p.st_T_n / p.gamma_n[:-1]))
     ptd = float(np.sum(p.st_pt_n / p.gamma_n[:-1]))
@@ -78,9 +89,9 @@ def run(state, kind, amount=0.0):
 label = f"${sum(td) / 1000:.1f}M"
 cases = [
     ("bt", "NJ pt $20k bigticket", "NJ", "bigticket", 20000.0),
-    ("own", "NJ pt $20k Housing", "NJ", "owner", 20000.0),
-    ("rent", "NJ rent $30k Housing", "NJ", "tenant", 30000.0),
-    ("ny", "NY pt $20k Housing", "NY", "owner", 20000.0),
+    ("own", "NJ pt $20k budget", "NJ", "owner", 20000.0),
+    ("rent", "NJ rent $30k budget", "NJ", "tenant", 30000.0),
+    ("ny", "NY pt $20k budget", "NY", "owner", 20000.0),
 ]
 for key, name, state, kind, amount in cases:
     if only and key not in only:

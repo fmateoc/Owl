@@ -28,7 +28,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #170 Envelope model | Filed with #171; one conversation with it (the maintainer answered both on #171) |
 | #171 Pinned loop | **Declined**: second model too costly; `withACA="optimize"` captures morgan's gain; maintainer's answer is local search (`breakpointMethod="local-search"`, 2026.10.6). Asked for our findings: measured, reply **posted** by the user 2026-10-06 (`fork-notes/issue-local-search-reply.md`, details `fork-notes/local-search/README.md`). Maintainer (2026-10-07): all three points right; tie rule and repeat reuse in `785217c`, merged (fork's own tie code and test dropped, theirs kept). He also notes the cost basis is still a source of non-convergence with Medicare exact (on his list) |
 | Loop anomaly (NY→FL at year 5) | Not filed (no repro beyond loop noise) |
-| Housing ledger + NJ property tax deduction (design) | Filed by the user (number not recorded; `issue-housing.md`); no response relayed as of 2026-10-08 |
+| #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`, reply drafted (`issue-175-reply.md`), **3 decisions for the user** |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
@@ -206,7 +206,7 @@ Cash vs mortgage (not measured as stakes; mechanics checked on a synthetic NY co
 home, $48k rent, 6.5% mortgage, conservative rates). Not modeled and biased against the mortgage:
 the mortgage interest deduction (Phase 3; federal itemized and NY's own).
 
-Next: wait for the maintainer on the housing issue. Then Phase 3 (itemized deductions: it decides cash vs mortgage;
+Next: Phase 2b (`fork-notes/phase2b-budget-plan.md`): housing moves into a budget-built spending profile, as #175's answer suggests; the user decides its three points and posts `issue-175-reply.md`. Then Phase 3 (itemized deductions: it decides cash vs mortgage;
 `debts.py` gives the interest per year as payment minus the change in balance) or Phase 5
 (part-time work / SS earnings test) as the household needs them.
 

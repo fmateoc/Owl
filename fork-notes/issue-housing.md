@@ -2,7 +2,7 @@
 
 **Title:** Proposal: a Housing ledger for recurring housing costs, and New Jersey's property tax deduction (line 41) as its first state rule
 
-Status: filed by the user (issue number not recorded here; no maintainer response relayed as of 2026-10-08). Since then, the loan payoff it points to landed upstream as a `property` link on Debts (#173). Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in `a9093f8`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
+Status: filed as #175. Answered 2026-10-08: state-tax rules stay out of upstream; budgeting should feed the spending profile from outside the optimizer. Follow-up: `phase2b-budget-plan.md`, `issue-175-reply.md`. Since then, the loan payoff it points to landed upstream as a `property` link on Debts (#173). Reference implementation: fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07; review fixes in `a9093f8`). A minimal stock-`dev` patch can be prepared on request; the design below is what we would want reviewed first.
 
 ---
 

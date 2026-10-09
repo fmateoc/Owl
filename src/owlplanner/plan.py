@@ -4777,20 +4777,54 @@ class Plan:
 
         years = []
         excess = 0.0
-        schedules = [(f_tn, self.DeltaBar_tn, self.theta_tn)]
+        # Fork: an income-tiered exclusion claimed below what the income allows is tax not owed too.
+        short_n = self._exclusion_shortfall(x)
+        zero_n = np.zeros(self.N_n)
+        schedules = [(f_tn, self.DeltaBar_tn, self.theta_tn, zero_n)]
         if self.N_st > 0 and np.any(st_f_tn):
-            schedules.append((st_f_tn, self.st_DeltaBar_tn, self.st_theta_tn))
+            schedules.append((st_f_tn, self.st_DeltaBar_tn, self.st_theta_tn, short_n))
         if self.N_lt > 0 and np.any(lt_f_tn):
-            schedules.append((lt_f_tn, self.lt_DeltaBar_tn, self.lt_theta_tn))
+            schedules.append((lt_f_tn, self.lt_DeltaBar_tn, self.lt_theta_tn, zero_n))
         for n in range(self.N_n):
             over = 0.0
-            for f, width, rate in schedules:
+            for f, width, rate, short in schedules:
                 charged = float(np.dot(f[:, n], rate[:, n]))
-                over += charged - ordered_tax(float(np.sum(f[:, n])), width[:, n], rate[:, n])
+                over += charged - ordered_tax(float(np.sum(f[:, n])) - short[n], width[:, n], rate[:, n])
             if over > 1.0:
                 years.append(int(self.year_n[n]))
                 excess += over / self.gamma_n[n]
         return years, excess
+
+    def _exclusion_shortfall(self, x=None):
+        """Income-tiered exclusion the solution could claim on its own income but does not, per year ($).
+
+        The LP bounds the claim from above only (st_rx <= share x base), so where a year's cash has no
+        price a smaller claim is as good, and the plan reports state tax it does not owe. Read from x
+        (the tier copies rxl add up to line 27 in the years with rows), or from the aggregated results.
+        """
+        Nn = self.N_n
+        if not getattr(self, "_rx_active", False) or "st_rx" not in self.vm:
+            return np.zeros(Nn)
+        if x is None:
+            return np.maximum(0.0, self._tiered_exclusion_implied()[1] - self.st_rx_n)
+        vm = self.vm
+        rx = vm["st_rx"].extract(x)
+        rxl = vm["rxl"].extract(x)
+        w = vm["w"].extract(x)
+        conv = vm["x"].extract(x)
+        short = np.zeros(Nn)
+        for n in range(Nn):
+            elig = self.st_rx_elig_in[:, n]
+            if not elig.any() or self.st_rx_cap_n[n] <= 0 or self.RXF_n[n] < 0.5:
+                continue
+            total = float(np.round(np.sum(rxl[n])))
+            share = tax_state.exclusion_share(total, self.st_rx_limit_kn[:, n], self.st_rx_share_kn[:, n])
+            if self.st_rx_other_n[n]:
+                base = total
+            else:
+                base = float(np.sum((w[:, 1, n] + conv[:, n] + self.piBar_in[:, n] + self.spiaBar_in[:, n])[elig]))
+            short[n] = max(0.0, min(self.st_rx_cap_n[n], share * base, max(0.0, total)) - rx[n])
+        return short
 
     def _repairBracketOrder(self, xx, objfn, objective, options, matricesMatch):
         """Re-fill out-of-order tax brackets by re-solving the accepted LP with tax priced (TAX_TIEBREAK).

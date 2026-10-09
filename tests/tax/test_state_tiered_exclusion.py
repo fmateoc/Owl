@@ -213,11 +213,14 @@ def test_time_limit_keeps_the_tiers_and_reports_the_gap():
 
 def test_node_limit_keeps_the_tiers_and_gives_the_same_plan_every_time(monkeypatch):
     """Without maxTime the MILP stops at RX_NODE_LIMIT nodes, not at a time: the plan does not depend on
-    machine speed or load. Later iterations keep its tiers, as with a time limit."""
+    machine speed or load. Later iterations keep its tiers, as with a time limit.
+
+    Solved in dollars (mipScaleOrder=0): in upstream's default hundreds of dollars (#178) this MILP
+    closes its gap at the root, so no node cap binds (checked down to 20 nodes)."""
     from owlplanner import plan as plan_module
 
     monkeypatch.setattr(plan_module, "RX_NODE_LIMIT", 200)
-    a, b = (_couple(tax_deferred=(1500, 1000)) for _ in range(2))
+    a, b = (_couple(tax_deferred=(1500, 1000), mipScaleOrder=0) for _ in range(2))
     assert a._rx_fixed is not None and a.solverGap >= a._rx_fixed[2] > 1e-4
     assert a.basis == b.basis and np.array_equal(a.st_rx_n, b.st_rx_n)
     for n in range(a.N_n):
@@ -249,3 +252,20 @@ def test_kept_tier_moves_down_to_the_statute_on_its_floor(income, kept, expected
     assert moved[n] == (expected != kept)
     assert int(np.argmax(p._rx_fixed[0][n])) == expected
     assert moved.sum() == moved[n]
+
+
+def test_an_exclusion_claimed_short_counts_as_tax_not_owed():
+    """The LP bounds the claim from above only: where cash has no price a smaller claim ties. The
+    bracket-order check counts the shortfall as tax not owed, which turns tax pricing on (found when
+    upstream's MIP scaling, #178, returned such a plan under local search)."""
+    p = _pension_plan([5000, 4000])
+    assert not p._bracket_order_excess()[0]
+    n = 0
+    assert p.st_rx_n[n] > 10_000
+    p.st_rx_n = p.st_rx_n.copy()
+    p.st_rx_n[n] -= 10_000
+    assert p._exclusion_shortfall()[n] == pytest.approx(10_000, abs=1.0)
+    years, excess = p._bracket_order_excess()
+    assert years == [int(p.year_n[n])]
+    # Ten thousand dollars of income at the year's top NJ rate, in today's dollars.
+    assert 0 < excess <= 10_000 * np.max(p.st_theta_tn[:, n]) / p.gamma_n[n] + 1

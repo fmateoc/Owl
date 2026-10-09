@@ -334,6 +334,7 @@ def budget_spending(plan, N=None):
 
     The budget is the shape of g_n: each line gets its share of the year's budget. Under maxBequest
     these are the lines' own amounts (inflated); under maxSpending they scale with the basis.
+    Essential lines are paid at their amounts (inflated), and the other lines share the rest.
     Returns ({line name: array}, housing array), or ({}, zeros) without a budget.
     """
     N = plan.N_n if N is None else N
@@ -341,17 +342,21 @@ def budget_spending(plan, N=None):
     g_n = np.asarray(plan.g_n[:N], dtype=float)
     if budget is None:
         return {}, np.zeros(N)
-    total = budget.total_n[:N]
-    scale = np.divide(g_n, total, out=np.zeros(N), where=total > 0)
+    ess = budget.essential or (False,) * len(budget.names)
+    essential_nom = budget.essential_n[:N] * plan.gamma_n[:N]
+    disc = budget.discretionary_n[:N]
+    scale = np.divide(g_n - essential_nom, disc, out=np.zeros(N), where=disc > 0)
     lines = {}
-    for name, amount in zip(budget.names, budget.amounts_ln):
+    housing = np.zeros(N)
+    for name, btype, amount, is_ess in zip(budget.names, budget.types, budget.amounts_ln, ess, strict=True):
         key = name
         k = 2
         while key in lines:
             key = f"{name} ({k})"
             k += 1
-        lines[key] = amount[:N] * scale
-    housing = budget.by_type(*budgeting.HOUSEHOLD_TYPES)[:N] * scale
+        lines[key] = amount[:N] * (plan.gamma_n[:N] if is_ess else scale)
+        if btype in budgeting.HOUSEHOLD_TYPES:
+            housing += lines[key]
     return lines, housing
 
 
@@ -526,6 +531,9 @@ def build_summary_dic(plan, N=None):
     totDebtPayments = np.sum(plan.debt_payments_n[:N], axis=0)
     totDebtPaymentsNow = np.sum(plan.debt_payments_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total debt payments", totDebtPaymentsNow, totDebtPayments)
+
+    if getattr(plan, "discretionary_scale", None) is not None:
+        dic["Discretionary spending (share of budget)"] = u.pc(plan.discretionary_scale, f=1)
 
     _, housing_n = budget_spending(plan, N)
     if np.any(housing_n > 0):
@@ -897,6 +905,9 @@ def plan_metrics(plan, N=None) -> dict:
         "time_horizon_years": float(N),
         "inflation_factor": float(gamma[N]),
     }
+    # Only with essential budget lines (every value here is a number).
+    if getattr(plan, "discretionary_scale", None) is not None:
+        m["discretionary_scale"] = float(plan.discretionary_scale)
     return m
 
 

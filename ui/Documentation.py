@@ -705,12 +705,21 @@ where:
 - *survivor* (optional) is the percentage of the line kept after the first death. Blank means the case's
   survivor percentage, except for *rent*, *property tax*, *insurance* and *maintenance*, which a survivor
   keeps paying in full.
+- *essential* (optional; blank means no) marks a line paid at its amount whatever the spending level:
+  a floor rather than a share.
 
 The profile is the sum of the lines, divided by its first year, so the first year must have spending.
 With *maxBequest*, net spending is the budget's first-year total unless a net spending amount (other
 than 0) is given, which then scales the whole budget. With *maxSpending*, the optimizer finds how large a version of the
 budget can be afforded: all lines scale together, housing included. The *Budget* sheet of the results
 workbook shows net spending split along the lines.
+
+With *essential* lines, only the other (discretionary) lines scale: net spending is the essential lines
+plus a share of the discretionary ones. *maxSpending* finds the largest share the plan affords, shown in
+the summary as *Discretionary spending (share of budget)*; a plan that cannot pay the essential lines is
+infeasible. With *maxBequest*, a net spending amount is the first-year total and must cover the essential
+lines; at exactly that amount nothing discretionary is spent. A first year without a discretionary line
+is refused under *maxSpending*.
 
 To compare renting and buying, use one workbook per variant, with the same lines apart from housing.
 *Rent*: a *rent* line. *Buy with cash*: the price and closing costs as a negative *big-ticket item* in the

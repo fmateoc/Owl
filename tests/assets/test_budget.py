@@ -457,3 +457,152 @@ def test_metrics_and_explanation_report_housing_and_the_deduction():
     assert ex["this_year"]["state_tax"]["property_tax_deduction"] == pytest.approx(15000.0, abs=1.0)
     by_year = ex["state_tax_brackets"]["by_year"]
     assert any(r.get("property_tax_deduction_today", 0) > 0 for r in by_year)
+
+
+# ---------------------------------------------------------------------------
+# Essential lines: a floor paid at its amount, the other lines scaled (fork, after #175)
+# ---------------------------------------------------------------------------
+
+
+def _ess(line):
+    return line | {"essential": True}
+
+
+def _travel(amount=20000.0, **kw):
+    return _line(name="travel", type="travel", amount=amount, **kw)
+
+
+def _df_ess(*lines):
+    return conditionDebtsAndFixedAssetsDF(pd.DataFrame(list(lines), columns=COLS + ["essential"]), "Budget")
+
+
+def _plan_ess(lines, taxable=(800, 400), expectancy=(89, 92)):
+    p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1965-09-15"], list(expectancy), "essential", verbose=False,
+                 logstreams=[io.StringIO()])
+    p.setSpendingProfile("budget", 60)
+    p.setAccountBalances(taxable=list(taxable), taxDeferred=[0, 0], taxFree=[0, 0])
+    p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
+    p.setRates("conservative")
+    p.setSocialSecurity([2800, 2200], [70, 70])
+    p.houseLists["Budget"] = _df_ess(*lines)
+    return p
+
+
+class TestEssentialFlag:
+    @pytest.mark.parametrize("val,expected", [(True, True), ("yes", True), (1, True), ("True", True),
+                                              (False, False), ("no", False), (0, False), (np.nan, False),
+                                              (None, False), ("", False)])
+    def test_blank_means_no(self, val, expected):
+        assert budget.is_essential({"essential": val}) is expected
+
+    def test_column_is_optional_and_blank_is_false(self):
+        df = _df(_core(50000.0))
+        assert list(df["essential"]) == [False]
+        df = _df_ess(_core(50000.0) | {"essential": np.nan}, _ess(_rent(18000.0)))
+        assert list(df["essential"]) == [False, True]
+
+    def test_evaluate_splits_essential_and_discretionary(self):
+        b = budget.evaluate(_df_ess(_ess(_core(50000.0)), _ess(_rent(18000.0)), _travel()), 6, 3, 60, THISYEAR)
+        assert b.has_essentials and b.essential == (True, True, False)
+        assert list(b.essential_n) == [68000.0] * 3 + [48000.0] * 3  # rent kept in full by a survivor
+        assert list(b.discretionary_n) == [20000.0] * 3 + [12000.0] * 3
+        assert not budget.evaluate(_df(_core(50000.0)), 6, 3, 60, THISYEAR).has_essentials
+
+    def test_hfp_round_trip_keeps_the_flag(self, tmp_path):
+        p1 = _plan_ess([_ess(_core(50000.0)), _travel()])
+        fname = str(tmp_path / "HFP_essential.xlsx")
+        p1.saveHFP(fname, overwrite=True)
+        p2 = _plan(state="", lines=None)
+        p2.readHFP(fname)
+        assert list(p2.houseLists["Budget"]["essential"]) == [True, False]
+
+
+def test_max_spending_pays_essentials_and_scales_the_rest():
+    p = _plan_ess([_ess(_core(50000.0)), _ess(_rent(18000.0)), _travel(end=THISYEAR + 9)])
+    p.solve("maxSpending", options={**EXACT, "bequest": 0})
+    assert p.caseStatus == "solved"
+    k = p.discretionary_scale
+    assert k > 1  # the couple can afford more than the budgeted travel
+    real = p.g_n / p.gamma_n[:-1]
+    assert real == pytest.approx(p.budget.essential_n + k * p.budget.discretionary_n, rel=1e-6)
+    lines, housing = budget_spending(p)
+    assert sum(lines.values()) == pytest.approx(p.g_n, rel=1e-6)  # after travel ends: g_n = E_n to solver tolerance
+    assert lines["rent"] == pytest.approx(18000.0 * p.gamma_n[:-1], rel=1e-6)  # not scaled
+    assert lines["travel"][0] == pytest.approx(20000.0 * k, rel=1e-6)
+    assert housing == pytest.approx(lines["rent"])
+    assert "Discretionary spending (share of budget)" in p.summaryDic()
+    assert plan_metrics(p)["discretionary_scale"] == pytest.approx(k)
+
+
+def test_without_essential_lines_the_plan_is_unchanged():
+    lines = [_core(50000.0), _rent(18000.0), _travel(end=THISYEAR + 9)]
+    p_a = _plan(state="", lines=lines, taxable=(800, 400))
+    p_b = _plan_ess(lines)
+    for p in (p_a, p_b):
+        p.setSocialSecurity([2800, 2200], [70, 70])
+        p.solve("maxSpending", options={**EXACT, "bequest": 0})
+    assert p_b.g_n == pytest.approx(p_a.g_n, rel=1e-9)
+    assert p_b.discretionary_scale is None and "discretionary_scale" not in plan_metrics(p_b)
+
+
+def test_max_bequest_at_the_budget_is_the_same_plan():
+    """At the budgeted level (scale 1) the flag changes nothing: the spending path is the budget."""
+    plain = [_core(50000.0), _rent(18000.0), _travel(end=THISYEAR + 9)]
+    p_a = _plan_ess(plain)
+    p_b = _plan_ess([_ess(plain[0]), _ess(plain[1]), plain[2]])
+    for p in (p_a, p_b):
+        p.solve("maxBequest", options=dict(EXACT))
+    assert p_b.discretionary_scale == pytest.approx(1.0)
+    assert p_b.g_n == pytest.approx(p_a.g_n, rel=1e-9)
+    assert _bequest(p_b) == pytest.approx(_bequest(p_a), rel=1e-9)
+
+
+def test_max_bequest_on_essentials_only():
+    """netSpending at the essential level: no discretionary spending, the most the heirs can get."""
+    p = _plan_ess([_ess(_core(50000.0)), _ess(_rent(18000.0)), _travel()])
+    p.solve("maxBequest", options={**EXACT, "netSpending": 68})
+    assert p.discretionary_scale == pytest.approx(0.0, abs=1e-9)
+    assert p.g_n / p.gamma_n[:-1] == pytest.approx(p.budget.essential_n, rel=1e-6)
+
+
+def test_max_bequest_below_the_essentials_is_refused():
+    p = _plan_ess([_ess(_core(50000.0)), _travel()])
+    with pytest.raises(ValueError, match="below the budget's essential lines"):
+        p.solve("maxBequest", options={**EXACT, "netSpending": 40})
+
+
+def test_every_line_essential_is_refused_under_max_spending():
+    p = _plan_ess([_ess(_core(50000.0)), _ess(_rent(18000.0))])
+    with pytest.raises(ValueError, match="need a discretionary line"):
+        p.solve("maxSpending", options={**EXACT, "bequest": 0})
+
+
+def test_essentials_beyond_the_means_are_infeasible():
+    """Whole-budget scaling would cut rent with travel; a floor the savings cannot pay is reported."""
+    lines = [_core(60000.0), _rent(30000.0), _travel()]
+    p_a = _plan_ess(lines, taxable=(150, 100))
+    p_a.solve("maxSpending", options={**EXACT, "bequest": 0})
+    assert p_a.caseStatus == "solved" and p_a.g_n[0] < 110000.0  # everything scaled down, rent too
+    p_b = _plan_ess([_ess(lines[0]), _ess(lines[1]), lines[2]], taxable=(150, 100))
+    p_b.solve("maxSpending", options={**EXACT, "bequest": 0})
+    assert p_b.caseStatus != "solved"
+
+
+def test_essential_rows_replay_across_iterations():
+    """The profile rows are cached across loop iterations; the loop's plan keeps the floor."""
+    p = _plan_ess([_ess(_core(50000.0)), _ess(_rent(18000.0)), _travel()])
+    p.solve("maxSpending", options={"bequest": 0})  # default loop: Medicare and SS taxability iterate
+    assert p.caseStatus == "solved"
+    real = p.g_n / p.gamma_n[:-1]
+    k = p.discretionary_scale
+    assert real == pytest.approx(p.budget.essential_n + k * p.budget.discretionary_n, rel=1e-6)
+
+
+def test_spending_slack_applies_to_the_discretionary_part():
+    p = _plan_ess([_ess(_core(50000.0)), _travel()])
+    p.solve("maxSpending", options={**EXACT, "bequest": 0, "spendingSlack": 10})
+    real = p.g_n / p.gamma_n[:-1]
+    disc = real - p.budget.essential_n
+    ratio = disc / p.budget.discretionary_n / (disc[0] / p.budget.discretionary_n[0])
+    assert np.all(ratio >= 0.9 - 1e-6) and np.all(ratio <= 1.1 + 1e-6)
+    assert np.all(real >= p.budget.essential_n - 1e-3)

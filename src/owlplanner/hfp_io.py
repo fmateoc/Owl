@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 from . import utils as u
-from .budget import BUDGET_TYPES
+from .budget import BUDGET_TYPES, is_essential
 
 
 # Recognized headers in each excel sheet, one per individual.
@@ -72,7 +72,7 @@ _debtItems = [
 
 # Optional house-table columns: a workbook written before they existed still loads (read as blank).
 # property: the residence or real estate whose sale pays off the loan (debts.resolve_payoff_years).
-_optionalHouseItems = {"Debts": ["property"], "Budget": ["survivor"]}
+_optionalHouseItems = {"Debts": ["property"], "Budget": ["survivor", "essential"]}
 
 
 _debtTypes = [
@@ -113,6 +113,7 @@ _budgetItems = [
     "amount",
     "rate",
     "survivor",
+    "essential",
 ]
 
 
@@ -562,6 +563,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
     # Define which columns are integers vs floats
     string_cols = ["name", "type"]
     blank_cols = []  # numbers whose blank cell means "default", kept as NaN
+    flag_cols = []  # booleans whose blank cell means False (unlike "active")
     if tableType == "Debts":
         int_cols = ["year", "term"]
         float_cols = ["amount", "rate"]
@@ -570,6 +572,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
         int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
         blank_cols = ["survivor"]
+        flag_cols = ["essential"]
     else:  # Fixed Assets
         int_cols = ["year", "yod"]
         float_cols = ["basis", "value", "rate", "commission"]
@@ -578,6 +581,8 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
     if len(df) == 0:
         dtype_dict = {}
         dtype_dict["active"] = bool
+        for col in flag_cols:
+            dtype_dict[col] = bool
         for col in string_cols:
             dtype_dict[col] = "object"
         for col in int_cols:
@@ -605,6 +610,8 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0).astype("float64")
             elif col in blank_cols:
                 df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+            elif col in flag_cols:
+                df[col] = df[col].apply(lambda v: is_essential({"essential": v})).astype(bool)
 
     # For Fixed Assets, validate and reset "year" column if in the past
     if tableType == "Fixed Assets" and "year" in df.columns and len(df) > 0:

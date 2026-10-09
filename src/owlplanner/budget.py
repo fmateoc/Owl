@@ -9,6 +9,11 @@ profile (``Plan.setSpendingProfile("budget")``), normalized to its first year. N
 changes: the budget only sets the shape of net spending, and under ``maxSpending`` the whole budget
 scales together.
 
+Essential lines (fork, after #175): a line marked ``essential`` is a floor, not a share. Net spending
+is then the essential lines at their amounts plus the other (discretionary) lines times one scale,
+which ``maxSpending`` maximizes; ``Plan._add_income_profile`` writes that as affine profile rows.
+Without essential lines the plan is the one above.
+
 A line's survivor share defaults to the case's survivor percentage, except for household housing
 costs (rent, property tax, insurance, maintenance), which a survivor keeps paying in full.
 
@@ -54,12 +59,31 @@ class Budget:
     names, types -- one entry per active line
     amounts_ln   -- shape (lines, N_n): each line's amount by plan year
     total_n      -- shape (N_n,): the sum, the spending profile before normalization
+    essential    -- one bool per active line: paid at its amount, not scaled by maxSpending
     """
 
     names: tuple
     types: tuple
     amounts_ln: np.ndarray
     total_n: np.ndarray
+    essential: tuple = ()
+
+    @property
+    def has_essentials(self):
+        return any(self.essential)
+
+    @property
+    def essential_n(self):
+        """Sum of the essential lines, by plan year (today's dollars)."""
+        rows = [k for k, e in enumerate(self.essential) if e]
+        if not rows:
+            return np.zeros(self.total_n.shape[0])
+        return self.amounts_ln[rows].sum(axis=0)
+
+    @property
+    def discretionary_n(self):
+        """Sum of the other lines, by plan year (today's dollars)."""
+        return self.total_n - self.essential_n
 
     def by_type(self, *types):
         """Sum of the lines of the given types, by plan year (today's dollars)."""
@@ -89,6 +113,19 @@ def _survivor_share(row, default_pct):
     return val / 100.0
 
 
+def is_essential(row):
+    """A line's essential flag: blank or missing means no."""
+    val = row.get("essential", False)
+    try:
+        if val is None or (not isinstance(val, str) and np.isnan(val)):
+            return False
+    except TypeError:
+        pass
+    if isinstance(val, str) and val.strip() == "":
+        return False
+    return bool(u.convert_to_bool(val))
+
+
 def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear):
     """
     Evaluate the active budget lines over the plan.
@@ -96,10 +133,11 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear):
     Parameters
     ----------
     budget_df : pd.DataFrame
-        Columns: active, name, type, year, end, amount, rate, survivor. `amount` is annual, in
-        today's dollars, as of `year` (a year before the plan start counts from the plan start);
-        `rate` is real growth above inflation (%); `survivor` is the percent kept after the first
-        death (blank: the case's percentage, or 100 for housing costs).
+        Columns: active, name, type, year, end, amount, rate, survivor, essential. `amount` is
+        annual, in today's dollars, as of `year` (a year before the plan start counts from the plan
+        start); `rate` is real growth above inflation (%); `survivor` is the percent kept after the
+        first death (blank: the case's percentage, or 100 for housing costs); `essential` (optional,
+        blank = no) marks a line paid at its amount whatever the spending level.
     N_n : int
         Plan length in years.
     n_d : int
@@ -114,7 +152,7 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear):
     -------
     Budget
     """
-    names, types, rows = [], [], []
+    names, types, rows, essential = [], [], [], []
     if not u.is_dataframe_empty(budget_df):
         for _, row in budget_df.iterrows():
             if not u.is_row_active(row):
@@ -134,8 +172,10 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear):
             names.append(str(row["name"]))
             types.append(str(row["type"]).lower())
             rows.append(line)
+            essential.append(is_essential(row))
     amounts = np.array(rows) if rows else np.zeros((0, N_n))
-    return Budget(tuple(names), tuple(types), amounts, amounts.sum(axis=0) if rows else np.zeros(N_n))
+    total = amounts.sum(axis=0) if rows else np.zeros(N_n)
+    return Budget(tuple(names), tuple(types), amounts, total, tuple(essential))
 
 
 def lines_left_out(budget_df, N_n, thisyear):

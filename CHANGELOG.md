@@ -1,5 +1,26 @@
 ### Unreleased
 
+#### New: essential budget lines (a spending floor)
+
+A *Budget* line can be marked `essential` (optional column; blank means no). Essential lines are paid
+at their amounts whatever the spending level, and only the other, discretionary lines scale: net
+spending each year is the essential lines plus k times the discretionary ones. `maxSpending` maximizes
+k, shown in the summary as *Discretionary spending (share of budget)* and in `plan_metrics()` as
+`discretionary_scale`; a plan that cannot pay the essential lines is infeasible, which stochastic
+spending and lifespan sampling count as a full shortfall. Under `maxBequest`, `netSpending` must cover
+the essential lines; at exactly that amount nothing discretionary is spent, and the bequest is what
+remains above the core. In the LP the profile rows become affine, with `spendingSlack` on the
+discretionary part only; no binaries, and a budget without essential lines gives the plan it gave
+before. Upstream's cost-function point on #175 (core versus discretionary spending).
+
+#### Fixed: a New Jersey exclusion claimed short of the statute
+
+The LP bounds the income-tiered exclusion from above only, so in years whose cash has no price a
+smaller claim ties with the full one, and the plan then reported New Jersey tax it does not owe.
+Upstream's MIP money scaling (#178) surfaced it under local search (up to \$2,000 a year above the
+statute). The bracket-order check now counts such a shortfall as tax not owed, which turns tax
+pricing on in the loop and in the post-solve repair, as for brackets filled out of order.
+
 #### New: a budget spending profile, and the New Jersey property tax deduction
 
 `spending_profile = "budget"` builds the spending profile from the lines of an optional *Budget*

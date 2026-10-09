@@ -3625,6 +3625,12 @@ class Plan:
                 spending = float(self.budget.total_n[0])  # unset or 0: the budget's first year (xi_0 = 1)
             elif "netSpending" not in options:
                 spending = u.get_monetary_option(options, "netSpending", 1)
+            ess = self._essentialProfile()
+            if ess is not None and spending < ess[0][0] - 0.5:
+                raise ValueError(
+                    f"Net spending ${spending:,.0f} is below the budget's essential lines in the first year "
+                    f"(${ess[0][0]:,.0f})."
+                )
             self.B.setRange(self.vm["g"].idx(0), spending, spending)
 
     @_fixedAcrossIterations
@@ -3780,11 +3786,50 @@ class Plan:
     def _add_income_profile(self, objective):
         spLo = 1 - self.lambdha
         spHi = 1 + self.lambdha
+        if self._essentialProfile() is not None:
+            self._add_essential_profile(objective, spLo, spHi)
+            return
         for n in range(1, self.N_n):
             rowDic = {self.vm["g"].idx(0): spLo * self.xiBar_n[n], self.vm["g"].idx(n): -self.xiBar_n[0]}
             self.A.addNewRow(rowDic, -np.inf, 0, tag=("profile_lo", n))
             rowDic = {self.vm["g"].idx(0): spHi * self.xiBar_n[n], self.vm["g"].idx(n): -self.xiBar_n[0]}
             self.A.addNewRow(rowDic, 0, np.inf, tag=("profile_hi", n))
+
+    def _essentialProfile(self):
+        """(E_n, D_n) in nominal dollars when budget lines are marked essential, else None.
+
+        E_n: the essential lines, paid at their amounts; D_n: the discretionary lines, whose shape
+        net spending's scale applies to. gamma_n[0] = 1, so year 0 is in today's dollars.
+        """
+        if self.spendingProfile != "budget" or self.budget is None or not self.budget.has_essentials:
+            return None
+        gam = self.gamma_n[: self.N_n]
+        return self.budget.essential_n * gam, self.budget.discretionary_n * gam
+
+    def _add_essential_profile(self, objective, spLo, spHi):
+        """
+        Net spending with a floor: g_n = E_n + k D_n for one scale k >= 0 (fork, after #175).
+
+        Written without k: g_n - E_n = (g_0 - E_0) D_n / D_0, with the spending slack applied to
+        the discretionary part only, and g_0 >= E_0. Without essential lines (E = 0) these are
+        the rows above. maxSpending maximizes k; maxBequest fixes g_0, hence k.
+        """
+        E_n, D_n = self._essentialProfile()
+        if D_n[0] <= 0:
+            raise ValueError(
+                "Budget lines marked essential need a discretionary line in the plan's first year: "
+                "its amount is what the spending level scales. With every line essential, use maxBequest."
+            )
+        g0 = self.vm["g"].idx(0)
+        d_n = D_n / D_n[0]  # coefficients of order 1, as in the rows above: dollars times dollars fails HiGHS
+        for n in range(1, self.N_n):
+            # spLo d_n (g_0 - E_0) <= g_n - E_n <= spHi d_n (g_0 - E_0)
+            rowDic = {g0: spLo * d_n[n], self.vm["g"].idx(n): -1.0}
+            self.A.addNewRow(rowDic, -np.inf, spLo * d_n[n] * E_n[0] - E_n[n], tag=("profile_lo", n))
+            rowDic = {g0: spHi * d_n[n], self.vm["g"].idx(n): -1.0}
+            self.A.addNewRow(rowDic, spHi * d_n[n] * E_n[0] - E_n[n], np.inf, tag=("profile_hi", n))
+        if objective == "maxSpending":
+            self.B.setRange(g0, E_n[0], np.inf)
 
     def _add_taxable_income(self, options=None):
         ss_lp = options is not None and options.get("withSSTaxability", "loop") == "optimize"
@@ -7381,6 +7426,18 @@ class Plan:
         return None
 
     @property
+    def discretionary_scale(self):
+        """Solved discretionary spending as a share of the budget's (1 = as budgeted), or None.
+
+        Only with budget lines marked essential: g_n = E_n + k D_n, and this is k.
+        """
+        if self._essentialProfile() is None or getattr(self, "g_n", None) is None:
+            return None
+        E_0 = float(self.budget.essential_n[0])
+        D_0 = float(self.budget.discretionary_n[0])
+        return (float(self.g_n[0]) - E_0) / D_0 if D_0 > 0 else None
+
+    @property
     def aca_costs_n(self):
         """ACA net premium costs per year: LP result (optimize mode) or SC-loop result (loop mode)."""
         return self.maca_n if self._aca_lp else self.ACA_n
@@ -7599,8 +7656,15 @@ class Plan:
         title = self._name + "\nNet Available Spending"
         if tag:
             title += " - " + tag
+        xi_n, xiBar_n = self.xi_n, self.xiBar_n
+        k = self.discretionary_scale
+        if k is not None:
+            # The target's shape depends on the level: essential lines at their amounts, the rest scaled.
+            planned_n = self.budget.essential_n + k * self.budget.discretionary_n
+            xi_n = planned_n / planned_n[0]
+            xiBar_n = xi_n * self.gamma_n[: self.N_n]
         fig = self._plotter.plot_net_spending(
-            self.year_n, self.g_n, self.xi_n, self.xiBar_n, self.gamma_n, value, title, self.inames
+            self.year_n, self.g_n, xi_n, xiBar_n, self.gamma_n, value, title, self.inames
         )
         if figure:
             return fig

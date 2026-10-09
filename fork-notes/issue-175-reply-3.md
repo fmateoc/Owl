@@ -1,123 +1,105 @@
-# Draft reply on #175 (Owl-budget, third round), for the user to post
+# Draft reply on #175 (Owl-budget, third round, conceptual), for the user to post
 
 Status: draft, 2026-10-09. Not posted. Answers the maintainer's reply of 2026-10-09 (ownership,
-hooks, longevity, JSON vs Excel, sources, cost function). Numbers come from
-`fork-notes/model-review/essential_stakes.py` on `claude/phase2-housing` (commit `5a4a12f`), run
-2026-10-09; raw output in `fork-notes/model-review/essential_stakes_2026-10-09.txt`.
+hooks, longevity, JSON vs Excel, sources, cost function), at the level of the discussion: ideas
+first, measurements only as support. The earlier, measurement-led version is
+`issue-175-reply-3-measured.md` (superseded); the numbers quoted here come from it
+(`fork-notes/model-review/essential_stakes.py`, run 2026-10-09 on `5a4a12f`).
+
+What was checked for this draft, against Owl's source on `claude/phase2-housing`:
+
+- `spending.gen_spending_profile`: the smile's cosine has one period over `span = N_n - 1 - delay`,
+  and the profile is renormalized to a neutral sum, so the dip and the rise are placed relative
+  to the plan's length, not to age. The survivor step multiplies the whole profile by one fraction.
+- `clone(expectancy=...)` builds a fresh plan from the configuration (docstring), so the profile is
+  regenerated for each sampled lifespan; `runStochasticSpending(with_longevity=True)` draws
+  lifespans from the SSA tables.
+- `stresstests._stochastic_lp`: one commitment `g` for the whole budget, with shortfall
+  `sigma_s >= g - basis_s` and a single risk parameter lambda.
+- `spendingSlack`: one percentage for the whole profile.
+- No payroll tax: grep for `fica|oasdi|payroll tax|0.062|0.0145` in `src/owlplanner` finds none.
+
+Recalled, not checked here: the literature points (Blanchett's age-indexed spending decline; CE
+being cross-sectional and HRS/CAMS longitudinal; CE healthcare including insurance premiums and CE housing including mortgage interest;
+floor-and-upside / safety-first as a named approach). They are marked as such in the text.
 
 ---
 
-Thanks. Taking your points in order, then the cost function, where we have a prototype and numbers.
+Thanks. Agreed on 1 and 2. Rather than more numbers, here are some ideas on the open questions,
+since they seem to hang together: longevity, elasticity and the cost function are mostly one
+question about what a budget line is tied to and what gives when money is short.
 
-**1-2. Ownership and hooks.** Fine with you owning it. For the hooks: upstream's
-`gen_spending_profile` builds `flat` and `smile` only, so an external profile needs a third
-kind that Owl evaluates per horizon. Our fork's version is about 200 lines with docstrings
-(`budget.py` plus `Plan._evaluateBudget`), with no LP change for shape-only profiles. The core/discretionary split
-below needs one more small change, to the profile rows.
+**What a budget line is tied to (your point 3).** Lines follow different clocks: the calendar (a
+lease, a car loan, a move in 2030), age (travel while we are able, care late in life), and
+household events (retirement, the first death, a move). Owl has a fourth one today: the length of
+the plan. The smile is drawn over the horizon, so a longer life stretches the go-go years and
+moves the dip later, rather than adding years at the end. If each line is tied to the clock that
+causes it, longevity needs no rule of its own: a longer life appends years, and whatever lines
+are active at those ages apply. The literature on the spending decline (Blanchett's "smile", from
+memory) is indexed by age, which fits this.
 
-**3. The profile and longevity.** Two separate effects:
+That also lets me revise what we said earlier about specifications versus arrays. Your "outputs
+are time series" works, provided there is one series per household state: both alive, and each
+spouse as the survivor, by year, out to the longest life we'd ever sample. Owl splices them at
+the first death. Each line carries its own survivor share (rent 100%, food perhaps 60%) when the
+series are built, so the single survivor fraction becomes a property of lines rather than of the
+plan. Three columns are horizon-independent, easy in Excel, and easy to pass over MCP. The only
+lines it can't express are ones timed from the death itself ("downsize two years after"), which
+seems an acceptable loss.
 
-- *Horizon.* The survivor step sits at the first death, and a line can run "to the end of the
-  plan", so the profile has to be evaluated for each horizon. That holds for `clone(expectancy=...)`
-  and for each sampled lifespan. Evaluating a specification (lines with years, growth and a
-  survivor share) does this; a frozen array doesn't.
-- *What gives when the money runs short.* This is where the cost function and longevity meet.
-  When the whole profile scales, a longer life or a bad sequence cuts every line by the same
-  factor, rent included, and the plan always solves. With essential lines held fixed, discretionary
-  spending absorbs the shortfall, and when even the essentials can't be paid the plan is
-  infeasible. Under lifespan sampling, the share of infeasible draws is then the probability that
-  the essentials can't be funded. Owl's stochastic spending already counts an infeasible
-  scenario as a full shortfall, so nothing new is needed there. Numbers below.
+**Elasticity: an order rather than weights (cost function).** Splitting core from discretionary
+is a priority order, and users can state an order even when they can't state utility weights. It
+generalizes to a few tiers (essential, important, nice to have), funded in order, and the bequest
+can take a place in that order too: for some households a minimum bequest is essential, for
+others it is the residual. Your two objectives become the two corners: with everything fixed, the
+bequest is the residual; with the bequest fixed, the top tier is. With two tiers it is still one
+LP, the core as a floor and the discretionary part scaled; more tiers would be a short sequence of
+LPs, each fixing what the previous one reached.
 
-**4. JSON and Excel.** Agreed that both are needed. We'd keep one schema with two serializations:
-JSON as the canonical file and the MCP payload, and an Excel sheet as the view retirees edit,
-with a round trip tested between them. Our fork already reads and writes the Excel side (an HFP
-`Budget` sheet: name, type, years, amount in today's $, real growth, survivor share, and now an
-`essential` flag). On sweeps: with the split, `maxSpending` returns the discretionary level directly,
-so a sweep varies the inputs (rent vs buy, location, essentials), not the spending level.
+**Elasticity matters mostly under uncertainty.** In a single deterministic plan with ample money
+the split hardly changes anything; it matters when a sequence or a long life goes wrong. Owl
+already has the machinery for that: stochastic spending trades a commitment against shortfall
+risk through lambda, but today the shortfall is shared evenly by the whole budget. A natural
+extension is one risk tolerance per tier: the core committed at a high success rate, the
+discretionary part closer to risk-neutral. Two numbers then summarize a plan: the probability the
+core is funded, and the distribution of the discretionary level. This is the floor-and-upside idea
+from the safety-first literature (from memory), expressed with Owl's own tools, and it tells the
+user what guaranteed income (Social Security timing, an annuity, a TIPS ladder) should be sized
+to cover: the core, not the whole budget. Timing has the same split: discretionary lines are
+elastic in time (a trip can move), the core is not, so a slack per tier would be more faithful
+than one `spendingSlack`.
 
-**5. Sources and the years before retirement.** We checked what we could reach from here (the
-proxy blocks bls.gov, FRED, ebri.org and fidelity.com, so these come from search results and
-reprints, not the primary pages):
+We tried the two-tier version in our fork to see whether the distinction is real. On a test couple
+with sampled lifespans, scaling the whole budget "funded" every draw by cutting rent by 20-25%
+along with everything else, while holding the core fixed showed 9 of 200 draws where it could not
+be funded, in 8 of them a survivor who outlived the other spouse by 10 to 30 years on one Social
+Security check. Scaling the whole
+budget hides exactly the risk the split is meant to show.
 
-- BLS CE 2024, households headed by someone 65+: total $61,432, housing $22,193, transportation
-  $9,538, healthcare $7,799. These match FRED's copies of the BLS series, as quoted in search results.
-- Fidelity 2026 (released July 21): $185,500 for a single 65-year-old, $371,000 for a couple, up
-  7.5% from $172,500. About 45% of it is Medicare Part B and D premiums, 48% other medical costs, 7% drugs.
-  It assumes Original Medicare plus Part D and excludes long-term care. The 45% is what Owl already
-  charges (`withMedicare`), so only about 55% belongs in a budget, and as a lifetime average it
-  needs turning into amounts by age.
-- EBRI, 2024 Spending in Retirement Survey: 31% of retirees said they spend more than they can
-  afford (27% in 2022, 17% in 2020). The "3[1]%" in the pasted text is a footnote link that broke
-  the number. EBRI asks about essential and discretionary spending separately, which supports
-  your split.
-- From memory, not checked: CE "housing" includes mortgage interest, which Owl takes from Debts,
-  and CE "healthcare" includes insurance premiums, Medicare's among them. So CE averages can't be
-  added to an Owl plan as they are. HRS's consumption module (CAMS), MEPS for out-of-pocket costs
-  by age, and Blanchett's spending "smile" are the other usual references. CE also publishes tables
-  for large metro areas.
+**Sweeps (your point 4).** With tiers, the variants people compare (rent or buy, where to live,
+when to stop working) mostly change the core. So the natural result of a sweep is the core-funded
+probability and the discretionary level per variant, with the bequest alongside, rather than one
+maximal spending number.
 
-The ten years before retirement fit as they are: Owl's plan starts today, wages fund spending,
-and surpluses go to the taxable account. One gap: we found no payroll tax in Owl's source
-(searched for FICA, OASDI and the 6.2% / 1.45% rates). Since *anticipated wages* are net of
-contributions only, a pre-retirement budget has to carry Social Security and Medicare tax as a
-line, or the working years overstate the cash.
+**Data: own history for the level, the literature for the change (your point 5).** A household's
+past five years are the best evidence for the level; the published sources are better at how
+spending changes with age and at lines a household has no history for (health at 80, long-term
+care). Two cautions, from memory: CE is cross-sectional, so today's 80-year-olds are another
+cohort, not us at 80, whereas HRS follows the same people; and survey categories include costs Owl
+already computes (Medicare premiums in healthcare, mortgage interest in housing), so benchmarks need mapping to the
+budget's boundary before use. Fidelity's 2026 estimate is a case in point: about 45% of its
+$185,500 is Medicare Part B and D premiums, which Owl already charges.
 
-**Cost function.** As you put it: `maxBequest` takes the budget as given and maximizes the
-bequest; `maxSpending` fixes the bequest and scales spending. Splitting the budget into essential
-and discretionary lines gives a third reading without a new objective:
+**The decade before retirement.** There the budget plays another role: wages minus taxes minus
+spending is saving, so the budget sets how much can be contributed, and the retirement date is
+the decision linking the two. Work-related lines (commuting, payroll-deducted items) are tied to
+that date. One gap on Owl's side: we found no payroll tax in its source, so a working-years budget
+would have to carry Social Security and Medicare tax as a line.
 
-- net spending each year = essential lines at their amounts + k times the discretionary lines;
-- `maxSpending` maximizes k (the discretionary level) with the essentials as a floor;
-- `maxBequest` at the budget is k = 1, and at the essentials alone it is k = 0, so the bequest
-  there is the reserve above the core;
-- the spending-bequest frontier you already have traces k against the bequest, starting from
-  that k = 0 point rather than from zero spending.
+Questions back:
 
-In the LP this is the profile rows made affine: g_n - E_n = (g_0 - E_0) D_n / D_0, with
-`spendingSlack` applied to the discretionary part only, and g_0 >= E_0 under `maxSpending`. No
-binaries are added, and a budget with no essential lines gives the same plan as before (a test
-checks it). One numerical lesson: written with dollar-sized coefficients (D_0 times g_n), HiGHS
-called feasible plans infeasible; normalized to order-1 coefficients like the existing profile
-rows, all solve.
-
-Measured on our synthetic couple: born 1964, SS $3,000 and $2,400/month at 70, $300k taxable,
-$150k Roth, NY. Exact LP (Medicare off, SS taxability 0.85), conservative rates, no conversions,
-bequest 0. Budget in today's $: living $50k and rent $36k (the essentials when flagged; a survivor
-keeps rent in full and 60% of living), travel $20k through 2044 and other $10k (discretionary).
-
-| Tax-deferred | Life exp. | Budget scaled as a whole: first year, rent | Essentials fixed: first year, rent, discretionary k |
-|---|---|---|---|
-| $1.5M | 89 / 92 | $130,091, rent $40,373 | $132,680, rent $36,000, k = 1.56 |
-| $1.5M | 95 / 98 | $126,296, rent $39,195 | $128,877, rent $36,000, k = 1.43 |
-| $0.8M | 89 / 92 | $103,566, rent $32,141 | $101,256, rent $36,000, k = 0.51 |
-| $0.8M | 95 / 98 | $102,320, rent $31,754 | $98,887, rent $36,000, k = 0.43 |
-
-At $1.5M, `maxBequest` at the essentials alone (k = 0) leaves $1,532,151 to the heirs and at the
-budget (k = 1) $576,022: those are the two ends of the frontier. At $0.8M the budget itself is
-infeasible under `maxBequest`, which the k of 0.51 already says.
-
-Longevity, with 200 Monte Carlo scenarios (`histochastic` from 1928-2024, seed 42) and lifespans
-sampled from the SSA tables, `runStochasticSpending` as is:
-
-- $1.5M: no scenario fails under either reading; median first-year spending $157,535 (whole budget)
-  vs $163,285 (essentials fixed).
-- $0.8M: the whole-budget reading solves all 200, by cutting rent with everything else.
-  With essentials fixed, 9 of 200 (4.5%) cannot fund the essentials. In those same draws the
-  whole-budget plans spend $86.6-92.9k in the first year, 75-80% of the budget, so rent is
-  "cut" to $27-29k. In 8 of the 9 one spouse dies at 67-74 and the other lives to 83-100: a
-  survivor still owes the full rent on one Social Security check.
-
-So the split changes the answer exactly where it matters: what has to give, and how likely the
-core is to be at risk. It costs nothing where money is ample.
-
-What we'd not do in a first version: per-line elasticities or a utility curve. The weights would
-drive the answer and users can't set them. The single discretionary scale, plus the slack you
-already have, keeps the objective in dollars.
-
-Our questions back:
-
-1. Is the essential/discretionary split the shape you had in mind, or did you mean something more
-   elastic (several priority levels, say)?
-2. For the JSON: should the schema live in Owl's repository, since Owl reads it, with Owl-budget
-   writing it?
+1. Should the bequest be one of the tiers (a floor that can be essential), or stay the objective?
+2. By "ladders", do you mean a ladder of budget variants to sweep, or bond ladders? If the
+   latter, the core tier is the natural target for sizing one.
+3. Would anchoring Owl's own smile to age, rather than to the plan's length, be worth doing on its
+   own, independent of Owl-budget?

@@ -181,6 +181,18 @@ TAX_TIEBREAK = MIP_TIEBREAK
 # max(PARTIAL_BEQUEST_WEIGHT, 2 x gap): below the gap that money is invisible to the solver, which
 # can then spend it on taxes not owed.
 PARTIAL_BEQUEST_WEIGHT = 0.01
+# Money units for MIP solves (10**MIP_SCALE_ORDER dollars): every continuous column (all of them
+# amounts in dollars) and every row holding one are divided by this before the solve, and the
+# solution multiplied back. A binary has no unit, so its big-M coefficient falls by the same factor
+# while every coefficient between dollar amounts keeps its size. In dollars, a gate on a balance of
+# tens of millions puts a coefficient near 1e9 beside coefficients near 1, and HiGHS presolve then
+# calls feasible plans infeasible (#178); from tens of dollars up it did not. Larger units sped up
+# the optimize modes (exact Medicare, local search) and slowed withdrawalOrder="taxable_first";
+# hundreds were fastest over the example cases. The solver option mipScaleOrder sets the exponent:
+# 0 solves in dollars, 6 in millions; beyond, HiGHS's absolute tolerances (1e-7) would stand for
+# whole dollars.
+MIP_SCALE_ORDER = 2
+MIP_SCALE_ORDER_MAX = 6
 # Retries when HiGHS reports a MIP infeasible, cheapest first. Presolve rule bit 12 is HiGHS's own
 # numbering and may change between versions; presolve off is the backstop.
 _HIGHS_INFEASIBLE_RETRIES = (
@@ -189,6 +201,79 @@ _HIGHS_INFEASIBLE_RETRIES = (
 )
 LTCG_CONSISTENCY_MAX_PASSES = 5  # max monolithic re-solves to clear stale LTCG bracket room
 LTCG_CONSISTENCY_TOL = 1.0  # allowed U_n - 0.20*Q_n slack ($) before a re-solve is needed
+
+
+############################################################################
+
+
+class _MoneyScaling:
+    """Express a MIP's money in units of *scale* dollars for the solver, and back.
+
+    Every continuous column is an amount in dollars, so its value becomes value / scale; an integer
+    column is left as is. Every row holding a continuous column is divided by scale; a row linking
+    binaries only is left as is. The objective is divided by scale too, so that money keeps its
+    weight in it. Works on the row-wise sparse matrix (a_start, a_index, a_value).
+
+    With a scale of 1 every method returns its input unchanged, so that the solvers use a scaling
+    whether or not one applies (see for_mip), and the two can be compared case by case through
+    the solver option mipScaleOrder.
+    """
+
+    def __init__(self, scale=1.0, integrality=None, a_start=None, a_index=None):
+        self.scale = float(scale)
+        self.identity = self.scale == 1.0
+        if self.identity:
+            return
+        cont = np.asarray(integrality) == 0
+        a_index = np.asarray(a_index, dtype=np.int64)
+        starts = np.asarray(a_start, dtype=np.int64)
+        self.row_of = np.repeat(np.arange(len(starts)), np.diff(np.append(starts, len(a_index))))
+        has_cont = np.zeros(len(starts), dtype=bool)
+        np.logical_or.at(has_cont, self.row_of, cont[a_index])
+        self.col_s = np.where(cont, self.scale, 1.0)  # a column's value is col_s times its scaled value
+        self.row_t = np.where(has_cont, 1.0 / self.scale, 1.0)
+
+    @classmethod
+    def for_mip(cls, integrality, a_start, a_index, options=None):
+        """The scaling a solve uses: 10**mipScaleOrder dollars (default MIP_SCALE_ORDER) for a MIP,
+        none for an LP.
+
+        An LP has no big-M to shrink, so its solve, and every loop-mode plan, stays as it was.
+        """
+        order = u.get_numeric_option(options or {}, "mipScaleOrder", MIP_SCALE_ORDER)
+        if order != int(order) or not 0 <= order <= MIP_SCALE_ORDER_MAX:
+            raise ValueError(
+                f"mipScaleOrder must be a whole number from 0 (dollars) to {MIP_SCALE_ORDER_MAX}, got {order}."
+            )
+        if not np.any(integrality):
+            order = 0
+        return cls(10.0 ** int(order), integrality, a_start, a_index)
+
+    def objective(self, cols, vals):
+        if self.identity:
+            return vals
+        return np.asarray(vals, dtype=np.float64) * self.col_s[np.asarray(cols, dtype=np.int64)] / self.scale
+
+    def col_values(self, vec):
+        """Column bounds or a starting point, in scaled units."""
+        return vec if self.identity else np.asarray(vec, dtype=np.float64) / self.col_s
+
+    def row_values(self, vec):
+        """Row bounds, in scaled units."""
+        return vec if self.identity else np.asarray(vec, dtype=np.float64) * self.row_t
+
+    def coefficients(self, a_index, a_value):
+        """The matrix's nonzeros, in scaled units."""
+        if self.identity:
+            return a_value
+        a_index = np.asarray(a_index, dtype=np.int64)
+        return np.asarray(a_value, dtype=np.float64) * self.col_s[a_index] * self.row_t[self.row_of]
+
+    def solution(self, x):
+        return x if self.identity else np.asarray(x, dtype=np.float64) * self.col_s
+
+    def objective_value(self, obj):
+        return obj if self.identity else obj * self.scale
 
 
 ############################################################################
@@ -3322,6 +3407,102 @@ class Plan:
         ceiling[self.N_n] = wealth
         return 2.0 * np.maximum(ceiling, 1.0)
 
+    def _gateCeilings(self):
+        """Upper bounds on what each withdrawal-ordering gate switches off, per year.
+
+        _portfolioCeiling compounds the whole portfolio at the best return any account sees, each
+        year: money may hop every year to whichever account does best. Over a long plan with
+        accounts invested differently that bound runs to hundreds of times the real portfolio, and
+        a big-M that size next to dollar coefficients is beyond what HiGHS resolves reliably: it
+        can call the MIP infeasible in presolve, or settle on gates no plan needs (#178).
+
+        Money moves only one way between accounts: from tax-deferred to Roth (conversions), and
+        from any account to taxable (a withdrawal deposited as surplus). A dollar's best growth is
+        therefore the best path through that order, and each gate is bounded by the paths that
+        end in the account it gates:
+          tax[n]    bounds the household taxable balance at the start of year n (length N_n + 1);
+          td_bal[n] bounds the household tax-deferred balance at the start of year n (N_n + 1);
+          txdef[n]  bounds a year-n tax-deferred withdrawal;
+          roth[n]   bounds a year-n Roth withdrawal.
+        Sources are the starting balances, the contributions, and every fixed income that could
+        reach taxable as a surplus (wages, Social Security, pensions, annuities, windfalls, sale
+        proceeds), with no tax taken out. Each bound is doubled, as in _portfolioCeiling, so that
+        it stays a bound and never a constraint.
+        """
+        Nn = self.N_n
+        TX, TD, RO, HS = 0, 1, 2, 3
+        tau_ijn = np.einsum("ijkn,kn->ijn", self.alpha_ijkn[:, :, :, :Nn], self.tau_kn[:, :Nn])
+        g_jn = 1.0 + np.max(tau_ijn, axis=0)  # best growth of each account type, per year
+        # A contribution earns half the year's return (Tauh in the carryover rows), which beats the
+        # full return in a down year.
+        g_half_jn = np.maximum(g_jn, 1.0 + np.max(tau_ijn, axis=0) / 2)
+
+        ss_in = self.zetaBar_in
+        if "ssb" in self.vm:
+            ss_in = np.maximum(ss_in, self._ssa_spousal_offset + np.max(self._ssa_B_own[:, :, :Nn], axis=1))
+        pos = lambda a: np.maximum(a, 0.0)  # noqa: E731
+        fixed_n = (
+            np.sum(pos(self.omega_in) + pos(self.other_inc_in) + pos(self.netinv_in), axis=0)
+            + np.sum(pos(self.piBar_in) + pos(self.spiaBar_in) + pos(ss_in) + pos(self.Lambda_in), axis=0)
+            + pos(self.fixed_assets_ordinary_income_n)
+            + pos(self.fixed_assets_capital_gains_n)
+            + pos(self.fixed_assets_tax_free_n)
+        )
+        kappa_jn = np.sum(self.kappa_ijn[:, :, :Nn], axis=0)
+
+        def step(v, g_j):
+            """Best value of a unit, by the account it is in, after a year of growth g_j."""
+            out = np.empty(4)
+            out[TD] = v[TD] * g_j[TD]
+            out[RO] = max(v[RO], v[TD]) * g_j[RO]
+            out[HS] = v[HS] * g_j[HS]
+            out[TX] = max(v[TX], v[TD], v[RO], v[HS]) * g_j[TX]
+            return out
+
+        # bal[j, n]: bound on the household balance of account j at the start of year n. Each
+        # source is followed on its own and the bounds added: a sum of best paths, never less
+        # than any plan's balance.
+        bal = np.zeros((4, Nn + 1))
+        # January 1 balances, back-projected from the start date as _add_initial_balances does:
+        # after a first-year loss they exceed the balances entered.
+        tau0_ij = np.einsum("ijk,k->ij", self.alpha_ijkn[:, :, :, 0], self.tau_kn[:, 0])
+        backTau_ij = 1 + (1 - self.yearFracLeft) * tau0_ij
+        start = np.sum(self.beta_ij / backTau_ij, axis=0).astype(float)
+        bal[:, 0] = start
+        sources = [(start, 0, g_jn[:, 0])]
+        for n in range(Nn):
+            # Year-n inflows: contributions to their own account, fixed income to taxable. They
+            # earn year n's return, half of it for a contribution (Tauh in the carryover rows).
+            src = kappa_jn[:, n].astype(float).copy()
+            src[TX] += fixed_n[n]
+            if np.any(src > 0):
+                sources.append((src, n, g_half_jn[:, n]))
+        for amounts, s, g_first in sources:
+            # step() follows one sum of money: amounts in different accounts can all reach
+            # taxable, which a max over accounts would undercount, so each is followed alone.
+            for j in range(4):
+                if amounts[j] <= 0:
+                    continue
+                v = np.zeros(4)
+                v[j] = amounts[j]
+                v = step(v, g_first)
+                bal[:, s + 1] += v
+                for n in range(s + 1, Nn):
+                    v = step(v, g_jn[:, n])
+                    bal[:, n + 1] += v
+
+        # A year's withdrawal can reach the start balance plus that year's contributions, which the
+        # carryover rows credit at Tauh/Tau1 of their value (more than 1 in a down year), and, for
+        # Roth, that year's conversion, bounded by the tax-deferred balance.
+        ratio_jn = np.maximum(1.0, g_half_jn / np.maximum(g_jn, 1e-6))
+        tax = 2.0 * np.maximum(bal[TX], 1.0)
+        td_bal = 2.0 * np.maximum(bal[TD], 1.0)
+        txdef = 2.0 * np.maximum(bal[TD, :Nn] + kappa_jn[TD] * ratio_jn[TD], 1.0)
+        roth = 2.0 * np.maximum(
+            bal[RO, :Nn] + bal[TD, :Nn] + kappa_jn[RO] * ratio_jn[RO] + kappa_jn[TD] * ratio_jn[TD], 1.0
+        )
+        return tax, td_bal, txdef, roth
+
     @_fixedAcrossIterations
     def _add_withdrawal_ordering(self, options):
         """
@@ -3343,13 +3524,12 @@ class Plan:
         """
         if "zo" not in self.vm:
             return
-        # Every quantity these gates switch off is a balance or a withdrawal, so the
-        # portfolio ceiling bounds them all. Sizing M to what the row actually gates keeps
-        # the gates honest: a solver's integer tolerance buys slack in proportion to M, so
-        # an oversized constant is hundreds of dollars of balance slipping past a closed gate.
-        ceiling_n = self._portfolioCeiling()
+        # Every quantity these gates switch off is a balance or a withdrawal. Sizing each M to
+        # what its row gates keeps the gates honest: a solver's integer tolerance buys slack in
+        # proportion to M, and an M hundreds of times the portfolio is beyond what HiGHS resolves
+        # reliably, so each family gets its own bound (see _gateCeilings).
+        M_tax, M_td, M_txdef, M_roth = self._gateCeilings()
         for n in range(self.N_n):
-            Mn = ceiling_n[n]
             z1 = self.vm["zo"].idx(0, n)
             z2 = self.vm["zo"].idx(1, n)
             for i in range(self.N_i):
@@ -3368,21 +3548,23 @@ class Plan:
                     {
                         self.vm["w"].idx(i, 1, n): 1,
                         self.vm["b"].idx(i, 1, n): -self.rho_in[i, n],
-                        z1: -Mn,
+                        z1: -M_txdef[n],
                     },
                     -np.inf,
                     0,
                     tag=("wdorder_txdef_gate", i, n),
                 )
                 # Roth withdrawals only once tax-deferred is also exhausted.
-                self.A.addNewRow({self.vm["w"].idx(i, 2, n): 1, z2: -Mn}, -np.inf, 0, tag=("wdorder_roth_gate", i, n))
+                self.A.addNewRow(
+                    {self.vm["w"].idx(i, 2, n): 1, z2: -M_roth[n]}, -np.inf, 0, tag=("wdorder_roth_gate", i, n)
+                )
             # Gate activation: sum_i b[i,j,n+1] + M*z <= M  (z=1 forces end balance ~ 0).
             rowDic = {self.vm["b"].idx(i, 0, n + 1): 1 for i in range(self.N_i)}
-            rowDic[z1] = Mn
-            self.A.addNewRow(rowDic, -np.inf, Mn, tag=("wdorder_taxable_exhausted", n))
+            rowDic[z1] = M_tax[n + 1]
+            self.A.addNewRow(rowDic, -np.inf, M_tax[n + 1], tag=("wdorder_taxable_exhausted", n))
             rowDic = {self.vm["b"].idx(i, 1, n + 1): 1 for i in range(self.N_i)}
-            rowDic[z2] = Mn
-            self.A.addNewRow(rowDic, -np.inf, Mn, tag=("wdorder_txdef_exhausted", n))
+            rowDic[z2] = M_td[n + 1]
+            self.A.addNewRow(rowDic, -np.inf, M_td[n + 1], tag=("wdorder_txdef_exhausted", n))
             # Full ordering: the Roth gate implies the tax-deferred gate.
             self.A.addNewRow({z2: 1, z1: -1}, -np.inf, 0, tag=("wdorder_gate_monotone", n))
 
@@ -4980,6 +5162,7 @@ class Plan:
             "localSearchRadius",  # local search: flips allowed on the SS-taxability binaries
             "localSearchStepNodes",  # local search: node limit per restricted solve
             "partialBequestWeight",  # value of a dollar left at the first death (fraction of a dollar)
+            "mipScaleOrder",  # money unit inside a MIP solve: 10**order dollars (default 2; 0 = dollars)
         ]
         options = {} if options is None else options
 
@@ -6263,6 +6446,15 @@ class Plan:
         h.setOptionValue("mip_max_nodes", node_limit)
         h.setOptionValue("presolve", "on")
 
+        # A MIP is solved in hundreds of dollars (see MIP_SCALE_ORDER); an LP is passed as is.
+        scaling = _MoneyScaling.for_mip(integrality, a_start, a_index, options)
+        c = scaling.objective(np.arange(len(c)), c)
+        Lb, Ub = scaling.col_values(Lb), scaling.col_values(Ub)
+        lbvec, ubvec = scaling.row_values(lbvec), scaling.row_values(ubvec)
+        a_value = scaling.coefficients(a_index, a_value)
+        if warm_x is not None:
+            warm_x = scaling.col_values(warm_x)
+
         inf = highspy.kHighsInf
         col_lb = np.where(np.isneginf(Lb), -inf, Lb).astype(np.float64)
         col_ub = np.where(np.isposinf(Ub), inf, Ub).astype(np.float64)
@@ -6327,7 +6519,8 @@ class Plan:
         if success:
             sol = h.getSolution()
             xx = np.array(sol.col_value, dtype=np.float64)
-            obj_val = float(h.getObjectiveValue())
+            xx = scaling.solution(xx)
+            obj_val = scaling.objective_value(float(h.getObjectiveValue()))
             if (timed_out or node_capped) and "zx" in self.vm and self._rx_fixed is None and not self._localSearch:
                 # Later iterations keep these exclusion tiers instead of paying the limit again: the loop
                 # then re-solves only the continuous part, and the tax stays statutory for the tiers.
@@ -6418,10 +6611,11 @@ class Plan:
             return None, np.zeros(len(c)), np.zeros(len(lbvec)), np.zeros(len(c)), False
         return None, np.zeros(len(c)), np.zeros(len(lbvec)), False
 
-    def _build_mosek_task(self, A, B, c_obj, col_overrides=None, int_vars=None, verbose=False):
+    def _build_mosek_task(self, A, B, c_obj, col_overrides=None, int_vars=None, verbose=False, scaling=None):
         """
         Build and populate a MOSEK task from abcapi objects.
         Configures the objective, variable/constraint bounds, and constraint matrix.
+        The task holds the model in the units of *scaling* (a _MoneyScaling; none: dollars).
         Caller is responsible for setting solver parameters before calling task.optimize().
         Returns (task, ncons, nvars).
         """
@@ -6461,6 +6655,10 @@ class Plan:
         task.appendcons(ncons)
         task.appendvars(nvars)
 
+        scaling = scaling or _MoneyScaling()
+        cval = scaling.objective(cind, cval)
+        vlb, vub = scaling.col_values(vlb), scaling.col_values(vub)
+        clb, cub = scaling.row_values(clb), scaling.row_values(cub)
         for ii in range(len(cind)):
             task.putcj(cind[ii], cval[ii])
         for ii in range(nvars):
@@ -6468,12 +6666,24 @@ class Plan:
         if int_vars:
             for ii in int_vars:
                 task.putvartype(int(ii), mosek.variabletype.type_int)
+        if not scaling.identity:
+            # The scaling works on the whole matrix at once; MOSEK takes it row by row.
+            ends = np.cumsum([len(ind) for ind in Aind])
+            flat = scaling.coefficients(np.concatenate(Aind), np.concatenate(Aval))
+            Aval = np.split(flat, ends[:-1])
         for i in range(ncons):
             task.putarow(i, Aind[i], Aval[i])
             task.putconbound(i, bdic[ckeys[i]], float(clb[i]), float(cub[i]))
         task.putobjsense(mosek.objsense.minimize)
 
         return task, ncons, nvars
+
+    @staticmethod
+    def _mosekMoneyScaling(A, B, options, lp_relax=False):
+        """The _MoneyScaling of a MOSEK solve, on A's row order (see _MoneyScaling.for_mip)."""
+        a_start, a_index, _ = A.to_csr()
+        integrality = np.zeros(A.nvars, dtype=np.int32) if lp_relax else B.integralityArray()
+        return _MoneyScaling.for_mip(integrality, a_start, a_index, options)
 
     @staticmethod
     def _apply_mosek_threads(task, options):
@@ -6536,8 +6746,9 @@ class Plan:
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
         int_vars = [] if lp_relax else B.integralityList()
+        scaling = self._mosekMoneyScaling(A, B, options, lp_relax=lp_relax)
         task, ncons, nvars = self._build_mosek_task(
-            A, B, c_obj, col_overrides=col_overrides, int_vars=int_vars, verbose=verbose
+            A, B, c_obj, col_overrides=col_overrides, int_vars=int_vars, verbose=verbose, scaling=scaling
         )
         task.putdouparam(mosek.dparam.mio_max_time, float(time_limit))
         task.putdouparam(mosek.dparam.mio_tol_rel_gap, float(mygap))
@@ -6548,7 +6759,7 @@ class Plan:
         # Warm start: an incumbent lets branch-and-bound prune every node that cannot beat it.
         warm = getattr(self, "_mip_warm_start", None)
         if int_vars and warm is not None and len(warm) == nvars:
-            task.putxxslice(mosek.soltype.itg, 0, nvars, np.asarray(warm, dtype=float))
+            task.putxxslice(mosek.soltype.itg, 0, nvars, np.asarray(scaling.col_values(warm), dtype=float))
             task.putintparam(mosek.iparam.mio_construct_sol, mosek.onoffkey.on)
 
         try:
@@ -6571,13 +6782,8 @@ class Plan:
         self._infeasible = _mosekIsInfeasible(task, sol, mosek)
 
         if success:
-            return (
-                float(task.getprimalobj(sol)),
-                np.array(task.getxx(sol)),
-                True,
-                f"MOSEK: {solsta}",
-                float(gap),
-            )
+            obj = scaling.objective_value(float(task.getprimalobj(sol)))
+            return obj, scaling.solution(np.array(task.getxx(sol))), True, f"MOSEK: {solsta}", float(gap)
         return None, np.zeros(nvars), False, f"MOSEK: {solsta}", -1.0
 
     def _run_lp_with_duals(self, A, B, c_obj, options, col_overrides=None):
@@ -6732,8 +6938,11 @@ class Plan:
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
         int_vars = self.B.integralityList()
+        scaling = self._mosekMoneyScaling(self.A, self.B, options)
 
-        task, ncons, nvars = self._build_mosek_task(self.A, self.B, self.c, int_vars=int_vars, verbose=verbose)
+        task, ncons, nvars = self._build_mosek_task(
+            self.A, self.B, self.c, int_vars=int_vars, verbose=verbose, scaling=scaling
+        )
         task.putdouparam(mosek.dparam.mio_max_time, time_limit)  # Default -1
         # task.putdouparam(mosek.dparam.mio_rel_gap_const, 1e-6)       # Default 1e-10
         task.putdouparam(mosek.dparam.mio_tol_rel_gap, mygap)  # Default 1e-4
@@ -6775,8 +6984,8 @@ class Plan:
 
         self._infeasible = _mosekIsInfeasible(task, soltype, mosek)
 
-        xx = np.array(task.getxx(soltype))
-        solution = task.getprimalobj(soltype)
+        xx = scaling.solution(np.array(task.getxx(soltype)))
+        solution = scaling.objective_value(task.getprimalobj(soltype))
         task.solutionsummary(mosek.streamtype.msg)
         # task.writedata(self._name+'.ptf')
 

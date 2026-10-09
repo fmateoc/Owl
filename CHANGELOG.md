@@ -123,6 +123,30 @@ dataclass with named fields, which also carries the fork's recapture and exclusi
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 ### Version WIP
 
+#### Changed: mixed-integer solves run in hundreds of dollars
+
+Every mixed-integer solve, with HiGHS or MOSEK, now hands the solver its amounts in hundreds of
+dollars and converts the answer back; plans and results stay in dollars. A binary choice has no
+unit, so the large coefficients that switch a dollar amount on or off shrink a hundredfold while
+every other coefficient keeps its size. In dollars, a long plan whose balances reach tens of
+millions put coefficients near a billion beside coefficients near one, and HiGHS presolve called
+feasible plans infeasible: 196 times over two sweeps of historical start years with
+`withdrawalOrder = "taxable_first"`, and none in tens, hundreds or thousands. Plans solved as pure
+linear programs are untouched. On the example cases with mixed-integer options, results agree with
+the dollar solves within 0.3%, as the self-consistent loop stops at slightly different plans.
+Larger units made exact Medicare and local search faster and `withdrawalOrder = "taxable_first"`
+slower; over the example cases, hundreds were the fastest overall, with exact Medicare 4.6 times
+and local search 1.3 times faster than in dollars, and `taxable_first` 1.6 times slower. The
+expert solver option `mipScaleOrder` sets the unit as a power of ten (default 2, hundreds); `0`
+solves in dollars, so that every number the solver sees can be checked against other
+calculations (#178).
+
+### Version 2026.10.9
+
+#### Maint: Updating dependencies and increment version
+
+Updates MOSEK, pyparser, pydantic, anthropic, json5, and a few others.
+
 #### New: a loan can be paid off by the sale of the property it finances
 
 A mortgage kept being paid for the rest of its term after the house it financed was sold. The
@@ -137,6 +161,33 @@ column is a dropdown of the residences and real estate in *Fixed Assets*, and a 
 or deleted property stays visible with a warning. The example workbooks carry the column. Thanks
 to Florin Mateoc for the original suggestion (#173).
 
+#### Fixed: `withdrawalOrder = "taxable_first"` could close a gate no plan needs
+
+The gates of the taxable-first order used one big-M for every row: the whole portfolio
+compounded at the best return any account sees, each year. With accounts invested differently
+over a long plan it reached hundreds of times the real portfolio ($973M against $13M in one
+case), beyond what HiGHS resolves reliably. HiGHS then called feasible plans infeasible in
+presolve, or closed the last year's gate though nothing used it, forcing the taxable account to
+end at zero. The taxable money then had no value to the objective, and the solver could spend
+it on taxes: one plan sold its whole taxable account in the first year and bought most of it
+back, paying $500k of tax, for a bequest of $3.5M instead of $5.5M. Each gate row now has its
+own bound, the best growth path through the one-way order of the accounts (tax-deferred to Roth
+to taxable), 15 times tighter in that case. Over that case's first 40 Monte Carlo paths, presolve
+no longer calls any plan infeasible (24 times before) and no plan sells and buys back its
+taxable account. Long plans in strong markets still reach balances, and so bounds, of hundreds
+of millions of dollars, where HiGHS presolve can still misjudge a plan, though less often.
+Reported by @ravishahani (#178).
+
+#### Fixed: a rate below 1% in Debts or Fixed Assets read as 50 times more after a reload
+
+Reading a workbook multiplied every `rate` and `commission` between 0 and 1 by 100 in the *Debts*
+and *Fixed Assets* sheets, taking it for a fraction such as 0.045 for 4.5%. These columns hold
+percent numbers, and small ones are expected: 0.5% of real growth for a residence became 50%, a
+0.9% loan 90%. A plan saved and opened again, in the UI, the CLI or through `save_case`, changed.
+Values are now read as typed. Only a cell the spreadsheet formats as a percentage (4.50%, which
+stores 0.045) is converted. The example workbooks hold whole percents and read as before. Thanks
+to Florin Mateoc for reporting the bug and proposing the fix (#176).
+
 #### Fixed: a solver option with a value Owl does not know is refused
 
 `withMedicare`, `withACA`, `withLTCG`, `withNIIT`, `withSSTaxability` and `withdrawalOrder`
@@ -147,6 +198,27 @@ premiums from the plan. Names are now read in any case, numeric text pins the So
 fraction (in [0, 1]), `true`/`false` from older case files still read as `"loop"`/`"none"`, and
 any other value is refused with the valid choices named. Thanks to Florin Mateoc for reporting the
 bug (#174).
+
+#### Changed: the MCP tools take beneficiary fractions and report the solve time
+
+The tools that build a plan from parameters (`run_from_params`, `save_case`, `compare_to_baseline`,
+`explain_results` and the stress tests) take `beneficiary_fractions`, `spousal_deposit_fraction`
+and `partial_bequest_weight`. Without the first, a couple's partial bequest could only be modeled
+from a case file: with every fraction at 1 nothing passes to other heirs at the first death.
+Results report `solve_time_seconds` (wall clock and CPU), as the Summary's *Solve time* row does,
+and `run_historical`, `run_monte_carlo` and `explain_results` now return the `engine` entry like
+the other tools. With local search or branch-and-bound, the explanation tools' note said the
+breakpoints were downgraded "from 'optimize'"; it now says only that they were downgraded to the
+loop. The MCP documentation lists the parameters added since September (`state_move`,
+`breakpoint_method`, `qcds`, a debt's `property`), gives `residualTol`'s default as 50, and the
+modeling-capabilities table gives the current default for `partialBequestWeight`.
+
+The stress-test tools (`run_stochastic`, `run_spending_bequest_frontier`,
+`run_longevity_stochastic`, `run_historical`, `run_monte_carlo`) now solve their scenarios with
+the loop whatever `breakpoint_method` asks, and say so in `breakpoint_method_note`: local search
+takes seconds to minutes per solve, which is worth it for the one plan the user acts on, not for
+hundreds of scenarios. `run_year1_robustness` already did. The tool descriptions recommend
+`breakpoint_method = "local-search"` with `run_from_params` for that one plan.
 
 ### Version 2026.10.8
 
@@ -1030,12 +1102,12 @@ of its 27 years, still solves as a pure linear program, and still exercises the 
 a zero marginal rate creates. New York widens that: its retirement income exclusion is another
 variable free to move when there is no income to shelter.
 
-#### Maintenance: Updated dependecies (again) to silence GitHub's dependabot.
+#### Maintenance: Updated dependencies (again) to silence GitHub's dependabot.
 Upgrade to Streamlit 1.62.
 
 ### Version 2026.8.18
 
-#### Maintenance: Updated dependecies to silence GitHub's dependabot.
+#### Maintenance: Updated dependencies to silence GitHub's dependabot.
 
 #### Removed: `fixedSpending`, which could charge more than the top marginal tax rate
 Issue #140. Set below what a plan can afford, it produced ordinary tax above the top statutory

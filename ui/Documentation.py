@@ -201,6 +201,10 @@ Two optional **worksheets** (separate tabs) extend the workbook:
 - **`Budget`** — columns `active`, `name`, `type`, `year`, `end`, `amount`, `rate`, and optionally
   `survivor`: the lines of the *budget* spending profile (see *Debts and Fixed Assets*).
 
+In both sheets, `rate` and `commission` are percent numbers: enter `4.5` for 4.5\\% and `0.5` for
+half a percent. A cell formatted as a percentage in the spreadsheet (shown as 4.50\\%) is also read
+correctly.
+
 Unlike the person sheets, **all** of the columns above must be present when one of these two sheets
 exists; there is no optional-column behavior here.
 

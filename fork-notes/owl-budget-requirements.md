@@ -141,6 +141,34 @@ supplies local numbers.
 6. Which literature sources he has in mind for health and region (to check them before relying
    on them).
 
+## The maintainer's answers (relayed 2026-10-09) and where they leave the design
+
+1. **Ownership:** a new project under his account for now; a managed structure later (Owl has
+   2,000+ Streamlit users, 10-20 new per day).
+2. **Owl's side of the contract in core:** yes ("options and hooks almost all there"). Checked:
+   upstream's `gen_spending_profile` builds `flat` and `smile` only; an evaluated external
+   profile is new code (the fork's `budget.py`).
+3. **Shape only or non-scalable lines:** open, pending "how the profile interacts with
+   longevity". Our answer: evaluation per horizon handles the horizon; non-scalable (essential)
+   lines turn a long life or a bad sequence into a cut in discretionary spending, then into
+   infeasibility, which lifespan sampling already counts as a full shortfall. Prototype in the
+   fork (2026-10-09): the `essential` column, `Plan._add_essential_profile`.
+4. **Formats:** JSON for AI, Excel for retirees, possibly both; MCP on both sides so that
+   ladders (parameter sweeps) of budgets can run against Owl. Our position: one schema, JSON
+   canonical, Excel as the editable view, round trip tested.
+5. **Sources:** his web search (BLS CE, HRS, EBRI, Vanguard, Fidelity). Checked as far as the
+   proxy allows (bls.gov, FRED, ebri.org, fidelity.com blocked; search results and reprints
+   only): BLS CE 2024 65+ figures match FRED's copies; Fidelity 2026 $185,500, 45% of it Medicare
+   B/D premiums that Owl charges already; EBRI 2024 31% spend more than they can afford. The
+   budget must also cover the ~10 years before retirement: Owl's plan already starts today, but
+   Owl charges no payroll tax (no FICA/OASDI in its source, by grep), so a working-years budget
+   needs a payroll-tax line.
+6. **Cost function (his new point):** budget fixed -> bequest is the objective; bequest fixed ->
+   spending is; spending needs are elastic, so split core from discretionary. Our reading:
+   g_n = E_n + k D_n, `maxSpending` maximizes k, `maxBequest` at k = 0 gives the reserve above the
+   core, and upstream's spending-bequest frontier traces k against the bequest. Draft reply:
+   `issue-175-reply-3.md`.
+
 ## Our household's use, as a test case
 
 NY metro couple: rent vs buy with cash vs buy with a mortgage, Yonkers / NYC / Westchester / NJ,

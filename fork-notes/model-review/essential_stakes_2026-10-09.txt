@@ -1,0 +1,22 @@
+tax-deferred [900.0, 600.0] ($k); amounts in today's $
+maxSpending LE (89, 92) whole budget scaled  yr0   130,091  rent  40,373  travel  22,430  last yr   80,746  lifetime  3,682,932  bequest          0  k -  0.1 s
+maxSpending LE (89, 92) essentials fixed     yr0   132,680  rent  36,000  travel  31,120  last yr   75,336  lifetime  3,660,976  bequest          0  k 1.556  0.1 s
+maxSpending LE (95, 98) whole budget scaled  yr0   126,296  rent  39,195  travel  21,775  last yr   78,390  lifetime  4,202,596  bequest          0  k -  0.1 s
+maxSpending LE (95, 98) essentials fixed     yr0   128,877  rent  36,000  travel  28,585  last yr   74,575  lifetime  4,176,783  bequest          0  k 1.429  0.2 s
+maxBequest at essentials only                yr0    86,000  rent  36,000  travel       0  last yr   66,000  lifetime  2,606,000  bequest  1,532,151  k 0.000  0.2 s
+maxBequest at the budget                     yr0   116,000  rent  36,000  travel  20,000  last yr   72,000  lifetime  3,284,000  bequest    576,022  k 1.000  0.1 s
+tax-deferred [500.0, 300.0] ($k); amounts in today's $
+maxSpending LE (89, 92) whole budget scaled  yr0   103,566  rent  32,141  travel  17,856  last yr   64,282  lifetime  2,931,988  bequest          0  k -  0.1 s
+maxSpending LE (89, 92) essentials fixed     yr0   101,256  rent  36,000  travel  10,171  last yr   69,051  lifetime  2,950,783  bequest          0  k 0.509  0.1 s
+maxSpending LE (95, 98) whole budget scaled  yr0   102,320  rent  31,754  travel  17,641  last yr   63,509  lifetime  3,404,782  bequest          0  k -  0.1 s
+maxSpending LE (95, 98) essentials fixed     yr0    98,887  rent  36,000  travel   8,591  last yr   68,577  lifetime  3,439,016  bequest          0  k 0.430  0.1 s
+maxBequest at essentials only                yr0    86,000  rent  36,000  travel       0  last yr   66,000  lifetime  2,606,000  bequest    537,720  k 0.000  0.1 s
+maxBequest at the budget                     infeasible
+tax-deferred 900,600
+whole budget scaled  scenarios 200  unfunded 0  first-year spending p10/p50/p90 124,797 / 157,535 / 205,322  15 s
+essentials fixed     scenarios 200  unfunded 0  first-year spending p10/p50/p90 125,718 / 163,285 / 211,118  15 s
+tax-deferred 500,300
+whole budget scaled  scenarios 200  unfunded 0  first-year spending p10/p50/p90 97,034 / 118,540 / 149,013  12 s
+essentials fixed     scenarios 200  unfunded 9  first-year spending p10/p50/p90 94,547 / 118,827 / 150,988  12 s
+--- check of the 9 unfunded draws ($0.8M):
+whole-budget first-year in those draws: 88000, 86597, 88754, 87905, 92943, 92343, 87355, 91142, 89282; lifespans [[67,100],[81,87],[71,94],[89,69],[68,96],[74,97],[83,70],[69,88],[85,72]]; lowest whole-budget first year where essentials were funded: 90508

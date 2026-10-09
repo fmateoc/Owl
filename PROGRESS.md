@@ -1,8 +1,8 @@
-# Owl fork — progress (as of 2026-10-07)
+# Owl fork — progress (as of 2026-10-09)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
-Fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07, from `main`): Phase 2 housing ledger and NJ property tax deduction, then the review fixes (same day): Debts `payoff` year, a crash before the first solve, Scenario 5 commands, stakes recorded on the objective, `--solver-opt` numeric text. 2026-10-08: merged upstream `dev` `156d812` (#173 loan linked to the property it finances, #174 mode options normalized, MCP partial bequest); our `payoff` column and `--solver-opt` validator dropped for theirs. Phase 2b the same day (after #175's answer): the Housing ledger replaced by a `"budget"` spending profile built from an HFP Budget sheet; HFP rate fix (a rate below 1 read as 100x).
+Fork `fmateoc/Owl`, branch `claude/phase2-housing` (2026-10-07, from `main`): Phase 2 housing ledger and NJ property tax deduction, then the review fixes (same day): Debts `payoff` year, a crash before the first solve, Scenario 5 commands, stakes recorded on the objective, `--solver-opt` numeric text. 2026-10-08: merged upstream `dev` `156d812` (#173 loan linked to the property it finances, #174 mode options normalized, MCP partial bequest); our `payoff` column and `--solver-opt` validator dropped for theirs. Phase 2b the same day (after #175's answer): the Housing ledger replaced by a `"budget"` spending profile built from an HFP Budget sheet; HFP rate fix (a rate below 1 read as 100x). 2026-10-09: merged upstream `dev` `0ca30f4` (#176 our HFP rate report, fixed upstream with their design, ours dropped; #178 MIP money scaling); a fork fix the scaling exposed (NJ exclusion claimed short of the statute); essential budget lines (#175's cost-function point).
 Plan details: `fork-notes/phase1-revised.md`. Scenario commands: `fork-notes/phase0/phase0-scenarios.md`.
 
 ## Upstream
@@ -28,8 +28,9 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #170 Envelope model | Filed with #171; one conversation with it (the maintainer answered both on #171) |
 | #171 Pinned loop | **Declined**: second model too costly; `withACA="optimize"` captures morgan's gain; maintainer's answer is local search (`breakpointMethod="local-search"`, 2026.10.6). Asked for our findings: measured, reply **posted** by the user 2026-10-06 (`fork-notes/issue-local-search-reply.md`, details `fork-notes/local-search/README.md`). Maintainer (2026-10-07): all three points right; tie rule and repeat reuse in `785217c`, merged (fork's own tie code and test dropped, theirs kept). He also notes the cost basis is still a source of non-convergence with Medicare exact (on his list) |
 | Loop anomaly (NY→FL at year 5) | Not filed (no repro beyond loop noise) |
-| #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`; **user to post** |
-| HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. Patch: convert only percent-formatted cells. **Filed by the user** (number not recorded); not fixed upstream yet. Applied in the fork |
+| #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered with the essential-lines prototype and measurements: draft `issue-175-reply-3.md`, **user to post** |
+| #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
+| #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
@@ -249,9 +250,48 @@ is worth +$5,047 (exact, today) / +$8,693 (exact, yesterday) / +$11,665 (LS, tod
 differences under about 1% as unresolved unless solved with a `maxTime` long enough to close the
 gap. Rent vs buy differences are usually far larger than that.
 
-Next: the user posts `issue-175-reply-2.md` (Owl-budget requirements); the profile contract (the
-JSON file Owl reads) is the first thing to agree on, and the fork's `budget.py` can become Owl's side
-of it. Then Phase 3
+### Essential budget lines (2026-10-09, after #175's third answer)
+
+The maintainer's cost-function point: a budget fixes spending and maximizes the bequest; a fixed
+bequest maximizes spending; spending is elastic, so split core from discretionary. Implemented as
+an optional `essential` column of the Budget sheet (`5a4a12f`): net spending = essential lines +
+k x discretionary lines; `maxSpending` maximizes k (`Plan.discretionary_scale`, Summary line,
+`plan_metrics` key only when present); `maxBequest` at k = 0 gives the bequest above the core.
+Affine profile rows in `Plan._add_essential_profile`, `spendingSlack` on the discretionary part,
+no binaries. Without essential lines the plan is unchanged (test). 22 tests in `test_budget.py`.
+Found on the way: written with dollar-sized coefficients (D_0 g_n), HiGHS declared every
+`maxBequest` plan infeasible; normalized by D_0 (order-1 coefficients, like upstream's rows) all
+solve. Stochastic spending needs no change: lower first-year spending is lower in every year, and
+an infeasible scenario already counts as a full shortfall.
+
+Stakes (`fork-notes/model-review/essential_stakes.py`, raw output `essential_stakes_2026-10-09.txt`;
+Phase 1 couple, NY, exact LP, conservative rates, bequest 0; budget: living $50k + rent $36k
+essential, travel $20k to 2044 + other $10k discretionary):
+
+| Tax-deferred | LE | Whole budget scaled (yr-0, rent) | Essentials fixed (yr-0, rent, k) |
+|---|---|---|---|
+| $1.5M | 89/92 | 130,091, 40,373 | 132,680, 36,000, 1.556 |
+| $1.5M | 95/98 | 126,296, 39,195 | 128,877, 36,000, 1.429 |
+| $0.8M | 89/92 | 103,566, 32,141 | 101,256, 36,000, 0.509 |
+| $0.8M | 95/98 | 102,320, 31,754 | 98,887, 36,000, 0.430 |
+
+`maxBequest` at $1.5M: 1,532,151 at k = 0, 576,022 at k = 1; at $0.8M the budget is infeasible.
+Lifespan sampling (200 MC scenarios, histochastic 1928-2024, seed 42, SSA tables): at $1.5M none
+fails either way; at $0.8M the whole-budget reading solves all 200 by cutting rent, while 9 of
+200 cannot fund the essentials. Checked that those 9 are real: their whole-budget first year is
+$86.6-92.9k (75-80% of the budget), and the lowest whole-budget first year among the funded draws is
+$90.5k; 8 of the 9 have one spouse dying at 67-74 and the other living to 83-100 (rent kept in
+full by the survivor).
+
+Sources in the maintainer's web search, checked as far as the proxy allows (bls.gov, FRED,
+ebri.org, fidelity.com blocked: search results and reprints only): BLS CE 2024 65+ figures match
+FRED's copies; Fidelity 2026 $185,500 (45% Medicare B/D premiums, which Owl already charges);
+EBRI 2024 31% spend more than they can afford ("3[1]%" in his paste was a broken footnote link).
+Checked in code: upstream builds only `flat` and `smile` profiles; Owl charges no payroll tax
+(grep for FICA, OASDI, 6.2%, 1.45% found none), so a working-years budget needs a payroll-tax line.
+
+Next: the user posts `issue-175-reply-3.md`; then the JSON schema for the profile (where it lives
+is one of our questions back). Then Phase 3
 (itemized deductions: it decides cash vs mortgage; `debts.py` gives the interest per year as
 payment minus the change in balance) or Phase 5 (part-time work / SS earnings test) as the
 household needs them.
@@ -259,6 +299,8 @@ household needs them.
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-09, after merging upstream `dev` `0ca30f4` (#176, #178): 2931 passed, 1 skipped, 2 failed (fork NJ exclusion tests, see #178 row); after the exclusion fix and the essential lines (`5a4a12f`): **2956 passed, 1 skipped**. flake8 only upstream's `schema.py:391` and `localsearch.py:31`.
 
 2026-10-08, Phase 2b (budget profile) + HFP rate fix: **2910 passed, 1 skipped** (2891 − 23 Housing tests + 38 budget tests + 4 rate tests); flake8 only upstream's two lines. Stock `dev` `156d812` with `issue-hfp-percent-rates.patch` alone: 2763 passed, 1 skipped (2760 collected on `dev` + 4 new).
 2026-10-08, after merging upstream `dev` `156d812` (#173, #174): **2891 passed, 1 skipped** (2857 collected before − our 15 payoff/validator tests + upstream's 50 new); flake8 only upstream's `schema.py:389` and `localsearch.py:31`. The merge put upstream's `string_cols.append("property")` (hfp_io) under the fork's Housing branch instead of Debts; moved back by hand.

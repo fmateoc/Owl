@@ -59,6 +59,9 @@ import numpy as np
 # start, so the search returned a plan claiming part of a tier above its ceiling. It has no
 # fixed-point residual: the exclusion is exact within each solve.
 FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx")
+# Binaries the search never pins: the senior-bonus phase-out has one per bonus year, two or three
+# in all, so every restricted problem keeps them free. Only an LP solve, which relaxes them, pins them.
+ALWAYS_FREE = ("zsb",)
 RESIDUAL_FAMILY = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zj": "NIIT", "zl": "LTCG"}
 FAMILY_LABEL = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion"}
 
@@ -177,7 +180,8 @@ class LocalSearch:
         p = self.plan
         have_prev = self.prev is not None and len(self.prev) == p.nvars
         if have_prev:
-            res, dt = self._mip(options, overrides=self._pin(self.prev, self._families()), lp=True)
+            free = [f for f in ALWAYS_FREE if f in p.vm._blocks]
+            res, dt = self._mip(options, overrides=self._pin(self.prev, self._families() + free), lp=True)
             self._step(steps, "start: previous binaries (LP)", res, dt)
             if res[2]:
                 return res

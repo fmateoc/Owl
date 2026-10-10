@@ -142,7 +142,21 @@ takes the new state's credits from its year.
 Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are replaced by a frozen
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
-### Version WIP
+
+### Version 2026.10.9
+
+#### New: the OBBBA senior bonus can be solved with the plan (`withSeniorBonus`)
+
+The $6,000 deduction for each individual aged 65 or older (tax years through 2028) shrinks by $6
+per $100 of MAGI above $75,000 single or $150,000 joint. Owl set it from the previous iteration's
+MAGI, so a solve could not weigh a conversion against the bonus it costs, and could settle on a
+plan that is consistent with itself yet worse: on `Case_dana` with historical returns, holding the
+first year's Roth conversion to a smaller amount left up to $1,283 more than the optimized plan,
+in six of the start years tried. The new solver option `withSeniorBonus = "optimize"` makes the
+phase-out part of the problem, with one binary per bonus year for the point where the bonus is
+gone, three at most. The `breakpointMethod` presets set it, so the Summary's breakpoint method
+lists "senior bonus"; local search leaves those binaries free in every step. A state that follows
+the federal deduction still takes it from the previous iteration. The default stays `"loop"`.
 
 #### Changed: mixed-integer solves run in hundreds of dollars
 
@@ -161,8 +175,6 @@ and local search 1.3 times faster than in dollars, and `taxable_first` 1.6 times
 expert solver option `mipScaleOrder` sets the unit as a power of ten (default 2, hundreds); `0`
 solves in dollars, so that every number the solver sees can be checked against other
 calculations (#178).
-
-### Version 2026.10.9
 
 #### Maint: Updating dependencies and increment version
 

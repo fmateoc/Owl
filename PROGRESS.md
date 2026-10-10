@@ -297,8 +297,10 @@ follow the survivor's age after the first death; JSON types checked against the 
 said $k: a file written to them would have budgeted $50/yr), values typed strictly; lines read from
 `budget_file` are not written to the HFP (`Plan.budgetFromFile`), so the file is not shadowed by a
 copy of itself; the interface keeps `budget_file` on save but does not read it, and the solve error
-says so. Open from the review: the smile is anchored to plan start + `smile_delay`, not to age, so
-"age-anchored" overstates it for a household that starts its plan years before retiring.
+says so. Then (finding 6, the user's choice): the smile starts at an age of the younger spouse,
+`smile_start_age`, instead of `smile_delay` years from today, which had moved the curve a year later
+relative to the household's ages on each yearly rerun; a delay is converted once at load, so no plan
+moves on the upgrade day; the UI asks for the age. `tests/plan/test_smile_start_age.py`, 11 tests.
 
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Then Phase 3
@@ -309,6 +311,9 @@ household needs them.
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-10, smile start age: **3035 passed, 1 skipped** (full suite, 7 min). flake8 only upstream's
+`schema.py:406` and `localsearch.py:31`.
 
 2026-10-10, Track B review fixes: **3022 passed, 1 skipped** (full suite, 7 min; before the fixes
 3 failed, 2990 passed: the AMO references of jack+jill, jordan+taylor and morgan, moved by the

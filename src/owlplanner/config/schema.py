@@ -272,6 +272,13 @@ class OptimizationParameters(BaseModel):
     smile_dip: Optional[int] = Field(default=15, description="Smile profile dip %")
     smile_increase: Optional[int] = Field(default=12, description="Smile profile increase %")
     smile_delay: Optional[int] = Field(default=0, description="Smile profile delay years")
+    smile_start_age: Optional[int] = Field(
+        default=None,
+        description=(
+            "Age of the younger spouse when the smile starts (calendar year minus birth year). "
+            "Wins over smile_delay; without it, the age is taken as today's age plus smile_delay."
+        ),
+    )
     other_medical_expenses: float = Field(
         default=0.0,
         description="Annual non-Medicare qualified medical expenses for HSA withdrawal cap ($k, today's $)",

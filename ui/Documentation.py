@@ -1483,9 +1483,13 @@ should be at least as large as the survivor's safety net.
 The **type of profile** can be *flat* (constant real spending over time), *smile* (adjusted for
 lifestyle: a dip in the “slow-go” years, then an increase or decrease over the plan), or *budget*
 (built from the lines of the *Budget* sheet of the Household Financial Profile: see *Debts and Fixed
-Assets*). For *smile*, you can set the **smile delay** (years before the dip starts), **smile dip** (%),
-and **smile increase** (%). The smile covers a fixed 30-year span from the start of the smile, not the
-length of the plan: a longer life adds quiet years at the end rather than stretching the dip later.
+Assets*). For *smile*, you can set the **age at which the smile starts** (the younger spouse's age,
+calendar year minus birth year; spending is held at its starting level until then), **smile dip** (%),
+and **smile increase** (%). The start is an age rather than a number of years from now, so the curve
+stays at the same ages when the case is run again next year. The smile covers a fixed 30-year span
+from its start, not the length of the plan: a longer life adds years at the end rather than
+stretching the dip later. A case saved before this setting existed is read with its *smile delay*
+(years from the current year) turned into an age once, and keeps that age when saved again.
 **Profile slack** controls how far spending can deviate from the profile shape. Spending stays
 within ±slack% of the profile (bilateral bound); set to 0 to pin spending exactly to the profile.
 **Time preference** (0–10 %/year) applies an exponentially decaying weight to future spending

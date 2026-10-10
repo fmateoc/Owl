@@ -176,3 +176,10 @@ iteration; our NJ path does not use it.
 4. Interface: `budget_file` kept through `config_to_ui` / `ui_to_config`; `apply_config_to_plan`
    records the name only; the solve error names the unread file.
 5. JSON values typed strictly: flags must be `true`/`false`, numbers must be numbers, years whole.
+6. (Asked after the review.) The smile was anchored to plan start + `smile_delay`, i.e. to "today",
+   so a case run a year later moved the curve a year later relative to the household's ages (low
+   point at 79 one year, 80 the next, for a 55-year-old with delay 10). Now anchored to the younger
+   spouse's age: `smile_start_age` (UI field replaces "Smile delay (in years from now)"); a delay is
+   converted once at load (today's age + delay), so no plan moves on the upgrade day; Owl writes
+   both keys (delay clipped at 0). The curve runs by calendar year from that start (not by the
+   survivor's age after a death). MCP tools keep `smile_delay` = years from the call.

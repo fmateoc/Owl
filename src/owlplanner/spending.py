@@ -4,10 +4,13 @@ Spending profile generation utilities.
 This module implements spending profile time series: flat and smile (retirement
 spending) profiles, with survivor fraction and normalization.
 
-The smile is age-anchored: one cosine period covers a fixed number of years
-(``SMILE_SPAN``) from the start of the smile (plan start plus ``delay``), not the
-length of the plan. A longer life therefore appends the late-life rise instead of
-stretching the go-go years and moving the dip later.
+One cosine period of the smile covers a fixed number of years (``SMILE_SPAN``) from
+the start of the smile, not the length of the plan. A longer life therefore appends the
+late-life rise instead of stretching the go-go years and moving the dip later. Here the
+start is ``delay`` years after the plan's first year (negative: the smile started before
+the plan). ``Plan.setSpendingProfile`` sets it from an age of the younger spouse
+(``smile_start_age``), so the curve stays at the same ages when the plan is run again in
+a later year.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -57,7 +60,8 @@ def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay
     increase : float
         Percent linear increase for smile profile (over one ``span``)
     delay : int
-        Years to delay before smile curve starts (plan start, not age)
+        Years from the plan's first year to the start of the smile; negative when the smile
+        started before the plan (its earlier part is then not in the plan)
     span : float, optional
         Length of one cosine period in years. Default ``SMILE_SPAN``. Pass
         ``N_n - 1 - delay`` to recover the old plan-stretched curve.

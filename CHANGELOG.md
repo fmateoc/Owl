@@ -20,7 +20,19 @@ its Budget sheet the source again. The web interface does not read the file: it 
 saving the case, and a plan whose only lines are in an unread file says so when it is solved.
 Owl-budget and MCP can hand lines over without writing Excel.
 
-#### Changed: the smile profile is age-anchored
+#### Changed: the smile starts at an age of the younger spouse
+
+`optimization_parameters.smile_start_age` (UI: *Smile starts at age (younger spouse)*) is the
+younger spouse's age (calendar year minus birth year) when the smile starts; it replaces
+`smile_delay`, which counted years from the current year and so moved the curve one year later,
+relative to the household's ages, each year the same case was run again. A case with only
+`smile_delay` is read with the delay turned into an age once (today's age plus the delay), so no plan
+changes on the day of the upgrade; saved again, it carries the age. Owl also writes the equivalent
+`smile_delay` (never negative) for readers that only know the delay. An age earlier than today's
+starts the plan partway through the smile (`gen_spending_profile` takes a negative `delay`). MCP
+tools keep their `smile_delay` argument, read as years from the day of the call.
+
+#### Changed: the smile's period no longer follows the plan's length
 
 The smile's cosine used to stretch one period over the plan's length (`span = N_n - 1 - delay`), so
 a longer life widened the go-go years and moved the slow-go dip later. It now covers a fixed

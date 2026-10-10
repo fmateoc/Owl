@@ -151,6 +151,12 @@ def _age_float_to_ym(age: float) -> tuple[int, int]:
     return int(age), round((age % 1.0) * 12)
 
 
+def _younger_age_now(dobs) -> int:
+    """Age of the younger spouse this year (year minus birth year), as Plan._youngerAgeAtStart()."""
+    years = [int(str(d)[:4]) for d in dobs if d]
+    return date.today().year - max(years) if years else 0
+
+
 def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     """
     Convert canonical configuration dict to flat UI session-state style dict.
@@ -198,14 +204,19 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     dic["interpCenter"] = float(_ic if _ic is not None else 15.0)
     dic["interpWidth"] = float(_iw if _iw is not None else 5.0)
     dic["spendingProfile"] = op.get("spending_profile", "smile")
+    age_now = _younger_age_now(diconf.get("basic_info", {}).get("date_of_birth") or [DEFAULT_DOB])
     if dic["spendingProfile"] == "smile":
         dic["smileDip"] = int(op.get("smile_dip", 15))
         dic["smileIncrease"] = int(op.get("smile_increase", 12))
         dic["smileDelay"] = int(op.get("smile_delay", 0))
+        # Fork: the smile starts at an age of the younger spouse; a case without it is converted.
+        start_age = op.get("smile_start_age")
+        dic["smileStartAge"] = int(start_age) if start_age is not None else age_now + dic["smileDelay"]
     else:
         dic["smileDip"] = 15
         dic["smileIncrease"] = 12
         dic["smileDelay"] = 0
+        dic["smileStartAge"] = age_now
 
     # Fork: kept so that a case saved from the interface keeps it. The interface does not read the
     # file (it has no access to the case's directory); budget lines there come from the HFP sheet.
@@ -521,6 +532,7 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
             "smile_dip": _get_ui(uidic, "smileDip", 15, int),
             "smile_increase": _get_ui(uidic, "smileIncrease", 12, int),
             "smile_delay": _get_ui(uidic, "smileDelay", 0, int),
+            "smile_start_age": _get_ui(uidic, "smileStartAge", 0, int),
             "other_medical_expenses": _get_ui(uidic, "otherMedical", 0.0, float),
         },
         "solver_options": {},
@@ -704,6 +716,13 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
             first["locality"] = uidic["stateMoveLocality"]
         # Fork: moves after the first come from the case file and are kept as they are.
         diconf["basic_info"]["moves"] = [first] + [dict(m) for m in uidic.get("stateMovesMore") or []]
+
+    op = diconf["optimization_parameters"]
+    if uidic.get("smileStartAge") is None:
+        op.pop("smile_start_age")  # a dictionary without it: keep the delay, converted when read
+    else:
+        # The delay, from this year and never negative, for readers that only know smile_delay.
+        op["smile_delay"] = max(0, op["smile_start_age"] - _younger_age_now(dobs))
 
     if uidic.get("budgetFile"):
         # Fork: carried through so that saving from the interface keeps it (the interface does not read it).

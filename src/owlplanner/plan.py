@@ -1426,11 +1426,21 @@ class Plan:
                 f"Set the survivor claiming age to 'FRA' to defer it instead."
             )
 
-    def setSpendingProfile(self, profile, percent=60, dip=15, increase=12, delay=0):
+    def _youngerAgeAtStart(self):
+        """Age of the younger spouse (or the individual) in the plan's first year: year minus birth year."""
+        return int(self.year_n[0]) - int(np.max(self.yobs))
+
+    def setSpendingProfile(self, profile, percent=60, dip=15, increase=12, delay=0, start_age=None):
         """
         Generate time series for spending profile. Surviving spouse fraction can be specified
         as a second argument. Default value is 60%.
         Dip and increase are percent changes in the smile profile.
+
+        The smile starts when the younger spouse (or the individual) reaches start_age (calendar
+        year minus birth year), and then runs by calendar year. Without start_age, delay (years
+        from the plan's first year, as before) gives it: start_age = that spouse's age now + delay.
+        The plan keeps the age (smileStartAge), so a case saved and run again in a later year keeps
+        the curve at the same ages; delay alone would move it a year later each year.
         """
         if not (0 <= percent <= 100):
             raise ValueError(f"Survivor value {percent} outside range.")
@@ -1438,8 +1448,17 @@ class Plan:
             raise ValueError(f"Dip value {dip} outside range.")
         if not (-100 <= increase <= 100):
             raise ValueError(f"Increase value {increase} outside range.")
-        if not (0 <= delay <= self.N_n - 2):
-            raise ValueError(f"Delay value {delay} outside year range.")
+        age0 = self._youngerAgeAtStart()
+        if start_age is None:
+            if not (0 <= delay <= self.N_n - 2):
+                raise ValueError(f"Delay value {delay} outside year range.")
+            start_age = age0 + int(delay)
+        else:
+            start_age = int(start_age)
+            if not (0 <= start_age <= 120):
+                raise ValueError(f"Smile start age {start_age} outside 0-120.")
+            # Years from the plan's first year; negative once the smile has started.
+            delay = start_age - age0
 
         self.chi = percent / 100
 
@@ -1461,7 +1480,8 @@ class Plan:
         self.spendingProfile = profile
         self.smileDip = dip
         self.smileIncrease = increase
-        self.smileDelay = delay
+        self.smileDelay = delay  # years from this plan's first year (derived from smileStartAge)
+        self.smileStartAge = start_age
         self.caseStatus = "modified"
 
     def _evaluateBudget(self, strict=True):

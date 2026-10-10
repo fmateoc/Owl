@@ -33,6 +33,7 @@ kz.initCaseKey("survivor", 60)
 kz.initCaseKey("smileDip", 15)
 kz.initCaseKey("smileIncrease", 12)
 kz.initCaseKey("smileDelay", 0)
+kz.initCaseKey("smileStartAge", None)
 
 
 def initProfile():
@@ -168,9 +169,14 @@ else:
         )
     with col3:
         if kz.getCaseKey("spendingProfile") == "smile":
-            helpmsg = "Time in year before spending starts decreasing."
+            helpmsg = (
+                "Age of the younger spouse (calendar year minus birth year) when spending starts "
+                "decreasing. Spending is held at its starting level until then. An age, not a number "
+                "of years from now, so the curve stays at the same ages when the case is run again next year."
+            )
             ret = kz.getIntNum(
-                "Smile delay (in years from now)", "smileDelay", max_value=30, help=helpmsg, callback=owb.setProfile
+                "Smile starts at age (younger spouse)", "smileStartAge", max_value=120, help=helpmsg,
+                callback=owb.setProfile,
             )
             helpmsg = "Percentage to increase (or decrease) over time period."
             ret = kz.getIntNum(

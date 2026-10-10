@@ -62,6 +62,7 @@ objective = "maxBequest"
 smile_dip = 15
 smile_increase = 12
 smile_delay = 0
+smile_start_age = 66
 
 [solver_options]
 netSpending = 240.0

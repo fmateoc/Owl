@@ -303,6 +303,10 @@ relative to the household's ages on each yearly rerun; a delay is converted once
 moves on the upgrade day; the UI asks for the age. Then: after the first death the smile follows the
 survivor's age (jumps ahead by the gap when the younger spouse dies first), and reading a smile case
 without `smile_start_age` warns with the age to add. `tests/plan/test_smile_start_age.py`, 15 tests.
+The six smile example cases (`avery+quinn`, `jack+jill`, `joe`, `jordan+taylor`, `jordan+taylor-qcd`,
+`morgan`) carry `smile_start_age` = the younger spouse's 2026 age + their `smile_delay` (0), so they
+read without the warning and no recorded result moved (full suite 3039 passed). These are upstream's
+files: expect conflicts on those lines when upstream edits them.
 
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Then Phase 3

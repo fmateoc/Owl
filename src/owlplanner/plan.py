@@ -584,7 +584,11 @@ class Plan:
         self.st_ptd_rent_share_n = np.zeros(self.N_n)  # Percent of rent counted toward it
         self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction cap where the budget has housing (line 41)
         self.st_ptd_share_n = np.zeros(self.N_n)  # Deductible share of net spending (property tax + rent share)
+        self.st_ptd_const_n = np.zeros(self.N_n)  # Constant part of the deductible amount (nominal $)
+        self.st_ptd_coef_n = np.zeros(self.N_n)  # Its coefficient on g_n
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
+        self.mortgage_interest_n = np.zeros(self.N_n)  # Mortgage interest paid per calendar year
+        self.mortgage_balance_n = np.zeros(self.N_n)  # Average mortgage balance per calendar year
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
         self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
         self.st_T_n = np.zeros(self.N_n)  # State income tax per year (N_n,)
@@ -2330,22 +2334,36 @@ class Plan:
             self.fixed_assets_debt_balances_remaining_n = debts.get_debt_balances_array(
                 debts_df, self.N_n, thisyear, payoffs
             )
+            self.mortgage_interest_n, self.mortgage_balance_n = debts.get_mortgage_interest_array(
+                debts_df, self.N_n, thisyear, payoffs
+            )
         else:
             self.debt_payments_n = np.zeros(self.N_n)
             self.remaining_debt_balance = 0.0
             self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
+            self.mortgage_interest_n = np.zeros(self.N_n)
+            self.mortgage_balance_n = np.zeros(self.N_n)
 
         gamma_n = getattr(self, "gamma_n", None)
 
         # NJ property tax deduction (line 41): property taxes + 18% of rent, up to the cap. The budget
-        # is inside net spending, so its deductible part is a share of g_n (_add_property_tax_deduction).
+        # is inside net spending, so the amount paid is an affine function of g_n
+        # (_budget_amount_terms / _add_property_tax_deduction). st_ptd_share_n stays as the
+        # "any deductible line" flag and the no-essentials share.
         self.st_ptd_share_n = np.zeros(self.N_n)
+        self.st_ptd_const_n = np.zeros(self.N_n)
+        self.st_ptd_coef_n = np.zeros(self.N_n)
         if self.budget is not None:
             deductible = self.budget.by_type(budgeting.PROPERTY_TAX) + self.st_ptd_rent_share_n / 100.0 * (
                 self.budget.by_type(budgeting.RENT)
             )
             total = self.budget.total_n
             self.st_ptd_share_n = np.divide(deductible, total, out=np.zeros(self.N_n), where=total > 0)
+            const_pt, coef_pt = self._budget_amount_terms(budgeting.PROPERTY_TAX)
+            const_r, coef_r = self._budget_amount_terms(budgeting.RENT)
+            rent_share = self.st_ptd_rent_share_n / 100.0
+            self.st_ptd_const_n = const_pt + rent_share * const_r
+            self.st_ptd_coef_n = coef_pt + rent_share * coef_r
         self.st_ptd_n = np.where(self.st_ptd_share_n > 0, self.st_ptd_cap_n, 0.0)
 
         # Process fixed assets
@@ -3035,19 +3053,44 @@ class Plan:
                     self.B.setRange(vm["rxl"].idx(n, k), 0, np.inf if live else 0)
                     self.B.setRange(vm["rxb"].idx(n, k), 0, np.inf if live else 0)
 
+    def _budget_amount_terms(self, *types):
+        """(const_n, coef_n) so the types' amount in year n is const_n[n] + coef_n[n] * g_n, nominal $.
+
+        Without essential lines the amount is a share of net spending (const = 0, today's
+        behaviour). With them it is the essential part at its amount plus a share of the
+        discretionary part of g_n - E_n: const = gamma * (ess - coef * E), coef = disc / D.
+        """
+        zeros = np.zeros(self.N_n)
+        if self.budget is None:
+            return zeros, zeros.copy()
+        gam = getattr(self, "gamma_n", None)
+        gam = np.ones(self.N_n) if gam is None else gam[: self.N_n]
+        ess = self.budget.by_type(*types, essential=True)
+        disc = self.budget.by_type(*types, essential=False)
+        if not self.budget.has_essentials:
+            total = self.budget.total_n
+            coef = np.divide(disc + ess, total, out=zeros.copy(), where=total > 0)
+            return zeros, coef
+        E = self.budget.essential_n
+        D = self.budget.discretionary_n
+        coef = np.divide(disc, D, out=zeros.copy(), where=D > 0)
+        const = gam * (ess - coef * E)
+        return const, coef
+
     def _add_property_tax_deduction(self):
-        """The property tax deduction is at most its share of net spending (NJ line 41).
+        """The property tax deduction is at most what the budget pays (NJ line 41).
 
         The budget's property tax and rent are inside g_n, which scales with the objective, so
-        the deduction claimed is bounded by st_ptd_share_n * g_n as well as by the cap.
+        the amount paid is const + coef * g_n (_budget_amount_terms) and bounds the claim as
+        well as the cap.
         """
         vm = self.vm
         if "st_pt" not in vm:
             return
         for n in range(self.N_n):
-            if self.st_ptd_share_n[n] > 0:
-                row = self.A.newRow({vm["st_pt"].idx(n): 1, vm["g"].idx(n): -self.st_ptd_share_n[n]})
-                self.A.addRow(row, -np.inf, 0, tag=("state_property_tax_deduction", n))
+            if self.st_ptd_share_n[n] > 0 or self.st_ptd_coef_n[n] > 0 or self.st_ptd_const_n[n] > 0:
+                row = self.A.newRow({vm["st_pt"].idx(n): 1, vm["g"].idx(n): -self.st_ptd_coef_n[n]})
+                self.A.addRow(row, -np.inf, self.st_ptd_const_n[n], tag=("state_property_tax_deduction", n))
 
     def _add_local_taxable_income(self):
         """Local bracket allocations add up to the state taxable income, in years with a local schedule."""

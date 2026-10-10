@@ -387,3 +387,55 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None, payoffs=None):
             total_balance += calculate_remaining_balance(principal, rate, term, years_elapsed)
 
     return total_balance
+
+
+def _is_mortgage(debt):
+    return str(debt.get("type", "")).strip().lower() == "mortgage"
+
+
+def get_mortgage_interest_array(debts_df, N_n, thisyear=None, payoffs=None):
+    """
+    Mortgage interest paid and average balance, by calendar year (type == "mortgage" only).
+
+    Interest is the year's payments minus the fall in balance (same amortization as
+    get_debt_payments_array). A loan paid off early pays principal only in the payoff year,
+    so that year's interest is zero. Average balance is the mean of the start-of-year and
+    end-of-year balances of the year.
+
+    Returns
+    -------
+    (interest_n, avg_balance_n) : two np.ndarray of length N_n
+    """
+    if thisyear is None:
+        thisyear = date.today().year
+
+    interest_n = np.zeros(N_n)
+    avg_balance_n = np.zeros(N_n)
+    if u.is_dataframe_empty(debts_df) or "type" not in debts_df.columns:
+        return interest_n, avg_balance_n
+
+    payoffs = payoffs or {}
+    for idx, debt in debts_df.iterrows():
+        if not u.is_row_active(debt) or not _is_mortgage(debt):
+            continue
+        start_year = int(debt["year"])
+        term = int(debt["term"])
+        payoff = payoffs.get(idx)
+        # Regular payments end at the earlier of the term and an early payoff.
+        natural_end = start_year + term
+        end_year = natural_end if payoff is None else min(payoff, natural_end)
+        principal, rate = float(debt["amount"]), float(debt["rate"])
+        annual_payment = calculate_annual_payment(principal, rate, term)
+        for n in range(N_n):
+            year = thisyear + n
+            if start_year <= year < end_year:
+                b0 = calculate_remaining_balance(principal, rate, term, year - start_year)
+                b1 = calculate_remaining_balance(principal, rate, term, year - start_year + 1)
+                interest_n[n] += annual_payment - (b0 - b1)
+                avg_balance_n[n] += 0.5 * (b0 + b1)
+            elif year == payoff and year < natural_end:
+                # The payoff year pays the remaining principal only: no interest.
+                b0 = calculate_remaining_balance(principal, rate, term, year - start_year)
+                avg_balance_n[n] += 0.5 * b0
+
+    return interest_n, avg_balance_n

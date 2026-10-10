@@ -313,8 +313,9 @@ files: expect conflicts on those lines when upstream edits them.
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Phase 3 is planned in `fork-notes/phase3-plan.md`
 (2026-10-10, below). Decisions (same day): D1 statutory federal law as the base, D2 no real
-inputs here (the finished product runs on them locally), D3-D5 as recommended. Next code: step 1. Phase 5 (part-time work / SS
-earnings test) after it, as the household needs it.
+inputs here (the finished product runs on them locally), D3-D5 as recommended. Phase 3 step 1
+(3.0, shared plumbing + the `st_pt` fix) done 2026-10-10 (below). Next code: step 2 (NY itemized).
+Phase 5 (part-time work / SS earnings test) after Phase 3, as the household needs it.
 
 ## Phase 3 planning (2026-10-10)
 
@@ -349,9 +350,41 @@ IT-196-I (2025), the NJ-1040 instructions, and the nj.gov / tax.ny.gov relief pa
 - Enhanced STAR (tax.ny.gov, verified): income limit $110,750 (2026), income = AGI minus taxable IRA
   distributions, two years back; entering property tax net of STAR stays adequate.
 
+## Phase 3 step 1 — shared plumbing and the `st_pt` fix (2026-10-10)
+
+Size S from `phase3-plan.md` §5 step 1 (3.0).
+
+- `budget.py`: `Budget.by_type(*types, essential=None)`; new deductible types `"medical"` and
+  `"charity"` (`DEDUCTIBLE_TYPES`; `"care"` stays non-deductible — assisted-living room and board
+  is not medical). Docs: `Documentation.py`, `PARAMETERS.md`, the module docstring.
+- `Plan._budget_amount_terms(*types)` -> `(const_n, coef_n)` with amount = const + coef * g_n in
+  nominal $: a share of net spending without essential lines (today's behaviour), or the essential
+  part at its amount plus a share of the discretionary part with them. Computed in
+  `processDebtsAndFixedAssets` into `st_ptd_const_n` / `st_ptd_coef_n`; `st_ptd_share_n` kept as
+  the "any deductible line" flag.
+- `_add_property_tax_deduction` now bounds `st_pt` by that affine amount instead of
+  `st_ptd_share_n * g_n`. Fixes the §3.3 bug (claimed $12,625 vs $12,000 paid under `maxSpending`
+  k=1.137; $9,600 vs $12,000 under `maxBequest` k=0.474); regression tests claim equals paid.
+- `debts.py` `get_mortgage_interest_array`: interest and average balance by calendar year for
+  `type == "mortgage"` rows (payments minus the fall in balance; the payoff year pays principal
+  only). `Plan.mortgage_interest_n` / `mortgage_balance_n`, zeros in `__init__`.
+- `tax_federal.py`: `salt_cap(year, magi, yOBBBA)` (P.L. 119-21 sec. 70120 schedule, `inf` under a
+  pre-TCJA reversion), `mortgage_limit`, `deductible_interest_share`, `itemize_terms` (the standard
+  amount without the senior bonus), constants `MORTGAGE_LIMIT` / `MORTGAGE_LIMIT_LEGACY` /
+  `MEDICAL_FLOOR` / `CHARITY_FLOOR` / `NONITEMIZER_CHARITY`.
+- Tests: `tests/tax/test_itemized_data.py` (19: cap schedule and phase-down floor, hand
+  amortization, payoff year, $750k proration and the $1M grandfather, amount terms with and
+  without essentials, JSON/HFP round trip of the new types); §3.3 cases in `tests/assets/test_budget.py`.
+
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-10, Phase 3 step 1 (budget amount terms, `st_pt` fix, mortgage interest, SALT cap)
+after the pre-commit review: **3063 passed, 1 skipped** (full suite, 5 min; +24 tests). Review
+found and fixed: `by_type` IndexError on a default `essential=()`, mortgage interest past the
+term on a late payoff, and a §3.3 regression that never reached k > 1. flake8 clean on the
+changed files (upstream's `schema.py:406` and `localsearch.py:31` unchanged).
 
 2026-10-10, smile follows the survivor's age + old-case warning: **3039 passed, 1 skipped** (full
 suite, 7 min). flake8 only upstream's `schema.py:406` and `localsearch.py:31`.

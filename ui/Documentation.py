@@ -692,9 +692,12 @@ year by year, and the optimizer then works with that shape as it does with *flat
 where:
 - *active* and *name* are as for *Debts*.
 - *type* is one of *core*, *rent*, *property tax*, *insurance*, *maintenance*, *car*, *travel*, *care*,
-  *other*. Lines of another type are left out, with a warning. *rent* and *property tax* also feed a
-  state's property tax deduction where the state has one (New Jersey, NJ-1040 line 41: property taxes on
-  the main home, or 18% of rent, up to \\$15,000).
+  *medical*, *charity*, *other*. Lines of another type are left out, with a warning. *rent* and
+  *property tax* also feed a state's property tax deduction where the state has one (New Jersey,
+  NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \\$15,000). *medical* and
+  *charity* are the deductible care and giving lines (Phase 3 itemized deductions). *care* is not
+  deductible by default: assisted-living room and board is not medical expense unless care is the
+  main reason — use *medical* for deductible care.
 - *year* is the first calendar year of the line. A year before the plan start is read as the plan start.
 - *end* is the last calendar year, inclusive. 0 means through the last year of the plan, and a negative
   value counts back from it (-1 is the year before the last). A positive *end* before *year* or before the

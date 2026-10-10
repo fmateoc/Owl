@@ -606,3 +606,45 @@ def test_spending_slack_applies_to_the_discretionary_part():
     ratio = disc / p.budget.discretionary_n / (disc[0] / p.budget.discretionary_n[0])
     assert np.all(ratio >= 0.9 - 1e-6) and np.all(ratio <= 1.1 + 1e-6)
     assert np.all(real >= p.budget.essential_n - 1e-3)
+
+
+# ---------------------------------------------------------------------------
+# NJ line 41 under essential lines: claimed equals paid when the cap does not bind
+# (phase3-plan.md §3.3; the old share * g_n bound was wrong whenever k != 1)
+# ---------------------------------------------------------------------------
+
+
+def _pt_claimed_equals_paid(objective, opts, expect_k_above):
+    """NJ owner: essential core $50k + property tax $12k, discretionary travel $38k.
+
+    The old bound share * g_n followed the discretionary scale k and was wrong whenever k != 1:
+    over the cap when k > 1, under the tax paid when k < 1. Each case asserts which regime it is.
+    """
+    p = _plan_ess(
+        [_ess(_core(50000.0)), _ess(_pt(12000.0)), _travel(38000.0)],
+        taxable=(2000, 1000),
+        expectancy=(89, 92),
+    )
+    p.setStateTax("NJ")
+    p.solve(objective, options=opts)
+    assert p.caseStatus == "solved"
+    k = p.discretionary_scale
+    assert (k > 1.0) if expect_k_above else (k < 1.0)
+    paid = p.budget.by_type("property tax") * p.gamma_n[:-1]
+    # Year 0: the $15k cap does not bind on the $12k line, so the claim is what was paid,
+    # not share * g_n (which followed k and was wrong).
+    assert paid[0] == pytest.approx(12000.0, rel=1e-9)
+    assert p.st_pt_n[0] == pytest.approx(12000.0, abs=1.0)
+    # Never above what the budget pays or the cap. (Claiming short in a year with no taxable
+    # income is the known cash-with-no-price degeneracy; step 4's tie check, not this bound.)
+    assert np.all(p.st_pt_n <= np.minimum(p.st_ptd_n, paid) + 1.0)
+
+
+def test_property_tax_claimed_equals_paid_under_max_spending():
+    """§3.3's maxSpending case: k > 1 used to inflate the claim above the tax paid."""
+    _pt_claimed_equals_paid("maxSpending", {**EXACT, "bequest": 0}, expect_k_above=True)
+
+
+def test_property_tax_claimed_equals_paid_under_max_bequest():
+    """§3.3's maxBequest case: k < 1 used to cut the claim below the tax paid."""
+    _pt_claimed_equals_paid("maxBequest", {**EXACT, "netSpending": 80}, expect_k_above=False)

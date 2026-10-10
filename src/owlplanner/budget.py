@@ -28,7 +28,10 @@ The same lines can arrive as JSON (``load_json``) instead of the workbook sheet:
 the sheet's DataFrame, amounts in today's dollars like the sheet. Unknown fields, an unknown
 ``schema_version`` or ``type``, and loosely typed values are refusals. ``kind`` is free text.
 
-The fork's New Jersey property tax deduction reads the "property tax" and "rent" lines.
+Deductible lines (fork, Phase 3): types ``property tax``, ``rent`` (NJ's 18% share), ``medical``
+and ``charity`` feed tax deductions where the law gives one. ``care`` is not deductible by
+default: assisted-living room and board is not medical expense unless care is the main reason;
+use ``medical`` for deductible care.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -57,7 +60,23 @@ import pandas as pd
 from . import utils as u
 
 
-BUDGET_TYPES = ("core", "rent", "property tax", "insurance", "maintenance", "car", "travel", "care", "other")
+BUDGET_TYPES = (
+    "core",
+    "rent",
+    "property tax",
+    "insurance",
+    "maintenance",
+    "car",
+    "travel",
+    "care",
+    "medical",
+    "charity",
+    "other",
+)
+
+# Types that feed a tax deduction. "care" is not one of them: assisted-living room and board is
+# not medical expense unless care is the main reason (use "medical" for deductible care).
+DEDUCTIBLE_TYPES = frozenset({"property tax", "rent", "medical", "charity"})
 
 # Costs of the home: a survivor keeps paying them in full unless the line says otherwise.
 HOUSEHOLD_TYPES = frozenset({"rent", "property tax", "insurance", "maintenance"})
@@ -148,9 +167,16 @@ class Budget:
         """Sum of the other lines, by plan year (today's dollars)."""
         return self.total_n - self.essential_n
 
-    def by_type(self, *types):
-        """Sum of the lines of the given types, by plan year (today's dollars)."""
+    def by_type(self, *types, essential=None):
+        """Sum of the lines of the given types, by plan year (today's dollars).
+
+        essential=None (default) sums every such line; True/False keeps only that tier.
+        A missing essential flag counts as False (as on the sheet).
+        """
         rows = [k for k, t in enumerate(self.types) if t in types]
+        if essential is not None:
+            want = bool(essential)
+            rows = [k for k in rows if (k < len(self.essential) and bool(self.essential[k])) is want]
         if not rows:
             return np.zeros(self.total_n.shape[0])
         return self.amounts_ln[rows].sum(axis=0)
@@ -435,7 +461,7 @@ def _json_line_to_row(line, i):
 
     Refused rather than read loosely: unknown fields, a `type` outside BUDGET_TYPES, a missing
     amount, numbers given as text, flags other than true / false, fractional years. `type` is the
-    category Owl acts on (survivor default, the NJ deduction's lines); `kind` is free text kept
+    category Owl acts on (survivor default, the deductible lines); `kind` is free text kept
     for reporting, and serves as the type when `type` is absent and `kind` is one of the types.
     """
     if not isinstance(line, dict):

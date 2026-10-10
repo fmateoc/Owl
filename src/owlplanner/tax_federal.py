@@ -231,6 +231,25 @@ bonusThreshold = np.array([75_000, 150_000])
 SENIOR_BONUS = 6000.0  # per individual aged 65 or older, not indexed
 SENIOR_BONUS_PHASEOUT_RATE = 0.06  # $6 per $100 of MAGI above the threshold
 
+# Itemized-deduction parameters (P.L. 119-21; IRS Schedule A / Pub. 936). Source: the act's
+# sections 70108, 70120 and the 2025 Schedule A instructions, verified 2026-10-10.
+MORTGAGE_LIMIT = 750_000.0  # acquisition debt; $1M for debt incurred before 2017-12-16
+MORTGAGE_LIMIT_LEGACY = 1_000_000.0
+MEDICAL_FLOOR = 0.075  # medical expenses above 7.5% of AGI
+CHARITY_FLOOR = 0.005  # itemizers deduct cash charity above 0.5% of the contribution base (2026+)
+NONITEMIZER_CHARITY = np.array([1000.0, 2000.0])  # non-itemizer cash charity cap, Single / MFJ
+
+# SALT cap schedule (IRC 164(b)(7), P.L. 119-21 sec. 70120): $40,000 in 2025, $40,400 in 2026,
+# +1%/yr through 2029, then $10,000. Before 2030 the cap is cut by 30% of MAGI over a threshold
+# that starts at $505,000 (2026) and rises 1%/yr, never below $10,000.
+_SALT_CAP_2025 = 40_000.0
+_SALT_CAP_2026 = 40_400.0
+_SALT_PHASE_YEAR = 2030
+_SALT_FLOOR = 10_000.0
+_SALT_MAGI_2025 = 500_000.0
+_SALT_MAGI_2026 = 505_000.0
+_SALT_PHASE_RATE = 0.30
+
 # IRS Social Security taxability thresholds (frozen since 1983/1994 — not inflation-indexed).
 # Provisional income formula: PI = MAGI - 0.5*SS. Below lo: 0% taxable; lo-hi: 50% ramp;
 # above hi: up to 85% taxable. [Single, MFJ].
@@ -836,6 +855,59 @@ def seniorBonusSchedule(yobs, i_d, n_d, N_n):
         if thisyear + n <= OBBBA_BONUS_EXPIRATION_YEAR:
             count_n[n] = sum(1 for i in souls if thisyear + n - yobs[i] >= 65)
     return count_n, threshold_n
+
+
+def salt_cap(year, magi, yOBBBA=_YEAR_FAR_FUTURE):
+    """
+    The federal SALT deduction cap for a calendar year (IRC 164(b)(7), P.L. 119-21 sec. 70120).
+
+    $40,000 in 2025, $40,400 in 2026, +1%/yr through 2029, then $10,000. Before 2030 the cap is
+    reduced by 30% of MAGI over a threshold that starts at $505,000 (2026) and rises 1%/yr, never
+    below $10,000. Under a pre-TCJA reversion (year >= yOBBBA) there is no cap. MAGI is AGI here
+    (no foreign exclusions).
+    """
+    if year >= yOBBBA:
+        return np.inf
+    if year < 2025:
+        raise ValueError(f"SALT cap schedule starts in 2025; got {year}.")
+    if year >= _SALT_PHASE_YEAR:
+        return _SALT_FLOOR
+    if year == 2025:
+        cap, threshold = _SALT_CAP_2025, _SALT_MAGI_2025
+    else:
+        years = year - 2026
+        cap = _SALT_CAP_2026 * (1.01**years)
+        threshold = _SALT_MAGI_2026 * (1.01**years)
+    excess = max(0.0, float(magi) - threshold)
+    return max(_SALT_FLOOR, cap - _SALT_PHASE_RATE * excess)
+
+
+def mortgage_limit(start_year, year, yOBBBA=_YEAR_FAR_FUTURE):
+    """
+    Acquisition-debt limit for mortgage interest in a calendar year (Pub. 936; P.L. 119-21 sec. 70108).
+
+    $750k, or $1M for debt incurred before 2017-12-16 and under a pre-TCJA reversion (year >= yOBBBA).
+    """
+    if start_year < 2018 or year >= yOBBBA:
+        return MORTGAGE_LIMIT_LEGACY
+    return MORTGAGE_LIMIT
+
+
+def deductible_interest_share(avg_balance, limit):
+    """Share of a year's mortgage interest the acquisition-debt limit leaves deductible."""
+    if avg_balance <= 0:
+        return 0.0
+    return min(1.0, float(limit) / float(avg_balance))
+
+
+def itemize_terms(yobs, i_d, n_d, N_n, gamma_n, yOBBBA=_YEAR_FAR_FUTURE):
+    """
+    The standard deduction per year without the OBBBA senior bonus (65+ additions included).
+
+    taxParams folds the bonus into sigmaBar; this is the base an itemized comparison uses.
+    """
+    no_bonus = np.full(N_n, np.inf)
+    return taxParams(yobs, i_d, n_d, N_n, gamma_n, no_bonus, yOBBBA)[0]
 
 
 def taxBrackets(N_i, n_d, N_n, yOBBBA=_YEAR_FAR_FUTURE):

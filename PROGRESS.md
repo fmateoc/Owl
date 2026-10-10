@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-09)
+# Owl fork — progress (as of 2026-10-10)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -311,10 +311,35 @@ files: expect conflicts on those lines when upstream edits them.
 2026-10-10: `main` fast-forwarded to `claude/phase2-housing` (`148f785` -> `271c93e`, then this note).
 
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
-`fork-notes/track-b-spending-profile.md`). Then Phase 3
-(itemized deductions: it decides cash vs mortgage; `debts.py` gives the interest per year as
-payment minus the change in balance) or Phase 5 (part-time work / SS earnings test) as the
-household needs them.
+`fork-notes/track-b-spending-profile.md`). Phase 3 is planned in `fork-notes/phase3-plan.md`
+(2026-10-10, below); it waits on the user's decisions D1-D5 there. Phase 5 (part-time work / SS
+earnings test) after it, as the household needs it.
+
+## Phase 3 planning (2026-10-10)
+
+Step back over Phases 0-7 and the maintainer's responses, then Phase 3 redefined as "deductions
+follow the expenses that cause them": `fork-notes/phase3-plan.md`. Rules checked this session
+against P.L. 119-21, the 2025 Schedule A / Form 1040 instructions, Pub. 936, Rev. Proc. 2025-32,
+IT-196-I (2025), the NJ-1040 instructions, and the nj.gov / tax.ny.gov relief pages.
+
+- First-order probe (`fork-notes/model-review/itemized_probe.py`, output
+  `itemized_probe_2026-10-10.txt`; income held fixed, no LP response, Medicare off): Yonkers owner
+  with $25k property tax: federal itemizing worth $0 under the law as enacted, $22k lifetime under
+  Owl's default 2032 reversion; NY itemizing $10-22k (no mortgage) / $26-34k (with a $600k
+  mortgage). With the mortgage, federal $18k (statutory) / $93k (2032). NJ owner: federal $0 / $21k,
+  with the mortgage $16k / $88k.
+- So the NY-vs-NJ owner comparison is biased toward NJ today (NJ line 41 modeled, NY itemizing not).
+- **Bug found, not fixed yet**: with essential budget lines the NJ property tax deduction bound
+  (`st_ptd_share_n * g_n`) is wrong whenever k != 1: claimed $12,625 vs $12,000 paid
+  (`maxSpending`, k = 1.137), $9,600 vs $12,000 (`maxBequest`, k = 0.474). Fix is step 1 of the plan.
+- Owl's default `obbba_expiration_year = 2032` (all 18 examples set it; the household template
+  inherits it) reverts to pre-TCJA brackets and standard deduction in 2032; P.L. 119-21 made them
+  permanent. It moves the plan before 2032 too. Decision D1.
+- Stay NJ (nj.gov, verified): homeowners 65+, up to $6,500/$5,000/$4,000 for income up to
+  $100k/$150k/$200k, $0 above (2027 payments; funding set yearly, 2026 payments were cut). Larger
+  than any NY-vs-NJ income-tax difference measured; dropped with the Phase 2 rewrite. Decision D3.
+- Enhanced STAR (tax.ny.gov, verified): income limit $110,750 (2026), income = AGI minus taxable IRA
+  distributions, two years back; entering property tax net of STAR stays adequate.
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 

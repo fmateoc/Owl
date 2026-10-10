@@ -1,0 +1,120 @@
+# itemized_probe.py, run 2026-10-10 on 066b8d6 (plan start 2026), first-order (no LP response)
+
+# --- statutory law: yOBBBA = 2100 (no reversion)
+## NY Yonkers owner, $25k property tax (run 2026-10-10, plan starts 2026, yOBBBA 2100)
+federal: itemizing wins in 0 years, first-order tax saved 0 (today's $)
+NY+local: itemizing wins in 31 years, first-order tax saved 22,068 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 100,800 | 32,200 | 29,769 | 0 | 564 |
+| 2027 | 103,622 | 33,102 | 30,633 | 0 | 608 |
+| 2028 | 48,581 | 34,028 | 27,790 | 0 | 570 |
+| 2029 | 45,384 | 38,566 | 28,530 | 0 | 606 |
+| 2030 | 44,304 | 39,646 | 10,000 | 0 | 641 |
+| 2031 | 43,194 | 40,756 | 10,000 | 0 | 676 |
+| 2032 | 42,053 | 41,897 | 10,000 | 0 | 713 |
+| 2033 | 59,188 | 43,071 | 10,000 | 0 | 900 |
+| 2055 | 112,262 | 40,428 | 10,000 | 0 | 2,340 |
+| 2056 | 115,405 | 41,559 | 10,000 | 0 | 2,460 |
+
+## NY Yonkers owner, $25k property tax, $600k mortgage (run 2026-10-10, plan starts 2026, yOBBBA 2100)
+federal: itemizing wins in 9 years, first-order tax saved 17,977 (today's $)
+NY+local: itemizing wins in 31 years, first-order tax saved 34,168 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 100,800 | 32,200 | 68,932 | 4,408 | 3,023 |
+| 2027 | 103,622 | 33,102 | 69,606 | 4,381 | 3,039 |
+| 2028 | 106,524 | 34,028 | 70,012 | 4,318 | 3,054 |
+| 2029 | 63,420 | 38,566 | 67,688 | 3,495 | 2,761 |
+| 2030 | 38,534 | 39,646 | 47,010 | 884 | 1,371 |
+| 2031 | 39,397 | 40,756 | 46,429 | 681 | 1,371 |
+| 2032 | 42,053 | 41,897 | 45,811 | 470 | 1,371 |
+| 2033 | 40,879 | 43,071 | 45,152 | 250 | 1,371 |
+| 2055 | 85,989 | 40,428 | 12,804 | 0 | 684 |
+| 2056 | 87,224 | 41,559 | 10,000 | 0 | 684 |
+
+## NJ owner, $25k property tax (run 2026-10-10, plan starts 2026, yOBBBA 2100)
+federal: itemizing wins in 0 years, first-order tax saved 0 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 63,102 | 32,200 | 25,000 | 0 | 0 |
+| 2027 | 63,217 | 33,102 | 25,700 | 0 | 0 |
+| 2028 | 64,067 | 34,028 | 26,420 | 0 | 0 |
+| 2029 | 61,434 | 38,566 | 27,159 | 0 | 0 |
+| 2030 | 60,354 | 39,646 | 10,000 | 0 | 0 |
+| 2031 | 59,244 | 40,756 | 10,000 | 0 | 0 |
+| 2032 | 58,103 | 41,897 | 10,000 | 0 | 0 |
+| 2033 | 56,929 | 43,071 | 10,000 | 0 | 0 |
+| 2055 | 112,262 | 40,428 | 10,000 | 0 | 0 |
+| 2056 | 115,405 | 41,559 | 10,000 | 0 | 0 |
+
+## NJ owner, $25k property tax, $600k mortgage (run 2026-10-10, plan starts 2026, yOBBBA 2100)
+federal: itemizing wins in 9 years, first-order tax saved 15,735 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 60,254 | 32,200 | 64,000 | 3,816 | 0 |
+| 2027 | 56,507 | 33,102 | 64,248 | 3,735 | 0 |
+| 2028 | 56,855 | 34,028 | 64,487 | 3,655 | 0 |
+| 2029 | 53,698 | 38,566 | 64,715 | 3,138 | 0 |
+| 2030 | 54,095 | 39,646 | 47,010 | 884 | 0 |
+| 2031 | 54,575 | 40,756 | 46,429 | 681 | 0 |
+| 2032 | 29,269 | 41,897 | 45,811 | 391 | 0 |
+| 2033 | 47,602 | 43,071 | 45,152 | 250 | 0 |
+| 2055 | 112,262 | 40,428 | 12,804 | 0 | 0 |
+| 2056 | 115,405 | 41,559 | 10,000 | 0 | 0 |
+
+# --- Owl's default: yOBBBA = 2032 (pre-TCJA brackets, standard deduction and itemizing from 2032)
+## NY Yonkers owner, $25k property tax (run 2026-10-10, plan starts 2026, yOBBBA 2032)
+federal: itemizing wins in 25 years, first-order tax saved 22,431 (today's $)
+NY+local: itemizing wins in 31 years, first-order tax saved 10,009 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 100,800 | 32,200 | 29,769 | 0 | 564 |
+| 2027 | 103,622 | 33,102 | 30,633 | 0 | 608 |
+| 2028 | 106,524 | 34,028 | 31,443 | 0 | 654 |
+| 2029 | 109,506 | 38,566 | 32,576 | 0 | 700 |
+| 2030 | 112,573 | 39,646 | 10,000 | 0 | 748 |
+| 2031 | 115,725 | 40,756 | 10,000 | 0 | 798 |
+| 2032 | 49,053 | 24,147 | 30,286 | 921 | 613 |
+| 2033 | 48,377 | 24,823 | 31,112 | 943 | 650 |
+| 2055 | 97,340 | 23,677 | 56,072 | 4,859 | 387 |
+| 2056 | 99,043 | 24,340 | 57,631 | 4,994 | 387 |
+
+## NY Yonkers owner, $25k property tax, $600k mortgage (run 2026-10-10, plan starts 2026, yOBBBA 2032)
+federal: itemizing wins in 31 years, first-order tax saved 93,100 (today's $)
+NY+local: itemizing wins in 31 years, first-order tax saved 25,954 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 100,800 | 32,200 | 68,932 | 4,408 | 3,023 |
+| 2027 | 103,622 | 33,102 | 69,606 | 4,381 | 3,039 |
+| 2028 | 106,524 | 34,028 | 70,012 | 4,318 | 3,054 |
+| 2029 | 109,506 | 38,566 | 70,665 | 3,852 | 3,068 |
+| 2030 | 112,573 | 39,646 | 47,010 | 884 | 3,082 |
+| 2031 | 115,725 | 40,756 | 46,429 | 681 | 3,094 |
+| 2032 | 31,903 | 24,147 | 65,316 | 3,298 | 0 |
+| 2033 | 48,377 | 24,823 | 66,264 | 5,034 | 781 |
+| 2055 | 97,340 | 23,677 | 58,877 | 5,280 | 387 |
+| 2056 | 99,043 | 24,340 | 57,631 | 4,994 | 387 |
+
+## NJ owner, $25k property tax (run 2026-10-10, plan starts 2026, yOBBBA 2032)
+federal: itemizing wins in 25 years, first-order tax saved 21,449 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 88,045 | 32,200 | 25,726 | 0 | 0 |
+| 2027 | 88,200 | 33,102 | 26,426 | 0 | 0 |
+| 2028 | 89,274 | 34,028 | 27,146 | 0 | 0 |
+| 2029 | 86,434 | 38,566 | 27,851 | 0 | 0 |
+| 2030 | 85,354 | 39,646 | 10,000 | 0 | 0 |
+| 2031 | 84,244 | 40,756 | 10,000 | 0 | 0 |
+| 2032 | 75,853 | 24,147 | 29,505 | 804 | 0 |
+| 2033 | 75,177 | 24,823 | 30,331 | 826 | 0 |
+| 2055 | 114,199 | 23,677 | 55,685 | 4,801 | 0 |
+| 2056 | 117,397 | 24,340 | 57,244 | 4,936 | 0 |
+
+## NJ owner, $25k property tax, $600k mortgage (run 2026-10-10, plan starts 2026, yOBBBA 2032)
+federal: itemizing wins in 31 years, first-order tax saved 87,801 (today's $)
+| year | fed ordinary TI | std (+bonus) | itemized (+bonus) | fed saved | NY saved |
+| 2026 | 85,293 | 32,200 | 64,726 | 3,903 | 0 |
+| 2027 | 81,490 | 33,102 | 64,975 | 3,825 | 0 |
+| 2028 | 81,880 | 34,028 | 65,213 | 3,742 | 0 |
+| 2029 | 78,769 | 38,566 | 65,406 | 3,221 | 0 |
+| 2030 | 79,213 | 39,646 | 47,010 | 884 | 0 |
+| 2031 | 79,759 | 40,756 | 46,429 | 681 | 0 |
+| 2032 | 29,741 | 24,147 | 65,316 | 2,974 | 0 |
+| 2033 | 30,574 | 24,823 | 65,483 | 3,057 | 0 |
+| 2055 | 114,199 | 23,677 | 58,490 | 5,222 | 0 |
+| 2056 | 117,397 | 24,340 | 57,244 | 4,936 | 0 |
+

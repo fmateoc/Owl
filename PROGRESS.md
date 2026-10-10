@@ -308,6 +308,8 @@ The six smile example cases (`avery+quinn`, `jack+jill`, `joe`, `jordan+taylor`,
 read without the warning and no recorded result moved (full suite 3039 passed). These are upstream's
 files: expect conflicts on those lines when upstream edits them.
 
+2026-10-10: `main` fast-forwarded to `claude/phase2-housing` (`148f785` -> `271c93e`, then this note).
+
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Then Phase 3
 (itemized deductions: it decides cash vs mortgage; `debts.py` gives the interest per year as

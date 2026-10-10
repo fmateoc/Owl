@@ -233,7 +233,9 @@ generic, only NY's values verified).
 
 Conventions throughout (CLAUDE.md): one LP, order-1 coefficients (divide dollar rows by a
 reference amount), never the same column twice in a row, every new binary block in
-`localsearch.FAMILIES` or `ALWAYS_FREE`, every new "at most" bound on a tax benefit covered by the
+`localsearch.FAMILIES` or `ALWAYS_FREE`, any node cap a new binary block needs set in
+`Plan._node_limit` (the one place since the upstream 2026.10.10 merge, so the Summary's node rows
+report it, §9), every new "at most" bound on a tax benefit covered by the
 tie check, anything `processDebtsAndFixedAssets()` reads initialized in `Plan.__init__`, compare
 variants the same day, full suite before calling a commit green.
 
@@ -431,7 +433,9 @@ exact LP and local search, statutory law (base, D1) and the 2032 reversion (sens
 2. NY owner vs NJ owner at $20k and $25k property tax, with NY itemizing (the 2026-10-07 table
    rerun).
 3. Scenario 5 rent / cash / mortgage with the deduction (Scenario 5 text loses its caveat).
-4. Solve times (binaries per plan, local search time).
+4. Solve times (binaries per plan, local search time) and, from the Summary rows upstream added in
+   2026.10.10, the MIP nodes and the solves stopped at a node limit (§9): the measure that decides
+   `ALWAYS_FREE` vs a family for `zsi` / `zi`.
 
 Record in PROGRESS.md; raw output next to the script.
 
@@ -499,6 +503,10 @@ locally on them; D3-D5 as recommended)
 
 ## 8. Upstream issue on MCP `big_ticket_items` (filed by someone else; checked 2026-10-10)
 
+**Resolved upstream** in 2026.10.10 (`6deb074`, "Refs #180", merged here 2026-10-10): the amounts
+stay signed, negative = expense, as in the HFP; only the MCP docstrings, the intake prompt and
+`info/mcp.md` changed. The fork takes it as is. The text below is the check that preceded it.
+
 Claim: the MCP helpers (`_build_plan_from_params`, `save_case` in `assistant/tools.py`) add
 `annual_amount` to `Lambda_in` with its sign, the docstrings call the items "extra expenses that
 reduce the spending budget" with positive examples, and the cash-flow row (`_add_net_cash_flow`)
@@ -525,3 +533,32 @@ docstrings enters expenses as income, and a case saved that way carries the wron
 HFP. Until upstream decides (its fix will define the sign), enter expenses through the HFP, or pass
 negative amounts to the MCP and check the saved HFP. Fork fix not made: the maintainer has not
 confirmed which option he wants, and we take his fix when it lands (CLAUDE.md, Syncing).
+
+## 9. Upstream 2026.10.10 merged (2026-10-10): effect on this plan
+
+Merged upstream `dev` `f41fcdc` (six commits after `d6970b2`; `main` = `dev`). Read in the diff:
+
+- `6deb074`, `da85e43`: #180 settled as signed amounts (§8). No code change.
+- `3a1285b`, `514c0ab`, `f41fcdc`: branch-and-bound node counts in the Summary (*MIP nodes*, *MIP
+  node limit*, *Local search step node limit*, *MIP solves stopped at node limit*); the solver option
+  `mipMaxNodes` becomes public (HiGHS default 1,000,000 nodes, MOSEK none); local-search steps are
+  flagged (`_localSearchStep`) and tallied apart.
+- `bad669a`: UI finds a MOSEK license at `~/mosek/mosek.lic`. No effect.
+
+Interaction with fork code, resolved in the merge:
+
+- The fork's NJ-exclusion cap (`RX_NODE_LIMIT`, 20,000 HiGHS nodes when neither `maxTime` nor
+  `mipMaxNodes` is given) now goes through `Plan._node_limit`, which falls back to upstream's
+  `_mipNodeLimit`. Upstream's tally used its own limit, so a solve stopped at the RX cap would not
+  have counted as stopped at the limit (checked: the RX node-limit test reads 0 of N without the
+  fix). The Summary's *MIP node limit* row adds "20,000 on the exclusion-tier MILP" when that cap
+  applied; before, it would have shown only 1,000,000.
+- The fork's node-limit warning was silenced whenever `mipMaxNodes` was set (it used to mean a
+  local-search step). It now stays silent only for local-search steps, and a user's `mipMaxNodes`
+  cut-off is reported with "Raise mipMaxNodes". It reads the last run's own status
+  (`kSolutionLimit`) and count, not the sum over HiGHS's infeasibility retries.
+- The SC-loop trace keeps the fork's `_SC_PARAMS` registry; upstream's per-iteration `nodes` entry
+  is added beside it.
+
+Effect on Phase 3: none on the tax content. Steps 2-3 inherit node counting for `zsi` / `zi` for
+free; any cap they need goes in `_node_limit` (§5 conventions); step 6 measures with the new rows.

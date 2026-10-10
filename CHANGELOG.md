@@ -191,6 +191,48 @@ Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are repl
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
+### Version 2026.10.10
+
+#### New: branch-and-bound nodes in the Summary, and the solver option `mipMaxNodes`
+
+The Summary has two new rows. *MIP nodes* gives the branch-and-bound nodes of the solve that produced
+the accepted plan, then those of the whole solve: every iteration of the self-consistent loop, its
+retries and repairs, and, under local search, the loop that seeds the search and every restricted
+solve. It reads n/a when the plan was solved as a pure linear program. *MIP node limit* gives the
+cap in force. With verbose output, each iteration of the loop logs its node count beside its gap.
+MOSEK counts the nodes it solved, as HiGHS does, so the two engines' counts can be compared; the
+local search's step log used to count MOSEK's branchings instead.
+
+The expert solver option `mipMaxNodes` sets the cap on every branch-and-bound solve. The engines
+cap different things: HiGHS caps nodes (default 1,000,000), MOSEK caps branchings (no cap by
+default). The local search's restricted solves keep their own cap, `localSearchStepNodes`. The
+option is not in the interface: enter it under the extra solver options, or set it in the case file.
+
+A third row, *Local search step node limit*, gives the cap on each of the local search's restricted
+solves: `localSearchStepNodes` when set, otherwise the engine's default (3,000 nodes with HiGHS,
+20,000 branchings with MOSEK). It reads n/a when the plan was not solved by local search.
+
+A fourth row, *MIP solves stopped at node limit*, counts the mixed-integer engine runs that stopped
+at the node limit, out of all of them, with the local search's restricted solves counted apart:
+their cap is small by design, so reaching it is routine there, while a main solve reaching
+`mipMaxNodes` means that solve was cut short. Each engine says when it stopped at the limit (MOSEK's
+termination code, HiGHS's model status), so the count does not depend on comparing node counts with
+a cap that MOSEK sets in branchings. Runs include HiGHS's retries of a MIP it reported infeasible.
+The row reads n/a when the plan was solved as a pure linear program; the main count reads `0 of 0`
+when the loop that seeds a local search solved only linear programs.
+
+#### Fixed: the MCP tools described big-ticket items with the wrong sign
+
+The MCP tool descriptions, the guided intake prompt, and `info/mcp.md` said big-ticket items were
+expenses entered as positive amounts. The amount goes to the plan unchanged, where a positive amount
+is money coming in, as in the Household Financial Profile, so an expense entered as told was counted
+as income. The amounts are signed: negative for an expense, positive for an inflow (Refs #180).
+
+#### Changed: dependencies updated
+
+httptools 0.9.0, narwhals 2.27.1 and pycparser 3.11. The optional `assistant` extra moves to
+anthropic 1.13.0, and the `notebooks` extra to executing 2.3.0, json5 0.17.3 and soupsieve 3.0.
+
 ### Version 2026.10.9
 
 #### New: the OBBBA senior bonus can be solved with the plan (`withSeniorBonus`)

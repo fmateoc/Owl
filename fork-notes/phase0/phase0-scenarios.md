@@ -228,10 +228,9 @@ sensitivity run:
 owlcli compare otherFiles/Case_us.toml --set rates_selection.obbba_expiration_year=2032
 ```
 
-Big-ticket items: enter them in the HFP (signed: negative = expense). Through the MCP assistant,
-`big_ticket_items` currently adds `annual_amount` with its sign while its docstrings call the items
-expenses with positive examples, so an expense entered as documented becomes income (upstream
-issue, not yet confirmed; `phase3-plan.md` §8).
+Big-ticket items: signed, negative = expense, in the HFP and through the MCP assistant alike
+(upstream 2026.10.10 fixed the MCP docstrings, which had described positive expenses;
+`phase3-plan.md` §8).
 
 ## Healthcare cost sensitivity
 

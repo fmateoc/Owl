@@ -146,6 +146,11 @@ RX_WINDOW = 1.5
 RX_NODE_LIMIT = 20_000
 # MOSEK counts nodes differently and was not recalibrated: it keeps the former 60 s time cap.
 RX_MOSEK_TIME_LIMIT = 60
+# Default branch-and-bound cap of a HiGHS solve, in nodes. MOSEK has none by default. The solver
+# option mipMaxNodes sets the cap for either engine, but the engines cap different things: HiGHS
+# counts nodes (mip_max_nodes), MOSEK branchings (mio_max_num_branches), which it has no node limit
+# for. Local search caps its restricted solves with its own limit (localSearchStepNodes).
+HIGHS_MAX_NODES = 1_000_000
 # Lexicographic weight on Roth conversions, and the loop's main conditioning term. At 1e-8 it
 # breaks ties only nominally: the conversion schedule stays free to migrate between near-equivalent
 # years, and since a conversion moves provisional income directly, each move can flip a Social
@@ -732,6 +737,18 @@ class Plan:
         # Achieved MIP gap of the accepted solution (0 when solved to optimality,
         # larger when a time limit truncated the search; -1 before any solve)
         self.solverGap = -1.0
+        # Branch-and-bound nodes of the solve that produced the accepted solution, and of every
+        # solve the last solve() ran (all loop iterations, retries and local-search steps);
+        # -1 when no mixed-integer program was solved.
+        self.solverNodes = -1
+        self.solverNodesTotal = -1
+        self._mipNodeCount = 0
+        self._mipRunCount = 0
+        # Engine runs that stopped at the node limit: (main runs at the limit, main runs, local-search
+        # steps at the limit, local-search steps), None when no mixed-integer program was solved.
+        self.solverNodeLimitHits = None
+        self._mipCapTally = (0, 0, 0)  # (main runs at the limit, steps, steps at the limit)
+        self._rxNodeLimitUsed = 0  # fork: RX_NODE_LIMIT when it was the cap of a solve in the last solve()
         # Relative amplitude (max-min)/max of the SC-loop oscillation cycle; 0 when
         # the loop converged monotonically (no fixed-point ambiguity)
         self.oscillationRel = 0.0
@@ -5354,6 +5371,15 @@ class Plan:
         self._infeasible = False
         self.convergenceType = "undefined"
         self.solverGap = -1.0
+        self.solverNodes = -1
+        if not getattr(self, "_localSearchSeeding", False):
+            # The total covers the local search's own solves, which run nested in this one.
+            self.solverNodesTotal = -1
+            self.solverNodeLimitHits = None
+            self._mipNodeCount = 0
+            self._mipRunCount = 0
+            self._mipCapTally = (0, 0, 0)
+            self._rxNodeLimitUsed = 0
         self.oscillationRel = 0.0
         self.oscillationAbs = 0.0
 
@@ -5383,6 +5409,7 @@ class Plan:
             "stopRothConversions",
             "swapRothConverters",
             "maxTime",
+            "mipMaxNodes",  # branch-and-bound cap: nodes with HiGHS, branchings with MOSEK
             "includeMedicarePartD",  # False drops Part D (and its IRMAA surcharge) from Medicare costs
             "medicarePartDBasePremium",  # Part D base premium, $/month per person (default 0)
             "numThreads",  # cap MOSEK threads/solve (0=all cores) for matched parallelism
@@ -5584,6 +5611,14 @@ class Plan:
         myoptions_txt = textwrap.fill(f"{myoptions}", initial_indent="\t", subsequent_indent="\t", width=100)
         self.mylog.vprint(f"Solver options:\n{myoptions_txt}.")
         self._scSolve(objective, myoptions, solverMethod)
+        # Every engine run of this solve, including the repairs after the loop and, under local
+        # search, the loop that seeded it.
+        self._publishNodeTally()
+        if self._mipRunCount:
+            self.mylog.vprint(
+                f"Branch-and-bound nodes: {self.solverNodes} for the accepted solution,"
+                f" {self._mipNodeCount} in {self._mipRunCount} mixed-integer solve(s)."
+            )
 
         self.objective = objective
         self.solverOptions = myoptions
@@ -5741,8 +5776,12 @@ class Plan:
         if not found:
             self.mylog.vprint("Local search: no better plan than the loop's; keeping the loop's plan.")
             log = self.localSearchLog
+            node_tally = (self._mipNodeCount, self._mipRunCount, self._mipCapTally)
             self.__dict__.update(loop_state)
             self.localSearchLog = log
+            # The search's solves were run all the same: keep them in the total.
+            self._mipNodeCount, self._mipRunCount, self._mipCapTally = node_tally
+            self._publishNodeTally()
         self.solverOptions = myoptions
         self.breakpointMethodUsed = self._breakpointMethodLabel(myoptions, fallback=not found)
         return None
@@ -5780,12 +5819,28 @@ class Plan:
             "maxIter": max_iterations,
         }
 
+    def _publishNodeTally(self):
+        """Expose the solve's node tally: total nodes, and the engine runs stopped at the node limit."""
+        runs = self._mipRunCount
+        self.solverNodesTotal = self._mipNodeCount if runs else -1
+        capped, steps, steps_capped = self._mipCapTally
+        self.solverNodeLimitHits = (capped, runs - steps, steps_capped, steps) if runs else None
+
+    def _mipNodeMark(self):
+        return self._mipNodeCount, self._mipRunCount
+
+    def _mipNodesSince(self, mark):
+        """Branch-and-bound nodes since mark, or -1 when only pure LPs were solved."""
+        nodes, runs = mark
+        return self._mipNodeCount - nodes if self._mipRunCount > runs else -1
+
     def _new_iteration_trace(self):
         trace = {
             "scaledObjectives": [],
             "solutions": [],
             "objectives": [],
             "gaps": [],
+            "nodes": [],  # branch-and-bound nodes of each iteration's solve (-1 for a pure LP)
         }
         for name in self._SC_PARAMS:
             trace[f"{name}_lp"] = []
@@ -6053,6 +6108,7 @@ class Plan:
             # embeds. Psi_n belongs here for the same reason as the other three: the taxable
             # income row carries Psi_n * zetaBar as a parameter.
             sc_lp = self._snapshot_sc()
+            nodes_mark = self._mipNodeMark()
             objfn, xx, solverSuccess, solverMsg, solgap = solverMethod(objective, options)
             # self.A/B/c now describe the LP that produced this xx. Accepting an earlier
             # iterate below breaks that correspondence, which post-processing relies on.
@@ -6060,6 +6116,7 @@ class Plan:
             # Achieved MIP gap of the accepted solution (-1 for pure LP solves);
             # corrected below when a best-of-cycle iterate is accepted instead.
             self.solverGap = solgap
+            self.solverNodes = solnodes = self._mipNodesSince(nodes_mark)
 
             if (not solverSuccess or objfn is None) and trace["solutions"]:
                 # Before giving up, walk the parameter step back. The quantities the loop feeds
@@ -6075,9 +6132,11 @@ class Plan:
                 for frac in (0.5, 0.25, 0.125, 0.0625):
                     self._blend_sc(prev, target, frac)
                     sc_lp = self._snapshot_sc()
+                    nodes_mark = self._mipNodeMark()
                     objfn, xx, solverSuccess, solverMsg, solgap = solverMethod(objective, options)
                     if solverSuccess and objfn is not None:
                         self.solverGap = solgap
+                        self.solverNodes = solnodes = self._mipNodesSince(nodes_mark)
                         self._infeasible = False
                         self.mylog.vprint(
                             f"Iteration {it} was unsolvable; recovered with {frac:.3g} of the "
@@ -6112,6 +6171,7 @@ class Plan:
                 objfn = trace["objectives"][best_idx]
                 sc_lp = self._sc_trace_entry(trace, best_idx)
                 self.solverGap = trace["gaps"][best_idx]
+                self.solverNodes = trace["nodes"][best_idx]
                 matricesMatchSolution = False
                 self.convergenceType = "unsolvable iterate"
                 solverSuccess = True
@@ -6137,6 +6197,7 @@ class Plan:
             trace["solutions"].append(xx)
             trace["objectives"].append(objfn)
             trace["gaps"].append(solgap)
+            trace["nodes"].append(solnodes)
             self._sc_trace_append(trace, sc_lp)
 
             # How far this iterate's own income moves the quantities its LP was built with. The
@@ -6173,7 +6234,7 @@ class Plan:
             prev_scaled_obj = trace["scaledObjectives"][-2] if has_prev_obj else scaled_obj
             absObjDiff = abs(scaled_obj - prev_scaled_obj) if has_prev_obj else np.inf
             self.mylog.vprint(
-                f"Iter: {it:02}; f: {u.d(scaled_obj, f=0)}; gap: {solgap:.1e};"
+                f"Iter: {it:02}; f: {u.d(scaled_obj, f=0)}; gap: {solgap:.1e}; nodes: {solnodes};"
                 f" |dX|: {absSolDiff:.0f}; |df|: {u.d(absObjDiff, f=0)}; residual: {u.d(scResidual, f=0)}"
             )
 
@@ -6220,6 +6281,7 @@ class Plan:
                     objfn = trace["objectives"][best_idx]
                     sc_lp = self._sc_trace_entry(trace, best_idx)
                     self.solverGap = trace["gaps"][best_idx]
+                    self.solverNodes = trace["nodes"][best_idx]
                     matricesMatchSolution = False
                     self.mylog.print("Accepting best solution from cycle and terminating.")
                 elif decision["reason"] in ("stagnation", "max_iter"):
@@ -6230,6 +6292,7 @@ class Plan:
                         objfn = trace["objectives"][best_idx]
                         sc_lp = self._sc_trace_entry(trace, best_idx)
                         self.solverGap = trace["gaps"][best_idx]
+                        self.solverNodes = trace["nodes"][best_idx]
                         matricesMatchSolution = False
                 else:
                     self.mylog.print(decision["message"], tag=decision.get("tag", "INFO"))
@@ -6266,7 +6329,7 @@ class Plan:
             # The free set the accepted iterate was built with, before anything rebuilds the LP.
             self.RXF_n = sc_lp["RXF_n"]
             if self._rx_fixed is not None:
-                # The tiers came from a MILP stopped at its time limit; later solves only kept them, so
+                # The tiers came from a MILP stopped at its node or time limit; later solves only kept them, so
                 # that MILP's gap is the one that says how far the plan may be from optimal.
                 self.solverGap = max(self.solverGap, self._rx_fixed[2])
             xx, objfn = self._repairBracketOrder(xx, objfn, objective, options, matricesMatchSolution)
@@ -6662,6 +6725,48 @@ class Plan:
             return xx
         return yy
 
+    @staticmethod
+    def _mipNodeLimit(options, mosek):
+        """Branch-and-bound cap for one solve: HiGHS nodes, or MOSEK branchings (-1 = none)."""
+        if "mipMaxNodes" in options:
+            return int(u.get_numeric_option(options, "mipMaxNodes", 0, min_value=0))
+        return -1 if mosek else HIGHS_MAX_NODES
+
+    def _countMipNodes(self, nodes, at_limit=False):
+        """Add one engine run to the solve's node tally; nodes is None for a pure LP.
+
+        at_limit says the run stopped at the node limit. A local-search step is tallied apart:
+        its cap is small by design, so reaching it is routine, unlike a main solve reaching it.
+        """
+        if nodes is None:
+            return 0
+        nodes = max(int(nodes), 0)
+        self._mipNodeCount += nodes
+        self._mipRunCount += 1
+        step = bool(getattr(self, "_localSearchStep", False))
+        capped, steps, steps_capped = self._mipCapTally
+        self._mipCapTally = (capped + (at_limit and not step), steps + step, steps_capped + (at_limit and step))
+        return nodes
+
+    def _countHighsNodes(self, h, options, is_mip):
+        """Tally a HiGHS run. kSolutionLimit also ends other MIP limits Owl does not set: the count confirms it."""
+        import highspy
+
+        if not is_mip:
+            return self._countMipNodes(None)
+        nodes = h.getInfoValue("mip_node_count")[1]
+        # Fork: _node_limit, so a MILP stopped at RX_NODE_LIMIT counts as stopped at the limit.
+        at_limit = (h.getModelStatus() == highspy.HighsModelStatus.kSolutionLimit
+                    and nodes >= self._node_limit(options))
+        return self._countMipNodes(nodes, at_limit)
+
+    def _countMosekNodes(self, task, trmcode):
+        """Tally a MOSEK MIP run. Solved nodes, not branchings, so the count means what HiGHS's does."""
+        import mosek
+
+        at_limit = trmcode == mosek.rescode.trm_mio_num_branches
+        return self._countMipNodes(task.getintinf(mosek.iinfitem.mio_num_solved_nodes), at_limit)
+
     def _run_highs(self, c, Lb, Ub, lbvec, ubvec, a_start, a_index, a_value, integrality, options, warm_x=None):
         """
         Run one HiGHS MIP (or LP when integrality is all-zero) solve directly via highspy.
@@ -6688,10 +6793,13 @@ class Plan:
         h.setOptionValue("output_flag", bool(verbose))
         h.setOptionValue("mip_rel_gap", float(mygap))
         h.setOptionValue("time_limit", float(time_limit))
-        # mipMaxNodes is internal: local search caps each restricted solve by nodes, not time,
-        # so that its answer does not depend on machine speed or load (fork: so does RX_NODE_LIMIT).
+        # mipMaxNodes caps every solve (upstream 2026.10.10; local search sets it on each restricted
+        # solve). Fork: without mipMaxNodes or maxTime, a MILP with free NJ exclusion tiers is capped
+        # at RX_NODE_LIMIT. Capping by nodes, not time, keeps the answer independent of machine speed.
         node_limit = self._node_limit(options)
         h.setOptionValue("mip_max_nodes", node_limit)
+        if node_limit == RX_NODE_LIMIT and "mipMaxNodes" not in options:
+            self._rxNodeLimitUsed = RX_NODE_LIMIT  # the Summary's node-limit row says so
         h.setOptionValue("presolve", "on")
 
         # A MIP is solved in hundreds of dollars (see MIP_SCALE_ORDER); an LP is passed as is.
@@ -6731,7 +6839,9 @@ class Plan:
             all_idx = np.arange(len(c), dtype=np.int32)
             h.setSolution(len(c), all_idx, warm_x.astype(np.float64))
 
+        is_mip = bool(integrality.any())
         h.run()
+        nodes = self._countHighsNodes(h, options, is_mip)
         ms = h.getModelStatus()
         # HiGHS's MIP presolve can call a feasible model infeasible when big-M coefficients are
         # large. Retry before believing it.
@@ -6743,10 +6853,11 @@ class Plan:
                 if warm_x is not None:
                     h.setSolution(len(c), np.arange(len(c), dtype=np.int32), warm_x.astype(np.float64))
                 h.run()
+                nodes += self._countHighsNodes(h, options, True)
                 ms = h.getModelStatus()
                 if ms != highspy.HighsModelStatus.kInfeasible:
                     break
-        self._lastMipNodes = int(h.getInfoValue("mip_node_count")[1] or 0)
+        self._lastMipNodes = nodes
 
         _, pstatus = h.getInfoValue("primal_solution_status")
         success = (
@@ -6758,11 +6869,20 @@ class Plan:
         # may well be solvable, and must not be reported as an impossible plan.
         self._infeasible = ms == highspy.HighsModelStatus.kInfeasible
         timed_out = success and ms == highspy.HighsModelStatus.kTimeLimit
-        node_capped = success and integrality.any() and self._lastMipNodes >= node_limit
+        # The last run's own status and count (_lastMipNodes also sums HiGHS's infeasibility retries).
+        node_capped = (
+            success
+            and integrality.any()
+            and ms == highspy.HighsModelStatus.kSolutionLimit
+            and h.getInfoValue("mip_node_count")[1] >= node_limit
+        )
         if timed_out:
             self._warn_time_limit(time_limit, h.getInfoValue("mip_gap")[1], mygap)
-        elif node_capped and "mipMaxNodes" not in options:
-            self._warn_node_limit(node_limit, h.getInfoValue("mip_gap")[1], mygap)
+        elif node_capped and not getattr(self, "_localSearchStep", False):
+            # A local-search step is capped by design (upstream counts those apart); a main solve
+            # cut short by RX_NODE_LIMIT or a user's mipMaxNodes says so.
+            hint = "Raise mipMaxNodes" if "mipMaxNodes" in options else "Set maxTime"
+            self._warn_node_limit(node_limit, h.getInfoValue("mip_gap")[1], mygap, hint)
 
         if success:
             sol = h.getSolution()
@@ -7000,8 +7120,7 @@ class Plan:
         )
         task.putdouparam(mosek.dparam.mio_max_time, float(time_limit))
         task.putdouparam(mosek.dparam.mio_tol_rel_gap, float(mygap))
-        if "mipMaxNodes" in options:  # internal: see _run_highs
-            task.putintparam(mosek.iparam.mio_max_num_branches, int(options["mipMaxNodes"]))
+        task.putintparam(mosek.iparam.mio_max_num_branches, self._mipNodeLimit(options, mosek=True))
         self._apply_mosek_threads(task, options)
 
         # Warm start: an incumbent lets branch-and-bound prune every node that cannot beat it.
@@ -7011,11 +7130,11 @@ class Plan:
             task.putintparam(mosek.iparam.mio_construct_sol, mosek.onoffkey.on)
 
         try:
-            task.optimize()
+            trmcode = task.optimize()
         except mosek.Error as e:
             self._infeasible = False
             return None, np.zeros(nvars), False, f"MOSEK: {e.msg}", -1.0
-        self._lastMipNodes = int(task.getintinf(mosek.iinfitem.mio_num_branch)) if int_vars else 0
+        self._lastMipNodes = self._countMosekNodes(task, trmcode) if int_vars else self._countMipNodes(None)
 
         if int_vars:
             sol = mosek.soltype.itg
@@ -7122,22 +7241,25 @@ class Plan:
         return u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
 
     def _node_limit(self, options):
-        """HiGHS node limit: mipMaxNodes when given (local search); otherwise RX_NODE_LIMIT when the
-        MILP carries free tier binaries of the income-tiered exclusion and no maxTime is given (see
-        RX_NODE_LIMIT); else none in practice."""
-        if "mipMaxNodes" in options:
-            return int(options["mipMaxNodes"])
-        if "maxTime" not in options and "zx" in self.vm and np.any(self.RXF_n >= 0.5):
+        """HiGHS node limit: RX_NODE_LIMIT when the MILP carries free tier binaries of the
+        income-tiered exclusion and neither mipMaxNodes nor maxTime is given (see RX_NODE_LIMIT);
+        otherwise upstream's (mipMaxNodes, else HIGHS_MAX_NODES)."""
+        if (
+            "mipMaxNodes" not in options
+            and "maxTime" not in options
+            and "zx" in self.vm
+            and np.any(self.RXF_n >= 0.5)
+        ):
             return RX_NODE_LIMIT
-        return 1_000_000
+        return self._mipNodeLimit(options, mosek=False)
 
-    def _warn_node_limit(self, node_limit, gap, target):
+    def _warn_node_limit(self, node_limit, gap, target, hint="Set maxTime"):
         """Say that a MILP stopped at its node limit and how far its plan may be from optimal."""
         if gap > target:
             self.mylog.print(
                 f"MILP stopped at its {node_limit:,} node limit with a gap of {100 * gap:.2f}% "
                 f"(target {100 * target:.2g}%): the plan is feasible but may not be optimal. "
-                "Set maxTime to search longer.",
+                f"{hint} to search longer.",
                 tag="WARNING",
             )
 
@@ -7194,6 +7316,7 @@ class Plan:
         task.putdouparam(mosek.dparam.mio_max_time, time_limit)  # Default -1
         # task.putdouparam(mosek.dparam.mio_rel_gap_const, 1e-6)       # Default 1e-10
         task.putdouparam(mosek.dparam.mio_tol_rel_gap, mygap)  # Default 1e-4
+        task.putintparam(mosek.iparam.mio_max_num_branches, self._mipNodeLimit(options, mosek=True))
         self._apply_mosek_threads(task, options)
         # task.putdouparam(mosek.dparam.mio_tol_abs_relax_int, 2e-5)   # Default 1e-5
         # task.putdouparam(mosek.iparam.mio_heuristic_level, 3)        # Default -1
@@ -7203,6 +7326,7 @@ class Plan:
         except mosek.Error as e:
             self._infeasible = False
             return 0.0, np.zeros(nvars), False, f"MOSEK: {e.msg}", -1
+        self._lastMipNodes = self._countMosekNodes(task, trmcode) if int_vars else self._countMipNodes(None)
 
         # The integer solution slot only exists when the problem actually has integer
         # variables. With every tax mode in loop mode the problem is a pure LP, so read

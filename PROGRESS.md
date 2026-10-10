@@ -389,7 +389,26 @@ Size S from `phase3-plan.md` §5 step 1 (3.0).
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
+## Upstream 2026.10.10 merged (2026-10-10, on `claude/eager-cray-s0fvks`)
+
+Upstream `dev` `f41fcdc` (six commits; `main` = `dev`): node counts in the Summary and a public
+`mipMaxNodes`; #180 (MCP `big_ticket_items`) settled as signed amounts, docs only; MOSEK license
+lookup in the UI; dependencies. Conflicts in `plan.py` (constants, SC-loop trace, HiGHS node cap)
+and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md` §9:
+- `RX_NODE_LIMIT` goes through `Plan._node_limit` (falls back to upstream's `_mipNodeLimit`), and
+  upstream's tally uses it: without that, a solve stopped at the RX cap counted as not stopped
+  (test extended; it reads 0 of N without the fix). The Summary's *MIP node limit* row names the RX
+  cap when it applied (`_rxNodeLimitUsed`).
+- The node-limit warning is silenced only for local-search steps (upstream's `_localSearchStep`),
+  not whenever `mipMaxNodes` is set, and reads the last run's own status and count.
+- Phase 3 plan: no change to the tax content; caps for new binaries go in `_node_limit`; step 6
+  reads the new Summary rows. §8 (#180) closed.
+
 ## Test status
+
+2026-10-10, upstream 2026.10.10 merged, after the step-1 review fixes: **3077 passed, 1 skipped**
+(full suite, 7 min; +3 step-1 tests, +11 upstream `test_mip_nodes.py`). flake8 only upstream's
+`localsearch.py:31`.
 
 2026-10-10, Phase 3 step 1 (budget amount terms, `st_pt` fix, mortgage interest, SALT cap)
 after the pre-commit review: **3063 passed, 1 skipped** (full suite, 5 min; +24 tests). Review

@@ -225,6 +225,13 @@ def test_node_limit_keeps_the_tiers_and_gives_the_same_plan_every_time(monkeypat
     assert a.basis == b.basis and np.array_equal(a.st_rx_n, b.st_rx_n)
     for n in range(a.N_n):
         assert a.st_T_n[n] == pytest.approx(_statutory_tax(a, n), abs=1.0)
+    # Upstream's node tally (2026.10.10) sees the RX cap: the run that reached it counts as stopped
+    # at the limit, and the Summary's node-limit row names the cap in force.
+    from owlplanner import export
+
+    capped, runs, _, _ = a.solverNodeLimitHits
+    assert 1 <= capped <= runs
+    assert "200 on the exclusion-tier MILP" in export._mip_node_limit(a)
 
 
 @pytest.mark.parametrize(

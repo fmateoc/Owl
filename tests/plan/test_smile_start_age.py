@@ -122,3 +122,44 @@ def test_interface_round_trip_keeps_the_start_age():
 def test_interface_converts_an_old_delay():
     ui = config_to_ui(_config(smile_delay=4))
     assert ui["smileStartAge"] == 59
+
+
+def _couple(expectancy):
+    # A born 1960, B born 1966 (younger, 60 in 2026).
+    return owl.Plan(["A", "B"], ["1960-03-01", "1966-07-01"], expectancy, "c", verbose=False,
+                    logstreams=[io.StringIO()])
+
+
+def test_after_the_younger_spouse_dies_the_smile_follows_the_older_survivor():
+    """B (younger) dies first: from then on the curve reads A's age, six years ahead."""
+    p = _couple([95, 75])  # B dies after 2041, A lives to 2055
+    p.setSpendingProfile("smile", 60, 15, 12, start_age=65)
+    assert p.inames[p.i_d] == "B"
+    t = np.maximum(np.arange(p.N_n) - 5.0, 0.0)  # B reaches 65 in 2031, plan year 5
+    t[p.n_d:] += 6  # A is six years older than B
+    expected = spending.gen_spending_profile("smile", 0.6, p.n_d, p.N_n, dip=15, increase=12, t=t)
+    np.testing.assert_allclose(p.xi_n, expected, rtol=1e-12)
+    jump = p._smileYears(65)
+    assert jump[p.n_d] - jump[p.n_d - 1] == 7  # one year passes, six are skipped
+
+
+def test_when_the_younger_spouse_survives_nothing_jumps():
+    p = _couple([75, 95])  # A (older) dies first
+    p.setSpendingProfile("smile", 60, 15, 12, start_age=65)
+    assert np.all(np.diff(p._smileYears(65))[5:] == 1)
+
+
+def test_reading_a_case_without_start_age_warns():
+    log = io.StringIO()
+    p = config_to_plan(_config(smile_delay=10), verbose=False, logstreams=[log, log], loadHFP=False)
+    assert "smile_start_age = 65" in log.getvalue()
+    # Written back and read again, the case carries the age and the warning is gone.
+    log2 = io.StringIO()
+    config_to_plan(plan_to_config(p), verbose=False, logstreams=[log2, log2], loadHFP=False)
+    assert "smile_delay" not in log2.getvalue()
+
+
+def test_reading_a_case_with_start_age_does_not_warn():
+    log = io.StringIO()
+    config_to_plan(_config(smile_start_age=65), verbose=False, logstreams=[log, log], loadHFP=False)
+    assert "smile_delay" not in log.getvalue()

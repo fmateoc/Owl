@@ -288,6 +288,14 @@ def _apply_optimization_to_plan(plan: "Plan", known: dict) -> None:
     else:
         dip, increase, delay, start_age = 15, 12, 0, None
     plan.setSpendingProfile(profile, survivor, dip, increase, delay, start_age=start_age)
+    if profile == "smile" and start_age is None:
+        plan.mylog.print(
+            f"The case gives the smile's start as smile_delay = {delay} years from now, not as an age: "
+            f"read as smile_start_age = {plan.smileStartAge} (the younger spouse's age this year plus "
+            f"the delay). Read again next year, it would start a year later. Save the case to keep "
+            f"the age, or add smile_start_age = {plan.smileStartAge} to [optimization_parameters].",
+            tag="WARNING",
+        )
 
 
 def _apply_solver_options_to_plan(plan: "Plan", known: dict) -> None:

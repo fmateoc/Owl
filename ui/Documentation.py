@@ -1486,10 +1486,12 @@ lifestyle: a dip in the “slow-go” years, then an increase or decrease over t
 Assets*). For *smile*, you can set the **age at which the smile starts** (the younger spouse's age,
 calendar year minus birth year; spending is held at its starting level until then), **smile dip** (%),
 and **smile increase** (%). The start is an age rather than a number of years from now, so the curve
-stays at the same ages when the case is run again next year. The smile covers a fixed 30-year span
+stays at the same ages when the case is run again next year. After the first death the curve follows
+the survivor's age: if the younger spouse dies first, it jumps ahead by the difference in ages. The smile covers a fixed 30-year span
 from its start, not the length of the plan: a longer life adds years at the end rather than
 stretching the dip later. A case saved before this setting existed is read with its *smile delay*
-(years from the current year) turned into an age once, and keeps that age when saved again.
+(years from the current year) turned into an age, with a warning in the log; saved again, it keeps
+that age.
 **Profile slack** controls how far spending can deviate from the profile shape. Spending stays
 within ±slack% of the profile (bilateral bound); set to 0 to pin spending exactly to the profile.
 **Time preference** (0–10 %/year) applies an exponentially decaying weight to future spending

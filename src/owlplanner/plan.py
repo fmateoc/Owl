@@ -1430,15 +1430,28 @@ class Plan:
         """Age of the younger spouse (or the individual) in the plan's first year: year minus birth year."""
         return int(self.year_n[0]) - int(np.max(self.yobs))
 
+    def _smileYears(self, start_age):
+        """
+        Years into the smile for each plan year (0 before it starts): the age it follows minus
+        start_age. That age is the younger spouse's, and the survivor's from the first death on.
+        """
+        k = int(np.argmax(self.yobs))  # younger spouse (latest birth year; ties: the first)
+        age_n = self.year_n.astype(float) - float(self.yobs[k])
+        if self.N_i == 2 and self.n_d < self.N_n and self.i_d == k:
+            age_n[self.n_d:] = self.year_n[self.n_d:] - float(self.yobs[self.i_s])
+        return np.maximum(age_n - start_age, 0.0)
+
     def setSpendingProfile(self, profile, percent=60, dip=15, increase=12, delay=0, start_age=None):
         """
         Generate time series for spending profile. Surviving spouse fraction can be specified
         as a second argument. Default value is 60%.
         Dip and increase are percent changes in the smile profile.
 
-        The smile starts when the younger spouse (or the individual) reaches start_age (calendar
-        year minus birth year), and then runs by calendar year. Without start_age, delay (years
-        from the plan's first year, as before) gives it: start_age = that spouse's age now + delay.
+        The smile follows an age: the younger spouse's (or the individual's; calendar year minus
+        birth year) and, after the first death, the survivor's. It starts when that age reaches
+        start_age. If the younger spouse dies first, the curve then jumps ahead by the age gap.
+        Without start_age, delay (years from the plan's first year, as before) gives it:
+        start_age = the younger spouse's age now + delay.
         The plan keeps the age (smileStartAge), so a case saved and run again in a later year keeps
         the curve at the same ages; delay alone would move it a year later each year.
         """
@@ -1474,7 +1487,7 @@ class Plan:
             self._evaluateBudget(strict=False)
         else:
             self.xi_n = spending.gen_spending_profile(
-                profile, self.chi, self.n_d, self.N_n, dip=dip, increase=increase, delay=delay
+                profile, self.chi, self.n_d, self.N_n, dip=dip, increase=increase, t=self._smileYears(start_age)
             )
 
         self.spendingProfile = profile

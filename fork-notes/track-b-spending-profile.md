@@ -181,5 +181,9 @@ iteration; our NJ path does not use it.
    point at 79 one year, 80 the next, for a 55-year-old with delay 10). Now anchored to the younger
    spouse's age: `smile_start_age` (UI field replaces "Smile delay (in years from now)"); a delay is
    converted once at load (today's age + delay), so no plan moves on the upgrade day; Owl writes
-   both keys (delay clipped at 0). The curve runs by calendar year from that start (not by the
-   survivor's age after a death). MCP tools keep `smile_delay` = years from the call.
+   both keys (delay clipped at 0). MCP tools keep `smile_delay` = years from the call. Then (the
+   user's choice): after the first death the curve follows the survivor's age (`Plan._smileYears`,
+   `gen_spending_profile(t=...)`), jumping ahead by the age gap when the younger spouse dies first;
+   reading a smile case without `smile_start_age` warns with the age to add. No recorded example
+   result moved: of the smile couples only `Case_avery+quinn` has the younger spouse die first, and
+   it is not in a recorded baseline.

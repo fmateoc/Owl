@@ -28,7 +28,10 @@ younger spouse's age (calendar year minus birth year) when the smile starts; it 
 relative to the household's ages, each year the same case was run again. A case with only
 `smile_delay` is read with the delay turned into an age once (today's age plus the delay), so no plan
 changes on the day of the upgrade; saved again, it carries the age. Owl also writes the equivalent
-`smile_delay` (never negative) for readers that only know the delay. An age earlier than today's
+`smile_delay` (never negative) for readers that only know the delay. Reading a smile case without
+`smile_start_age` warns, naming the age to add. The curve follows the younger spouse's age and, after
+the first death, the survivor's: if the younger spouse dies first, it jumps ahead by the age gap
+(of the example cases, only `Case_avery+quinn`, three years apart). An age earlier than today's
 starts the plan partway through the smile (`gen_spending_profile` takes a negative `delay`). MCP
 tools keep their `smile_delay` argument, read as years from the day of the call.
 

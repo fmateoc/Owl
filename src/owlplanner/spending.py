@@ -8,9 +8,10 @@ One cosine period of the smile covers a fixed number of years (``SMILE_SPAN``) f
 the start of the smile, not the length of the plan. A longer life therefore appends the
 late-life rise instead of stretching the go-go years and moving the dip later. Here the
 start is ``delay`` years after the plan's first year (negative: the smile started before
-the plan). ``Plan.setSpendingProfile`` sets it from an age of the younger spouse
-(``smile_start_age``), so the curve stays at the same ages when the plan is run again in
-a later year.
+the plan), or ``t`` gives the years into the smile directly. ``Plan.setSpendingProfile``
+reads them from an age (``smile_start_age``): the younger spouse's, then the survivor's after
+the first death, so the curve stays at the same ages when the plan is run again in a later
+year.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -38,7 +39,7 @@ import numpy as np
 SMILE_SPAN = 30
 
 
-def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay=0, span=None):
+def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay=0, span=None, t=None):
     """
     Generate spending profile time series.
 
@@ -65,6 +66,10 @@ def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay
     span : float, optional
         Length of one cosine period in years. Default ``SMILE_SPAN``. Pass
         ``N_n - 1 - delay`` to recover the old plan-stretched curve.
+    t : array-like, optional
+        Years into the smile for each plan year (length N_n; 0 before it starts). Replaces
+        ``delay`` when given: ``Plan.setSpendingProfile`` reads it from an age, the younger
+        spouse's and, after the first death, the survivor's.
 
     Returns
     -------
@@ -83,7 +88,12 @@ def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay
         b = increase / 100
         # Years since the smile starts. Before ``delay`` the profile is held at the
         # smile's opening value (the go-go level).
-        t = np.maximum(np.arange(N_n, dtype=float) - delay, 0.0)
+        if t is None:
+            t = np.maximum(np.arange(N_n, dtype=float) - delay, 0.0)
+        else:
+            t = np.maximum(np.asarray(t, dtype=float), 0.0)
+            if t.shape != (N_n,):
+                raise ValueError(f"Smile years t must have length {N_n}.")
         # One cosine period over [0, S]; after that freeze at the period's end
         # (cos = +1) and keep the linear rise, which is the late-life part.
         cos_term = np.where(t <= S, np.cos((2 * np.pi / S) * t), 1.0)

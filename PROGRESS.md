@@ -300,7 +300,9 @@ copy of itself; the interface keeps `budget_file` on save but does not read it, 
 says so. Then (finding 6, the user's choice): the smile starts at an age of the younger spouse,
 `smile_start_age`, instead of `smile_delay` years from today, which had moved the curve a year later
 relative to the household's ages on each yearly rerun; a delay is converted once at load, so no plan
-moves on the upgrade day; the UI asks for the age. `tests/plan/test_smile_start_age.py`, 11 tests.
+moves on the upgrade day; the UI asks for the age. Then: after the first death the smile follows the
+survivor's age (jumps ahead by the gap when the younger spouse dies first), and reading a smile case
+without `smile_start_age` warns with the age to add. `tests/plan/test_smile_start_age.py`, 15 tests.
 
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Then Phase 3
@@ -311,6 +313,9 @@ household needs them.
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-10, smile follows the survivor's age + old-case warning: **3039 passed, 1 skipped** (full
+suite, 7 min). flake8 only upstream's `schema.py:406` and `localsearch.py:31`.
 
 2026-10-10, smile start age: **3035 passed, 1 skipped** (full suite, 7 min). flake8 only upstream's
 `schema.py:406` and `localsearch.py:31`.

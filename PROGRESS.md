@@ -312,7 +312,8 @@ files: expect conflicts on those lines when upstream edits them.
 
 Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
 `fork-notes/track-b-spending-profile.md`). Phase 3 is planned in `fork-notes/phase3-plan.md`
-(2026-10-10, below); it waits on the user's decisions D1-D5 there. Phase 5 (part-time work / SS
+(2026-10-10, below). Decisions (same day): D1 statutory federal law as the base, D2 no real
+inputs here (the finished product runs on them locally), D3-D5 as recommended. Next code: step 1. Phase 5 (part-time work / SS
 earnings test) after it, as the household needs it.
 
 ## Phase 3 planning (2026-10-10)
@@ -338,6 +339,13 @@ IT-196-I (2025), the NJ-1040 instructions, and the nj.gov / tax.ny.gov relief pa
 - Stay NJ (nj.gov, verified): homeowners 65+, up to $6,500/$5,000/$4,000 for income up to
   $100k/$150k/$200k, $0 above (2027 payments; funding set yearly, 2026 payments were cut). Larger
   than any NY-vs-NJ income-tax difference measured; dropped with the Phase 2 rewrite. Decision D3.
+- D1 applied: `Case_us.template.toml` sets `obbba_expiration_year = 2066` (no reversion within
+  the plan; loads as 2066, plan ends 2056); the 2032 reversion is a sensitivity run
+  (`phase0-scenarios.md`, "Federal law after 2031").
+- Upstream issue by someone else (MCP `big_ticket_items` sign): direction confirmed on this branch
+  (+$25k/yr "expense" for 5 years: year-1 spending 84,352 -> 90,832; -$25k -> 77,864); not the
+  issue's "~$25k/yr" (spread over the plan). No effect on HFP/TOML/owlcli/UI paths; affects MCP use.
+  Not fixed in the fork (waiting for the maintainer's choice of sign). `phase3-plan.md` §8.
 - Enhanced STAR (tax.ny.gov, verified): income limit $110,750 (2026), income = AGI minus taxable IRA
   distributions, two years back; entering property tax net of STAR stays adequate.
 

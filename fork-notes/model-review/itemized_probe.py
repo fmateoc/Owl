@@ -44,7 +44,7 @@ THISYEAR = owl.Plan(["A"], ["1960-01-01"], [80], "t", verbose=False).year_n[0]
 PT = 25000.0  # property tax, first year, today's $ (made up; Westchester-like)
 MORTGAGE = (600000.0, 6.5, 30)  # principal, rate %, term; taken out in THISYEAR
 opts = {"noRothConversions": "None", "withMedicare": "None", "withSSTaxability": 0.85}
-YOBBBA = int(sys.argv[2]) if len(sys.argv) > 2 else 2032
+YOBBBA = int(sys.argv[2]) if len(sys.argv) > 2 else 2099  # statutory law (D1); 2032 = Owl default
 
 
 def salt_cap(year):

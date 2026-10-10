@@ -237,13 +237,17 @@ reference amount), never the same column twice in a row, every new binary block 
 tie check, anything `processDebtsAndFixedAssets()` reads initialized in `Plan.__init__`, compare
 variants the same day, full suite before calling a commit green.
 
-### Step 0: decisions and household inputs (no code)
+### Step 0: decisions (done 2026-10-10, §7)
 
-- User answers D1-D5 (§7).
-- Household inputs that size Phase 3 (stay in `otherFiles/`): property tax for each home considered
-  (Yonkers / Westchester / NYC / NJ town), mortgage or not and its size, expected AGI band in
-  retirement, charitable giving, any expected care costs. Rerun `itemized_probe.py` with them
-  (edit `PT`, `MORTGAGE`, balances at the top) to confirm the order of 3.1-3.4 before building.
+- D1: statutory base. The template now sets `obbba_expiration_year = 2066` (any year after the
+  plan's last year means no reversion; the UI accepts at most this year + 40, so not the code's
+  2099 sentinel); the 2032 reversion is a sensitivity run in `phase0-scenarios.md`.
+- D2: no household inputs in this environment; the finished product runs on them locally. So the
+  build order rests on the synthetic evidence of §3.2, and every piece must report its own value on
+  the user's case: per-year deduction choice and amounts in the results (steps 2-3), and an
+  `owlcli compare` recipe with `withItemized` on and off (step 7) that answers "does this matter
+  for us" locally, without sending numbers anywhere.
+- D3-D5 as recommended.
 
 ### Step 1 (3.0): shared plumbing and the `st_pt` fix — size S
 
@@ -411,8 +415,8 @@ in those years, deduction = care + premiums - 7.5% AGI.
 
 ### Step 6: measure — size M
 
-Rerun on the synthetic couple (and on the household case if D2 allows), same day, exact LP and
-local search, statutory law and the 2032 reversion:
+Rerun on the synthetic couple (the household case is run locally by the user, D2), same day,
+exact LP and local search, statutory law (base, D1) and the 2032 reversion (sensitivity):
 
 1. `itemized_probe.py` cases in-model (`withItemized="optimize"` and `"loop"`): in-model gain vs the
    first-order numbers in §3.2, and loop vs optimize gap.
@@ -441,9 +445,11 @@ option) and the template (`withItemized`, `obbba_expiration_year` per D1).
 - NY itemizing, NJ line 31, Stay NJ: fork only (lesson 3).
 - Not before #158 has a reply, if the user prefers not to stack (lesson 9).
 
-### Step 9 (3.4, if D3 says so): Stay NJ — size M
+### Step 9 (3.4): Stay NJ — scenario lever now (D3), code later only if needed — size S, then M
 
-Scenario first (no code): the expected benefit as a positive big-ticket item (or a negative-amount
+Scenario first (no code; the recipe goes in `phase0-scenarios.md` in step 7, for the user to run
+locally). Enter it through the HFP sheet, not the MCP `big_ticket_items` parameter (its sign is
+reversed, §8): the expected benefit as a positive big-ticket item (or a negative-amount
 budget line if allowed) from the first year at 65+, by income tier, in the NJ owner scenarios;
 see whether the NY-vs-NJ ranking turns on it. Code only if the household's NJ income sits near
 $100k/$150k/$200k: a tiered credit on NJ income with binaries, reusing the NJ exclusion's
@@ -467,7 +473,8 @@ in Y+2) stays out: the benefit is placed in the year of the income it depends on
 - **Loop noise**: any NY-vs-NJ difference under ~1% stays unresolved unless local search and the
   exact LP agree (Phase 1 rule).
 
-## 7. Decisions for the user
+## 7. Decisions (answered 2026-10-10: D1 statutory base; D2 no real inputs here, the product runs
+locally on them; D3-D5 as recommended)
 
 - **D1. Federal law after 2031.** Owl's default reverts to pre-TCJA in 2032; the law as enacted does
   not. Recommended: base case `obbba_expiration_year` far in the future (statutory), the 2032
@@ -481,3 +488,32 @@ in Y+2) stays out: the benefit is placed in the year of the income it depends on
   `"None"` reproducing today's plans.
 - **D5. Medical in Phase 3 or Phase 4.** Recommended: rows in Phase 3 (they share the AGI floor
   machinery), the healthcare cost model itself in Phase 4.
+
+## 8. Upstream issue on MCP `big_ticket_items` (filed by someone else; checked 2026-10-10)
+
+Claim: the MCP helpers (`_build_plan_from_params`, `save_case` in `assistant/tools.py`) add
+`annual_amount` to `Lambda_in` with its sign, the docstrings call the items "extra expenses that
+reduce the spending budget" with positive examples, and the cash-flow row (`_add_net_cash_flow`)
+treats a positive `Lambda_in` as an inflow, so a documented expense raises spending.
+
+Checked on this branch (fork code identical to upstream `dev` `d6970b2` in these lines):
+
+- Code: `tools.py:1106-1116` adds the amount; the comment says "positive = extra expense";
+  docstrings at `tools.py:1577`, `3218`, `4539`, `4836`, `5172` describe expenses with positive
+  examples. `_add_net_cash_flow` adds `Lambda_in` to the right-hand side with wages and SS
+  (`plan.py:3812-3820`). The HFP convention is the opposite of the docstrings: signed column,
+  negative = outflow (`hfp_io.py:299`; `save_case` writes `Lambda_in` as is, `hfp_io.py:689`).
+- Run (the MCP test helper's single person, TX, `maxSpending`, exact LP, 5-year item):
+  no item 84,352; `annual_amount = 25,000` -> **90,832**; `-25,000` -> 77,864 (year-1 net spending).
+  So the direction is confirmed. The issue's "increases by ~$25k/yr" is not what happens for a
+  multi-year item under a profile: the windfall is spread over the plan (+$6,480/yr here).
+- MCP test `test_big_ticket_items_populate_lambda_in` asserts only the stored value, as the issue
+  says.
+
+Effect on us: none on the paths the fork uses (HFP workbooks, TOML, `owlcli`, the UI: all signed,
+negative = expense; the fork's notes and scripts use negative amounts). It does affect anyone, the
+user included, who drives Owl through the MCP assistant locally: an assistant following the
+docstrings enters expenses as income, and a case saved that way carries the wrong sign into its
+HFP. Until upstream decides (its fix will define the sign), enter expenses through the HFP, or pass
+negative amounts to the MCP and check the saved HFP. Fork fix not made: the maintainer has not
+confirmed which option he wants, and we take his fix when it lands (CLAUDE.md, Syncing).

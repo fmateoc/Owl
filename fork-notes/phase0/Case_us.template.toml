@@ -57,6 +57,11 @@ aca_start_year = 2027                    # first year without employer coverage
 method = "conservative"
 heirs_rate_on_tax_deferred_estate = 30.0
 dividend_rate = 2.0
+# Statutory federal law (decision D1, 2026-10-10): P.L. 119-21 made the TCJA brackets and
+# standard deduction permanent. Owl's default (2032) reverts to pre-TCJA law that year; any year
+# after the plan's last year means no reversion (the UI accepts at most this year + 40).
+# Sensitivity run: --set rates_selection.obbba_expiration_year=2032
+obbba_expiration_year = 2066
 
 [asset_allocation]
 interpolation_method = "linear"

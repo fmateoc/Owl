@@ -217,6 +217,22 @@ estimate; historical or stochastic ranges show the spread.
 afforded (every line scales, rent included). Use it for "can we afford this budget" (the basis
 against the budget's first-year total), not to rank rent against buy.
 
+## Federal law after 2031
+
+The template uses statutory law (`obbba_expiration_year = 2066`: no reversion within the plan;
+decision D1 in `fork-notes/phase3-plan.md`). Owl's own default reverts to pre-TCJA brackets and
+standard deduction in 2032, which moves Roth conversions and withdrawals well before 2032. As a
+sensitivity run:
+
+```bash
+owlcli compare otherFiles/Case_us.toml --set rates_selection.obbba_expiration_year=2032
+```
+
+Big-ticket items: enter them in the HFP (signed: negative = expense). Through the MCP assistant,
+`big_ticket_items` currently adds `annual_amount` with its sign while its docstrings call the items
+expenses with positive examples, so an expense entered as documented becomes income (upstream
+issue, not yet confirmed; `phase3-plan.md` §8).
+
 ## Healthcare cost sensitivity
 
 Pre-65 marketplace premiums come from `aca_settings.slcsp_annual` (household benchmark Silver

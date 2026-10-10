@@ -588,7 +588,7 @@ class Plan:
         self.st_ptd_coef_n = np.zeros(self.N_n)  # Its coefficient on g_n
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
         self.mortgage_interest_n = np.zeros(self.N_n)  # Mortgage interest paid per calendar year
-        self.mortgage_balance_n = np.zeros(self.N_n)  # Average mortgage balance per calendar year
+        self.mortgage_balance_cn = np.zeros((len(debts.MORTGAGE_CATEGORIES), self.N_n))  # Pub. 936 categories
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
         self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
         self.st_T_n = np.zeros(self.N_n)  # State income tax per year (N_n,)
@@ -2334,15 +2334,15 @@ class Plan:
             self.fixed_assets_debt_balances_remaining_n = debts.get_debt_balances_array(
                 debts_df, self.N_n, thisyear, payoffs
             )
-            self.mortgage_interest_n, self.mortgage_balance_n = debts.get_mortgage_interest_array(
-                debts_df, self.N_n, thisyear, payoffs
+            self.mortgage_interest_n, self.mortgage_balance_cn = debts.get_mortgage_interest_array(
+                debts_df, self.N_n, thisyear, payoffs, self.houseLists.get("Fixed Assets")
             )
         else:
             self.debt_payments_n = np.zeros(self.N_n)
             self.remaining_debt_balance = 0.0
             self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
             self.mortgage_interest_n = np.zeros(self.N_n)
-            self.mortgage_balance_n = np.zeros(self.N_n)
+            self.mortgage_balance_cn = np.zeros((len(debts.MORTGAGE_CATEGORIES), self.N_n))
 
         gamma_n = getattr(self, "gamma_n", None)
 

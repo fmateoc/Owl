@@ -365,16 +365,27 @@ Size S from `phase3-plan.md` §5 step 1 (3.0).
 - `_add_property_tax_deduction` now bounds `st_pt` by that affine amount instead of
   `st_ptd_share_n * g_n`. Fixes the §3.3 bug (claimed $12,625 vs $12,000 paid under `maxSpending`
   k=1.137; $9,600 vs $12,000 under `maxBequest` k=0.474); regression tests claim equals paid.
-- `debts.py` `get_mortgage_interest_array`: interest and average balance by calendar year for
+- `debts.py` `get_mortgage_interest_array`: interest and average balances by calendar year for
   `type == "mortgage"` rows (payments minus the fall in balance; the payoff year pays principal
-  only). `Plan.mortgage_interest_n` / `mortgage_balance_n`, zeros in `__init__`.
+  only), balances split by Pub. 936 Table 1 category (`MORTGAGE_CATEGORIES`: grandfathered /
+  before 2018 / after 2017, from the loan's year); a loan linked to a `real estate` asset is left
+  out (rental interest is Schedule E; a linked second home too, documented). `Plan.mortgage_interest_n`
+  / `mortgage_balance_cn`, zeros in `__init__`.
 - `tax_federal.py`: `salt_cap(year, magi, yOBBBA)` (P.L. 119-21 sec. 70120 schedule, `inf` under a
-  pre-TCJA reversion), `mortgage_limit`, `deductible_interest_share`, `itemize_terms` (the standard
-  amount without the senior bonus), constants `MORTGAGE_LIMIT` / `MORTGAGE_LIMIT_LEGACY` /
+  pre-TCJA reversion), `qualified_loan_limit` (Pub. 936 (2025) Table 1 lines 1-11, verified on
+  irs.gov; `pre_tcja=True` for a reversion and for NY's $1M), `deductible_mortgage_interest`
+  (lines 12-15), `standard_without_bonus` (the standard amount without the senior bonus, which an
+  itemized deduction is compared with), constants `MORTGAGE_LIMIT` / `MORTGAGE_LIMIT_LEGACY` /
   `MEDICAL_FLOOR` / `CHARITY_FLOOR` / `NONITEMIZER_CHARITY`.
-- Tests: `tests/tax/test_itemized_data.py` (19: cap schedule and phase-down floor, hand
-  amortization, payoff year, $750k proration and the $1M grandfather, amount terms with and
-  without essentials, JSON/HFP round trip of the new types); §3.3 cases in `tests/assets/test_budget.py`.
+- Tests: `tests/tax/test_itemized_data.py` (25: cap schedule and phase-down floor, hand
+  amortization, payoff year, Table 1 worksheet with mixed categories, a loan on real estate left
+  out, amount terms with and without essentials, JSON/HFP round trip of the new types); §3.3 cases
+  in `tests/assets/test_budget.py`.
+- Review fixes (same day, after the first step-1 commit): one aggregate balance with a per-loan
+  limit could not combine loans of different categories (now the Table 1 worksheet); rental
+  mortgages were counted as home mortgage interest; `_active_loans` reused instead of a second loan
+  loop; `itemize_terms` renamed `standard_without_bonus`; `modeling-capabilities.md` lists the new
+  budget types; the test count above said 19 where there were 22.
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 

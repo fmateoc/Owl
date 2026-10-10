@@ -265,20 +265,28 @@ variants the same day, full suite before calling a commit green.
 3. `_add_property_tax_deduction`: row `st_pt - coef*g <= const` from the helper; `st_ptd_share_n`
    kept only as the "any deductible line" flag. Regression test = §3.3's two cases (claimed equals
    paid when the cap does not bind).
-4. `debts.py`: `get_mortgage_interest_array(debts_df, N_n, thisyear, payoffs)` -> interest paid per
-   calendar year and average balance, for `type == "mortgage"` rows only: payments in the year minus
-   the fall in balance (same amortization as `get_debt_payments_array`; the payoff year pays
-   principal only). `Plan.mortgage_interest_n`, `Plan.mortgage_balance_n` set in
-   `processDebtsAndFixedAssets()`, zeros in `__init__`. Deductible share per year =
-   min(1, limit / average balance), limit $750k (or $1M for a loan with `year` < 2018; $1M under a
-   pre-TCJA reversion and for NY).
+4. `debts.py`: `get_mortgage_interest_array(debts_df, N_n, thisyear, payoffs, fixed_assets_df)` ->
+   interest paid per calendar year and average balances `(3, N_n)` by Pub. 936 Table 1 category
+   (grandfathered / before 2018 / after 2017, from the loan's `year`), for `type == "mortgage"`
+   rows not linked to a `real estate` asset (a rental's interest is Schedule E): payments in the
+   year minus the fall in balance (same amortization as `get_debt_payments_array`; the payoff year
+   pays principal only). `Plan.mortgage_interest_n`, `Plan.mortgage_balance_cn` set in
+   `processDebtsAndFixedAssets()`, zeros in `__init__`. Deductible interest per year =
+   interest x min(1, qualified loan limit / total balance), the limit from Table 1 lines 1-11
+   (`tax_federal.qualified_loan_limit`; `pre_tcja=True` gives the $1M rule for a pre-TCJA
+   reversion and for NY). *(Revised after review, 2026-10-10: the first version kept one aggregate
+   balance and a per-loan limit, which cannot combine loans of different categories; Pub. 936
+   (2025) Table 1 verified on irs.gov.)*
 5. `tax_federal.py`: `salt_cap(year, magi, yOBBBA)` (schedule above, `inf` from `yOBBBA`),
-   constants `MORTGAGE_LIMIT`, `MEDICAL_FLOOR = 0.075`, `CHARITY_FLOOR = 0.005`,
-   `NONITEMIZER_CHARITY = [1000, 2000]`, and `itemize_terms(...)` giving per year the standard
-   amount without the senior bonus (today `taxParams` folds the bonus into `sigmaBar`; reuse the
-   `no_bonus` call that `_add_standard_exemption_bounds` already makes).
+   `qualified_loan_limit`, `deductible_mortgage_interest`, constants `MORTGAGE_LIMIT`,
+   `MORTGAGE_LIMIT_LEGACY`, `MEDICAL_FLOOR = 0.075`, `CHARITY_FLOOR = 0.005`,
+   `NONITEMIZER_CHARITY = [1000, 2000]`, and `standard_without_bonus(...)` giving per year the
+   standard amount without the senior bonus, the amount an itemized deduction is compared with
+   (today `taxParams` folds the bonus into `sigmaBar`; same `no_bonus` call as
+   `_add_standard_exemption_bounds`).
 6. Tests (`tests/tax/test_itemized_data.py`): cap schedule 2025-2031 and the phase-down floor;
-   interest vs a hand amortization, payoff year, $750k proration, grandfathered $1M; helper with and
+   interest vs a hand amortization, payoff year, the Table 1 worksheet (mixed categories), a loan
+   on real estate left out; helper with and
    without essentials; JSON/HFP round trip of the new types.
 
 ### Step 2 (3.1): NY itemized deduction — size M

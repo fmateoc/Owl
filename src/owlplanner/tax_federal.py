@@ -233,8 +233,9 @@ SENIOR_BONUS_PHASEOUT_RATE = 0.06  # $6 per $100 of MAGI above the threshold
 
 # Itemized-deduction parameters (P.L. 119-21; IRS Schedule A / Pub. 936). Source: the act's
 # sections 70108, 70120 and the 2025 Schedule A instructions, verified 2026-10-10.
-MORTGAGE_LIMIT = 750_000.0  # acquisition debt; $1M for debt incurred before 2017-12-16
-MORTGAGE_LIMIT_LEGACY = 1_000_000.0
+# Qualified loan limit, Pub. 936 (2025) Table 1 (MFJ and single; the MFS halves are not modeled).
+MORTGAGE_LIMIT = 750_000.0  # line 8: home acquisition debt taken out after 2017-12-15
+MORTGAGE_LIMIT_LEGACY = 1_000_000.0  # line 3: debt taken out before 2017-12-16; all of it before TCJA
 MEDICAL_FLOOR = 0.075  # medical expenses above 7.5% of AGI
 CHARITY_FLOOR = 0.005  # itemizers deduct cash charity above 0.5% of the contribution base (2026+)
 NONITEMIZER_CHARITY = np.array([1000.0, 2000.0])  # non-itemizer cash charity cap, Single / MFJ
@@ -882,29 +883,48 @@ def salt_cap(year, magi, yOBBBA=_YEAR_FAR_FUTURE):
     return max(_SALT_FLOOR, cap - _SALT_PHASE_RATE * excess)
 
 
-def mortgage_limit(start_year, year, yOBBBA=_YEAR_FAR_FUTURE):
+def qualified_loan_limit(grandfathered, before_2018, after_2017, pre_tcja=False):
     """
-    Acquisition-debt limit for mortgage interest in a calendar year (Pub. 936; P.L. 119-21 sec. 70108).
+    Qualified loan limit from average balances by category (Pub. 936 (2025) Table 1, lines 1-11).
 
-    $750k, or $1M for debt incurred before 2017-12-16 and under a pre-TCJA reversion (year >= yOBBBA).
+    grandfathered: debt taken out on or before 1987-10-13 (line 1); before_2018: other home
+    acquisition debt taken out before 2017-12-16 (line 2); after_2017: after 2017-12-15 (line 7).
+    pre_tcja applies the $1M limit to all acquisition debt (a pre-TCJA reversion, or a state such
+    as New York that itemizes under the IRC as before TCJA).
     """
-    if start_year < 2018 or year >= yOBBBA:
-        return MORTGAGE_LIMIT_LEGACY
-    return MORTGAGE_LIMIT
+    if pre_tcja:
+        before_2018, after_2017 = before_2018 + after_2017, 0.0
+    line6 = min(max(grandfathered, MORTGAGE_LIMIT_LEGACY), grandfathered + before_2018)
+    if after_2017 <= 0 or line6 >= MORTGAGE_LIMIT:
+        return line6
+    return min(max(line6, MORTGAGE_LIMIT), line6 + after_2017)
 
 
-def deductible_interest_share(avg_balance, limit):
-    """Share of a year's mortgage interest the acquisition-debt limit leaves deductible."""
-    if avg_balance <= 0:
-        return 0.0
-    return min(1.0, float(limit) / float(avg_balance))
+def deductible_mortgage_interest(interest_n, balance_cn, year_n, yOBBBA=_YEAR_FAR_FUTURE, pre_tcja=False):
+    """
+    Deductible home mortgage interest per year (Pub. 936 (2025) Table 1, lines 12-15).
+
+    interest_n and balance_cn come from debts.get_mortgage_interest_array. When the qualified
+    loan limit is below the total average balance, the interest is prorated by limit / balance
+    (line 14 is not rounded to three places here). From yOBBBA, the pre-TCJA $1M limit applies.
+    """
+    interest_n = np.asarray(interest_n, dtype=float)
+    out = np.zeros_like(interest_n)
+    for n, year in enumerate(year_n):
+        total = float(np.sum(balance_cn[:, n]))
+        if interest_n[n] <= 0 or total <= 0:
+            continue
+        limit = qualified_loan_limit(*balance_cn[:, n], pre_tcja=pre_tcja or year >= yOBBBA)
+        out[n] = interest_n[n] * min(1.0, limit / total)
+    return out
 
 
-def itemize_terms(yobs, i_d, n_d, N_n, gamma_n, yOBBBA=_YEAR_FAR_FUTURE):
+def standard_without_bonus(yobs, i_d, n_d, N_n, gamma_n, yOBBBA=_YEAR_FAR_FUTURE):
     """
     The standard deduction per year without the OBBBA senior bonus (65+ additions included).
 
-    taxParams folds the bonus into sigmaBar; this is the base an itemized comparison uses.
+    taxParams folds the bonus into sigmaBar. Itemizers keep the bonus but lose the 65+ additions,
+    so this is the amount an itemized deduction is compared with.
     """
     no_bonus = np.full(N_n, np.inf)
     return taxParams(yobs, i_d, n_d, N_n, gamma_n, no_bonus, yOBBBA)[0]

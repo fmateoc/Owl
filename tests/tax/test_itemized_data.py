@@ -61,11 +61,11 @@ class TestSaltCap:
 
 class TestItemizeTerms:
     def test_standard_without_the_senior_bonus(self):
-        """itemize_terms keeps the 65+ additions and drops the OBBBA $6k bonus."""
+        """standard_without_bonus keeps the 65+ additions and drops the OBBBA $6k bonus."""
         thisyear = date.today().year
         yobs = [thisyear - 70, thisyear - 68]
         gamma = np.ones(4)
-        base = tx.itemize_terms(yobs, 0, 4, 4, gamma)
+        base = tx.standard_without_bonus(yobs, 0, 4, 4, gamma)
         full, _, _ = tx.taxParams(yobs, 0, 4, 4, gamma, np.zeros(4))
         # Both 65+: two 65+ additions (MFJ $1,650 each) and two bonuses ($6,000 each).
         assert base[0] == pytest.approx(tx.stdDeduction_OBBBA[1] + 2 * tx.extra65Deduction[1])
@@ -90,7 +90,8 @@ class TestItemizeTerms:
                                        "maxRothConversion": 0})
         assert p.caseStatus == "solved"
         assert hasattr(p, "_sb_base_n")
-        assert tx.itemize_terms(p.yobs, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA) == pytest.approx(p._sb_base_n)
+        base = tx.standard_without_bonus(p.yobs, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA)
+        assert base == pytest.approx(p._sb_base_n)
 
 
 # ---------------------------------------------------------------------------
@@ -109,49 +110,90 @@ class TestMortgageInterest:
     def test_interest_matches_hand_amortization(self):
         """First-year interest is the payment less principal; average balance is mid-year."""
         df = _mortgage(year=2026, term=30, amount=200_000.0, rate=4.5)
-        interest, avg = debts.get_mortgage_interest_array(df, 3, 2026)
+        interest, bal = debts.get_mortgage_interest_array(df, 3, 2026)
         pmt = debts.calculate_annual_payment(200_000.0, 4.5, 30)
         b0 = 200_000.0
         b1 = debts.calculate_remaining_balance(200_000.0, 4.5, 30, 1)
         assert interest[0] == pytest.approx(pmt - (b0 - b1), rel=1e-9)
-        assert avg[0] == pytest.approx(0.5 * (b0 + b1), rel=1e-9)
+        # Taken out after 2017: Pub. 936 line 7, the third row.
+        assert bal[2, 0] == pytest.approx(0.5 * (b0 + b1), rel=1e-9)
+        assert np.all(bal[:2] == 0)
         assert interest[0] > 0 and interest[0] < pmt
         # Later years: interest falls as the balance amortizes.
-        assert interest[1] < interest[0] and avg[1] < avg[0]
+        assert interest[1] < interest[0] and bal[2, 1] < bal[2, 0]
+
+    def test_categories_follow_the_year_taken_out(self):
+        assert [debts.mortgage_category(y) for y in (1985, 1987, 1988, 2017, 2018, 2026)] == [0, 0, 1, 1, 2, 2]
+        df = pd.concat([_mortgage(year=2015, term=30), _mortgage(year=2022, term=30)], ignore_index=True)
+        _, bal = debts.get_mortgage_interest_array(df, 2, 2026)
+        assert bal[0, 0] == 0 and bal[1, 0] > 0 and bal[2, 0] > 0
 
     def test_non_mortgage_loans_are_ignored(self):
         df = _mortgage(typ="loan", year=2020, amount=50_000.0)
-        interest, avg = debts.get_mortgage_interest_array(df, 5, 2026)
-        assert np.all(interest == 0) and np.all(avg == 0)
+        interest, bal = debts.get_mortgage_interest_array(df, 5, 2026)
+        assert np.all(interest == 0) and np.all(bal == 0)
 
     def test_payoff_year_pays_principal_only(self):
         """A loan paid off early has zero interest in the payoff year."""
         df = _mortgage(year=2020, term=30, amount=200_000.0, rate=4.5)
         # Payoff in 2028 (plan years 2026..2030): years 0-1 regular, year 2 payoff.
-        interest, avg = debts.get_mortgage_interest_array(df, 5, 2026, payoffs={0: 2028})
+        interest, bal = debts.get_mortgage_interest_array(df, 5, 2026, payoffs={0: 2028})
         assert interest[0] > 0 and interest[1] > 0
         assert interest[2] == pytest.approx(0.0)
-        assert avg[2] > 0  # the balance is still owed at the start of the payoff year
-        assert np.all(interest[3:] == 0)
+        assert bal[2, 2] > 0  # the balance is still owed at the start of the payoff year
+        assert np.all(interest[3:] == 0) and np.all(bal[:, 3:] == 0)
 
     def test_payoff_past_the_term_does_not_extend_the_loan(self):
         """A late payoff must not invent payments after the loan has amortized away."""
         df = _mortgage(year=2020, term=5, amount=100_000.0, rate=5.0)
-        interest, avg = debts.get_mortgage_interest_array(df, 6, 2026, payoffs={0: 2030})
-        assert np.all(interest == 0) and np.all(avg == 0)
+        interest, bal = debts.get_mortgage_interest_array(df, 6, 2026, payoffs={0: 2030})
+        assert np.all(interest == 0) and np.all(bal == 0)
 
-    def test_seven_fifty_proration_and_grandfathered_million(self):
-        """Share = min(1, limit / average balance); pre-2018 debt keeps the $1M limit."""
-        assert tx.deductible_interest_share(500_000.0, tx.MORTGAGE_LIMIT) == pytest.approx(1.0)
-        assert tx.deductible_interest_share(1_500_000.0, tx.MORTGAGE_LIMIT) == pytest.approx(0.5)
-        assert tx.deductible_interest_share(0.0, tx.MORTGAGE_LIMIT) == 0.0
-        assert tx.mortgage_limit(2017, 2026) == tx.MORTGAGE_LIMIT_LEGACY
-        assert tx.mortgage_limit(2018, 2026) == tx.MORTGAGE_LIMIT
-        assert tx.mortgage_limit(2020, 2032, yOBBBA=2032) == tx.MORTGAGE_LIMIT_LEGACY
-        # A $1.2M balance: full interest under the $1M limit only if the balance fits it.
-        assert tx.deductible_interest_share(800_000.0, tx.mortgage_limit(2016, 2026)) == pytest.approx(1.0)
-        assert tx.deductible_interest_share(1_200_000.0, tx.mortgage_limit(2016, 2026)) == pytest.approx(5 / 6)
-        assert tx.deductible_interest_share(1_200_000.0, tx.mortgage_limit(2020, 2026)) == pytest.approx(0.625)
+    def test_a_loan_on_real_estate_is_not_home_mortgage_interest(self):
+        """Linked to a `real estate` asset (rental, Schedule E): left out; to a `residence`: counted."""
+        assets = pd.DataFrame([{"active": True, "name": "rental", "type": "real estate"},
+                               {"active": True, "name": "home", "type": "residence"}])
+        rental = _mortgage(year=2020, property="rental")
+        interest, bal = debts.get_mortgage_interest_array(rental, 3, 2026, fixed_assets_df=assets)
+        assert np.all(interest == 0) and np.all(bal == 0)
+        home = _mortgage(year=2020, property="home")
+        interest, bal = debts.get_mortgage_interest_array(home, 3, 2026, fixed_assets_df=assets)
+        assert interest[0] > 0 and bal[2, 0] > 0
+        # Unlinked: counted.
+        interest, _ = debts.get_mortgage_interest_array(_mortgage(year=2020), 3, 2026, fixed_assets_df=assets)
+        assert interest[0] > 0
+
+    def test_qualified_loan_limit_worksheet(self):
+        """Pub. 936 (2025) Table 1, lines 1-11."""
+        qll = tx.qualified_loan_limit
+        # Only debt from after 2017: $750,000.
+        assert qll(0, 0, 500_000.0) == pytest.approx(500_000.0)
+        assert qll(0, 0, 1_500_000.0) == pytest.approx(750_000.0)
+        # Only debt from before 2018: $1,000,000.
+        assert qll(0, 1_200_000.0, 0) == pytest.approx(1_000_000.0)
+        # Grandfathered debt above $1M is fully qualified (line 4 = larger of line 1 and $1M).
+        assert qll(1_200_000.0, 0, 0) == pytest.approx(1_200_000.0)
+        # Mixed: line 6 = 600k < 750k, so the newer loan fills up to $750k.
+        assert qll(0, 600_000.0, 400_000.0) == pytest.approx(750_000.0)
+        # Mixed: line 6 = 900k >= 750k is the limit; the newer loan adds nothing.
+        assert qll(0, 900_000.0, 200_000.0) == pytest.approx(900_000.0)
+        # Before TCJA (or for New York): $1M for all of it.
+        assert qll(0, 0, 1_200_000.0, pre_tcja=True) == pytest.approx(1_000_000.0)
+        assert qll(0, 600_000.0, 400_000.0, pre_tcja=True) == pytest.approx(1_000_000.0)
+
+    def test_deductible_interest_prorates_by_limit_over_balance(self):
+        interest = np.array([60_000.0, 60_000.0, 0.0])
+        bal = np.zeros((3, 3))
+        bal[2, :] = 1_500_000.0  # after 2017: limit $750k, half the interest
+        years = np.array([2030, 2031, 2032])
+        out = tx.deductible_mortgage_interest(interest, bal, years)
+        assert out == pytest.approx([30_000.0, 30_000.0, 0.0])
+        # From a pre-TCJA reversion: $1M of $1.5M.
+        out = tx.deductible_mortgage_interest(interest, bal, years, yOBBBA=2031)
+        assert out == pytest.approx([30_000.0, 40_000.0, 0.0])
+        # Within the limit: all of it.
+        bal[2, :] = 600_000.0
+        assert tx.deductible_mortgage_interest(interest, bal, years) == pytest.approx(interest)
 
     def test_plan_carries_the_arrays(self):
         import io
@@ -166,8 +208,9 @@ class TestMortgageInterest:
         p.houseLists["Debts"] = _mortgage(year=THISYEAR - 6, term=30, amount=200_000.0, rate=4.5)
         p.processDebtsAndFixedAssets()
         assert p.mortgage_interest_n[0] > 0
-        assert p.mortgage_balance_n[0] > 0
+        assert p.mortgage_balance_cn[2, 0] > 0
         assert p.mortgage_interest_n.shape == (p.N_n,)
+        assert p.mortgage_balance_cn.shape == (3, p.N_n)
 
 
 # ---------------------------------------------------------------------------

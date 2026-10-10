@@ -389,42 +389,74 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None, payoffs=None):
     return total_balance
 
 
+# Pub. 936 (2025) Table 1 categories of home acquisition debt, by when the loan was taken out:
+# grandfathered (on or before 1987-10-13, line 1), before 2017-12-16 (line 2), after (line 7).
+# Debts carry the year only, so a loan from late 1987 or late 2017 lands in the earlier category.
+MORTGAGE_CATEGORIES = ("grandfathered", "before 2018", "after 2017")
+
+
+def mortgage_category(start_year):
+    """Row of balance_cn (MORTGAGE_CATEGORIES) for a loan taken out in start_year."""
+    if start_year <= 1987:
+        return 0
+    if start_year <= 2017:
+        return 1
+    return 2
+
+
 def _is_mortgage(debt):
     return str(debt.get("type", "")).strip().lower() == "mortgage"
 
 
-def get_mortgage_interest_array(debts_df, N_n, thisyear=None, payoffs=None):
-    """
-    Mortgage interest paid and average balance, by calendar year (type == "mortgage" only).
+def _linked_property(debt):
+    prop = debt.get("property", "")
+    if prop is None or (isinstance(prop, float) and np.isnan(prop)):
+        return ""
+    return str(prop).strip()
 
-    Interest is the year's payments minus the fall in balance (same amortization as
-    get_debt_payments_array). A loan paid off early pays principal only in the payoff year,
-    so that year's interest is zero. Average balance is the mean of the start-of-year and
-    end-of-year balances of the year.
+
+def _real_estate_names(fixed_assets_df):
+    if u.is_dataframe_empty(fixed_assets_df) or "type" not in fixed_assets_df.columns:
+        return set()
+    return {
+        str(a["name"]).strip() for _, a in fixed_assets_df.iterrows() if str(a["type"]).strip().lower() == "real estate"
+    }
+
+
+def get_mortgage_interest_array(debts_df, N_n, thisyear=None, payoffs=None, fixed_assets_df=None):
+    """
+    Home mortgage interest paid and average balances, by calendar year.
+
+    Counts active `type == "mortgage"` rows, except those whose `property` names a `real estate`
+    fixed asset: Owl sells real estate as an investment (capital gains, no home exclusion) and
+    models no rental income, and interest on a rental is a Schedule E expense, not home mortgage
+    interest. A second home financed by a linked loan is left out for the same reason; leave its
+    loan unlinked to count it (it then runs to term).
+
+    Interest is the year's payments minus the fall in balance (same amortization and payoff
+    rule as get_debt_payments_array). A loan paid off early pays principal only in the payoff
+    year, so that year's interest is zero. Average balances use the first-and-last-balance
+    method (Pub. 936), one row per MORTGAGE_CATEGORIES entry, for the qualified loan limit
+    (tax_federal.deductible_mortgage_interest).
 
     Returns
     -------
-    (interest_n, avg_balance_n) : two np.ndarray of length N_n
+    (interest_n, balance_cn) : np.ndarray of shapes (N_n,) and (3, N_n)
     """
     if thisyear is None:
         thisyear = date.today().year
 
     interest_n = np.zeros(N_n)
-    avg_balance_n = np.zeros(N_n)
+    balance_cn = np.zeros((len(MORTGAGE_CATEGORIES), N_n))
     if u.is_dataframe_empty(debts_df) or "type" not in debts_df.columns:
-        return interest_n, avg_balance_n
+        return interest_n, balance_cn
 
-    payoffs = payoffs or {}
-    for idx, debt in debts_df.iterrows():
-        if not u.is_row_active(debt) or not _is_mortgage(debt):
-            continue
-        start_year = int(debt["year"])
-        term = int(debt["term"])
-        payoff = payoffs.get(idx)
-        # Regular payments end at the earlier of the term and an early payoff.
+    rentals = _real_estate_names(fixed_assets_df)
+    keep = [_is_mortgage(d) and _linked_property(d) not in rentals for _, d in debts_df.iterrows()]
+    for start_year, term, end_year, principal, rate, payoff in _active_loans(debts_df[keep], payoffs):
         natural_end = start_year + term
-        end_year = natural_end if payoff is None else min(payoff, natural_end)
-        principal, rate = float(debt["amount"]), float(debt["rate"])
+        end_year = min(end_year, natural_end)  # a payoff past the term does not extend the loan
+        c = mortgage_category(start_year)
         annual_payment = calculate_annual_payment(principal, rate, term)
         for n in range(N_n):
             year = thisyear + n
@@ -432,10 +464,9 @@ def get_mortgage_interest_array(debts_df, N_n, thisyear=None, payoffs=None):
                 b0 = calculate_remaining_balance(principal, rate, term, year - start_year)
                 b1 = calculate_remaining_balance(principal, rate, term, year - start_year + 1)
                 interest_n[n] += annual_payment - (b0 - b1)
-                avg_balance_n[n] += 0.5 * (b0 + b1)
-            elif year == payoff and year < natural_end:
+                balance_cn[c, n] += 0.5 * (b0 + b1)
+            elif year == payoff and payoff < natural_end:
                 # The payoff year pays the remaining principal only: no interest.
-                b0 = calculate_remaining_balance(principal, rate, term, year - start_year)
-                avg_balance_n[n] += 0.5 * b0
+                balance_cn[c, n] += 0.5 * payoff_amount(principal, rate, term, start_year, payoff)
 
-    return interest_n, avg_balance_n
+    return interest_n, balance_cn

@@ -708,12 +708,17 @@ where:
 - *essential* (optional; blank means no) marks a line paid at its amount whatever the spending level:
   a floor rather than a share.
 - *clock* (optional; blank means *calendar*) can be *age*: then *start_age* and *end_age* apply against
-  *index* (*younger* by default, *older*, or a person's name) and *year* / *end* are ignored. Use it for
-  lines tied to an age — travel while you are able, care from 80 — so a longer life still includes them.
+  *index* and *year* / *end* are ignored. Use it for lines tied to an age — travel while you are able,
+  care from 80 — so a longer life still includes them. *index* *younger* (the default) or *older* is a
+  household line: it follows that spouse's age while both are alive, then the survivor's. A person's name
+  makes a personal line, which ends at that person's death.
+- *kind* (optional) is free text kept with the line, for your own categories.
 
 The same lines can arrive as a JSON file (`budget_file` in the case's optimization parameters,
-`schema_version` 1) instead of the workbook sheet. The sheet wins when both are present. Amounts in
-the file are today's dollars in thousands, like the sheet.
+`schema_version` 1) when Owl is used from Python or the command line. The sheet wins when both are
+present. Amounts in the file are annual, in today's dollars, like the sheet. **This interface does not
+read the file**: it keeps its name when the case is saved, but the lines must be in the HFP *Budget*
+sheet here.
 
 The profile is the sum of the lines, divided by its first year, so the first year must have spending.
 With *maxBequest*, net spending is the budget's first-year total unless a net spending amount (other

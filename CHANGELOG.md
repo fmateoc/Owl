@@ -3,14 +3,22 @@
 #### New: budget lines can follow an age clock; a JSON budget file
 
 A Budget line's `clock` is `calendar` (default; `year` / `end`) or `age`: `start_age` / `end_age`
-against `index` (`younger` by default, `older`, or a person's name). Age-tied lines — travel
-"while we are able", care "from 80" — stay with the age that causes them, so a longer life still
-includes them. Growth counts from the first year the line pays.
+against `index`. Age-tied lines — travel "while we are able", care "from 80" — stay with the age
+that causes them, so a longer life still includes them. Growth counts from the first year the line
+pays. `index` `younger` (default) or `older` is a household line: that spouse's age while both are
+alive, the survivor's after the first death (an `older` line can resume when the survivor reaches
+its range). A person's name makes a personal line, which ends at that person's death.
 
 `optimization_parameters.budget_file` points at a JSON budget profile (`schema_version` 1, the
-same lines as the sheet, amounts in today's $k). It feeds the Budget sheet's DataFrame, so one
-evaluator serves both; the workbook sheet wins when both are present. Unknown fields and an
-unknown schema_version are refusals. Owl-budget and MCP can hand lines over without writing Excel.
+same lines as the sheet, amounts in today's dollars like the sheet). It feeds the Budget sheet's
+DataFrame, so one evaluator serves both; the workbook sheet wins when both are present. Refused
+rather than read loosely: unknown fields, an unknown schema_version, a `type` outside the sheet's
+list, numbers given as text, flags other than true/false, fractional years. `kind` is free text
+kept with the line (also an optional sheet column). Lines read from the file are not written to the
+HFP by `saveHFP` (or the MCP export), so the file stays their only source; reading a workbook makes
+its Budget sheet the source again. The web interface does not read the file: it keeps its name when
+saving the case, and a plan whose only lines are in an unread file says so when it is solved.
+Owl-budget and MCP can hand lines over without writing Excel.
 
 #### Changed: the smile profile is age-anchored
 
@@ -21,7 +29,9 @@ take the late-life rise instead of stretching the curve. At `N_n = 31` and `smil
 curve is exactly the old one (`span` overrides the span and recovers the old curve when it equals
 `N_n - 1`). The dip sits at `SMILE_SPAN/2` years after the smile starts on any horizon. Flat and
 `"budget"` profiles are unchanged. `Case_jack+jill`'s expected basis moved with the shape (33-year
-horizon); `Case_joe` (31 years) did not.
+horizon); `Case_joe` (31 years) did not. The AMO references of the three smile cases that moved
+(jack+jill +0.9%, jordan+taylor -2.0%, morgan +3.3% basis) were re-recorded with HiGHS; their MOSEK
+entries were removed rather than left stale.
 
 #### New: essential budget lines (a spending floor)
 

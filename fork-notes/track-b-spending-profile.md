@@ -88,16 +88,18 @@ Owl-budget (and MCP) can hand lines over without writing Excel.
 {
   "schema_version": 1,
   "lines": [
-    {"name": "core living", "kind": "core", "year": 2026, "end": 0,
-     "amount": 62.0, "rate": 0.0, "survivor": 60, "essential": true},
-    {"name": "travel", "kind": "travel", "clock": "age",
+    {"name": "core living", "type": "core", "year": 2026, "end": 0,
+     "amount": 62000.0, "rate": 0.0, "survivor": 60, "essential": true},
+    {"name": "travel", "type": "travel", "kind": "trips abroad", "clock": "age",
      "start_age": 62, "end_age": 74, "index": "younger",
-     "amount": 12.0, "rate": -1.0, "survivor": 30, "essential": false}
+     "amount": 12000.0, "rate": -1.0, "survivor": 30, "essential": false}
   ]
 }
 ```
 
-- Amounts in **today's dollars, $k** (Owl units). Document loudly; a dollars file is 1000× off.
+- Amounts in **today's dollars**, as on the sheet (corrected in review 2026-10-10: the first
+  version documented $k while the code, like the sheet, reads dollars; a file written to the docs
+  would have budgeted $62/yr).
 - Unknown fields and unknown `schema_version` are refusals, not silent drops (as we said for
   #173's property links).
 - One evaluator: a small loader turns the JSON into the same DataFrame/rows `budget.evaluate()`
@@ -155,3 +157,22 @@ Merged `upstream/dev` at `d6970b2e` (`withSeniorBonus = "optimize"`). Keep both 
 fork `zx` (NJ exclusion tiers, in `localsearch.FAMILIES`) and upstream `zsb` (senior bonus, in
 `ALWAYS_FREE`). A state that follows the federal deduction still takes the bonus from the previous
 iteration; our NJ path does not use it.
+
+## Review fixes (2026-10-10)
+
+1. The smile change moved three AMO references (`test_amo_postprocess`; suite was 3 failed): HiGHS
+   entries of jack+jill, jordan+taylor, morgan re-recorded under the frozen test date; their MOSEK
+   entries removed (no MOSEK here). jack+jill's LP plan has AMO counts roth 1 / surplus 4, the same
+   before the smile change (its old record was the binary-constrained MIP).
+2. Age lines and the first death: a named `index` is a personal line and ends at that person's
+   death (B's care from 80 had kept paying after B died at 75); `younger` / `older` are household
+   lines and follow the survivor's age after the first death. `evaluate()` takes `i_d`; the window
+   became a per-year mask (an `older` line can resume when the survivor reaches its range).
+3. JSON: `type` must be one of the sheet's types (`kind` free text, kept as its own column, a
+   stand-in for the type only when it is one); units are dollars like the sheet (the docs said $k);
+   `saveHFP` / MCP export leave file lines out of the workbook (`Plan.budgetFromFile`), so the file
+   is not shadowed by a copy of itself; `readHFP` resets the flag; re-applying the config keeps the
+   file's lines without the "sheet wins" warning.
+4. Interface: `budget_file` kept through `config_to_ui` / `ui_to_config`; `apply_config_to_plan`
+   records the name only; the solve error names the unread file.
+5. JSON values typed strictly: flags must be `true`/`false`, numbers must be numbers, years whole.

@@ -74,7 +74,7 @@ _debtItems = [
 # property: the residence or real estate whose sale pays off the loan (debts.resolve_payoff_years).
 _optionalHouseItems = {
     "Debts": ["property"],
-    "Budget": ["survivor", "essential", "clock", "start_age", "end_age", "index"],
+    "Budget": ["survivor", "essential", "clock", "start_age", "end_age", "index", "kind"],
 }
 
 
@@ -121,6 +121,7 @@ _budgetItems = [
     "start_age",
     "end_age",
     "index",
+    "kind",
 ]
 
 
@@ -579,7 +580,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
         int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
         blank_cols = ["survivor", "start_age", "end_age"]
-        string_cols.extend(["clock", "index"])
+        string_cols.extend(["clock", "index", "kind"])
         flag_cols = ["essential"]
     else:  # Fixed Assets
         int_cols = ["year", "yod"]
@@ -708,6 +709,10 @@ def build_hfp_dataframes(plan):
         "Fixed Assets": plan.houseLists.get("Fixed Assets", pd.DataFrame(columns=_fixedAssetItems)),
         "Budget": plan.houseLists.get("Budget", pd.DataFrame(columns=_budgetItems)),
     }
+    if getattr(plan, "budgetFromFile", False):
+        # Lines read from budget_file stay in that file. Written here, they would win over it on the
+        # next load (the sheet wins), and later edits to the file would no longer reach the plan.
+        houseLists["Budget"] = pd.DataFrame(columns=_budgetItems)
 
     return timeLists, houseLists
 

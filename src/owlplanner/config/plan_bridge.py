@@ -67,7 +67,9 @@ def _load_budget_file(plan: "Plan", known: dict, dirname: str = "", load: bool =
 
     The sheet wins when both are present. The JSON is only another source for the same table, so
     evaluate() stays the single path and clone() copies the DataFrame with the other house tables.
-    With load=False (clone's rebuild), the path is recorded and the caller copies the tables.
+    With load=False (clone's rebuild, the UI's case load), the path is recorded and the caller
+    copies the tables. plan.budgetFromFile marks lines read from the file: saveHFP() leaves them
+    out of the workbook, so that the file (which Owl-budget owns) stays their only source.
     """
     from owlplanner import budget as budgeting
 
@@ -84,7 +86,8 @@ def _load_budget_file(plan: "Plan", known: dict, dirname: str = "", load: bool =
         full = os.path.join(dirname, path)
     else:
         raise FileNotFoundError(f"Budget file '{path}' not found.")
-    if getattr(plan, "houseLists", None):
+    if getattr(plan, "houseLists", None) and not getattr(plan, "budgetFromFile", False):
+        # Lines already read from the file are not a sheet: read the file again (it may have changed).
         df = plan.houseLists.get("Budget")
         if df is not None and not u.is_dataframe_empty(df) and any(u.is_row_active(r) for _, r in df.iterrows()):
             plan.mylog.print(
@@ -94,6 +97,7 @@ def _load_budget_file(plan: "Plan", known: dict, dirname: str = "", load: bool =
     if getattr(plan, "houseLists", None) is None:
         plan.houseLists = {}
     plan.houseLists["Budget"] = budgeting.load_json(full)
+    plan.budgetFromFile = True
     plan.mylog.vprint(f"Read budget lines from {path}.")
 
 
@@ -433,7 +437,9 @@ def apply_config_to_plan(plan: "Plan", diconf: dict) -> None:
     _apply_fixed_income_to_plan(plan, known, icount)
     _apply_rates_to_plan(plan, known)
     _apply_asset_allocation_to_plan(plan, known)
-    _load_budget_file(plan, known, "")
+    # The interface's path: it has no case directory to read the file from, so only the name is kept.
+    # Lines already read from the file when the plan was built (budgetFromFile) stay as they are.
+    _load_budget_file(plan, known, "", load=False)
     _apply_optimization_to_plan(plan, known)
     _apply_solver_options_to_plan(plan, known)
     _apply_aca_to_plan(plan, known)
@@ -663,6 +669,7 @@ def clone(plan: "Plan", newname=None, *, expectancy=None, verbose=True, logstrea
         # Debts and fixed assets are dated by calendar year, not by horizon: copy the plan's own
         # tables, which carry any edits made since the workbook was read (the UI edits them in place).
         newplan.houseLists = copy.deepcopy(getattr(plan, "houseLists", {}) or {})
+        newplan.budgetFromFile = getattr(plan, "budgetFromFile", False)
 
     if newname is None:
         # Strip any existing " (copy)" or " (copy N)" suffix so repeated cloning

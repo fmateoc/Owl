@@ -18,12 +18,15 @@ A line's survivor share defaults to the case's survivor percentage, except for h
 costs (rent, property tax, insurance, maintenance), which a survivor keeps paying in full.
 
 A line follows either the calendar (``year`` / ``end``) or an age (``clock = "age"``,
-``start_age`` / ``end_age`` against ``index``: "younger" (default), "older", or a person's name).
-An age clock is what a longer life needs: travel "while we are able" and care "from 80" stay tied
-to the age that causes them, so extra years still include them.
+``start_age`` / ``end_age`` against ``index``). An age clock is what a longer life needs: travel
+"while we are able" and care "from 80" stay tied to the age that causes them, so extra years still
+include them. ``index`` "younger" (default) or "older" is a household line, read against that
+spouse's age while both are alive and the survivor's after the first death; a person's name makes a
+personal line, which ends at that person's death.
 
 The same lines can arrive as JSON (``load_json``) instead of the workbook sheet: one evaluator,
-the sheet's DataFrame. Unknown fields and an unknown ``schema_version`` are refusals.
+the sheet's DataFrame, amounts in today's dollars like the sheet. Unknown fields, an unknown
+``schema_version`` or ``type``, and loosely typed values are refusals. ``kind`` is free text.
 
 The fork's New Jersey property tax deduction reads the "property tax" and "rent" lines.
 
@@ -108,6 +111,7 @@ SHEET_COLUMNS = (
     "start_age",
     "end_age",
     "index",
+    "kind",
 )
 
 
@@ -182,25 +186,43 @@ def _row_index(row):
     return str(val).strip().lower()
 
 
-def _ages_for_index(row, ages_in, inames):
-    """Age series (length N_n) for the line's index. None when ages were not provided."""
+def _age_series(row, ages_in, inames, n_d, i_d):
+    """
+    Ages (length N_n) an age-clock line is read against, NaN in the years it cannot apply.
+
+    A line indexed by a person's name follows that person and stops at their death. "younger"
+    and "older" are household lines: they follow the younger (older) spouse while both are
+    alive and the survivor after the first death. n_d is the first plan year after the first
+    death (N_n when nobody dies within the plan) and i_d the person who dies then.
+    """
     if ages_in is None:
-        return None
+        raise ValueError(
+            f"Budget line {row.get('name')!r}: an age clock needs the plan's ages; evaluate() was not given ages_in."
+        )
     ages_in = np.asarray(ages_in, dtype=float)
     if ages_in.ndim != 2:
         raise ValueError("ages_in must have shape (N_i, N_n).")
+    N_i, N_n = ages_in.shape
+    death = N_i == 2 and n_d < N_n
+    if death and i_d not in (0, 1):
+        raise ValueError(f"Budget line {row.get('name')!r}: an age clock needs who dies first (i_d).")
     idx = _row_index(row)
-    if idx == "younger":
-        # Youngest: the smallest age at the plan's end (ties: first).
-        return ages_in[np.argmin(ages_in[:, -1])]
-    if idx == "older":
-        return ages_in[np.argmax(ages_in[:, -1])]
+    if idx in AGE_INDEXES:
+        k = int(np.argmin(ages_in[:, 0]) if idx == "younger" else np.argmax(ages_in[:, 0]))
+        age_n = ages_in[k].copy()
+        if death:
+            age_n[n_d:] = ages_in[1 - i_d, n_d:]
+        return age_n
     if inames is None:
         raise ValueError(f"Budget line {row.get('name')!r}: index {idx!r} needs person names to resolve.")
     lowered = [str(n).strip().lower() for n in inames]
     if idx not in lowered:
         raise ValueError(f"Budget line {row.get('name')!r}: unknown index {row.get('index')!r}.")
-    return ages_in[lowered.index(idx)]
+    k = lowered.index(idx)
+    age_n = ages_in[k].copy()
+    if death and k == i_d:
+        age_n[n_d:] = np.nan
+    return age_n
 
 
 def _last_year(end, thisyear, N_n):
@@ -209,39 +231,30 @@ def _last_year(end, thisyear, N_n):
     return plan_end + end if end <= 0 else end
 
 
-def _line_window(row, N_n, thisyear, ages_in=None, inames=None):
+def _line_years(row, N_n, thisyear, ages_in=None, inames=None, n_d=None, i_d=None):
     """
-    Calendar years the line pays, and the year its growth counts from.
+    Plan years the line pays, and the calendar year its growth counts from.
 
-    Returns (first_cal, last_cal, ref_cal), or None when the line never applies (or its age
-    range is empty). first_cal may be before the plan start; the caller clips to the plan.
+    Returns (mask, ref_cal): mask is a bool array of length N_n. An age-clock line can pay in
+    years that are not contiguous (an "older" line resumes when the survivor reaches its range).
     """
+    cal_n = thisyear + np.arange(N_n)
     if _row_clock(row) == AGE:
-        age_n = _ages_for_index(row, ages_in, inames)
-        if age_n is None:
-            raise ValueError(
-                f"Budget line {row.get('name')!r}: an age clock needs the plan's ages; "
-                "evaluate() was not given ages_in."
-            )
         sa, ea = row.get("start_age"), row.get("end_age")
         if _is_blank(sa) or _is_blank(ea):
             raise ValueError(f"Budget line {row.get('name')!r}: clock 'age' needs start_age and end_age.")
-        start_age, end_age = float(sa), float(ea)
-        if end_age < start_age:
-            return None
-        hits = np.nonzero((age_n >= start_age) & (age_n <= end_age))[0]
-        if hits.size == 0:
-            return None
-        first_n, last_n = int(hits[0]), int(hits[-1])
-        first_cal = thisyear + first_n
-        return first_cal, thisyear + last_n, max(first_cal, thisyear)
+        age_n = _age_series(row, ages_in, inames, N_n if n_d is None else n_d, i_d)
+        with np.errstate(invalid="ignore"):
+            mask = (age_n >= float(sa)) & (age_n <= float(ea))
+        ref = int(cal_n[np.argmax(mask)]) if mask.any() else thisyear
+        return mask, ref
 
     year = row.get("year", 0)
     end = row.get("end", 0)
     start = int(0 if _is_blank(year) else year)
     last = _last_year(int(0 if _is_blank(end) else end), thisyear, N_n)
     ref = max(start, thisyear)
-    return start, last, ref
+    return (cal_n >= ref) & (cal_n <= last), ref
 
 
 def _survivor_share(row, default_pct):
@@ -271,7 +284,7 @@ def is_essential(row):
     return bool(u.convert_to_bool(val))
 
 
-def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=None):
+def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=None, i_d=None):
     """
     Evaluate the active budget lines over the plan.
 
@@ -285,7 +298,8 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=N
         death (blank: the case's percentage, or 100 for housing costs); `essential` (optional,
         blank = no) marks a line paid at its amount whatever the spending level.
         `clock` is "calendar" (default; `year` / `end`) or "age" (`start_age` / `end_age` against
-        `index`: "younger" (default), "older", or a name in `inames`).
+        `index`: "younger" (default) or "older", household lines that follow the survivor's age
+        after the first death; or a name in `inames`, a personal line that ends with that person).
     N_n : int
         Plan length in years.
     n_d : int
@@ -299,6 +313,8 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=N
         Shape (N_i, N_n): each person's age in each plan year. Required for age clocks.
     inames : list of str, optional
         Person names, for an age index that names someone.
+    i_d : int, optional
+        Index of the person who dies first. Required for age clocks when n_d < N_n for a couple.
 
     Returns
     -------
@@ -309,17 +325,13 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=N
         for _, row in budget_df.iterrows():
             if not u.is_row_active(row):
                 continue
-            window = _line_window(row, N_n, thisyear, ages_in=ages_in, inames=inames)
-            if window is None:
+            mask, ref = _line_years(row, N_n, thisyear, ages_in=ages_in, inames=inames, n_d=n_d, i_d=i_d)
+            if not mask.any():
                 continue
-            first_cal, last_cal, ref = window
             amount, rate = float(row["amount"]), float(row["rate"])
             share = _survivor_share(row, survivor_pct)
-            line = np.zeros(N_n)
-            for n in range(N_n):
-                cal = thisyear + n
-                if max(ref, first_cal) <= cal <= last_cal:
-                    line[n] = amount * (1.0 + rate / 100.0) ** (cal - ref)
+            cal_n = thisyear + np.arange(N_n)
+            line = np.where(mask, amount * (1.0 + rate / 100.0) ** (cal_n - ref), 0.0)
             if n_d < N_n:
                 line[n_d:] *= share
             names.append(str(row["name"]))
@@ -331,12 +343,13 @@ def evaluate(budget_df, N_n, n_d, survivor_pct, thisyear, ages_in=None, inames=N
     return Budget(tuple(names), tuple(types), amounts, total, tuple(essential))
 
 
-def lines_left_out(budget_df, N_n, thisyear, ages_in=None, inames=None):
+def lines_left_out(budget_df, N_n, thisyear, ages_in=None, inames=None, n_d=None, i_d=None):
     """(name, reason) for each active line that adds nothing within the plan.
 
     A positive `end` is a calendar year: one before the line starts (a term such as 10 typed as
     `end`, say) leaves the line out, as does a `year` after the plan's last year. An age line is
-    left out when its range never meets the index person's ages inside the plan.
+    left out when its range never meets, inside the plan, the ages it follows (a named person's
+    while they are alive).
     """
     out = []
     if u.is_dataframe_empty(budget_df):
@@ -347,22 +360,13 @@ def lines_left_out(budget_df, N_n, thisyear, ages_in=None, inames=None):
             continue
         name = str(row.get("name"))
         try:
-            window = _line_window(row, N_n, thisyear, ages_in=ages_in, inames=inames)
+            mask, _ = _line_years(row, N_n, thisyear, ages_in=ages_in, inames=inames, n_d=n_d, i_d=i_d)
         except ValueError as e:
             out.append((name, str(e).split(": ", 1)[-1]))
             continue
-        if window is None:
-            if _row_clock(row) == AGE:
-                out.append((name, f"age range {row.get('start_age')}-{row.get('end_age')} never applies to the plan"))
-            else:
-                out.append((name, "ends before it starts"))
-            continue
-        first_cal, last_cal, ref = window
         if _row_clock(row) == AGE:
-            if first_cal > plan_end:
-                out.append((name, f"starts at age {row.get('start_age')}, after the plan ends in {plan_end}"))
-            elif last_cal < thisyear:
-                out.append((name, f"ends at age {row.get('end_age')}, before the plan starts in {thisyear}"))
+            if not mask.any():
+                out.append((name, f"age range {row.get('start_age')}-{row.get('end_age')} never applies to the plan"))
             continue
         start, end = int(row["year"]), int(row["end"])
         last = _last_year(end, thisyear, N_n)
@@ -392,42 +396,97 @@ def profile(budget):
 # ---------------------------------------------------------------------------
 
 
+def _json_number(line, key, name, default=None, integer=False):
+    """A numeric field: a JSON number (not a boolean or a string); null or absent gives default."""
+    val = line.get(key)
+    if val is None:
+        return default
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError(f"Budget line {name!r}: {key} must be a number, got {val!r}.")
+    if integer:
+        if float(val) != int(val):
+            raise ValueError(f"Budget line {name!r}: {key} must be a whole year, got {val!r}.")
+        return int(val)
+    return float(val)
+
+
+def _json_flag(line, key, name, default):
+    """A flag: JSON true or false; absent or null gives default. Strings such as "false" are refused."""
+    val = line.get(key)
+    if val is None:
+        return default
+    if not isinstance(val, bool):
+        raise ValueError(f"Budget line {name!r}: {key} must be true or false, got {val!r}.")
+    return val
+
+
+def _json_text(line, key, name):
+    val = line.get(key)
+    if val is None:
+        return ""
+    if not isinstance(val, str):
+        raise ValueError(f"Budget line {name!r}: {key} must be text, got {val!r}.")
+    return val.strip()
+
+
 def _json_line_to_row(line, i):
-    """One JSON line object as a sheet row dict. Raises on unknown fields or missing amounts."""
+    """
+    One JSON line object as a sheet row dict.
+
+    Refused rather than read loosely: unknown fields, a `type` outside BUDGET_TYPES, a missing
+    amount, numbers given as text, flags other than true / false, fractional years. `type` is the
+    category Owl acts on (survivor default, the NJ deduction's lines); `kind` is free text kept
+    for reporting, and serves as the type when `type` is absent and `kind` is one of the types.
+    """
     if not isinstance(line, dict):
         raise ValueError(f"Budget line {i}: expected an object, got {type(line).__name__}.")
     unknown = set(line) - _JSON_LINE_FIELDS
     if unknown:
         raise ValueError(f"Budget line {i}: unknown fields {sorted(unknown)}. Allowed: {sorted(_JSON_LINE_FIELDS)}.")
     name = line.get("name", f"line {i}")
-    typ = line.get("type", line.get("kind"))
-    if typ is None or (isinstance(typ, str) and not typ.strip()):
-        raise ValueError(f"Budget line {name!r}: needs 'type' (or 'kind').")
-    if "amount" not in line:
-        raise ValueError(f"Budget line {name!r}: needs 'amount' (today's dollars, $k).")
-    clock = line.get("clock", CALENDAR)
-    if _is_blank(clock):
-        clock = CALENDAR
-    clock = str(clock).strip().lower()
-    year = line.get("year", line.get("start_year", 0))
-    end = line.get("end", line.get("end_year", 0))
-    if clock == AGE:
-        if line.get("start_age") is None or line.get("end_age") is None:
-            raise ValueError(f"Budget line {name!r}: clock 'age' needs start_age and end_age.")
+    if not isinstance(name, str):
+        raise ValueError(f"Budget line {i}: name must be text, got {name!r}.")
+    kind = _json_text(line, "kind", name)
+    typ = _json_text(line, "type", name).lower()
+    if not typ:
+        if kind.lower() not in BUDGET_TYPES:
+            raise ValueError(
+                f"Budget line {name!r}: needs 'type', one of {list(BUDGET_TYPES)} "
+                f"('kind' {kind!r} is free text and is not one of them)."
+            )
+        typ = kind.lower()
+    if typ not in BUDGET_TYPES:
+        raise ValueError(f"Budget line {name!r}: unknown type {typ!r}; use one of {list(BUDGET_TYPES)}.")
+    amount = _json_number(line, "amount", name)
+    if amount is None:
+        raise ValueError(f"Budget line {name!r}: needs 'amount' (annual, today's dollars).")
+    clock = _json_text(line, "clock", name).lower() or CALENDAR
+    if clock not in CLOCKS:
+        raise ValueError(f"Budget line {name!r}: unknown clock {clock!r}; use 'calendar' or 'age'.")
+    for key, alias in (("year", "start_year"), ("end", "end_year")):
+        if key in line and alias in line:
+            raise ValueError(f"Budget line {name!r}: give {key!r} or {alias!r}, not both.")
+    year = _json_number(line, "year" if "year" in line else "start_year", name, default=0, integer=True)
+    end = _json_number(line, "end" if "end" in line else "end_year", name, default=0, integer=True)
+    start_age = _json_number(line, "start_age", name, default=np.nan)
+    end_age = _json_number(line, "end_age", name, default=np.nan)
+    if clock == AGE and (np.isnan(start_age) or np.isnan(end_age)):
+        raise ValueError(f"Budget line {name!r}: clock 'age' needs start_age and end_age.")
     return {
-        "active": bool(line.get("active", True)),
-        "name": str(name),
-        "type": str(typ).strip().lower(),
-        "year": 0 if _is_blank(year) else int(year),
-        "end": 0 if _is_blank(end) else int(end),
-        "amount": float(line["amount"]),
-        "rate": float(line.get("rate", 0.0) or 0.0),
-        "survivor": np.nan if _is_blank(line.get("survivor")) else float(line["survivor"]),
-        "essential": bool(line.get("essential", False)),
+        "active": _json_flag(line, "active", name, True),
+        "name": name,
+        "type": typ,
+        "year": year,
+        "end": end,
+        "amount": amount,
+        "rate": _json_number(line, "rate", name, default=0.0),
+        "survivor": _json_number(line, "survivor", name, default=np.nan),
+        "essential": _json_flag(line, "essential", name, False),
         "clock": clock,
-        "start_age": np.nan if line.get("start_age") is None else float(line["start_age"]),
-        "end_age": np.nan if line.get("end_age") is None else float(line["end_age"]),
-        "index": "" if _is_blank(line.get("index")) else str(line["index"]).strip().lower(),
+        "start_age": start_age,
+        "end_age": end_age,
+        "index": _json_text(line, "index", name).lower(),
+        "kind": kind,
     }
 
 

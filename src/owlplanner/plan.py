@@ -695,6 +695,7 @@ class Plan:
         self._adjustedParameters = False
         self.hfpFileName = "None"
         self.budgetFileName = "None"
+        self.budgetFromFile = False  # Budget lines read from budget_file: not written to the HFP
         self.timeLists = {}
         self.houseLists = {}
         self.rawHFP = {}  # raw dict of DataFrames from the HFP xlsx (horizon-independent)
@@ -1483,19 +1484,25 @@ class Plan:
         if not has_lines:
             self.budget = None
             if strict:
+                hint = ""
+                if getattr(self, "budgetFileName", "None") not in ("None", "", None):
+                    hint = (
+                        f" budget_file '{self.budgetFileName}' is named in the case but was not read: the web "
+                        "interface does not read it (put the lines in the HFP Budget sheet there), and neither "
+                        "does a plan built without loading the HFP."
+                    )
                 raise ValueError(
                     "Spending profile 'budget' needs active lines in the HFP Budget sheet "
-                    "or optimization_parameters.budget_file."
+                    "or optimization_parameters.budget_file." + hint
                 )
             return
         thisyear = date.today().year
         year_n = np.asarray(self.year_n, dtype=float)
         ages_in = year_n[np.newaxis, :] - np.asarray(self.yobs, dtype=float)[:, np.newaxis]
-        for name, why in budgeting.lines_left_out(df, self.N_n, thisyear, ages_in=ages_in, inames=self.inames):
+        who = {"ages_in": ages_in, "inames": self.inames, "i_d": self.i_d}
+        for name, why in budgeting.lines_left_out(df, self.N_n, thisyear, n_d=self.n_d, **who):
             self.mylog.print(f"Budget line {name!r} {why}: it adds nothing to the plan.", tag="WARNING")
-        self.budget = budgeting.evaluate(
-            df, self.N_n, self.n_d, 100 * self.chi, thisyear, ages_in=ages_in, inames=self.inames
-        )
+        self.budget = budgeting.evaluate(df, self.N_n, self.n_d, 100 * self.chi, thisyear, **who)
         self.xi_n = budgeting.profile(self.budget)
         self._adjustedParameters = False
 
@@ -2128,6 +2135,7 @@ class Plan:
             raise Exception(f"Unsuccessful read of Household Financial Profile: {e}") from e
         if houseTables:
             self.houseLists = houseLists
+            self.budgetFromFile = False  # the Budget table is now the workbook's
             self.rawHFP = rawHFP
         else:
             # Keep the household sheets already held; replace the per-person ones.
@@ -2424,6 +2432,11 @@ class Plan:
         # Budget sheet (lines of the "budget" spending profile); a blank survivor stays blank
         ws = wb.create_sheet("Budget")
         df = self.houseLists.get("Budget")
+        if getattr(self, "budgetFromFile", False):
+            # The lines came from budget_file and stay there: written here, they would win over the
+            # file on the next load (the sheet wins), and the file's later edits would be ignored.
+            self.mylog.vprint(f"Budget lines from {self.budgetFileName} are not written to the workbook.")
+            df = None
         if u.is_dataframe_empty(df):
             df = pd.DataFrame(columns=hfp_io._budgetItems)
         df = df.astype(object).where(pd.notna(df), None)

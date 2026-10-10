@@ -276,6 +276,9 @@ class TestMatchesRecordedOptimum:
     standard deduction. Only their ``basis``, ``bequest`` and per-year flows changed; for them
     the fixture pins the corrected tax model rather than the binary-constrained optimum.
     Cases in no-income-tax states were unaffected and keep their original MIP records.
+    Fork, 2026-10-10: jack+jill, jordan+taylor and morgan (smile profiles) were re-recorded
+    from this LP when the smile's period stopped following the plan's length; their MOSEK
+    entries were removed rather than left stale (no MOSEK here to re-record them).
     """
 
     @pytest.mark.toml

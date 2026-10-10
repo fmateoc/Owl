@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from owlplanner import budget
+from owlplanner import utils as u
 from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF
 
 THISYEAR = 2026
@@ -40,7 +41,7 @@ def _df(*lines):
 
 
 def _ages(younger0=60.0, older0=62.0, N_n=8):
-    # Row 0 is the younger spouse (born later): age at the plan's end is larger.
+    # Row 0 is the younger spouse (born later): their age is the smaller one in every year.
     younger = younger0 + np.arange(N_n)
     older = older0 + np.arange(N_n)
     return np.vstack([younger, older])
@@ -112,8 +113,52 @@ class TestAgeClock:
     def test_survivor_still_applies_to_age_lines(self):
         line = _line(clock="age", start_age=60, end_age=65, amount=1000.0, survivor=50.0, year=0, end=0)
         ages = _ages(younger0=60.0, N_n=6)
-        b = budget.evaluate(_df(line), 6, 3, 60, THISYEAR, ages_in=ages, inames=["A", "B"])
+        # B (the older, row 1) dies first; the younger survivor's ages keep the line in range.
+        b = budget.evaluate(_df(line), 6, 3, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=1)
         assert list(b.total_n) == [1000.0, 1000.0, 1000.0, 500.0, 500.0, 500.0]
+
+    def test_a_named_line_ends_with_its_person(self):
+        # B's care from 63, B (row 1, 62..) dies first: nothing after B's death, whatever the share.
+        line = _line(clock="age", start_age=63, end_age=120, amount=1000.0, survivor=100.0, index="b",
+                     year=0, end=0)
+        ages = _ages(younger0=60.0, older0=62.0, N_n=6)
+        b = budget.evaluate(_df(line), 6, 3, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=1)
+        assert list(b.total_n) == [0.0, 1000.0, 1000.0, 0.0, 0.0, 0.0]
+
+    def test_a_named_line_of_the_survivor_keeps_its_share(self):
+        line = _line(clock="age", start_age=63, end_age=120, amount=1000.0, survivor=50.0, index="b",
+                     year=0, end=0)
+        ages = _ages(younger0=60.0, older0=62.0, N_n=6)
+        b = budget.evaluate(_df(line), 6, 3, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=0)
+        assert list(b.total_n) == [0.0, 1000.0, 1000.0, 500.0, 500.0, 500.0]
+
+    def test_a_named_line_whose_person_dies_before_its_range_is_left_out(self):
+        line = _line(name="B care", clock="age", start_age=66, end_age=120, index="b", year=0, end=0)
+        ages = _ages(younger0=60.0, older0=62.0, N_n=8)  # B would be 66 in year 4; dies after year 2
+        b = budget.evaluate(_df(line), 8, 3, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=1)
+        assert np.all(b.total_n == 0)
+        left = budget.lines_left_out(_df(line), 8, THISYEAR, ages_in=ages, inames=["A", "B"], n_d=3, i_d=1)
+        assert left and left[0][0] == "B care"
+
+    def test_younger_follows_the_survivor_after_the_first_death(self):
+        # Younger (row 0, 60..) dies first; from year 2 the line reads the older survivor's 64, 65, ...
+        line = _line(clock="age", start_age=60, end_age=63, amount=1000.0, survivor=100.0, year=0, end=0)
+        ages = _ages(younger0=60.0, older0=62.0, N_n=6)
+        b = budget.evaluate(_df(line), 6, 2, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=0)
+        assert list(b.total_n) == [1000.0, 1000.0, 0.0, 0.0, 0.0, 0.0]
+
+    def test_older_resumes_when_the_survivor_reaches_its_range(self):
+        # Older (row 1, 62..) dies after year 0; the younger survivor (61, 62, ...) reaches 64 in year 4.
+        line = _line(clock="age", start_age=64, end_age=65, amount=1000.0, rate=10.0, survivor=100.0,
+                     index="older", year=0, end=0)
+        ages = _ages(younger0=60.0, older0=62.0, N_n=7)
+        b = budget.evaluate(_df(line), 7, 1, 60, THISYEAR, ages_in=ages, inames=["A", "B"], i_d=1)
+        assert list(b.total_n) == pytest.approx([0.0, 0.0, 0.0, 0.0, 1000.0, 1100.0, 0.0])
+
+    def test_age_clock_after_a_death_needs_who_died(self):
+        line = _line(clock="age", start_age=60, end_age=65, year=0, end=0)
+        with pytest.raises(ValueError, match="i_d"):
+            budget.evaluate(_df(line), 6, 3, 60, THISYEAR, ages_in=_ages(N_n=6), inames=["A", "B"])
 
     def test_calendar_lines_ignore_the_age_clock(self):
         line = _line(amount=1000.0, clock="", start_age=1, end_age=2)
@@ -161,6 +206,59 @@ class TestJson:
             {"schema_version": 1, "lines": [{"name": "r", "kind": "rent", "amount": 1.0}]}
         )
         assert df.loc[0, "type"] == "rent"
+
+    def test_kind_is_kept_beside_the_type(self):
+        df = budget.df_from_json_obj(
+            {"schema_version": 1, "lines": [{"name": "dentist", "type": "other", "kind": "Health", "amount": 1.0}]}
+        )
+        assert (df.loc[0, "type"], df.loc[0, "kind"]) == ("other", "Health")
+
+    def test_kind_kept_through_the_sheet_conditioning(self):
+        df = budget.df_from_json_obj(
+            {"schema_version": 1, "lines": [{"name": "d", "type": "other", "kind": "health", "amount": 1.0}]}
+        )
+        assert conditionDebtsAndFixedAssetsDF(df, "Budget").loc[0, "kind"] == "health"
+
+    def test_unknown_type_refused(self):
+        with pytest.raises(ValueError, match="unknown type 'health'"):
+            budget.df_from_json_obj({"schema_version": 1, "lines": [{"name": "d", "type": "health", "amount": 1.0}]})
+
+    def test_free_text_kind_without_a_type_refused(self):
+        with pytest.raises(ValueError, match="needs 'type'"):
+            budget.df_from_json_obj({"schema_version": 1, "lines": [{"name": "d", "kind": "health", "amount": 1.0}]})
+
+    @pytest.mark.parametrize(
+        "field, value, match",
+        [
+            ("essential", "false", "true or false"),
+            ("essential", 0, "true or false"),
+            ("active", "no", "true or false"),
+            ("amount", "50", "must be a number"),
+            ("amount", True, "must be a number"),
+            ("year", 2030.5, "whole year"),
+            ("rate", "2%", "must be a number"),
+            ("survivor", "60", "must be a number"),
+            ("clock", "lunar", "unknown clock"),
+            ("index", 1, "must be text"),
+        ],
+    )
+    def test_loosely_typed_values_refused(self, field, value, match):
+        line = {"name": "x", "type": "core", "amount": 1.0, field: value}
+        with pytest.raises(ValueError, match=match):
+            budget.df_from_json_obj({"schema_version": 1, "lines": [line]})
+
+    def test_whole_float_year_accepted(self):
+        df = budget.df_from_json_obj(
+            {"schema_version": 1, "lines": [{"name": "x", "type": "core", "amount": 1.0, "year": 2030.0}]}
+        )
+        assert df.loc[0, "year"] == 2030
+
+    def test_year_and_its_alias_together_refused(self):
+        with pytest.raises(ValueError, match="not both"):
+            budget.df_from_json_obj(
+                {"schema_version": 1,
+                 "lines": [{"name": "x", "type": "core", "amount": 1.0, "year": 2030, "start_year": 2031}]}
+            )
 
     def test_unknown_schema_version_refused(self):
         with pytest.raises(ValueError, match="schema_version"):
@@ -261,6 +359,7 @@ def test_budget_sheet_wins_over_the_json_file(tmp_path: Path):
     diconf["optimization_parameters"]["budget_file"] = str(path)
     p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()])
     p.houseLists["Budget"] = _df(_line(name="from-sheet", type="core", amount=99.0))
+    p.budgetFromFile = False  # as readHFP() leaves it after reading a workbook
     # Re-apply: the sheet already has lines, so the file must not overwrite them.
     _load_budget_file(p, diconf, str(tmp_path))
     assert list(p.houseLists["Budget"]["name"]) == ["from-sheet"]
@@ -286,3 +385,131 @@ def test_age_lines_survive_clone_with_a_longer_horizon(tmp_path: Path):
     # A longer life cannot drop age-tied lines that were already active.
     assert c.budget.names == p.budget.names
     assert np.sum(c.budget.by_type("travel") > 0) >= n_short
+
+
+def test_plan_stops_a_persons_age_line_at_their_death(tmp_path: Path):
+    """B (older) dies at 75; B's care from 80 adds nothing, even with survivor 100."""
+    from owlplanner.config import config_to_plan, default_config
+
+    path = tmp_path / "profile.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "lines": [
+                    {"name": "core", "type": "core", "amount": 50.0},
+                    {"name": "B care", "type": "care", "clock": "age", "start_age": 80, "end_age": 120,
+                     "index": "B", "amount": 40.0, "survivor": 100},
+                    {"name": "A care", "type": "care", "clock": "age", "start_age": 80, "end_age": 120,
+                     "index": "A", "amount": 40.0, "survivor": 100},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    diconf = default_config(ni=2)
+    diconf["case_name"] = "death"
+    diconf["basic_info"]["names"] = ["A", "B"]
+    diconf["basic_info"]["date_of_birth"] = ["1964-01-01", "1962-01-01"]
+    diconf["basic_info"]["life_expectancy"] = [95, 75]
+    diconf["optimization_parameters"]["spending_profile"] = "budget"
+    diconf["optimization_parameters"]["budget_file"] = str(path)
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()])
+    p._evaluateBudget()
+    assert p.inames[p.i_d] == "B"
+    assert p.budget.names == ("core", "A care")
+    a_care = p.budget.amounts_ln[1]
+    first = int(np.argmax(a_care > 0))
+    assert p.year_n[first] == 1964 + 80
+    assert a_care[first] == pytest.approx(40.0)
+
+
+def _plan_from_budget_file(tmp_path: Path, **op):
+    from owlplanner.config import default_config
+
+    path = _budget_file(tmp_path)
+    diconf = default_config(ni=2)
+    diconf["case_name"] = "json-file"
+    diconf["basic_info"]["names"] = ["A", "B"]
+    diconf["basic_info"]["date_of_birth"] = ["1964-01-01", "1962-01-01"]
+    diconf["basic_info"]["life_expectancy"] = [90, 92]
+    diconf["optimization_parameters"]["spending_profile"] = "budget"
+    diconf["optimization_parameters"]["budget_file"] = path.name
+    diconf["optimization_parameters"].update(op)
+    return diconf, path
+
+
+def test_save_hfp_leaves_file_lines_in_the_file(tmp_path: Path, monkeypatch):
+    """Written into the workbook, the file's lines would shadow the file on the next load."""
+    import openpyxl
+    from owlplanner.config import config_to_plan
+
+    diconf, path = _plan_from_budget_file(tmp_path)
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()])
+    assert p.budgetFromFile
+    monkeypatch.chdir(tmp_path)
+    p.saveHFP(basename="json-file")
+    wb = openpyxl.load_workbook(tmp_path / "HFP_json-file.xlsx")
+    assert wb["Budget"].max_row == 1  # header only
+
+    # The file changes; the case now names the workbook too. The file's new lines are read.
+    obj = json.loads(path.read_text(encoding="utf-8"))
+    obj["lines"][0]["amount"] = 70.0
+    path.write_text(json.dumps(obj), encoding="utf-8")
+    diconf["household_financial_profile"] = {"HFP_file_name": "HFP_json-file.xlsx"}
+    log = io.StringIO()
+    p2 = config_to_plan(diconf, dirname=str(tmp_path), verbose=True, logstreams=[log, log])
+    assert "JSON file is ignored" not in log.getvalue()
+    p2._evaluateBudget()
+    assert p2.budget.amounts_ln[0][0] == pytest.approx(70.0)
+
+
+def test_build_hfp_dataframes_leaves_file_lines_out(tmp_path: Path):
+    from owlplanner.config import config_to_plan
+    from owlplanner.hfp_io import build_hfp_dataframes
+
+    diconf, _ = _plan_from_budget_file(tmp_path)
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()])
+    _, house = build_hfp_dataframes(p)
+    assert u.is_dataframe_empty(house["Budget"])
+    assert len(p.houseLists["Budget"]) == 2  # the plan keeps them
+
+
+def test_clone_keeps_the_file_origin(tmp_path: Path):
+    from owlplanner import clone
+    from owlplanner.config import config_to_plan
+
+    diconf, _ = _plan_from_budget_file(tmp_path)
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()])
+    assert clone(p, verbose=False, logstreams=[io.StringIO()]).budgetFromFile
+    assert clone(p, expectancy=[95, 97], verbose=False, logstreams=[io.StringIO()]).budgetFromFile
+
+
+def test_reapplying_the_config_keeps_the_file_lines_without_a_warning(tmp_path: Path):
+    from owlplanner.config import apply_config_to_plan, config_to_plan
+
+    diconf, _ = _plan_from_budget_file(tmp_path)
+    log = io.StringIO()
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=True, logstreams=[log, log])
+    apply_config_to_plan(p, diconf)
+    assert "JSON file is ignored" not in log.getvalue()
+    assert list(p.houseLists["Budget"]["name"]) == ["core", "travel"]
+
+
+def test_interface_round_trip_keeps_budget_file(tmp_path: Path):
+    from owlplanner.config import config_to_ui, ui_to_config
+
+    diconf, path = _plan_from_budget_file(tmp_path)
+    back = ui_to_config(config_to_ui(diconf))
+    assert back["optimization_parameters"]["budget_file"] == path.name
+
+
+def test_unread_budget_file_is_named_in_the_error(tmp_path: Path):
+    """The interface builds the plan without the HFP, so the file is named but not read."""
+    from owlplanner.config import config_to_plan
+
+    diconf, path = _plan_from_budget_file(tmp_path)
+    p = config_to_plan(diconf, dirname=str(tmp_path), verbose=False, logstreams=[io.StringIO()], loadHFP=False)
+    assert not p.budgetFromFile
+    with pytest.raises(ValueError, match="web interface does not read it"):
+        p._evaluateBudget()

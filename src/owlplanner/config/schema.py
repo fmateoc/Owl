@@ -262,7 +262,10 @@ class OptimizationParameters(BaseModel):
     )
     budget_file: Optional[str] = Field(
         default=None,
-        description="JSON budget profile (schema_version 1). Used when the HFP Budget sheet is absent or empty.",
+        description=(
+            "JSON budget profile (schema_version 1, amounts in today's dollars). Used when the HFP Budget "
+            "sheet is absent or empty; not read by the web interface."
+        ),
     )
     surviving_spouse_spending_percent: int = Field(default=60, description="Survivor %")
     objective: str = Field(default="maxSpending", description="maxSpending or maxBequest")

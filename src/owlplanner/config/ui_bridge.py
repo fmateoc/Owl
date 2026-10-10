@@ -207,6 +207,9 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
         dic["smileIncrease"] = 12
         dic["smileDelay"] = 0
 
+    # Fork: kept so that a case saved from the interface keeps it. The interface does not read the
+    # file (it has no access to the case's directory); budget lines there come from the HFP sheet.
+    dic["budgetFile"] = op.get("budget_file") or ""
     dic["survivor"] = int(op.get("surviving_spouse_spending_percent", 60))
     dic["divRate"] = float(rs.get("dividend_rate", DEFAULT_DIVIDEND_RATE))
     dic["heirsTx"] = float(rs.get("heirs_rate_on_tax_deferred_estate", DEFAULT_HEIRS_RATE))
@@ -701,6 +704,10 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
             first["locality"] = uidic["stateMoveLocality"]
         # Fork: moves after the first come from the case file and are kept as they are.
         diconf["basic_info"]["moves"] = [first] + [dict(m) for m in uidic.get("stateMovesMore") or []]
+
+    if uidic.get("budgetFile"):
+        # Fork: carried through so that saving from the interface keeps it (the interface does not read it).
+        diconf["optimization_parameters"]["budget_file"] = uidic["budgetFile"]
 
     return diconf
 

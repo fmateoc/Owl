@@ -33,8 +33,8 @@ git remote add upstream https://github.com/mdlacasse/Owl.git; git fetch upstream
 uv pip install --python .venv/bin/python pypdf   # only for reading tax PDFs
 ```
 
-- Tests: `.venv/bin/python -m pytest -n 4 -q -p no:cacheprovider`. About 6-7 min on 4 cores. 2956 passed / 1 skipped on 2026-10-09 (`5a4a12f`).
-- Lint: `.venv/bin/python -m flake8 src tests ui --max-line-length=120`. Upstream's own long lines (`localsearch.py:31`, `config/schema.py:391` on `0ca30f4`) are theirs; leave them.
+- Tests: `.venv/bin/python -m pytest -n 4 -q -p no:cacheprovider`. About 7 min on 4 cores. 3022 passed / 1 skipped on 2026-10-10 (Track B review fixes). Run the full suite before calling a commit green: partial runs missed the AMO reference fixture (`tests/data/amo_mip_reference.json`) when the smile changed; re-record a moved case under the frozen test date (run inside pytest so `tests/conftest.py` applies).
+- Lint: `.venv/bin/python -m flake8 src tests ui --max-line-length=120`. Upstream's own long lines (`localsearch.py:31`, `config/schema.py:399` on `7f33d0c`) are theirs; leave them.
 - To keep editing while the suite runs, run it in a `git worktree` with `.venv` symlinked in.
 
 ## Conventions

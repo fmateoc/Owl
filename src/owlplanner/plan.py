@@ -694,6 +694,7 @@ class Plan:
         # Initialize guardrails to ensure proper configuration.
         self._adjustedParameters = False
         self.hfpFileName = "None"
+        self.budgetFileName = "None"
         self.timeLists = {}
         self.houseLists = {}
         self.rawHFP = {}  # raw dict of DataFrames from the HFP xlsx (horizon-independent)
@@ -1482,12 +1483,19 @@ class Plan:
         if not has_lines:
             self.budget = None
             if strict:
-                raise ValueError("Spending profile 'budget' needs active lines in the HFP Budget sheet.")
+                raise ValueError(
+                    "Spending profile 'budget' needs active lines in the HFP Budget sheet "
+                    "or optimization_parameters.budget_file."
+                )
             return
         thisyear = date.today().year
-        for name, why in budgeting.lines_left_out(df, self.N_n, thisyear):
+        year_n = np.asarray(self.year_n, dtype=float)
+        ages_in = year_n[np.newaxis, :] - np.asarray(self.yobs, dtype=float)[:, np.newaxis]
+        for name, why in budgeting.lines_left_out(df, self.N_n, thisyear, ages_in=ages_in, inames=self.inames):
             self.mylog.print(f"Budget line {name!r} {why}: it adds nothing to the plan.", tag="WARNING")
-        self.budget = budgeting.evaluate(df, self.N_n, self.n_d, 100 * self.chi, thisyear)
+        self.budget = budgeting.evaluate(
+            df, self.N_n, self.n_d, 100 * self.chi, thisyear, ages_in=ages_in, inames=self.inames
+        )
         self.xi_n = budgeting.profile(self.budget)
         self._adjustedParameters = False
 

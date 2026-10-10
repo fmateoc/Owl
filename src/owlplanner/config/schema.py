@@ -258,7 +258,11 @@ class OptimizationParameters(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     spending_profile: str = Field(
-        default="smile", description="flat, smile, or budget (built from the HFP Budget sheet)"
+        default="smile", description="flat, smile, or budget (built from the HFP Budget sheet or budget_file)"
+    )
+    budget_file: Optional[str] = Field(
+        default=None,
+        description="JSON budget profile (schema_version 1). Used when the HFP Budget sheet is absent or empty.",
     )
     surviving_spouse_spending_percent: int = Field(default=60, description="Survivor %")
     objective: str = Field(default="maxSpending", description="maxSpending or maxBequest")

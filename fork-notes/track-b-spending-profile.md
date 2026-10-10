@@ -126,9 +126,9 @@ encoding** of the same spec for Excel/MCP. Not needed while lines carry survivor
 | # | Piece | Tests |
 |---|---|---|
 | 0 | Age-anchored smile in `spending.py` | **Done 2026-10-10.** Fixed `SMILE_SPAN=30`; equivalence at `N_n=31`; longer horizon keeps early years; `span=` override. `Case_jack+jill` rebaselined (103_499); `Case_joe` unchanged (`N_n=31`) |
-| 1 | Age clock on `Budget` lines (`clock`, `start_age`, `end_age`, `index`) | Growth/bounds/survivor already covered; add age-clock cases, `index`, longer clone horizon |
-| 2 | JSON loader (`budget_file`) → `budget.evaluate()` | Schema version, unknown field refused, $k units, sheet preferred when both present, clone round trip |
-| 3 | Docs (`info/PARAMETERS.md`, `ui/Documentation.py`, `phase0-scenarios.md`) + optional UI read-only path | |
+| 1 | Age clock on `Budget` lines (`clock`, `start_age`, `end_age`, `index`) | **Done 2026-10-10.** Inclusive window, younger/older/name, growth from first active year, survivor, refusals for unknown clock/index and missing ages |
+| 2 | JSON loader (`budget_file`) → `budget.evaluate()` | **Done 2026-10-10.** `schema_version`, unknown fields refused, sheet wins, clone keeps age lines. One evaluator: JSON becomes the Budget sheet DataFrame |
+| 3 | Docs (`info/PARAMETERS.md`, `ui/Documentation.py`, `phase0-scenarios.md`) + optional UI read-only path | PARAMETERs + CHANGELOG done; UI docs mention age clock / budget_file lightly |
 
 Order 0 → 1 → 2 is strict; 3 can ride along. Suite green and flake8 after each.
 

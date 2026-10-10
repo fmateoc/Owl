@@ -290,9 +290,8 @@ EBRI 2024 31% spend more than they can afford ("3[1]%" in his paste was a broken
 Checked in code: upstream builds only `flat` and `smile` profiles; Owl charges no payroll tax
 (grep for FICA, OASDI, 6.2%, 1.45% found none), so a working-years budget needs a payroll-tax line.
 
-Next: Track B step 1 (age clocks on budget lines) and step 2 (JSON interchange); see
-`fork-notes/track-b-spending-profile.md`. Step 0 (age-anchored smile) is done 2026-10-10.
-Then Phase 3
+Next: Track B is done through step 2 (age-anchored smile, age clocks, `budget_file` JSON;
+`fork-notes/track-b-spending-profile.md`). Then Phase 3
 (itemized deductions: it decides cash vs mortgage; `debts.py` gives the interest per year as
 payment minus the change in balance) or Phase 5 (part-time work / SS earnings test) as the
 household needs them.
@@ -300,6 +299,11 @@ household needs them.
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-10, Track B steps 1-2: age clocks on Budget lines (`clock="age"`, `start_age`/`end_age`,
+`index`) and `optimization_parameters.budget_file` (JSON, `schema_version` 1; sheet wins; one
+evaluator). `tests/assets/test_budget_json_age.py` 24 tests; budget suite 84 passed; config
+round-trip 52 passed. flake8 only upstream's `schema.py:396`.
 
 2026-10-10, age-anchored smile (`spending.SMILE_SPAN = 30`, one cosine period from the smile's
 start; longer lives append the late-life rise): `tests/plan/test_spending.py` 10 tests;

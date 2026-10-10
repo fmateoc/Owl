@@ -707,6 +707,13 @@ where:
   keeps paying in full.
 - *essential* (optional; blank means no) marks a line paid at its amount whatever the spending level:
   a floor rather than a share.
+- *clock* (optional; blank means *calendar*) can be *age*: then *start_age* and *end_age* apply against
+  *index* (*younger* by default, *older*, or a person's name) and *year* / *end* are ignored. Use it for
+  lines tied to an age — travel while you are able, care from 80 — so a longer life still includes them.
+
+The same lines can arrive as a JSON file (`budget_file` in the case's optimization parameters,
+`schema_version` 1) instead of the workbook sheet. The sheet wins when both are present. Amounts in
+the file are today's dollars in thousands, like the sheet.
 
 The profile is the sum of the lines, divided by its first year, so the first year must have spending.
 With *maxBequest*, net spending is the budget's first-year total unless a net spending amount (other

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from owlplanner import mylogging as log
+from owlplanner import utils as u
 from owlplanner.rates import FROM, TO
 from owlplanner.rate_models.constants import (
     HISTORICAL_RANGE_METHODS,
@@ -58,6 +59,42 @@ def _normalize_hfp_file_name(name: str) -> str:
     if name == "" or name.lower() == "none" or name in _HFP_PLACEHOLDERS:
         return "None"
     return name
+
+
+def _load_budget_file(plan: "Plan", known: dict, dirname: str = "", load: bool = True) -> None:
+    """
+    Load optimization_parameters.budget_file into houseLists['Budget'] when the sheet has no lines.
+
+    The sheet wins when both are present. The JSON is only another source for the same table, so
+    evaluate() stays the single path and clone() copies the DataFrame with the other house tables.
+    With load=False (clone's rebuild), the path is recorded and the caller copies the tables.
+    """
+    from owlplanner import budget as budgeting
+
+    path = (known.get("optimization_parameters") or {}).get("budget_file") or ""
+    if not path or str(path).strip().lower() in ("none", ""):
+        return
+    path = str(path).strip()
+    plan.budgetFileName = path
+    if not load:
+        return
+    if os.path.exists(path):
+        full = path
+    elif dirname and os.path.exists(os.path.join(dirname, path)):
+        full = os.path.join(dirname, path)
+    else:
+        raise FileNotFoundError(f"Budget file '{path}' not found.")
+    if getattr(plan, "houseLists", None):
+        df = plan.houseLists.get("Budget")
+        if df is not None and not u.is_dataframe_empty(df) and any(u.is_row_active(r) for _, r in df.iterrows()):
+            plan.mylog.print(
+                "Both a Budget sheet and budget_file: the JSON file is ignored.", tag="WARNING"
+            )
+            return
+    if getattr(plan, "houseLists", None) is None:
+        plan.houseLists = {}
+    plan.houseLists["Budget"] = budgeting.load_json(full)
+    plan.mylog.vprint(f"Read budget lines from {path}.")
 
 
 def _apply_assets_to_plan(plan: "Plan", known: dict, icount: int) -> None:
@@ -360,6 +397,8 @@ def config_to_plan(
             p.hfpFileName = time_lists_file
             mylog.vprint(f"Ignoring HFP file {time_lists_file}.")
 
+    _load_budget_file(p, known, dirname, load=loadHFP)
+
     _apply_fixed_income_to_plan(p, known, icount)
     _apply_rates_to_plan(p, known)
     _apply_asset_allocation_to_plan(p, known)
@@ -394,6 +433,7 @@ def apply_config_to_plan(plan: "Plan", diconf: dict) -> None:
     _apply_fixed_income_to_plan(plan, known, icount)
     _apply_rates_to_plan(plan, known)
     _apply_asset_allocation_to_plan(plan, known)
+    _load_budget_file(plan, known, "")
     _apply_optimization_to_plan(plan, known)
     _apply_solver_options_to_plan(plan, known)
     _apply_aca_to_plan(plan, known)
@@ -536,6 +576,9 @@ def plan_to_config(myplan: "Plan") -> dict:
         diconf["optimization_parameters"]["smile_dip"] = int(myplan.smileDip)
         diconf["optimization_parameters"]["smile_increase"] = int(myplan.smileIncrease)
         diconf["optimization_parameters"]["smile_delay"] = int(myplan.smileDelay)
+    budget_file = getattr(myplan, "budgetFileName", None)
+    if budget_file and budget_file != "None":
+        diconf["optimization_parameters"]["budget_file"] = budget_file
 
     diconf["solver_options"] = dict(myplan.solverOptions)
     diconf["results"] = {

@@ -1,5 +1,17 @@
 ### Unreleased
 
+#### New: budget lines can follow an age clock; a JSON budget file
+
+A Budget line's `clock` is `calendar` (default; `year` / `end`) or `age`: `start_age` / `end_age`
+against `index` (`younger` by default, `older`, or a person's name). Age-tied lines — travel
+"while we are able", care "from 80" — stay with the age that causes them, so a longer life still
+includes them. Growth counts from the first year the line pays.
+
+`optimization_parameters.budget_file` points at a JSON budget profile (`schema_version` 1, the
+same lines as the sheet, amounts in today's $k). It feeds the Budget sheet's DataFrame, so one
+evaluator serves both; the workbook sheet wins when both are present. Unknown fields and an
+unknown schema_version are refusals. Owl-budget and MCP can hand lines over without writing Excel.
+
 #### Changed: the smile profile is age-anchored
 
 The smile's cosine used to stretch one period over the plan's length (`span = N_n - 1 - delay`), so

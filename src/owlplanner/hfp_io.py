@@ -72,7 +72,10 @@ _debtItems = [
 
 # Optional house-table columns: a workbook written before they existed still loads (read as blank).
 # property: the residence or real estate whose sale pays off the loan (debts.resolve_payoff_years).
-_optionalHouseItems = {"Debts": ["property"], "Budget": ["survivor", "essential"]}
+_optionalHouseItems = {
+    "Debts": ["property"],
+    "Budget": ["survivor", "essential", "clock", "start_age", "end_age", "index"],
+}
 
 
 _debtTypes = [
@@ -114,6 +117,10 @@ _budgetItems = [
     "rate",
     "survivor",
     "essential",
+    "clock",
+    "start_age",
+    "end_age",
+    "index",
 ]
 
 
@@ -571,7 +578,8 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
     elif tableType == "Budget":
         int_cols = ["year", "end"]
         float_cols = ["amount", "rate"]
-        blank_cols = ["survivor"]
+        blank_cols = ["survivor", "start_age", "end_age"]
+        string_cols.extend(["clock", "index"])
         flag_cols = ["essential"]
     else:  # Fixed Assets
         int_cols = ["year", "yod"]

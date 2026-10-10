@@ -4,6 +4,11 @@ Spending profile generation utilities.
 This module implements spending profile time series: flat and smile (retirement
 spending) profiles, with survivor fraction and normalization.
 
+The smile is age-anchored: one cosine period covers a fixed number of years
+(``SMILE_SPAN``) from the start of the smile (plan start plus ``delay``), not the
+length of the plan. A longer life therefore appends the late-life rise instead of
+stretching the go-go years and moving the dip later.
+
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
 This program is free software: you can redistribute it and/or modify
@@ -20,10 +25,17 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+######################################################################
 import numpy as np
 
+# One cosine period of the smile, in years, measured from the start of the smile.
+# Independent of the plan's length: at N_n = SMILE_SPAN + 1 and delay = 0 the curve
+# is exactly the old plan-stretched one (span = N_n - 1); on a longer horizon the
+# early years are unchanged and the extra years take the late-life rise.
+SMILE_SPAN = 30
 
-def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay=0):
+
+def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay=0, span=None):
     """
     Generate spending profile time series.
 
@@ -43,9 +55,12 @@ def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay
     dip : float
         Percent dip for smile profile (cosine amplitude)
     increase : float
-        Percent linear increase for smile profile
+        Percent linear increase for smile profile (over one ``span``)
     delay : int
-        Years to delay before smile curve starts
+        Years to delay before smile curve starts (plan start, not age)
+    span : float, optional
+        Length of one cosine period in years. Default ``SMILE_SPAN``. Pass
+        ``N_n - 1 - delay`` to recover the old plan-stretched curve.
 
     Returns
     -------
@@ -57,12 +72,18 @@ def gen_spending_profile(profile, fraction, n_d, N_n, dip=15, increase=12, delay
         if n_d < N_n:
             xi[n_d:] *= fraction
     elif profile == "smile":
-        span = N_n - 1 - delay
-        x = np.linspace(0, span, N_n - delay)
+        S = float(SMILE_SPAN if span is None else span)
+        if S <= 0:
+            raise ValueError(f"Smile span {S} must be positive.")
         a = dip / 100
         b = increase / 100
-        xi[delay:] = xi[delay:] + a * np.cos((2 * np.pi / span) * x) + (b / (N_n - 1)) * x
-        xi[:delay] = xi[delay]
+        # Years since the smile starts. Before ``delay`` the profile is held at the
+        # smile's opening value (the go-go level).
+        t = np.maximum(np.arange(N_n, dtype=float) - delay, 0.0)
+        # One cosine period over [0, S]; after that freeze at the period's end
+        # (cos = +1) and keep the linear rise, which is the late-life part.
+        cos_term = np.where(t <= S, np.cos((2 * np.pi / S) * t), 1.0)
+        xi = 1.0 + a * cos_term + (b / S) * t
         neutralSum = N_n
         if n_d < N_n:
             neutralSum -= (1 - fraction) * (N_n - n_d)

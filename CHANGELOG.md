@@ -1,5 +1,16 @@
 ### Unreleased
 
+#### Changed: the smile profile is age-anchored
+
+The smile's cosine used to stretch one period over the plan's length (`span = N_n - 1 - delay`), so
+a longer life widened the go-go years and moved the slow-go dip later. It now covers a fixed
+`SMILE_SPAN` of 30 years from the start of the smile (plan start plus `smile_delay`); extra years
+take the late-life rise instead of stretching the curve. At `N_n = 31` and `smile_delay = 0` the
+curve is exactly the old one (`span` overrides the span and recovers the old curve when it equals
+`N_n - 1`). The dip sits at `SMILE_SPAN/2` years after the smile starts on any horizon. Flat and
+`"budget"` profiles are unchanged. `Case_jack+jill`'s expected basis moved with the shape (33-year
+horizon); `Case_joe` (31 years) did not.
+
 #### New: essential budget lines (a spending floor)
 
 A *Budget* line can be marked `essential` (optional column; blank means no). Essential lines are paid

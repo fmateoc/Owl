@@ -308,7 +308,7 @@ Parameters controlling the optimization objective and spending profile.
 ### :orange[Conditional parameters for spending_profile = "smile"]
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `smile_dip` | integer | Percentage to decrease spending during the "slow-go" years (0-100). Default is `15` |
+| `smile_dip` | integer | Percentage to decrease spending during the "slow-go" years (0-100). Default is `15`. The smile is age-anchored: one cosine period covers a fixed 30 years from the start of the smile (plan start plus `smile_delay`), so a longer plan appends the late-life rise instead of stretching the dip later |
 | `smile_increase` | integer | Percentage to increase (or decrease if negative) spending over the time span (-100 to 100). Default is `12` |
 | `smile_delay` | integer | Number of years from the start before spending begins to decrease (0 to plan duration - 2). Default is `0` |
 

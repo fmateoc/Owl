@@ -125,7 +125,7 @@ encoding** of the same spec for Excel/MCP. Not needed while lines carry survivor
 
 | # | Piece | Tests |
 |---|---|---|
-| 0 | Age-anchored smile in `spending.py` | Fixed horizon ≡ old smile (tight tolerance); longer horizon leaves early years unchanged and keeps the dip at the same age |
+| 0 | Age-anchored smile in `spending.py` | **Done 2026-10-10.** Fixed `SMILE_SPAN=30`; equivalence at `N_n=31`; longer horizon keeps early years; `span=` override. `Case_jack+jill` rebaselined (103_499); `Case_joe` unchanged (`N_n=31`) |
 | 1 | Age clock on `Budget` lines (`clock`, `start_age`, `end_age`, `index`) | Growth/bounds/survivor already covered; add age-clock cases, `index`, longer clone horizon |
 | 2 | JSON loader (`budget_file`) → `budget.evaluate()` | Schema version, unknown field refused, $k units, sheet preferred when both present, clone round trip |
 | 3 | Docs (`info/PARAMETERS.md`, `ui/Documentation.py`, `phase0-scenarios.md`) + optional UI read-only path | |

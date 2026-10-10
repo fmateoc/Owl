@@ -290,10 +290,9 @@ EBRI 2024 31% spend more than they can afford ("3[1]%" in his paste was a broken
 Checked in code: upstream builds only `flat` and `smile` profiles; Owl charges no payroll tax
 (grep for FICA, OASDI, 6.2%, 1.45% found none), so a working-years budget needs a payroll-tax line.
 
-Next: the user posts `issue-175-reply-3.md` (conceptual version, 2026-10-09); then Track B
-remainder (`fork-notes/track-b-spending-profile.md`, rewritten 2026-10-09 against the shipped
-budget code: age-anchored smile, age clocks on budget lines, JSON interchange — the first draft
-of that file was written before Phase 2b and is superseded). Then Phase 3
+Next: Track B step 1 (age clocks on budget lines) and step 2 (JSON interchange); see
+`fork-notes/track-b-spending-profile.md`. Step 0 (age-anchored smile) is done 2026-10-10.
+Then Phase 3
 (itemized deductions: it decides cash vs mortgage; `debts.py` gives the interest per year as
 payment minus the change in balance) or Phase 5 (part-time work / SS earnings test) as the
 household needs them.
@@ -301,6 +300,12 @@ household needs them.
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
 ## Test status
+
+2026-10-10, age-anchored smile (`spending.SMILE_SPAN = 30`, one cosine period from the smile's
+start; longer lives append the late-life rise): `tests/plan/test_spending.py` 10 tests;
+`Case_jack+jill` expected basis 102_535 → 103_499 (33-year horizon no longer stretches the
+go-go years); `Case_joe` unchanged (`N_n = 31 = SMILE_SPAN + 1`, exact match to the old curve).
+toml cases + spending units + regret sweep: 130 passed.
 
 2026-10-09, after merging upstream `dev` `d6970b2e` (`withSeniorBonus`): senior-bonus tests 7/7, budget + local-search 74/74; full suite not re-run this session. flake8 only upstream's `localsearch.py:31`.
 

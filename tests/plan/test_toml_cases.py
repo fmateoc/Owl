@@ -121,13 +121,16 @@ def getHFP(exdir, case, check_exists=True):
 # reinvested dividends and interest and putting the unrealized gain in the equity share.
 # kim+sam-spending returned to 186_583 under HiGHS when residualTol became a per-year bar: at
 # $50/yr it converges where it did before the exit test, while MOSEK still settles at 186_519.
+# jack+jill 102_535 -> 103_499 when the smile became age-anchored (fixed 30-year span instead of
+# one period over the plan's length): its 33-year horizon no longer stretches the go-go years.
+# joe (N_n = 31 = SMILE_SPAN + 1) is unchanged by that.
 EXPECTED_OBJECTIVE_VALUES = {
     "Case_john+sally": {
         "net_spending_basis": 145_000,
         "bequest": 16_803,
     },
     "Case_jack+jill": {
-        "net_spending_basis": 102_535,
+        "net_spending_basis": 103_499,
         "bequest": 400_000,
     },
     "Case_joe": {

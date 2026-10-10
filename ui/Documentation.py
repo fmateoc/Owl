@@ -1472,7 +1472,8 @@ The **type of profile** can be *flat* (constant real spending over time), *smile
 lifestyle: a dip in the “slow-go” years, then an increase or decrease over the plan), or *budget*
 (built from the lines of the *Budget* sheet of the Household Financial Profile: see *Debts and Fixed
 Assets*). For *smile*, you can set the **smile delay** (years before the dip starts), **smile dip** (%),
-and **smile increase** (%).
+and **smile increase** (%). The smile covers a fixed 30-year span from the start of the smile, not the
+length of the plan: a longer life adds quiet years at the end rather than stretching the dip later.
 **Profile slack** controls how far spending can deviate from the profile shape. Spending stays
 within ±slack% of the profile (bilateral bound); set to 0 to pin spending exactly to the profile.
 **Time preference** (0–10 %/year) applies an exponentially decaying weight to future spending

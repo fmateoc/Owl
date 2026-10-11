@@ -164,3 +164,18 @@ def test_optimized_medicare_never_bounds_the_premium_from_below():
     # Against the floor the accepted LP used (NJMF_n, the previous iterate's line 29).
     assert np.all(q.st_med_n <= np.maximum(0.0, paid - q.NJMF_n) + 2.0)
     assert (q.st_med_n > 1.0).any()
+
+
+def test_line_31_lag_counts_in_the_residuals():
+    """NJMF_n / _nj_medl_n are loop parameters: their moves count toward convergence, and the
+    fixed-point residual reports the claim against the plan's own line 29."""
+    p = _plan(medical=6000.0)
+    p.solve("maxBequest", options={"noRothConversions": "None"})
+    assert p.caseStatus == "solved"
+    res = p._fixedPointResidualByYear(True)
+    assert "state medical" in res
+    assert np.max(np.abs(res["state medical"])) < 1.0
+    sc = p._snapshot_sc()
+    sc["NJMF_n"] = sc["NJMF_n"] + 1000.0
+    moves = p._itemized_sc_moves(sc, None, p.gamma_n[: p.N_n])
+    assert sum(float(m) for m in moves) > 0

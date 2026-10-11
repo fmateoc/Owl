@@ -27,7 +27,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import toml
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date
 from functools import lru_cache
 from itertools import pairwise
@@ -53,24 +53,18 @@ class StateItemizedParams:
     Attributes
     ----------
     allowed_n      -- shape (N_n,) bool, whether the state lets a filer itemize
-    income_taxes_n -- shape (N_n,) bool, whether state and local income taxes stay in the
-                      itemized total (NY subtracts them: Schedule A under the IRC as before TCJA)
-    salt_cap_n     -- shape (N_n,) cap on the real-estate-tax side of the SALT total (0 = no cap;
-                      NY does not cap real estate taxes)
-    mortgage_limit_n -- shape (N_n,) acquisition-debt limit for mortgage interest (NY: $1M)
     medical_floor_n  -- shape (N_n,) percent of federal AGI medical expenses must exceed (NY: 10)
     adj_agi_start_n  -- shape (N_n,) AGI where the itemized-deduction adjustment begins (0 = none)
     adj_width_n      -- shape (N_n,) AGI dollars over which the cut phases in
     adj_pct_n        -- shape (N_n,) percent of the deduction taken at the top of that width
 
-    The adjustment (NY line 46, Worksheet 3) is a bilinear term (rate x deduction), so the Plan
-    feeds it from the previous iterate's AGI. Amounts stay nominal: NY does not index them.
+    The itemized total follows Schedule A under the IRC as before TCJA (NY): property tax without
+    a cap, mortgage interest under the $1M limit, state and local income taxes left out. The
+    adjustment (NY line 46, Worksheet 3) is a bilinear term (rate x deduction), so the Plan feeds
+    it from the previous iterate's AGI. Amounts stay nominal: NY does not index them.
     """
 
     allowed_n: np.ndarray
-    income_taxes_n: np.ndarray
-    salt_cap_n: np.ndarray
-    mortgage_limit_n: np.ndarray
     medical_floor_n: np.ndarray
     adj_agi_start_n: np.ndarray
     adj_width_n: np.ndarray
@@ -81,9 +75,6 @@ class StateItemizedParams:
         z = np.zeros(N_n)
         return cls(
             allowed_n=np.zeros(N_n, dtype=bool),
-            income_taxes_n=np.zeros(N_n, dtype=bool),
-            salt_cap_n=z.copy(),
-            mortgage_limit_n=z.copy(),
             medical_floor_n=z.copy(),
             adj_agi_start_n=z.copy(),
             adj_width_n=z.copy(),
@@ -317,25 +308,27 @@ def _read_itemized(entry: dict, state: str, N_n: int) -> StateItemizedParams:
     out = StateItemizedParams.empty(N_n)
     if not spec or not spec.get("allowed", False):
         return out
-    for key in ("mortgage_limit", "medical_floor", "adjustment_agi_start", "adjustment_width", "adjustment_pct"):
+    keys = ("medical_floor", "adjustment_agi_start", "adjustment_width", "adjustment_pct")
+    for key in keys:
         if key not in spec:
             raise ValueError(f"State '{state}': 'itemized' is missing '{key}'.")
-    if spec.get("income_taxes", False):
-        raise ValueError(
-            f"State '{state}': itemized.income_taxes = true is not modeled (state income taxes "
-            "inside the itemized total couple the deduction to the tax that produces it)."
-        )
+    unknown = set(spec) - set(keys) - {"allowed"}
+    if unknown:
+        raise ValueError(f"State '{state}': unknown 'itemized' key(s) {sorted(unknown)}.")
     out = StateItemizedParams(
         allowed_n=np.full(N_n, True, dtype=bool),
-        income_taxes_n=np.full(N_n, bool(spec.get("income_taxes", False)), dtype=bool),
-        salt_cap_n=np.full(N_n, float(spec.get("salt_cap", 0.0))),
-        mortgage_limit_n=np.full(N_n, float(spec["mortgage_limit"])),
         medical_floor_n=np.full(N_n, float(spec["medical_floor"])),
         adj_agi_start_n=np.full(N_n, float(spec["adjustment_agi_start"])),
         adj_width_n=np.full(N_n, float(spec["adjustment_width"])),
         adj_pct_n=np.full(N_n, float(spec["adjustment_pct"])),
     )
     return out
+
+
+def _copy_year(dst: StateItemizedParams, src: StateItemizedParams, n: int) -> None:
+    """Copy year n of every per-year array of src into dst."""
+    for f in fields(StateItemizedParams):
+        getattr(dst, f.name)[n] = getattr(src, f.name)[n]
 
 
 def st_taxParams(
@@ -458,15 +451,7 @@ def st_taxParams(
         mded = entry.get("medical_deduction")
         if mded is not None:
             med_floor_pct_n[n] = float(mded["floor_pct"])
-        src = item_m if filing_status_n[n] == 1 else item_s
-        itemized.allowed_n[n] = src.allowed_n[n]
-        itemized.income_taxes_n[n] = src.income_taxes_n[n]
-        itemized.salt_cap_n[n] = src.salt_cap_n[n]
-        itemized.mortgage_limit_n[n] = src.mortgage_limit_n[n]
-        itemized.medical_floor_n[n] = src.medical_floor_n[n]
-        itemized.adj_agi_start_n[n] = src.adj_agi_start_n[n]
-        itemized.adj_width_n[n] = src.adj_width_n[n]
-        itemized.adj_pct_n[n] = src.adj_pct_n[n]
+        _copy_year(itemized, item_m if filing_status_n[n] == 1 else item_s, n)
 
     # --- Per-filer exemptions, added to the state deduction for each living filer ---
     # personal_exemption applies at any age; senior_exemption from the year a filer reaches its
@@ -612,15 +597,7 @@ def st_schedule(
         ptd_cap_n[n] = p.ptd_cap_n[n]
         ptd_rent_share_n[n] = p.ptd_rent_share_n[n]
         med_floor_pct_n[n] = p.med_floor_pct_n[n]
-        it = p.itemized
-        itemized.allowed_n[n] = it.allowed_n[n]
-        itemized.income_taxes_n[n] = it.income_taxes_n[n]
-        itemized.salt_cap_n[n] = it.salt_cap_n[n]
-        itemized.mortgage_limit_n[n] = it.mortgage_limit_n[n]
-        itemized.medical_floor_n[n] = it.medical_floor_n[n]
-        itemized.adj_agi_start_n[n] = it.adj_agi_start_n[n]
-        itemized.adj_width_n[n] = it.adj_width_n[n]
-        itemized.adj_pct_n[n] = it.adj_pct_n[n]
+        _copy_year(itemized, p.itemized, n)
 
     return StateTaxParams(
         N_st=N_st,

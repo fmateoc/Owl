@@ -523,3 +523,20 @@ def test_optimized_medicare_with_a_known_medical_line_stays_feasible():
     text = log.getvalue()
     assert "could not be solved" not in text and "unsolvable" not in text
     assert q.itemizing_n[:4].all()
+
+
+def test_itemized_row_families_are_registered_for_explain():
+    """CONSTRAINT_FAMILIES is the explain contract: an unregistered family surfaces as a policy
+    constraint, so a big-M gate would be shown to the user. Federal (both modes) and NJ line 31."""
+    from owlplanner.assistant.explain import CONSTRAINT_FAMILIES
+
+    plans = [
+        _solve(_plan(state="NY", mortgage=(600_000.0, 6.5, 30), charity=3000.0, medical=4000.0),
+               objective="maxSpending", bequest=0, withItemized=mode)
+        for mode in ("loop", "optimize")
+    ]
+    plans.append(_solve(_plan(state="NJ", medical=6000.0)))
+    fams = {t[0] for p in plans for t in p.A.tags if t}
+    phase3 = {f for f in fams if f.startswith(("item_", "state_item_", "state_medical"))}
+    assert {"item_deduction", "item_salt_paid", "state_medical_deduction"} <= phase3
+    assert phase3 <= set(CONSTRAINT_FAMILIES), sorted(phase3 - set(CONSTRAINT_FAMILIES))

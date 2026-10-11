@@ -59,8 +59,8 @@ import numpy as np
 # start, so the search returned a plan claiming part of a tier above its ceiling. It has no
 # fixed-point residual: the exclusion is exact within each solve.
 # "zsi", the state itemizing choice (NY), is a family for the same reason: without a mortgage the
-# a priori rule leaves one binary per year. "zi", the federal itemizing choice, is a family too
-# (Phase 3 step 3): a mortgage or a large property tax leaves one per year, too many to keep free
+# a priori rule leaves one binary per year. "zi", the federal itemizing choice, is a family too:
+# a mortgage or a large property tax leaves one per year, too many to keep free
 # in every restricted problem. The floor switches stay free: pinning one would freeze a max(0, .)
 # the search cannot reopen.
 FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx", "zsi", "zi")

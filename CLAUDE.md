@@ -35,7 +35,7 @@ uv pip install --python .venv/bin/python pypdf   # only for reading tax PDFs
 
 - Tests: `.venv/bin/python -m pytest -n 4 -q -p no:cacheprovider`. About 7 min on 4 cores. 3168 passed / 1 skipped on 2026-10-11 (Phase 3 step 5 review fixes). Run the full suite before calling a commit green: partial runs missed the AMO reference fixture (`tests/data/amo_mip_reference.json`) when the smile changed; re-record a moved case under the frozen test date (run inside pytest so `tests/conftest.py` applies).
 - Lint: `.venv/bin/python -m flake8 src tests ui --max-line-length=120` and `.venv/bin/ruff check src tests ui` (upstream lints with Ruff, `pyproject.toml`: E4, E7, E9, F, B; install with `uv pip install --python .venv/bin/python ruff`). Every `zip()` states `strict=` (B905); use `itertools.pairwise` for adjacent pairs. Upstream's own long lines (`localsearch.py:31`, `config/schema.py:406` on the smile-start-age commit) are theirs; leave them.
-- To keep editing while the suite runs, run it in a `git worktree` with `.venv` symlinked in.
+- To keep editing while the suite runs, run it in a `git worktree` with `.venv` symlinked in **and `PYTHONPATH=$PWD/src`**: the `.venv`'s editable install points at `/home/user/Owl/src`, so without it the worktree's tests import the main checkout's code (checked 2026-10-11 with `owlplanner.__file__`).
 
 ## Conventions
 

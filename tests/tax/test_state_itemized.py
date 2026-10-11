@@ -73,9 +73,6 @@ def _solve(p, objective="maxBequest", **extra):
 def test_itemized_data_parsed_for_ny_only():
     sp = tax_state.st_taxParams("NY", 2, 99, 4, np.ones(5), [1964, 1964], mobs=[3, 9])
     assert sp.itemized.allowed_n.all()
-    assert not sp.itemized.income_taxes_n.any()
-    assert np.all(sp.itemized.salt_cap_n == 0)
-    assert np.all(sp.itemized.mortgage_limit_n == 1_000_000)
     assert np.all(sp.itemized.medical_floor_n == 10.0)  # IT-196 (2025) line 3; federal is 7.5
     assert np.all(sp.itemized.adj_agi_start_n == 200_000)
     nj = tax_state.st_taxParams("NJ", 2, 99, 4, np.ones(5), [1964, 1964], mobs=[3, 9])

@@ -437,7 +437,7 @@ Federal and NY rows already exist; this step wires `medical` lines and Owl's Med
 in `_add_state_taxable_income`. Test: a care line of $100k/yr for three late years: federal itemizes
 in those years, deduction = care + premiums - 7.5% AGI.
 
-### Step 6: measure — size M
+### Step 6: measure — size M (done 2026-10-11, PROGRESS.md "Phase 3 step 6")
 
 Rerun on the synthetic couple (the household case is run locally by the user, D2), same day,
 exact LP and local search, statutory law (base, D1) and the 2032 reversion (sensitivity):

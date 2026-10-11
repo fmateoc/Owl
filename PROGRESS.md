@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-10)
+# Owl fork — progress (as of 2026-10-11)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -777,7 +777,7 @@ comes after line 39. Both end up reducing the tax base.
   medical floor rather than a pure column bound, so a year that straddles the floor is decided
   from the previous iterate (no binary, as planned) and can lag one SC step.
 
-Next: step 6 (measure on the synthetic couple) and step 7 (docs).
+Next: step 7 (docs). Step 6 measurements are under "Phase 3 step 6".
 
 ## Step 5 review (2026-10-11, independent pass over `ab16b65`)
 
@@ -929,6 +929,121 @@ the five marked "fails before" do.
    (both are `ALWAYS_FREE` in local search); step 6 should count them.
 
 Not changed: item 7 (NY premium-only years, step-2 decision) and item 8 (docs, step 7).
+
+## Phase 3 step 6 — measure (2026-10-11)
+
+Size M from `phase3-plan.md` §5 step 6. Same day, synthetic couple of the probe / housing_stakes
+(born 1964, LE 89/92, SS $3,000/$2,400 at 70, $150k taxable / $75k Roth each, $900k+$600k
+tax-deferred, conservative 60/40; housing variants add taxable $500k+$300k so a home purchase is
+feasible). Script `fork-notes/model-review/phase3_step6_measure.py`, raw output
+`phase3_step6_2026-10-11.txt`. Exact LP = `withMedicare="None"`, `withSSTaxability=0.85`;
+LS = `breakpointMethod="local-search"`. Levels are not comparable across the two methods (LS
+charges Medicare and the IRS SS formula); every ranking below is within a method. Plans start
+2026-10-11.
+
+### 1. Probe cases in-model vs the first-order numbers (§3.2)
+
+`maxBequest`, core $80k + property tax $25k, Yonkers or NJ. In-model gain =
+bequest(`optimize`) − bequest(`none`); first-order is §3.2's post-hoc federal tax saved. NY
+itemizing is on in every row (it is not behind `withItemized`), so its first-order $22k is already
+in the `none` baseline and does not appear in the gain.
+
+| case | none | loop | optimize | in-model gain (exact / LS) | first-order fed |
+|---|---:|---:|---:|---:|---:|
+| NY Yonkers $25k | 1,007,955 | 1,007,955 | 1,007,955 | 0 / 0 (LS 877,984) | 0 |
+| NY + $600k mtg 6.5% | 781,584 | 811,969 | 811,969 | **+30,385** / **+30,283** | 17,977 |
+| NJ $25k | 1,033,578 | 1,033,578 | 1,033,578 | 0 / 0 (LS 913,776) | 0 |
+| NJ + $600k mtg | 781,546 | 811,931 | 811,931 | **+30,385** / **+34,842** | 15,735 |
+
+2032 reversion (`obbba_expiration_year=2032`, exact): ny +29,092 (25 yrs), nymort +140,997 (31),
+nj +27,935 (25), njmort +140,996 (31). First-order was 22,431 / 93,100 / 21,449 / 87,801: the LP
+response multiplies the mortgage cases. **`loop` = `optimize` to the dollar in every case here**
+(the a priori rule and `ITEM_WINDOW` leave `zi` free in only 4 years without a mortgage, 8-31 with
+one or under the reversion). Reading: without a mortgage and under the law as enacted federal
+itemizing is worth **$0**, as the probe said; with a mortgage it is worth **$30k lifetime in-model**
+(9 itemizing years), and **$141k** under Owl's 2032 default. The in-model numbers supersede §3.2's
+first-order table.
+
+### 2. NY vs NJ owner (the 2026-10-07 table, with NY itemizing)
+
+`housing_stakes` recipe: budget core $80k + property tax, no `netSpending`. NJ − NY of final
+bequest:
+
+| property tax | exact, none | exact, optimize | LS, none | LS, optimize |
+|---|---:|---:|---:|---:|
+| $20k | +37,181 | +37,181 | +41,083 | +41,083 |
+| $25k | +25,623 | +25,623 | +35,792 | +35,792 |
+
+Old table (2026-10-07, no NY itemizing, $20k): **+$62,830 exact / +$46,703 LS**. NY itemizing
+cuts the NJ advantage by **~$25k exact / ~$5k LS** at $20k (NY lifetime `st_item` $620k of
+deduction, 31 years, at $20k PT; $775k at $25k). Federal itemizing does not move the comparison
+(no mortgage). The exact-method reduction is of the order the probe predicted for NY itemizing
+($22k); the LS reduction is smaller and the two methods disagree on the residual by $4k, so the
+remaining NJ edge stays in the "unresolved under 1%" band for a one-year income-tax difference
+(the lifetime figure is not: NJ is ahead in both methods). Stay NJ (step 9) is still the larger
+omitted term.
+
+### 3. Scenario 5 rent / cash / mortgage, with the deduction
+
+NY Yonkers, budget profile, `maxBequest` (each variant spends its own first-year total): core
+$80k; rent $36k; or home $600k (PT $15k + insurance $2.5k + maintenance $6k), cash purchase with
+2% closing, or 20% down and a $480k mortgage at 6.5% for 30 years (proceeds stay invested). Final
+bequest counts home equity net of commission.
+
+| variant | exact none | exact optimize | LS none | LS optimize | 2032 exact none → optimize |
+|---|---:|---:|---:|---:|---:|
+| rent | 1,428,594 | 1,428,594 | 1,326,650 | 1,326,650 | 1,305,061 → 1,305,061 |
+| buy cash | 1,437,134 | 1,437,134 | 1,325,234 | 1,325,234 | 1,312,913 → 1,315,073 |
+| buy mortgage | 1,278,944 | **1,290,362** | 1,147,743 | **1,166,398** | 1,145,286 → **1,207,446** |
+
+- **Mortgage interest deduction is real and material on the mortgage path**: +$11.4k exact /
+  +$18.7k LS under statutory law, +$62.2k under the 2032 reversion (26 of 31 years itemize
+  federally). It does **not** reverse cash vs mortgage (still −$147k / −$159k of bequest).
+- **Cash vs rent is unresolved**: cash ahead by $8.5k exact, rent ahead by $1.4k LS (0.6% / 0.1%).
+  The phase0-scenarios caveat on the mortgage can be dropped for the deduction; the cash-vs-rent
+  ranking still needs the household's own numbers (and the rate vs return point stands).
+- Rent itemizes nothing (no PT, no mortgage) and is unchanged by `withItemized`, as expected.
+  Cash itemizes on NY only (28 years of `st_item`); federal needs the mortgage or the reversion.
+
+### 4. Binaries, solve times, node limits
+
+| plan | zsi | zi | zmed | zmedf | other | time exact / LS | node-limit hits |
+|---|---:|---:|---:|---:|---|---|---|
+| NY owner, no mtg | 31 | 4 | 28 (LS) | 1 | zm 168, zs 62, zl 62, zj 31 | 0.1-0.3 s / 66 s | 0 main; LS 0/33-38 |
+| NY owner + mtg | 31 | 8-21 | 28 | 16-18 | same | 0.1 s / 37-48 s | LS 0/36-47 |
+| NJ owner | – | 4 | – | 1 | zx 124 | 0.3-0.6 s / 74-93 s | LS 0/44-51 |
+| NJ owner + mtg | – | 8-21 | – | 18 | zx 124 | 0.3 s / 115 s | LS 0/63-69 |
+| FL + HSA + medical $30k | – | 25 | 0 | 25 | (zm 150 if Medicare optimize) | 0.6-0.9 s | 0 |
+| NY + medical $3k, maxSpending | 31 | 31 | 31 | 31 | | 15 s exact / 92 s loop / 121 s optimize-loop | 0/14 |
+
+- **`zsi` is 31 on every NY owner year**: a family is the right shape (already shipped).
+- **`zi` is 4 without a mortgage** (`ITEM_WINDOW` pins the rest), 8-21 with one, 25-31 under the
+  reversion or a long medical line: also a family (already shipped). `ALWAYS_FREE` would keep 4-31
+  binaries free in every restricted problem; the step-3 note already measured that losing.
+- **`zmed` is 28-31 on every NY plan under local search** (Medicare becomes `"optimize"`), and 31
+  under `maxSpending` with a discretionary medical line. **`zmedf` is 0-25** (25 on the HSA/medical
+  FL plan; 1 on a plan whose only medical is premiums). Both stay `ALWAYS_FREE`.
+- **`zmed` as a family vs `ALWAYS_FREE`**: same plan, same bequest 965,406, 66.8 s vs 61.7 s
+  (`zmed_family_ls.py`), and 92.3 s vs 91.8 s in the maxSpending loop. **No difference: keep it in
+  `ALWAYS_FREE`** (pinning one would freeze a `max(0, ·)` the search cannot reopen).
+- **HSA plans carry `zmedf` in every federal itemizing candidate year (25) and `zmed` only if the
+  state itemizes (NY)**. FL + HSA: `zmed` 0, `zmedf` 25. The step-5 review's "zmed / zmedf in every
+  itemizing candidate year" is `zmedf` federally and `zmed` in NY.
+- **`withItemized="optimize"` is cheap on these cases** (D4's default stands for the household
+  files): +0.2-0.6 s exact, no LS slowdown, because `zi` is free only near the switch. The 30 s
+  `Case_morgan` blow-up was the old candidate rule (step-3 review fixed it).
+- Main solves never stopped at a node limit here. Local search hit its step cap on 0-4 of 20-69
+  restricted solves and still returned the same plan as the loop or better.
+
+### Open from earlier steps, touched here
+
+- Discretionary medical under `maxSpending` costs ~15 s exact / ~92 s full loop (31 `zsi` + 31
+  `zmed`); `zmed` placement does not change that. The 100 s figure in the step-2 review was the
+  same case under load.
+- `nch` is added as an empty block (size 0) under `optimize` when there is no non-itemizer charity
+  year. Harmless (0 columns), noticed in every `bins` dump; not fixed.
+
+Next: step 7 (docs).
 
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 

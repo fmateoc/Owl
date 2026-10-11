@@ -1,0 +1,186 @@
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:17:20.240745 ===
+
+## probe yOBBBA=2099 (2026-10-11 17:17:20.241076)  couple: $150k/$150k taxable, $900k/$600k deferred, core $80k + PT $25k
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| ny NY Yonkers owner $25k | none | exact | 1,007,955 | 15,979 | 0 / 0 | 31 / 775,000 | 0.3s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| ny NY Yonkers owner $25k | loop | exact | 1,007,955 | 15,979 | 0 / 0 | 31 / 775,000 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| ny NY Yonkers owner $25k | optimize | exact | 1,007,955 | 15,979 | 0 / 0 | 31 / 775,000 | 0.1s | bins {'nch': 0, 'zsi': 31, 'zi': 4} | nodes 2; node-limit 0/2 |
+| nymort NY Yonkers owner $25k + $600k mtg | none | exact | 781,584 | 0 | 0 / 0 | 31 / 1,352,876 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| nymort NY Yonkers owner $25k + $600k mtg | loop | exact | 811,969 | 0 | 8 / 404,236 | 31 / 1,352,876 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| nymort NY Yonkers owner $25k + $600k mtg | optimize | exact | 811,969 | 0 | 8 / 404,236 | 31 / 1,352,876 | 0.1s | bins {'nch': 0, 'zsi': 31, 'zi': 8} | nodes 2; node-limit 0/2 |
+| nj NJ owner $25k | none | exact | 1,033,578 | 0 | 0 / 0 | 0 / 0 | 0.3s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| nj NJ owner $25k | loop | exact | 1,033,578 | 0 | 0 / 0 | 0 / 0 | 0.3s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| nj NJ owner $25k | optimize | exact | 1,033,578 | 0 | 0 / 0 | 0 / 0 | 0.4s | bins {'zx': np.int32(124), 'zi': 4} | nodes 3; node-limit 0/3 |
+| njmort NJ owner $25k + $600k mtg | none | exact | 781,546 | 0 | 0 / 0 | 0 / 0 | 0.3s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| njmort NJ owner $25k + $600k mtg | loop | exact | 811,931 | 0 | 8 / 404,236 | 0 / 0 | 0.3s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| njmort NJ owner $25k + $600k mtg | optimize | exact | 811,931 | 0 | 8 / 404,236 | 0 / 0 | 0.3s | bins {'zx': np.int32(124), 'zi': 8} | nodes 3; node-limit 0/3 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2032, plan starts 2026, run 2026-10-11 17:18:37.116491 ===
+
+## probe yOBBBA=2032 (2026-10-11 17:18:37.116491)  couple: $150k/$150k taxable, $900k/$600k deferred, core $80k + PT $25k
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| ny NY Yonkers owner $25k | none | exact | 876,246 | 16,681 | 0 / 0 | 31 / 775,000 | 0.3s | bins {'zsi': 31} | nodes 3; node-limit 0/3 |
+| ny NY Yonkers owner $25k | loop | exact | 905,338 | 15,472 | 25 / 625,000 | 31 / 775,000 | 0.2s | bins {'zsi': 31} | nodes 3; node-limit 0/3 |
+| ny NY Yonkers owner $25k | optimize | exact | 905,338 | 15,522 | 25 / 625,000 | 31 / 775,000 | 0.4s | bins {'nch': 0, 'zsi': 31, 'zi': 29} | nodes 2; node-limit 0/3 |
+| nymort NY Yonkers owner $25k + $600k mtg | none | exact | 649,482 | 1,124 | 0 / 0 | 31 / 1,352,876 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| nymort NY Yonkers owner $25k + $600k mtg | loop | exact | 790,479 | 0 | 31 / 1,320,540 | 31 / 1,352,876 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| nymort NY Yonkers owner $25k + $600k mtg | optimize | exact | 790,479 | 0 | 31 / 1,320,540 | 31 / 1,352,876 | 0.1s | bins {'nch': 0, 'zsi': 31, 'zi': 31} | nodes 2; node-limit 0/2 |
+| nj NJ owner $25k | none | exact | 905,025 | 3,977 | 0 / 0 | 0 / 0 | 0.8s | bins {'zx': np.int32(124)} | nodes 4; node-limit 0/4 |
+| nj NJ owner $25k | loop | exact | 932,960 | 3,977 | 25 / 625,000 | 0 / 0 | 0.5s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| nj NJ owner $25k | optimize | exact | 932,960 | 3,977 | 25 / 625,000 | 0 / 0 | 0.7s | bins {'zx': np.int32(124), 'zi': 29} | nodes 3; node-limit 0/3 |
+| njmort NJ owner $25k + $600k mtg | none | exact | 649,469 | 3,977 | 0 / 0 | 0 / 0 | 8.0s | bins {'zx': np.int32(124)} | nodes 4; node-limit 0/4 |
+| njmort NJ owner $25k + $600k mtg | loop | exact | 790,465 | 3,977 | 31 / 1,323,297 | 0 / 0 | 0.6s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| njmort NJ owner $25k + $600k mtg | optimize | exact | 790,465 | 3,977 | 31 / 1,323,297 | 0 / 0 | 0.7s | bins {'zx': np.int32(124), 'zi': 31} | nodes 3; node-limit 0/3 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:19:01.020742 ===
+
+## nynj yOBBBA=2099 (2026-10-11 17:19:01.020742)  NY vs NJ owner, maxBequest at netSpending 80 (housing_stakes recipe)
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| NY pt $20k | none | exact | 1,225,376 | 23,316 | 0 / 0 | 31 / 620,000 | 0.2s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| NY pt $20k | optimize | exact | 1,225,376 | 23,318 | 0 / 0 | 31 / 620,000 | 0.2s | bins {'nch': 0, 'zsi': 31, 'zi': 4} | nodes 2; node-limit 0/2 |
+| NJ pt $20k | none | exact | 1,262,557 | 0 | 0 / 0 | 0 / 0 | 0.2s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| NJ pt $20k | optimize | exact | 1,262,557 | 0 | 0 / 0 | 0 / 0 | 0.6s | bins {'zx': np.int32(124), 'zi': 4} | nodes 3; node-limit 0/3 |
+| NY pt $25k | none | exact | 1,007,955 | 15,979 | 0 / 0 | 31 / 775,000 | 0.2s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| NY pt $25k | optimize | exact | 1,007,955 | 15,979 | 0 / 0 | 31 / 775,000 | 0.1s | bins {'nch': 0, 'zsi': 31, 'zi': 4} | nodes 2; node-limit 0/2 |
+| NJ pt $25k | none | exact | 1,033,578 | 0 | 0 / 0 | 0 / 0 | 0.3s | bins {'zx': np.int32(124)} | nodes 3; node-limit 0/3 |
+| NJ pt $25k | optimize | exact | 1,033,578 | 0 | 0 / 0 | 0 / 0 | 0.4s | bins {'zx': np.int32(124), 'zi': 4} | nodes 3; node-limit 0/3 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:19:14.285910 ===
+
+## housing yOBBBA=2099 (2026-10-11 17:19:14.285910)  Scenario 5: rent $48,000 / cash $800,000 / mortgage 20% down at 6.5%; core $80k; owner PT $20,000 + ins $3,000 + maint $8,000; maxBequest, budget profile
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:20:29.705499 ===
+
+## housing yOBBBA=2099 (2026-10-11 17:20:29.705499)  Scenario 5: rent $36,000 / cash $600,000 / mortgage 20% down at 6.5%; core $80k; owner PT $15,000 + ins $2,500 + maint $6,000; maxBequest, budget profile
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| rent | none | exact | 465,610 | 38,351 | 0 / 0 | 0 / 0 | 0.2s | bins {} | nodes -1 |
+| rent | optimize | exact | 465,610 | 38,355 | 0 / 0 | 0 / 0 | 0.1s | bins {'nch': 0, 'zi': 4} | nodes 3; node-limit 0/3 |
+   !! housing-cash: infeasible No plan satisfies all the constraints. An input has to give: most often a bequest or a spending floor set higher than the assets can support.
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:21:22.768481 ===
+
+## housing yOBBBA=2099 (2026-10-11 17:21:22.768481)  Scenario 5: rent $36,000 / cash $600,000 / mortgage 20% down at 6.5%; core $80k; owner PT $15,000 + ins $2,500 + maint $6,000; maxBequest, budget profile
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| rent | none | exact | 1,428,594 | 40,787 | 0 / 0 | 0 / 0 | 0.2s | bins {} | nodes -1 |
+| rent | optimize | exact | 1,428,594 | 40,787 | 0 / 0 | 0 / 0 | 0.1s | bins {'nch': 0, 'zi': 4} | nodes 3; node-limit 0/3 |
+| cash | none | exact | 1,437,134 | 31,796 | 0 / 0 | 28 / 420,000 | 0.1s | bins {'zsi': 31} | nodes 3; node-limit 0/3 |
+| cash | optimize | exact | 1,437,134 | 31,796 | 0 / 0 | 28 / 420,000 | 0.6s | bins {'nch': 0, 'zsi': 31, 'zi': 4} | nodes 3; node-limit 0/3 |
+| mortgage | none | exact | 1,278,944 | 8,803 | 0 / 0 | 31 / 927,301 | 0.1s | bins {'zsi': 31} | nodes 2; node-limit 0/2 |
+| mortgage | optimize | exact | 1,290,362 | 8,824 | 4 / 181,345 | 31 / 927,301 | 0.1s | bins {'nch': 0, 'zsi': 31, 'zi': 4} | nodes 2; node-limit 0/2 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2032, plan starts 2026, run 2026-10-11 17:21:39.516705 ===
+
+## housing yOBBBA=2032 (2026-10-11 17:21:39.516705)  Scenario 5: rent $36,000 / cash $600,000 / mortgage 20% down at 6.5%; core $80k; owner PT $15,000 + ins $2,500 + maint $6,000; maxBequest, budget profile
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| rent | none | exact | 1,305,061 | 40,584 | 0 / 0 | 0 / 0 | 0.2s | bins {} | nodes -1 |
+| rent | optimize | exact | 1,305,061 | 40,584 | 0 / 0 | 0 / 0 | 0.1s | bins {'nch': 0, 'zi': 29} | nodes 3; node-limit 0/3 |
+| cash | none | exact | 1,312,913 | 30,950 | 0 / 0 | 28 / 420,000 | 0.1s | bins {'zsi': 31} | nodes 3; node-limit 0/3 |
+| cash | optimize | exact | 1,315,073 | 31,221 | 3 / 45,635 | 28 / 420,000 | 3.7s | bins {'nch': 0, 'zsi': 31, 'zi': 29} | nodes 15; node-limit 0/3 |
+| mortgage | none | exact | 1,145,286 | 10,233 | 0 / 0 | 31 / 927,301 | 0.1s | bins {'zsi': 31} | nodes 3; node-limit 0/3 |
+| mortgage | optimize | exact | 1,207,446 | 7,844 | 26 / 795,642 | 31 / 927,301 | 0.2s | bins {'nch': 0, 'zsi': 31, 'zi': 29} | nodes 2; node-limit 0/2 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:21:46.676513 ===
+
+## hsa yOBBBA=2099 (2026-10-11 17:21:46.676513)  FL couple, HSA $60k each, medical $30k, property tax $39k; optimize Medicare+itemized
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+   !! hsa: infeasible No plan satisfies all the constraints. An input has to give: most often a bequest or a spending floor set higher than the assets can support.
+| hsa medical $30k | optimize | - | INFEASIBLE | | | | 0.3s | | |
+   zmed 0, zmedf 31, zi 31, zsi 0
+
+   zmed local-search placement (same plan, medical $30k, maxBequest, LS):
+   !! hsa-ls: infeasible No plan satisfies all the constraints. An input has to give: most often a bequest or a spending floor set higher than the assets can support.
+| hsa LS zmed=ALWAYS_FREE (as shipped) | optimize | - | INFEASIBLE | | | | 0.0s | | |
+   !! hsa-ls: infeasible No plan satisfies all the constraints. An input has to give: most often a bequest or a spending floor set higher than the assets can support.
+| hsa LS zmed=family zmed | optimize | - | INFEASIBLE | | | | 0.0s | | |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:22:57.938144 ===
+
+## hsa yOBBBA=2099 (2026-10-11 17:22:57.938144)  test_hsa recipe: FL couple born 1958, core $40k + PT $20k + medical $30k, HSA $60k each
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| hsa withMedicare=loop (test recipe) | optimize | exact | 2,310,924 | 0 | 4 / 154,919 | 0 / 0 | 0.7s | bins {'nch': 0, 'zi': 25, 'zmedf': 25} | nodes 6; node-limit 0/6 |
+   zmed 0, zmedf 25, zi 25
+| hsa withMedicare=optimize | optimize | exact | 2,310,946 | 0 | 4 / 154,944 | 0 / 0 | 0.9s | bins {'nch': 0, 'zm': np.int32(150), 'zi': 25, 'zmedf': 25} | nodes 5; node-limit 0/5 |
+   zmed 0, zmedf 25, zi 25
+
+   zmed local-search placement (test recipe, maxBequest, LS):
+| hsa LS zmed=ALWAYS_FREE (as shipped) | optimize | LS | 2,330,202 | 0 | 6 / 180,244 | 0 / 0 | 285.5s | bins {'nch': 0, 'zm': np.int32(150), 'zs': np.int32(50), 'zl': np.int32(50), 'zj': np.int32(25), 'zsb': 3, 'zi': 25, 'zmedf': 25} | nodes 33716; node-limit 0/0 (LS 4/62) |
+| hsa LS zmed=family zmed | optimize | LS | 2,330,202 | 0 | 6 / 180,244 | 0 / 0 | 282.9s | bins {'nch': 0, 'zm': np.int32(150), 'zs': np.int32(50), 'zl': np.int32(50), 'zj': np.int32(25), 'zsb': 3, 'zi': 25, 'zmedf': 25} | nodes 33716; node-limit 0/0 (LS 4/62) |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:32:50.088304 ===
+
+## med yOBBBA=2099 (2026-10-11 17:32:50.088304)  NY Yonkers owner $25k PT + medical $3k, maxSpending; zsi/zmed free under loop
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| med maxSpending none | none | exact | 0 | 10,033 | 0 / 0 | 31 / 908,210 | 15.1s | bins {'zsi': 31, 'zmed': 31} | nodes 45; node-limit 0/3 |
+| med maxSpending loop | loop | exact | 0 | 10,033 | 0 / 0 | 31 / 908,210 | 14.5s | bins {'zsi': 31, 'zmed': 31} | nodes 45; node-limit 0/3 |
+| med maxSpending loop | loop | exact | 0 | 10,768 | 0 / 0 | 31 / 885,494 | 92.2s | bins {'zsi': 31, 'zmed': 31} | nodes 486; node-limit 0/14 |
+| med maxSpending optimize | optimize | exact | 0 | 10,033 | 0 / 0 | 31 / 892,587 | 19.7s | bins {'nch': 0, 'zsi': 31, 'zmed': 31, 'zi': 31, 'zmedf': 31} | nodes 656; node-limit 0/3 |
+| med maxSpending optimize | optimize | exact | 0 | 10,456 | 0 / 0 | 31 / 889,728 | 120.7s | bins {'nch': 0, 'zsi': 31, 'zmed': 31, 'zi': 31, 'zmedf': 31} | nodes 4764; node-limit 0/13 |
+
+   zmed as family vs ALWAYS_FREE (medical $3k, maxSpending, loop, withItemized=loop):
+| med loop zmed=ALWAYS_FREE (as shipped) | loop | exact | 0 | 10,768 | 0 / 0 | 31 / 885,494 | 92.3s | bins {'zsi': 31, 'zmed': 31} | nodes 486; node-limit 0/14 |
+| med loop zmed=family zmed | loop | exact | 0 | 10,768 | 0 / 0 | 31 / 885,494 | 91.8s | bins {'zsi': 31, 'zmed': 31} | nodes 486; node-limit 0/14 |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:40:44.269518 ===
+
+## probe-ls yOBBBA=2099 (2026-10-11 17:40:44.269518)  couple: $150k/$150k taxable, $900k/$600k deferred, core $80k + PT $25k
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| ny NY Yonkers owner $25k | none | LS | bequest 877,984 | 36,680 | 0 / 0 | 31 / 775,000 | 65.7s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 670; node-limit 0/15 (LS 0/33) |
+| ny NY Yonkers owner $25k | optimize | LS | bequest 877,984 | 36,680 | 0 / 0 | 31 / 775,000 | 66.6s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 4, 'zmedf': 1} | nodes 675; node-limit 0/15 (LS 0/38) |
+| nymort NY Yonkers owner $25k + $600k mtg | none | LS | bequest 649,568 | 17,602 | 0 / 0 | 31 / 1,352,876 | 47.6s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 448; node-limit 0/30 (LS 0/36) |
+| nymort NY Yonkers owner $25k + $600k mtg | optimize | LS | bequest 679,851 | 21,313 | 9 / 455,759 | 31 / 1,352,876 | 36.8s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 21, 'zmedf': 18} | nodes 141; node-limit 0/30 (LS 0/47) |
+| nj NJ owner $25k | none | LS | bequest 913,776 | 12,149 | 0 / 0 | 0 / 0 | 93.6s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124)} | nodes 176; node-limit 0/18 (LS 0/44) |
+| nj NJ owner $25k | optimize | LS | bequest 913,776 | 12,149 | 0 / 0 | 0 / 0 | 87.6s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124), 'zi': 4, 'zmedf': 1} | nodes 185; node-limit 0/18 (LS 0/51) |
+| njmort NJ owner $25k + $600k mtg | none | LS | bequest 649,815 | 13,562 | 0 / 0 | 0 / 0 | 116.7s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124)} | nodes 250; node-limit 0/11 (LS 0/63) |
+| njmort NJ owner $25k + $600k mtg | optimize | LS | bequest 684,657 | 17,668 | 8 / 413,584 | 0 / 0 | 115.2s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124), 'zi': 21, 'zmedf': 18} | nodes 242; node-limit 0/11 (LS 0/69) |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 17:51:43.009764 ===
+
+## nynj-ls yOBBBA=2099 (2026-10-11 17:51:43.009764)  NY vs NJ owner, maxBequest at netSpending 80 (housing_stakes recipe)
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| NY pt $20k | none | LS | bequest 1,101,591 | 39,517 | 0 / 0 | 31 / 620,000 | 63.9s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 518; node-limit 0/15 (LS 0/33) |
+| NY pt $20k | optimize | LS | bequest 1,101,591 | 39,517 | 0 / 0 | 31 / 620,000 | 66.0s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 4, 'zmedf': 1} | nodes 481; node-limit 0/15 (LS 0/38) |
+| NJ pt $20k | none | LS | bequest 1,142,674 | 12,149 | 0 / 0 | 0 / 0 | 87.6s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124)} | nodes 124; node-limit 0/18 (LS 0/44) |
+| NJ pt $20k | optimize | LS | bequest 1,142,674 | 12,149 | 0 / 0 | 0 / 0 | 92.0s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124), 'zi': 4, 'zmedf': 1} | nodes 131; node-limit 0/18 (LS 0/51) |
+| NY pt $25k | none | LS | bequest 877,984 | 36,680 | 0 / 0 | 31 / 775,000 | 65.5s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 670; node-limit 0/15 (LS 0/33) |
+| NY pt $25k | optimize | LS | bequest 877,984 | 36,680 | 0 / 0 | 31 / 775,000 | 67.5s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 4, 'zmedf': 1} | nodes 675; node-limit 0/15 (LS 0/38) |
+| NJ pt $25k | none | LS | bequest 913,776 | 12,149 | 0 / 0 | 0 / 0 | 80.5s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124)} | nodes 176; node-limit 0/18 (LS 0/44) |
+| NJ pt $25k | optimize | LS | bequest 913,776 | 12,149 | 0 / 0 | 0 / 0 | 74.3s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zx': np.int32(124), 'zi': 4, 'zmedf': 1} | nodes 185; node-limit 0/18 (LS 0/51) |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 18:01:59.899345 ===
+
+## housing-ls yOBBBA=2099 (2026-10-11 18:01:59.899345)  Scenario 5: rent $36,000 / cash $600,000 / mortgage 20% down at 6.5%; core $80k; owner PT $15,000 + ins $2,500 + maint $6,000; maxBequest, budget profile
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| rent | none | LS | bequest 1,326,650 | 42,323 | 0 / 0 | 0 / 0 | 60.0s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31)} | nodes 226; node-limit 0/0 (LS 0/20) |
+| rent | optimize | LS | bequest 1,326,650 | 42,323 | 0 / 0 | 0 / 0 | 59.9s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zi': 4, 'zmedf': 1} | nodes 230; node-limit 0/0 (LS 0/24) |
+| cash | none | LS | bequest 1,325,234 | 42,357 | 0 / 0 | 28 / 420,000 | 52.3s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 387; node-limit 0/16 (LS 0/33) |
+| cash | optimize | LS | bequest 1,325,234 | 42,357 | 0 / 0 | 28 / 420,000 | 58.6s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 4, 'zmedf': 1} | nodes 392; node-limit 0/16 (LS 0/38) |
+| mortgage | none | LS | bequest 1,147,743 | 27,102 | 0 / 0 | 31 / 927,301 | 63.4s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28} | nodes 1053; node-limit 0/19 (LS 0/36) |
+| mortgage | optimize | LS | bequest 1,166,398 | 31,035 | 4 / 191,939 | 31 / 927,301 | 57.3s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 28, 'zi': 19, 'zmedf': 16} | nodes 308; node-limit 0/18 (LS 0/38) |
+=== done ===
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 18:08:05.274762 ===
+
+## hsa yOBBBA=2099 (2026-10-11 18:08:05.274762)  test_hsa recipe: FL couple born 1958, core $40k + PT $20k + medical $30k, HSA $60k each
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| hsa withMedicare=loop (test recipe) | optimize | exact | bequest 2,310,924 | 0 | 4 / 154,919 | 0 / 0 | 0.6s | bins {'nch': 0, 'zi': 25, 'zmedf': 25} | nodes 6; node-limit 0/6 |
+   zmed 0, zmedf 25, zi 25
+| hsa withMedicare=optimize | optimize | exact | bequest 2,310,946 | 0 | 4 / 154,944 | 0 / 0 | 0.8s | bins {'nch': 0, 'zm': np.int32(150), 'zi': 25, 'zmedf': 25} | nodes 5; node-limit 0/5 |
+   zmed 0, zmedf 25, zi 25
+
+   zmed (NY) local-search placement: NY Yonkers, PT $25k, medical $3k, HSA $60k each, maxBequest, LS, withItemized=optimize:
+| zmed NY LS zmed=ALWAYS_FREE (as shipped) | optimize | LS | bequest 965,406 | 36,680 | 0 / 0 | 31 / 775,000 | 66.8s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 31, 'zi': 4, 'zmedf': 4} | nodes 1526; node-limit 0/14 (LS 0/38) |
+   zmed 31, zmedf 4
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-11 18:09:45.192821 ===
+
+## hsa yOBBBA=2099 (2026-10-11 18:09:45.192821)  test_hsa recipe: FL couple born 1958, core $40k + PT $20k + medical $30k, HSA $60k each
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| hsa withMedicare=loop (test recipe) | optimize | exact | bequest 2,310,924 | 0 | 4 / 154,919 | 0 / 0 | 0.7s | bins {'nch': 0, 'zi': 25, 'zmedf': 25} | nodes 6; node-limit 0/6 |
+   zmed 0, zmedf 25, zi 25
+| hsa withMedicare=optimize | optimize | exact | bequest 2,310,946 | 0 | 4 / 154,944 | 0 / 0 | 0.9s | bins {'nch': 0, 'zm': np.int32(150), 'zi': 25, 'zmedf': 25} | nodes 5; node-limit 0/5 |
+   zmed 0, zmedf 25, zi 25
+
+   zmed (NY) local-search placement: NY Yonkers, PT $25k, medical $3k, HSA $60k each, maxBequest, LS, withItemized=optimize:
+| zmed NY LS zmed=ALWAYS_FREE (as shipped) | optimize | LS | bequest 965,406 | 36,680 | 0 / 0 | 31 / 775,000 | 68.1s | bins {'nch': 0, 'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31), 'zsi': 31, 'zmed': 31, 'zi': 4, 'zmedf': 4} | nodes 1526; node-limit 0/14 (LS 0/38) |
+   zmed 31, zmedf 4
+
+## zmed family vs ALWAYS_FREE (zmed_family_ls.py, same plan as the NY LS row above)
+| zmed NY LS zmed=family zmed | optimize | LS | bequest 965,406 | 36,680 | 0 / 0 | 31 / 775,000 | 61.7s | bins zmed 31, zmedf 4 | nodes 519; node-limit 0/14 (LS 0/43) |
+Same plan and bequest as ALWAYS_FREE (965,406; 66.8s / 68.1s). No measurable difference: keep zmed in ALWAYS_FREE.

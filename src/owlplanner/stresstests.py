@@ -440,7 +440,7 @@ def _regret_objective_value(p, objective):
 # Ceiling on the MIP gap for any regret sweep. See the note in run_conversion_regret_sweep.
 REGRET_MAX_GAP = 1e-6
 
-_MILP_TAX_MODES = ("withMedicare", "withACA", "withSSTaxability", "withLTCG", "withNIIT")
+_MILP_TAX_MODES = ("withMedicare", "withACA", "withSSTaxability", "withLTCG", "withNIIT", "withItemized")
 
 
 def _downgrade_milp_tax_modes(options):

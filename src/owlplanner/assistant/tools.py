@@ -279,7 +279,9 @@ def _scrub_optimized_ss_ages(assumed, opts):
         assumed[:] = [e for e in assumed if e["parameter"] != "ss_ages"]
 
 
-_MILP_TAX_MODES = ("withMedicare", "withACA", "withSSTaxability", "withLTCG", "withNIIT", "withSeniorBonus")
+_MILP_TAX_MODES = (
+    "withMedicare", "withACA", "withSSTaxability", "withLTCG", "withNIIT", "withSeniorBonus", "withItemized"
+)
 
 
 def _downgrade_milp_tax_modes(opts):

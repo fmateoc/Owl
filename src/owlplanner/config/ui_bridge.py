@@ -89,6 +89,7 @@ SOLVER_UI_PASSTHROUGH_KEYS = [
     "units",
     "verbose",
     "withSeniorBonus",
+    "withItemized",
 ]
 
 

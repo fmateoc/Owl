@@ -550,6 +550,68 @@ Not fixed (from the review):
   and the Phase 2 roadmap row; it belongs with the senior relief of step 9, which has the same
   problem for Stay NJ / ANCHOR.
 
+## Phase 3 step 3 — federal itemized deduction (2026-10-11)
+
+Size L from `phase3-plan.md` §5 step 3 (3.2). On `claude/eager-cray-s0fvks` after the step-2 work
+and the `dev` `844a7ec` merge. **Not yet reviewed by an independent pass** (step 2 shipped with
+six bugs found that way; a review should follow before this is called done).
+
+- **Option** `withItemized = "none" | "loop" | "optimize"` (D4: default `"loop"` in code,
+  `"optimize"` in the household's case files, `"none"` reproduces today's plans). Plumbed through
+  every `withSeniorBonus` hit: `plan.py` known options and `_buildOffsetMap`, `config/schema.py`,
+  `config/ui_bridge.py`, `assistant/tools.py`, `stresstests.py`, `utils.py` normalization. The
+  breakpoint presets set `"optimize"` (except `"none"`).
+- **S_n** = the standard deduction without the OBBBA senior bonus (`tax_federal.standard_without_bonus`,
+  the 65+ additions included) plus the non-itemizer charity cap (`min($1,000/$2,000, charity lines)`,
+  P.L. 119-21 sec. 70424). **B_n** = the bonus (inside `sigmaBar_n` in loop mode, or the `_sb_lp`
+  `k*p_n` terms). Itemizers keep the bonus and lose the 65+ additions, which sit inside S_n.
+- **LP** (`Plan._add_federal_itemized`, after `_add_magi_lp`, not `@_fixedAcrossIterations`): the
+  deduction is the existing `e_n` column, bound raised to `S_n + B_n` in every year (non-itemizer
+  charity) and to `max(S+B, UB_item+B)` in candidate years. Components `isalt` / `ich` / `imed`,
+  binary `zi` (optimize mode only; loop mode writes the branch as a constant). The row is
+  `e_n - isalt - ich - imed + (S_n - MI_n)*zi <= S_n + B_n`; under `withSeniorBonus="optimize"` it
+  replaces `senior_bonus_deduction` and carries `k*p_n`. A priori: `LB >= S` forces itemizing,
+  `UB <= S` forces the standard (no columns); the loop's first choice is **zi=0 unless LB >= S** —
+  zi=1 caps `e_n` at the itemized total, so a wrong guess can make a case infeasible (found on
+  `Case_john+sally`, which has state tax but no budget and no mortgage).
+- **SALT** is cash-basis property tax + the state and local income tax the plan pays, capped
+  (`tax_federal.salt_cap`, MAGI phase-down from the previous iterate). The state terms are exactly
+  those `_add_net_cash_flow` charges, factored into `_state_tax_terms(n)` and used by both rows, so
+  the deduction cannot drift from the tax paid. Rent is **not** federal SALT (NJ's 18% share is a
+  state rule only).
+- **Floors** (charity 0.5%, medical 7.5% of AGI) are loop parameters `FEDCF_n` / `FEDMF_n`, as
+  `STMF_n` for NY — not the `magi` LP variable the plan sketched. With `magi` the floor moves
+  inside one LP, but then `max(0, paid - floor)` needs a binary in every year with a line (the
+  column-bound optimization of step 2 needs a constant floor). Converges through the SC loop.
+  `zch` / `zmedf` switches only where the amount paid depends on the plan (as NY's `zmed`).
+- **Candidate years** (`_item_candidate_years`): `UB_item = min(SALT cap, property tax + state tax
+  upper bound) + mortgage interest + charity UB + medical UB` must exceed S_n. A FL owner with $25k
+  property tax and no mortgage/medical/charity gets no columns (guard test).
+- **Local search**: `zi` is a **family** ("itemizing"), not `ALWAYS_FREE` — a mortgage or a large
+  property tax leaves one per year, too many to keep free in every restricted problem (measured:
+  with `zi` free, `test_local_search_keeps_the_tiers_integral` lost its statutory tax at
+  `localSearchTime=1`). `zch` / `zmedf` stay in `ALWAYS_FREE` (pinning one freezes a `max(0, ·)`).
+- **Tie check**: `_federal_itemized_shortfall` joins `_exclusion_shortfall` and `_itemized_shortfall`
+  in `_bracket_order_excess`, so a year that claims less than it could turns tax pricing on.
+- **Reporting**: `item_n`, `item_salt_n`, `item_mi_n`, `item_char_n`, `item_med_n`, `itemizing_n`;
+  Taxes sheet and Summary (only when nonzero); `plan_metrics` `itemized_deductions_today`.
+- **Tests**: `tests/tax/test_itemized.py` (14: the FL guard, mortgage vs standard, loop vs optimize,
+  SALT = property tax + state tax capped and $10k from 2030, charity and medical floors against the
+  budget amount paid, the 65+ bonus kept and the additions lost, `withSeniorBonus="optimize"`,
+  pre-TCJA uncapped SALT, rent has no federal SALT, option normalization). The 17-example
+  "unchanged objective" guard from the plan is **not** written as a sweep; `Case_devon` moved
+  (+$1,505 of spending) and its AMO reference was re-recorded, so the default is not a no-op on
+  every shipped case.
+
+Deviations from the plan (§5 step 3), for the review:
+
+1. Floors use loop-parameter AGI, not the `magi` LP variable (above).
+2. Loop mode has no `zi` column: the branch is a constant, so the LP is not a MIP when every year
+   is decided. The plan said "the same rows with `zi_n` fixed"; a pinned binary still counts in
+   `nbins` and can force branch-and-bound.
+3. Non-itemizer charity is inside S_n whenever `withItemized != "none"` (so a plan with charity
+   lines and no itemizing still gets it). Under `"none"` it is absent, as today.
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
@@ -583,6 +645,14 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 step 3 (federal itemized, `withItemized`): **3121 passed, 1 skipped** (full
+suite, 5:18; +14 itemized tests, +1 upstream count after the AMO re-record). flake8 only upstream's
+`localsearch.py:31`; `ruff check src tests ui` passes. `Case_devon`'s AMO reference re-recorded
+(spending +$1,505 under the default `"loop"`); `Case_john+sally`, `Case_cameron` and the fixed-rows
+fixture were unchanged after the zi=0 loop start. Four pre-existing assertions loosened for SC-loop
+lag once federal itemizing moved conversions (`STMF_n`/`NYIR_n` vs this plan's AGI; see step 2) and
+one NJ local-search time budget (`localSearchTime=1` was already tight).
 
 2026-10-11, upstream `dev` `844a7ec` merged: **3107 passed, 1 skipped** (full suite, 6 min; +2 upstream
 regret-sweep tests). flake8 only upstream's `localsearch.py:31`; `ruff check src tests ui` passes.

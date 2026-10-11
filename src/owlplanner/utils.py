@@ -131,6 +131,7 @@ _MODE_OPTIONS = {
     "withNIIT": ("loop", "optimize"),
     "withSSTaxability": ("loop", "optimize"),
     "withSeniorBonus": ("loop", "optimize"),
+    "withItemized": ("none", "loop", "optimize"),
     "withdrawalOrder": ("optimal", "taxable_first"),
 }
 _MODE_ALIASES = {

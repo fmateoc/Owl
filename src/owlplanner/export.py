@@ -567,6 +567,11 @@ def build_summary_dic(plan, N=None):
             dic, "Total state itemized deduction",
             np.sum(plan.st_item_n[:N] / plan.gamma_n[:N]), np.sum(plan.st_item_n[:N]),
         )
+    if np.any(getattr(plan, "item_n", 0) > 0):
+        _summary_currency_pair(
+            dic, "Total itemized deduction",
+            np.sum(plan.item_n[:N] / plan.gamma_n[:N]), np.sum(plan.item_n[:N]),
+        )
 
     taxPaid = np.sum(plan.medicare_n[:N], axis=0)
     taxPaidNow = np.sum(plan.medicare_n[:N] / plan.gamma_n[:N], axis=0)
@@ -931,6 +936,7 @@ def plan_metrics(plan, N=None) -> dict:
         "state_tax_today": _st(plan.st_T_n[:N]),
         "state_tax_nominal": _s(plan.st_T_n[:N]),
         "state_itemized_today": _st(getattr(plan, "st_item_n", np.zeros(N))[:N]),
+        "itemized_deductions_today": _st(getattr(plan, "item_n", np.zeros(N))[:N]),
         "medicare_today": _st(plan.medicare_n[:N]),
         "medicare_nominal": _s(plan.medicare_n[:N]),
         "aca_today": _st(plan.aca_costs_n[:N]),
@@ -1002,6 +1008,7 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "state_tax_today": (f"Total state income tax paid{_T}", "usd"),
     "state_tax_nominal": (f"Total state income tax paid{_N}", "usd"),
     "state_itemized_today": (f"Total state itemized deduction{_T}", "usd"),
+    "itemized_deductions_today": (f"Total itemized deduction{_T}", "usd"),
     "medicare_today": (f"Total Medicare premiums paid{_T}", "usd"),
     "medicare_nominal": (f"Total Medicare premiums paid{_N}", "usd"),
     "aca_today": (f"Total ACA premiums paid{_T}", "usd"),
@@ -1300,6 +1307,12 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
     if np.any(getattr(plan, "st_item_n", 0) > 0):
         TxDic["state itemized deduction"] = plan.st_item_n
         TxDic["state itemizing"] = plan.st_itemizing_n.astype(float)
+    if np.any(getattr(plan, "item_n", 0) > 0):
+        TxDic["itemized deduction"] = plan.item_n
+        TxDic["itemized SALT"] = plan.item_salt_n
+        TxDic["itemized mortgage interest"] = plan.item_mi_n
+        TxDic["itemized charity"] = plan.item_char_n
+        TxDic["itemized medical"] = plan.item_med_n
     TxDic["Medicare+IRMAA"] = plan.medicare_n
     if np.any(plan.aca_costs_n > 0):
         TxDic["ACA premiums"] = plan.aca_costs_n

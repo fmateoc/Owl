@@ -1,5 +1,22 @@
 ### Unreleased
 
+#### New: the federal deduction is max(standard, itemized) (`withItemized`)
+
+Schedule A is built from the expenses the plan already knows: property tax and the state and local
+income tax Owl charges (SALT, capped — $40,400 in 2026, $10,000 from 2030, with the MAGI
+phase-down), home mortgage interest from `Debts` (Pub. 936 limit), and budget lines typed
+`charity` (above 0.5% of AGI) and `medical` (above 7.5% of AGI). The choice of branch is
+`max(standard, itemized)`. Itemizers keep the OBBBA $6,000 senior bonus and lose the 65+ additions
+to the standard deduction; non-itemizers also deduct up to $1,000 ($2,000 MFJ) of cash charity.
+
+`withItemized` (`"none"` / `"loop"` / `"optimize"`, default `"loop"`) picks how the branch is
+chosen: `"optimize"` puts a binary on each year the a priori bounds do not decide, `"loop"` takes
+the branch the previous iterate's amounts imply, `"none"` is the old behaviour (always the
+standard). A year whose itemized total cannot beat the standard gets no columns, so a plan with no
+mortgage, no medical/charity lines, and property tax + state tax under the standard amount is
+unchanged and stays a pure LP. Rent is not federal SALT. The medical/charity floors are loop
+parameters (like the NY floor), not LP expressions of AGI.
+
 #### New: budget lines can follow an age clock; a JSON budget file
 
 A Budget line's `clock` is `calendar` (default; `year` / `end`) or `age`: `start_age` / `end_age`

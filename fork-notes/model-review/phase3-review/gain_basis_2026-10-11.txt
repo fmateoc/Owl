@@ -1,0 +1,8 @@
+NY mort=False yOBBBA=2099: bequest gain 0; fed tax 0; state tax 0; total tax 0
+NY mort=True yOBBBA=2099: bequest gain 30,385; fed tax -15,073; state tax 0; total tax -15,073
+NJ mort=False yOBBBA=2099: bequest gain 0; fed tax 0; state tax 0; total tax 0
+NJ mort=True yOBBBA=2099: bequest gain 30,385; fed tax -15,478; state tax 0; total tax -15,478
+NY mort=False yOBBBA=2032: bequest gain 29,093; fed tax -18,820; state tax -1,158; total tax -19,979
+NY mort=True yOBBBA=2032: bequest gain 140,997; fed tax -86,253; state tax -1,124; total tax -87,377
+NJ mort=False yOBBBA=2032: bequest gain 27,934; fed tax -20,453; state tax 0; total tax -20,453
+NJ mort=True yOBBBA=2032: bequest gain 140,995; fed tax -88,708; state tax 0; total tax -88,708

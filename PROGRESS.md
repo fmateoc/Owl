@@ -1045,6 +1045,51 @@ bequest counts home equity net of commission.
 
 Next: step 7 (docs).
 
+## Phase 3 review after step 6 (2026-10-11, over `066b8d6..e634c81`)
+
+Full write-up: `fork-notes/phase3-review.md` (Part A: step 6; Part B: the whole phase). Same day
+as step 6, so its numbers reproduce to the dollar.
+
+Step 6 corrections (the tables' arithmetic is right; these are about what they measure):
+
+- "In-model gain" is final bequest; §3.2's first-order numbers are lifetime tax saved. Like for
+  like, in-model tax saved is 84-101% of first-order (NY + mortgage, statutory: 15,073 vs
+  17,977; 2032: 87,377 vs 93,100). The ~2x in the step-6 text is compounding to the plan's end.
+- The NY-itemizing attribution compared with the 2026-10-07 table, which used another recipe (no
+  conversions, Medicare off in LS, `netSpending` 80). Same day, same recipe, NY itemizing off:
+  worth +$27,097 / +$38,635 exact and +$5,855 / +$11,146 LS at $20k / $25k. Methods disagree
+  3-5x: size unresolved; sign and NJ's lead agreed.
+- The `med`-group `zmed` family-vs-free rows ran no local search (same 486 nodes): vacuous.
+  Only the NY LS row measures it. The `med` rows recorded no objective.
+- "optimize is cheap" omits +3.6 s (cash, 2032) and +31% (maxSpending medical, full loop).
+
+Fixed (`aa5bdaf`): explain registry for the federal itemized and NJ line 31 rows (gates would
+have surfaced as policy constraints); NJ line 31 floor/flag moves in the loop's convergence test;
+premiums in the federal medical moves; fixed-point residual entries "itemized" and "state
+medical"; `_fix_dominated_itemizing` pins `zmedf` with premiums; duplicate helper removed and
+`standard_without_bonus` used; NY `itemized` keys `income_taxes` / `salt_cap` /
+`mortgage_limit` dropped (never honoured), unknown keys refused; empty `nch` block gone; the
+fork's residual code moved out of `_scSolve`; code comments no longer narrate review history.
+Two regression tests (both fail on `e634c81`). The residual entries are only reported; the
+added moves can change a plan only by changing when the loop stops (NJ line 31, federal medical
+with premiums).
+
+Decisions for the user (`phase3-review.md` B.2): R1 drop `withItemized="optimize"` (18 examples:
+optimize − loop from −$46.80 to +$2.49; five near-switch cases: equal under the exact LP, from
+−$145/yr to +$260 of bequest under the full loop, up to 23x slower); R2 one switch for
+NY itemizing and NJ line 31 too; R3 one mechanism for max(0, paid − floor); R4 done (merge
+below); R5 size against upstream before step 8 (federal part ~750 lines of methods vs 89 for
+`withSeniorBonus`).
+
+## Upstream dev 390f02f merged (2026-10-11, on `claude/eager-cray-s0fvks`)
+
+2026.10.11: `setMedicalInflation` / `medical_inflation_excess` (Medicare, ACA and other medical
+expenses grow faster than inflation; contributed by Dmitry Fink, #182). Conflict in `CHANGELOG.md`
+only. Fork change: `_medical_premium_lo` grows the HSA cap's other-medical amount with
+`_medical_n`, as upstream's `_add_hsa_medical_cap` now does. Questions for Phase 4 in
+`phase3-review.md` R4 (budget `medical` lines grow at their own rate; upstream's
+`setMedicalExpenses` is in no claim and not charged as spending).
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
@@ -1078,6 +1123,11 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 review fixes + upstream `dev` `390f02f` merged: **3184 passed, 1 skipped**
+(full suite, 7:54; before: 3168 on `e634c81`; +2 review regression tests, +12 upstream
+`test_medical_inflation.py`, +2 upstream round-trip parametrizations). flake8 only upstream's
+`localsearch.py:31`; `ruff check src tests ui` passes. No AMO reference moved.
 
 2026-10-11, Phase 3 step 5 review fixes: **3168 passed, 1 skipped** (full suite, 7:51; +6 tests
 in `test_itemized.py` and `test_nj_medical.py`). flake8 only upstream's `localsearch.py:31`;

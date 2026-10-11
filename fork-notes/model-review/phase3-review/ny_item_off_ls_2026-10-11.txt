@@ -1,0 +1,4 @@
+ls pt 20,000 NY NYitem=True: solved bequest 1,101,591 state tax 39,517 st_item yrs 31 70.6s
+ls pt 20,000 NY NYitem=False: solved bequest 1,095,736 state tax 42,690 st_item yrs 0 32.6s
+ls pt 25,000 NY NYitem=True: solved bequest 877,984 state tax 36,680 st_item yrs 31 69.5s
+ls pt 25,000 NY NYitem=False: solved bequest 866,838 state tax 42,690 st_item yrs 0 46.7s

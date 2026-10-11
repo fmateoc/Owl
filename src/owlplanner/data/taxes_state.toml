@@ -87,6 +87,11 @@
 #                               $50 alternative credit (line 56) is not modeled. Omit for states
 #                               without it. Amounts are not indexed (same figures in the 2020 and
 #                               2025 NJ-1040 instructions).
+#   medical_deduction         = { floor_pct } — unreimbursed medical above floor_pct percent of
+#                               state gross income (NJ-1040 line 31, Worksheet F: 2% of line 29,
+#                               NJ gross income after the retirement exclusion). Includes
+#                               Medicare Part B premiums (named in the NJ-1040 instructions).
+#                               Omit for states without it.
 #   itemized                  = optional, the state's own itemized deduction (fork; NY only,
 #                               verified against IT-196-I 2025). Omit, or set allowed = false,
 #                               for a state without one. Written as dotted keys under the entry
@@ -1255,6 +1260,8 @@ retirement_exclusion_age = 62
 retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
 # NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
 property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
+# NJ-1040 (2025) line 31, Worksheet F: medical above 2% of line 29 (NJ gross income)
+medical_deduction = { floor_pct = 2 }
 
 [NJ_MFJ]
 brackets = [[0.0, 1.4], [20000.0, 1.75], [50000.0, 2.45], [70000.0, 3.5], [80000.0, 5.525], [150000.0, 6.37], [500000.0, 8.97], [1000000.0, 10.75]]
@@ -1276,6 +1283,8 @@ retirement_exclusion_age = 62
 retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
 # NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
 property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
+# NJ-1040 (2025) line 31, Worksheet F: medical above 2% of line 29 (NJ gross income)
+medical_deduction = { floor_pct = 2 }
 
 [NM_Single]
 # Audit 2026-09: HB 252 (2025) six-bracket schedule, 1.5%-5.9%; Tax Foundation 2026 table.

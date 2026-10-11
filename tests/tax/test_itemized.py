@@ -162,12 +162,12 @@ def test_charity_floor_and_nonitemizer_cap():
 
 
 def test_medical_above_the_75_percent_floor():
-    """Budget medical above 7.5% of AGI. Medicare premiums are step 5, not here."""
+    """Budget medical above 7.5% of AGI. Premiums count as medical (step 5)."""
     p = _solve(_plan(state="FL", property_tax=0.0, medical=60_000.0, core=40_000.0),
                withItemized="optimize")
     assert p.itemizing_n[0]
     (cp, kp) = p._budget_amount_terms("medical")
-    paid = cp + kp * p.g_n
+    paid = cp + kp * p.g_n + p.medicare_n + p.aca_costs_n
     expect = np.maximum(0.0, paid - p.FEDMF_n)
     pos = p.itemizing_n & (p.item_med_n > 1.0)
     assert pos[:15].sum() >= 5
@@ -437,3 +437,28 @@ def test_replayed_rows_match_a_fresh_build(mode):
     p._fixedRows = {}
     p._buildConstraints(p.objective, p.solverOptions)
     fr._assert_same_lp(fr._lp_arrays(p), replayed)
+
+
+def test_care_line_of_100k_itemizes_with_premiums():
+    """Step 5's case: a deductible care line of $100k/yr for three late years. Use the `medical`
+    budget type (step 1: `care` is not deductible). Federal itemizes in those years and the
+    medical claim is care + premiums - 7.5% AGI."""
+    p = _plan(state="FL", property_tax=0.0, core=40_000.0, medical=0.0, taxable=(80, 80),
+              deferred=(400, 300))
+    # A medical line that starts later, $100k/yr (today's $).
+    lines = [
+        _line("core", "core", 40_000.0),
+        _line("care", "medical", 100_000.0, clock="age", start_age=80.0, end_age=200.0),
+    ]
+    p.houseLists["Budget"] = conditionDebtsAndFixedAssetsDF(pd.DataFrame(lines), "Budget")
+    q = _solve(p, withItemized="optimize", withMedicare="loop")
+    late = q.year_n - 1964 >= 80  # younger spouse's age clock
+    assert late.sum() >= 3
+    assert q.itemizing_n[late].all()
+    (cp, kp) = q._budget_amount_terms("medical")
+    paid = cp + kp * q.g_n + q.medicare_n + q.aca_costs_n
+    expect = np.maximum(0.0, paid - q.FEDMF_n)
+    np.testing.assert_allclose(q.item_med_n[late], expect[late], rtol=0.02, atol=1.0)
+    # Before the line starts, a year without another deductible takes the standard.
+    early = ~late
+    assert not q.itemizing_n[early].any() or q.item_med_n[early].max() <= 1.0

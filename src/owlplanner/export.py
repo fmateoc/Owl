@@ -1304,6 +1304,8 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
             TxDic["of which local"] = plan.lt_T_n
     if np.any(plan.st_pt_n > 0):
         TxDic["property tax deduction"] = plan.st_pt_n
+    if np.any(plan.st_med_n > 0):
+        TxDic["medical deduction"] = plan.st_med_n
     if np.any(getattr(plan, "st_item_n", 0) > 0):
         TxDic["state itemized deduction"] = plan.st_item_n
         TxDic["state itemizing"] = plan.st_itemizing_n.astype(float)

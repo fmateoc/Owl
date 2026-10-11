@@ -434,7 +434,7 @@ class Plan:
     # snapshot/restore/blend and the iteration trace pick it up automatically.
     _SC_PARAMS = (
         "M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "RXF_n", "NYIR_n", "STMF_n", "FEDMF_n", "FEDCF_n", "FEDSC_n",
-        "_item_zi_n", "_item_chl_n", "_item_medl_n", "FIX_n",
+        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "FIX_n",
     )
 
     def _snapshot_sc(self):
@@ -603,6 +603,9 @@ class Plan:
         self.st_ptd_const_n = np.zeros(self.N_n)  # Constant part of the deductible amount (nominal $)
         self.st_ptd_coef_n = np.zeros(self.N_n)  # Its coefficient on g_n
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
+        self.st_medd_floor_pct_n = np.zeros(self.N_n)  # NJ line 31 floor as percent of gross income (0 = none)
+        self.st_med_n = np.zeros(self.N_n)  # NJ medical deduction claimed (LP variable, line 31)
+        self._st_med_lp = False  # True when the NJ medical deduction columns exist
         self.mortgage_interest_n = np.zeros(self.N_n)  # Mortgage interest paid per calendar year
         self.mortgage_balance_cn = np.zeros((len(debts.MORTGAGE_CATEGORIES), self.N_n))  # Pub. 936 categories
         # State itemized deduction (fork, Phase 3 step 2): NY IT-196 and the like.
@@ -632,6 +635,8 @@ class Plan:
         self.FEDMF_n = np.zeros(self.N_n)  # Federal medical floor, $ (SC-loop parameter)
         self.FEDCF_n = np.zeros(self.N_n)  # Federal charity floor, $ (SC-loop parameter)
         self.FEDSC_n = np.full(self.N_n, _SALT_NO_CAP)  # SALT cap after its MAGI phase-down (SC-loop parameter)
+        self.NJMF_n = np.zeros(self.N_n)  # NJ line 31 medical floor, $ (SC-loop parameter)
+        self._nj_medl_n = np.zeros(self.N_n)  # NJ: medical paid above its floor (1/0) (SC-loop parameter)
         self._item_years = []  # Plan years with federal itemized columns
         self._item_med_years = []  # Subset whose medical claim needs a floor binary (zmedf)
         self._item_ch_years = []  # Subset whose charity claim needs a floor binary (zch)
@@ -2882,6 +2887,13 @@ class Plan:
         # Claims at the largest spending and with no floor (the floors only lower them).
         self._item_char_ub_n = np.maximum(0.0, const_ch + coef_ch * self._item_g_hi_n)
         self._item_med_ub_n = np.maximum(0.0, const_med + coef_med * self._item_g_hi_n)
+        # Owl's premiums count as medical (step 5): the loop's M_n / ACA_n plus the m / maca
+        # columns' own upper bounds under the optimize modes.
+        self._item_med_ub_n = self._item_med_ub_n + np.maximum(0.0, self.M_n + self.ACA_n) + self._medicare_premium_ub_n
+        if getattr(self, "_aca_lp", False) and getattr(self, "slcsp_aca_n", None) is not None:
+            aca_ub = np.zeros(self.N_n)
+            aca_ub[: self.n_aca] = self.slcsp_aca_n[: self.n_aca]
+            self._item_med_ub_n = self._item_med_ub_n + aca_ub
         self._item_state_tax_ub_n = self._item_state_tax_ub(inc_ub)
         self._item_salt_cap0_n = self._salt_cap_n(np.zeros(self.N_n))  # before the MAGI phase-down
         pt_ub = np.maximum(0.0, const_pt + coef_pt * self._item_g_hi_n)
@@ -2975,14 +2987,18 @@ class Plan:
         (cc, kc), (cm, km) = terms["ch"], terms["med"]
         for n in self._item_years:
             am = self._item_amounts(n, terms)
-            for flag, key, const, coef, F in ((chl, "ch", cc, kc, am["Fc"]), (medl, "med", cm, km, am["Fm"])):
+            prem_fixed, _ = self._medical_premium_terms(n)
+            for flag, key, const, coef, F, extra in (
+                (chl, "ch", cc, kc, am["Fc"], 0.0),
+                (medl, "med", cm, km, am["Fm"], prem_fixed),
+            ):
                 lo, hi = am[key]
                 if lo > 0:
                     flag[n] = 1.0
                 elif hi <= 0 or g_n is None:
                     flag[n] = 0.0
                 else:
-                    flag[n] = 1.0 if const[n] + coef[n] * g_n[n] - F > 0 else 0.0
+                    flag[n] = 1.0 if const[n] + coef[n] * g_n[n] + extra - F > 0 else 0.0
         return chl, medl
 
     def _item_loop_choice(self, pot=None, g_n=None):
@@ -3151,6 +3167,19 @@ class Plan:
         vm.add_if(st_re_lp, "st_re", self.N_i, self.N_n)  # retirement income exemption (per person)
         st_pt_lp = st_lp and bool(np.any(self.st_ptd_n > 0))
         vm.add_if(st_pt_lp, "st_pt", self.N_n)  # property tax deduction (NJ line 41)
+        # NJ line 31 medical (Worksheet F): one continuous variable per year, beside st_pt.
+        # Created only where the state has the deduction and something is medically deductible
+        # (a `medical` budget line, or Owl's premiums when Medicare/ACA is on); elsewhere the
+        # claim is zero and no column is added (a pinned zero column can move a non-converging
+        # loop). mediVals always builds Cbar, so it cannot be the flag.
+        with_medi = str(options.get("withMedicare", "loop")).lower() != "none"
+        has_med_expense = (
+            (self.budget is not None and bool(np.any(self.budget.by_type(budgeting.MEDICAL) > 0)))
+            or with_medi
+            or bool(self.slcsp_annual > 0)
+        )
+        self._st_med_lp = st_lp and bool(np.any(self.st_medd_floor_pct_n > 0)) and has_med_expense
+        vm.add_if(self._st_med_lp, "st_med", self.N_n)  # NJ medical deduction (line 31)
         # State itemized deduction (NY IT-196): claimed components and one binary per year that
         # has something to deduct and is not decided a priori. A year with no deductible budget
         # line and no mortgage interest adds no columns, so a plan without them stays an LP.
@@ -3273,6 +3302,7 @@ class Plan:
             self._add_state_taxable_income()
             self._add_local_taxable_income()
             self._add_property_tax_deduction()
+            self._add_nj_medical_deduction()
         self._configure_ss_taxability_lp(options)
         self._configure_ss_age_variables()
         self._configure_ltcg_constraints()
@@ -3396,6 +3426,31 @@ class Plan:
         const = gam * (ess - coef * E)
         return const, coef
 
+    def _medical_premium_terms(self, n):
+        """Owl's health premiums counted as medical expense in year n: (fixed, lp_coeffs).
+
+        fixed is M_n + ACA_n (loop-mode Medicare Part B/D + IRMAA and the ACA net premium).
+        lp_coeffs maps the m / maca columns to 1 where those carry the cost
+        (withMedicare="optimize" / withACA="optimize"). Budget `medical` lines are separate
+        (_budget_amount_terms); `care` lines are not medical (step 1).
+        """
+        fixed = float(self.M_n[n] + self.ACA_n[n])
+        coeffs = {}
+        if "m" in self.vm:
+            coeffs[self.vm["m"].idx(n)] = 1.0
+        if "maca" in self.vm:
+            coeffs[self.vm["maca"].idx(n)] = 1.0
+        return fixed, coeffs
+
+    def _medical_premium_ub(self, n):
+        """Upper bound on the premiums _medical_premium_terms can carry in year n ($)."""
+        ub = float(self.M_n[n] + self.ACA_n[n])
+        if "m" in self.vm:
+            ub += float(self._medicare_premium_ub_n[n])
+        if "maca" in self.vm and n < getattr(self, "n_aca", 0):
+            ub += float(self.slcsp_aca_n[n])
+        return ub
+
     def _add_property_tax_deduction(self):
         """The property tax deduction is at most what the budget pays (NJ line 41).
 
@@ -3410,6 +3465,76 @@ class Plan:
             if self.st_ptd_share_n[n] > 0 or self.st_ptd_coef_n[n] > 0 or self.st_ptd_const_n[n] > 0:
                 row = self.A.newRow({vm["st_pt"].idx(n): 1, vm["g"].idx(n): -self.st_ptd_coef_n[n]})
                 self.A.addRow(row, -np.inf, self.st_ptd_const_n[n], tag=("state_property_tax_deduction", n))
+
+    def _nj_medical_paid(self, n, g=None):
+        """Medical paid in year n for the NJ line 31 claim: budget `medical` + Owl's premiums."""
+        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        prem_fixed, _ = self._medical_premium_terms(n)
+        paid = float(const_med[n] + prem_fixed)
+        if g is not None:
+            paid += float(coef_med[n]) * float(g[n])
+        else:
+            paid += float(coef_med[n]) * float(self._ceiling_n[n] if hasattr(self, "_ceiling_n") else 0.0)
+            paid += self._medical_premium_ub(n) - prem_fixed
+        return paid
+
+    def _nj_medical_floor_flags(self, g_n=None):
+        """Whether each year's medical paid clears the NJ line 31 floor (1/0).
+
+        A priori where the amount is known to clear or not; otherwise at the last solution's
+        net spending. The claim row is written only where the flag is 1, so no max(0,.) switch
+        is needed and a year below the floor claims nothing.
+        """
+        flags = np.zeros(self.N_n)
+        if not getattr(self, "_st_med_lp", False):
+            return flags
+        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        for n in range(self.N_n):
+            if self.st_medd_floor_pct_n[n] <= 0:
+                continue
+            prem_fixed, _ = self._medical_premium_terms(n)
+            paid_lo = float(const_med[n] + prem_fixed)
+            paid_hi = self._nj_medical_paid(n)
+            F = float(self.NJMF_n[n])
+            if paid_lo > F:
+                flags[n] = 1.0
+            elif paid_hi <= F:
+                flags[n] = 0.0
+            elif g_n is not None:
+                prem_lp = getattr(self, "m_n", np.zeros(self.N_n))[n]
+                if getattr(self, "_aca_lp", False):
+                    prem_lp = prem_lp + getattr(self, "maca_n", np.zeros(self.N_n))[n]
+                flags[n] = 1.0 if float(const_med[n] + coef_med[n] * g_n[n]) + prem_fixed + prem_lp > F else 0.0
+        return flags
+
+    def _add_nj_medical_deduction(self):
+        """NJ line 31 (Worksheet F): unreimbursed medical above 2% of NJ gross income.
+
+        NJ gross income is line 29 (total income less the retirement exclusion); the floor is
+        NJMF_n, 2% of the previous iterate's line 29. st_med is a bounded variable beside st_pt
+        (no binary): the claim is at most what was paid minus the floor, and a year whose paid
+        amount does not clear the floor claims nothing (_nj_medl_n, as the federal loop's
+        _item_medl_n). Medical paid is the budget's `medical` lines plus Owl's premiums
+        (Medicare Part B/D + IRMAA and the ACA net premium; the NJ-1040 instructions name
+        Part B).
+        """
+        vm = self.vm
+        if not getattr(self, "_st_med_lp", False) or "st_med" not in vm:
+            return
+        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        for n in range(self.N_n):
+            if self.st_medd_floor_pct_n[n] <= 0 or self._nj_medl_n[n] < 0.5:
+                self.B.setRange(vm["st_med"].idx(n), 0, 0)
+                continue
+            prem_fixed, prem_lp = self._medical_premium_terms(n)
+            F = float(self.NJMF_n[n])
+            ub = max(0.0, self._nj_medical_paid(n) - F)
+            self.B.setRange(vm["st_med"].idx(n), 0, ub)
+            row = self.A.newRow({vm["st_med"].idx(n): 1, vm["g"].idx(n): -float(coef_med[n])})
+            for idx, coef in prem_lp.items():
+                row.addElem(idx, -coef)
+            self.A.addRow(row, -np.inf, float(const_med[n]) + prem_fixed - F,
+                          tag=("state_medical_deduction", n))
 
     def _st_item_candidate_years(self):
         """Plan years that might itemize: the state allows it and something is deductible.
@@ -3452,13 +3577,16 @@ class Plan:
         """
         (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
         F = float(self.STMF_n[n])
-        med_fixed = float(const_med[n] + self.M_n[n])
+        prem_fixed, _ = self._medical_premium_terms(n)
+        # prem_ub is the total (loop constant + the m / maca columns' upper bounds); the lo side
+        # uses the loop constant only, so the claim is never above what the plan can actually pay.
+        prem_ub = self._medical_premium_ub(n)
         out = {
             "pt": (max(0.0, const_pt[n] + coef_pt[n] * g_lo), max(0.0, const_pt[n] + coef_pt[n] * g_hi)),
             "ch": (max(0.0, const_ch[n] + coef_ch[n] * g_lo), max(0.0, const_ch[n] + coef_ch[n] * g_hi)),
             "med": (
-                max(0.0, med_fixed + coef_med[n] * g_lo - F),
-                max(0.0, med_fixed + coef_med[n] * g_hi + self._medicare_premium_ub_n[n] - F),
+                max(0.0, const_med[n] + coef_med[n] * g_lo + prem_fixed - F),
+                max(0.0, const_med[n] + coef_med[n] * g_hi + prem_ub - F),
             ),
             "F": F,
         }
@@ -3543,12 +3671,16 @@ class Plan:
                     self.B.setRange(zmed, 0, 0)
                 else:
                     self.B.setRange(zmed, 0, 1)
-                    paid_rhs = float(const_med[n] + self.M_n[n]) - am["F"]
+                    prem_fixed, prem_lp = self._medical_premium_terms(n)
+                    paid_rhs = float(const_med[n] + prem_fixed) - am["F"]
                     # zmed=1: imed <= paid - F. zmed=0: the row relaxes by `relax` (paid >= 0, so
                     # F is enough; one dollar of margin) and the claim row zeros imed.
                     relax = max(am["F"], 0.0) + 1.0
+                    floor_row = {imed: 1, vm["g"].idx(n): -coef_med[n], zmed: relax}
+                    for idx, coef in prem_lp.items():
+                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
                     self.A.addNewRow(
-                        {imed: 1, vm["g"].idx(n): -coef_med[n], vm["m"].idx(n): -1, zmed: relax},
+                        floor_row,
                         -np.inf, paid_rhs + relax, tag=("state_item_med_floor", n),
                     )
                     self.A.addNewRow({imed: 1, zmed: -ub_med}, -np.inf, 0, tag=("state_item_med_claim", n))
@@ -3640,13 +3772,15 @@ class Plan:
         Returns (lo, hi) per component and for the whole itemized total (mortgage interest
         included), from net spending's bounds. Budget amounts are const + coef * g_n. The SALT cap
         (FEDSC_n) and the medical/charity floors (FEDMF_n / FEDCF_n) are loop parameters from the
-        previous iterate's AGI. Owl's Medicare premiums are not in the medical claim: step 5 (3.3)
-        wires them in.
+        previous iterate's AGI. Medical paid is the budget's `medical` lines plus Owl's premiums
+        (Medicare Part B/D + IRMAA and the ACA net premium).
         """
         (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
         g_lo, g_hi = float(self._item_g_lo_n[n]), float(self._item_g_hi_n[n])
         Fm, Fc = float(self.FEDMF_n[n]), float(self.FEDCF_n[n])
         salt_cap = float(self.FEDSC_n[n])
+        prem_fixed, _ = self._medical_premium_terms(n)
+        prem_ub = self._medical_premium_ub(n)
         # SALT is property tax + the state and local income tax the plan pays (capped).
         pt_hi = max(0.0, const_pt[n] + coef_pt[n] * g_hi)
         pt_lo = max(0.0, const_pt[n] + coef_pt[n] * g_lo)
@@ -3655,7 +3789,10 @@ class Plan:
         out = {
             "pt": (salt_lo, salt_hi),
             "ch": (max(0.0, const_ch[n] + coef_ch[n] * g_lo - Fc), max(0.0, const_ch[n] + coef_ch[n] * g_hi - Fc)),
-            "med": (max(0.0, const_med[n] + coef_med[n] * g_lo - Fm), max(0.0, const_med[n] + coef_med[n] * g_hi - Fm)),
+            "med": (
+                max(0.0, const_med[n] + coef_med[n] * g_lo + prem_fixed - Fm),
+                max(0.0, const_med[n] + coef_med[n] * g_hi + prem_ub - Fm),
+            ),
             "Fm": Fm,
             "Fc": Fc,
         }
@@ -3765,7 +3902,8 @@ class Plan:
         e <= MI + min(cap, pt + st) + charity claim + medical claim + bonus, as two rows (the min
         of two terms is an upper bound by both). The claims are paid - floor in years the loop
         found above the floor (_item_chl_n / _item_medl_n, a priori where the amount is known),
-        and nothing otherwise. Standard years get no rows.
+        and nothing otherwise. Medical paid counts Owl's premiums as well as the budget's lines.
+        Standard years get no rows.
         """
         vm = self.vm
         (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
@@ -3779,7 +3917,10 @@ class Plan:
                 rhs += float(const_ch[n]) - am["Fc"]
             if self._item_medl_n[n] >= 0.5:
                 lin[g] = lin.get(g, 0.0) - float(coef_med[n])
-                rhs += float(const_med[n]) - am["Fm"]
+                prem_fixed, prem_lp = self._medical_premium_terms(n)
+                for idx, coef in prem_lp.items():
+                    lin[idx] = lin.get(idx, 0.0) - coef
+                rhs += float(const_med[n]) + prem_fixed - am["Fm"]
             lin = {c: v for c, v in lin.items() if v != 0.0}
             cap = float(self.FEDSC_n[n])
             if cap < _SALT_NO_CAP:
@@ -3850,24 +3991,33 @@ class Plan:
             for idx, coef in st_coeffs.items():
                 salt_row[idx] = salt_row.get(idx, 0) - coef
             self.A.addNewRow(salt_row, -np.inf, float(const_pt[n]) + st_const, tag=("item_salt_paid", n))
-            # Charity above its floor, medical above its floor (budget lines only; premiums are
-            # step 5). Known amount -> one row; else a switch: z=1 claims paid - F (and needs
-            # paid >= F), z=0 claims nothing.
+            # Charity above its floor, medical above its floor (budget lines plus, for medical,
+            # Owl's premiums). Known amount -> one row; else a switch: z=1 claims paid - F (and
+            # needs paid >= F), z=0 claims nothing.
             for col, sw, ub_c, const_c, coef_c, F, tag in (
                 (ich, zch, am["ch"][1], const_ch[n], coef_ch[n], am["Fc"], "item_ch"),
                 (imed, zmed, am["med"][1], const_med[n], coef_med[n], am["Fm"], "item_med"),
             ):
+                prem_fixed, prem_lp = (0.0, {}) if tag == "item_ch" else self._medical_premium_terms(n)
+                extra = dict(prem_lp)
+                rhs_c = float(const_c) + prem_fixed
                 if sw is not None:
                     if ub_c <= 0:
                         self.B.setRange(sw, 0, 0)
                         continue
                     self.B.setRange(sw, 0, 1)
                     relax = max(F, 0.0) + 1.0
-                    self.A.addNewRow({col: 1, g.idx(n): -coef_c, sw: relax}, -np.inf,
-                                     float(const_c) - F + relax, tag=(tag + "_floor", n))
+                    floor_row = {col: 1, g.idx(n): -float(coef_c), sw: relax}
+                    for idx, coef in extra.items():
+                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
+                    self.A.addNewRow(floor_row, -np.inf,
+                                     rhs_c - F + relax, tag=(tag + "_floor", n))
                     self.A.addNewRow({col: 1, sw: -ub_c}, -np.inf, 0, tag=(tag + "_claim", n))
                 elif ub_c > 0:
-                    self.A.addNewRow({col: 1, g.idx(n): -coef_c}, -np.inf, float(const_c) - F, tag=(tag + "_floor", n))
+                    floor_row = {col: 1, g.idx(n): -float(coef_c)}
+                    for idx, coef in extra.items():
+                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
+                    self.A.addNewRow(floor_row, -np.inf, rhs_c - F, tag=(tag + "_floor", n))
             row = {isalt: -1.0, ich: -1.0, imed: -1.0}
             if free:
                 if nch is not None:
@@ -3916,7 +4066,16 @@ class Plan:
         (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
         pt = np.maximum(0.0, cp + kp * g)
         ch = np.maximum(0.0, cc + kc * g - self.FEDCF_n)
-        med = np.maximum(0.0, cm + km * g - self.FEDMF_n)
+        prem_fixed = self.M_n + self.ACA_n
+        if x is not None:
+            prem_lp = self.vm["m"].extract(x)
+            if "maca" in self.vm:
+                prem_lp = prem_lp + self.vm["maca"].extract(x)
+        else:
+            prem_lp = getattr(self, "m_n", np.zeros(self.N_n))
+            if getattr(self, "_aca_lp", False):
+                prem_lp = prem_lp + getattr(self, "maca_n", np.zeros(self.N_n))
+        med = np.maximum(0.0, cm + km * g + prem_fixed + prem_lp - self.FEDMF_n)
         salt = np.minimum(self.FEDSC_n, pt + self._state_tax_paid_n(x))
         return np.maximum(0.0, salt + ch + med + self.item_mi_n)
 
@@ -3932,7 +4091,16 @@ class Plan:
         (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
         salt = np.minimum(self.FEDSC_n, np.maximum(0.0, cp + kp * g) + self._state_tax_paid_n(x))
         ch = np.where(self._item_chl_n >= 0.5, cc + kc * g - self.FEDCF_n, 0.0)
-        med = np.where(self._item_medl_n >= 0.5, cm + km * g - self.FEDMF_n, 0.0)
+        prem_fixed = self.M_n + self.ACA_n
+        if x is not None:
+            prem_lp = self.vm["m"].extract(x)
+            if "maca" in self.vm:
+                prem_lp = prem_lp + self.vm["maca"].extract(x)
+        else:
+            prem_lp = getattr(self, "m_n", np.zeros(self.N_n))
+            if getattr(self, "_aca_lp", False):
+                prem_lp = prem_lp + getattr(self, "maca_n", np.zeros(self.N_n))
+        med = np.where(self._item_medl_n >= 0.5, cm + km * g + prem_fixed + prem_lp - self.FEDMF_n, 0.0)
         return salt, ch, med
 
     def _item_bonus_n(self, x=None):
@@ -4170,6 +4338,8 @@ class Plan:
                 row.addElem(vm["st_rx"].idx(n), 1)  # income-tiered retirement exclusion
             if "st_pt" in vm:
                 row.addElem(vm["st_pt"].idx(n), 1)  # property tax deduction (NJ line 41)
+            if "st_med" in vm:
+                row.addElem(vm["st_med"].idx(n), 1)  # medical deduction (NJ line 31)
             for t in range(self.N_t):
                 row.addElem(vm["f"].idx(t, n), -1)  # subtract G_n (federal taxable ordinary income)
             row.addElem(vm["e"].idx(n), -1)  # add back the federal standard deduction
@@ -4260,6 +4430,8 @@ class Plan:
             row.addElem(vm["st_rx"].idx(n), 1)
             if "st_pt" in vm:
                 row.addElem(vm["st_pt"].idx(n), 1)
+            if "st_med" in vm:
+                row.addElem(vm["st_med"].idx(n), 1)  # line 31 is before line 39, inside line 27
             for k in tiers + [K]:
                 row.addElem(rxl.idx(n, k), -1)
             self.A.addRow(row, 0, 0, tag=("state_exclusion_income", n))
@@ -6029,7 +6201,7 @@ class Plan:
         years = []
         excess = 0.0
         # Fork: an income-tiered exclusion claimed below what the income allows is tax not owed too.
-        short_n = self._exclusion_shortfall(x) + self._itemized_shortfall(x)
+        short_n = self._exclusion_shortfall(x) + self._itemized_shortfall(x) + self._nj_medical_shortfall(x)
         # Federal: an itemized year that claims less than it could, or a standard year whose
         # itemized total would have been larger, leaves taxable income above what is owed.
         fed_short_n = self._federal_itemized_shortfall(x)
@@ -6048,6 +6220,36 @@ class Plan:
                 years.append(int(self.year_n[n]))
                 excess += over / self.gamma_n[n]
         return years, excess
+
+    def _nj_medical_shortfall(self, x=None):
+        """NJ line 31 medical the solution could claim but does not, per year ($).
+
+        The LP bounds the claim from above only, so where a year's cash has no price a smaller
+        deduction is as good and the plan reports state tax it does not owe. Used like
+        _exclusion_shortfall: subtracted from the year's taxable income when measuring brackets
+        filled out of order, which turns tax pricing on for the repair.
+        """
+        Nn = self.N_n
+        if not getattr(self, "_st_med_lp", False) or "st_med" not in self.vm:
+            return np.zeros(Nn)
+        if x is None:
+            claimed = self.st_med_n
+            g_n = self.g_n
+        else:
+            claimed = self.vm["st_med"].extract(x)
+            g_n = self.vm["g"].extract(x)
+        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        if x is None:
+            prem = self.M_n + self.ACA_n + getattr(self, "m_n", np.zeros(self.N_n))
+            if getattr(self, "_aca_lp", False):
+                prem = prem + getattr(self, "maca_n", np.zeros(self.N_n))
+        else:
+            prem = self.M_n + self.ACA_n + self.vm["m"].extract(x)
+            if "maca" in self.vm:
+                prem = prem + self.vm["maca"].extract(x)
+        paid = np.maximum(0.0, const_med + coef_med * g_n + prem)
+        best = np.maximum(0.0, paid - self.NJMF_n)
+        return np.where(self.st_medd_floor_pct_n > 0, np.maximum(0.0, best - claimed), 0.0)
 
     def _exclusion_shortfall(self, x=None):
         """Income-tiered exclusion the solution could claim on its own income but does not, per year ($).
@@ -6095,7 +6297,7 @@ class Plan:
         if x is None:
             ipt, ich, imed = self.st_ipt_n, self.st_ich_n, self.st_imed_n
             g_n = self.g_n
-            st_e = self.st_agi_n - self.st_ti_n - self.st_rx_n - self.st_pt_n
+            st_e = self.st_agi_n - self.st_ti_n - self.st_rx_n - self.st_pt_n - self.st_med_n
         else:
             vm = self.vm
             ipt_j = vm["st_ipt"].extract(x)
@@ -6122,9 +6324,13 @@ class Plan:
         # move must not invent a shortfall either.
         F = self.STMF_n
         if x is None:
-            prem = self.m_n + self.M_n
+            prem = getattr(self, "m_n", np.zeros(self.N_n)) + self.M_n + self.ACA_n
+            if getattr(self, "_aca_lp", False):
+                prem = prem + getattr(self, "maca_n", np.zeros(self.N_n))
         else:
-            prem = vm["m"].extract(x) + self.M_n
+            prem = self.vm["m"].extract(x) + self.M_n + self.ACA_n
+            if "maca" in self.vm:
+                prem = prem + self.vm["maca"].extract(x)
         paid_med = np.maximum(0.0, const_med + coef_med * g_n + prem - F)
         pot = const_pt + coef_pt * g_n + const_ch + coef_ch * g_n + paid_med + self.st_item_mi_n
         cols_n = np.zeros(Nn, dtype=bool)
@@ -6664,6 +6870,7 @@ class Plan:
         self._rx_active = False
         self.st_ptd_cap_n = np.zeros(self.N_n)
         self.st_ptd_rent_share_n = np.zeros(self.N_n)
+        self.st_medd_floor_pct_n = np.zeros(self.N_n)
         self.st_item_ok_n = np.zeros(self.N_n, dtype=bool)
         self._itemized = tax_state.StateItemizedParams.empty(self.N_n)
         if any(self._states_n()):
@@ -6694,6 +6901,7 @@ class Plan:
             self._str_active = bool(np.any(np.isfinite(sp.recap_start_n)))
             self.st_ptd_cap_n = sp.ptd_cap_n
             self.st_ptd_rent_share_n = sp.ptd_rent_share_n
+            self.st_medd_floor_pct_n = sp.med_floor_pct_n
             self._itemized = sp.itemized
             self.st_item_ok_n = sp.itemized.allowed_n.copy()
             self._set_tiered_exclusion(sp)
@@ -7363,7 +7571,9 @@ class Plan:
                 )
                 # The medical floor moves the claim only where the medical paid clears one of the
                 # two floors; elsewhere the claim is zero either way.
-                paid_med = const_med + coef_med * self.g_n + self.M_n + self.m_n
+                paid_med = const_med + coef_med * self.g_n + self.M_n + self.m_n + self.ACA_n
+                if getattr(self, "_aca_lp", False):
+                    paid_med = paid_med + self.maca_n
                 lo_F = np.minimum(self.STMF_n, sc_lp["STMF_n"])
                 med_live = self.st_item_ok_n & (paid_med > lo_F)
                 dF = np.minimum(np.abs(self.STMF_n - sc_lp["STMF_n"]), np.maximum(paid_med - lo_F, 0.0))
@@ -7549,6 +7759,8 @@ class Plan:
             # can be an earlier one than the last LP built (best of a cycle).
             self.NYIR_n = sc_lp["NYIR_n"]
             self.STMF_n = sc_lp["STMF_n"]
+            self.NJMF_n = sc_lp["NJMF_n"]
+            self._nj_medl_n = sc_lp["_nj_medl_n"]
             self._aggregateResults(xx)
             # Restore the NL parameters to what was actually embedded in the final LP
             # constraints. _computeNLstuff runs after every LP solve (for convergence
@@ -7770,7 +7982,9 @@ class Plan:
             # are kept as claimed; only medical above the plan's own floor and the rate count.
             terms = self._state_itemized_terms()
             const_med, coef_med = terms["med"]
-            paid_med = const_med + coef_med * self.g_n + self.M_n + self.m_n
+            paid_med = const_med + coef_med * self.g_n + self.m_n + self.M_n + self.ACA_n
+            if getattr(self, "_aca_lp", False):
+                paid_med = paid_med + self.maca_n
             F_true = self._itemized.medical_floor_n / 100.0 * self.MAGI_n
             med_true = np.minimum(self.st_imed_n, np.maximum(0.0, paid_med - F_true))
             keep_true = 1.0 - self._state_itemized_adjustment()
@@ -8623,6 +8837,8 @@ class Plan:
             self.FEDMF_n = np.zeros(self.N_n)  # nor the federal medical/charity floors
             self.FEDCF_n = np.zeros(self.N_n)
             self.FEDSC_n = self._salt_cap_n(np.zeros(self.N_n))  # nor the SALT cap's MAGI phase-down
+            self.NJMF_n = np.zeros(self.N_n)  # nor the NJ line 31 floor
+            self._nj_medl_n = self._nj_medical_floor_flags()
             self._item_zi_n = self._item_loop_choice()  # standard, unless itemizing is certain
             self._item_chl_n, self._item_medl_n = self._item_floor_flags()
             self.FIX_n = np.zeros(self.N_n)  # no free zi until an iterate shows where the switch is
@@ -8642,6 +8858,10 @@ class Plan:
         self.FEDMF_n = tx.MEDICAL_FLOOR * self.MAGI_n
         # The 0.5% charity floor is an OBBBA rule: none after a pre-TCJA reversion.
         self.FEDCF_n = np.where(self._item_obbba_n, tx.CHARITY_FLOOR * self.MAGI_n, 0.0)
+        # NJ line 31: 2% of NJ gross income (line 29 = state AGI less the retirement exclusion).
+        nj_gross = np.maximum(0.0, self.st_agi_n - self.st_rx_n)
+        self.NJMF_n = self.st_medd_floor_pct_n / 100.0 * nj_gross
+        self._nj_medl_n = self._nj_medical_floor_flags(self.g_n)
         # The SALT cap's MAGI phase-down (above $505,000 in 2026) from this iterate's AGI. It
         # changes the problem only above the threshold, so below it local search still sees an
         # unchanged problem. Step-3 review: computing it once at solve entry read the MAGI that
@@ -8861,6 +9081,7 @@ class Plan:
         self.st_re_in = vm["st_re"].extract(x) if "st_re" in vm else np.zeros((Ni, Nn))
         self.st_rx_n = vm["st_rx"].extract(x) if "st_rx" in vm else np.zeros(Nn)
         self.st_pt_n = vm["st_pt"].extract(x) if "st_pt" in vm else np.zeros(Nn)
+        self.st_med_n = vm["st_med"].extract(x) if "st_med" in vm else np.zeros(Nn)
         if "st_ipt" in vm:
             ipt_j = vm["st_ipt"].extract(x)
             ich_j = vm["st_ich"].extract(x)

@@ -742,6 +742,43 @@ all 18 cases under `none` / `loop` / `optimize` (script not committed).
   dominated binaries fixed (`Case_jordan+taylor` at gap 2%), linked sale stops the interest,
   constraint replay (both modes).
 
+## Phase 3 step 5 — medical floors wired to premiums; NJ line 31 (2026-10-11)
+
+Size S from `phase3-plan.md` §5 step 5 (3.3). On `claude/eager-cray-s0fvks` after the step-3
+review fixes. Rule checked this session against the 2025 NJ-1040 instructions (nj.gov, PDF):
+line 31 / Worksheet F — unreimbursed medical above **2% of line 29** (NJ gross income = line 27
+total income less the line 28c retirement exclusion). Medicare Part B premiums are named in the
+instructions. Line 31 sits in lines 30-37c (before line 39 taxable income); line 41 property tax
+comes after line 39. Both end up reducing the tax base.
+
+- **Premiums as medical** (`Plan._medical_premium_terms` / `_medical_premium_ub`): budget
+  `medical` lines plus Owl's Medicare Part B/D + IRMAA (`M_n`, or the `m` column under
+  `withMedicare="optimize"`) and the ACA net premium (`ACA_n`, or `maca` under
+  `withACA="optimize"`). Wired into the federal claim (it had budget lines only; the code said
+  "premiums are step 5") and into NY's (which had Medicare but not ACA). `care` stays
+  non-deductible (step 1: use `medical` for deductible care).
+- **NJ line 31** (`st_med`, beside `st_pt`, no binary): floor `NJMF_n` = 2% of the previous
+  iterate's line 29 (`st_agi_n - st_rx_n`), claim `max(0, paid - floor)`. No `max(0,.)` switch:
+  a year whose paid amount clears the floor gets the row `st_med <= paid - floor`, one below it
+  claims nothing (`_nj_medl_n`, as the federal loop's `_item_medl_n`; both are `_SC_PARAMS`).
+  Data: `medical_deduction = { floor_pct = 2 }` in `taxes_state.toml` (NJ_Single / NJ_MFJ),
+  `StateTaxParams.med_floor_pct_n`. The column is created only where the state has the deduction
+  and something is medically deductible (a `medical` line, or Medicare/ACA on — `mediVals` always
+  builds `Cbar`, so it cannot be the flag). Added to the state taxable-income row and to the
+  exclusion's line-27 total (like `st_pt`). Shortfall joins `_bracket_order_excess` (step 4
+  convention). Reported as `st_med_n` / *medical deduction* in the Taxes sheet and explain.
+- **Test** (the plan's case): a deductible care line of $100k/yr from age 80 (`medical` type),
+  federal itemizes in those years, `item_med = care + premiums - 7.5% AGI`
+  (`test_care_line_of_100k_itemizes_with_premiums`). `tests/tax/test_nj_medical.py` (7): data
+  parse NJ only, claim = paid - floor, no column without a medical line and Medicare off, the
+  column appears with Medicare on, FL/NY unchanged, claim zero below the floor at high income.
+- **Deviations from the plan's sketch:** the test line is a `medical` budget line named "care"
+  (step 1 left `care` non-deductible); NJ's floor uses the same loop-flag pattern as the federal
+  medical floor rather than a pure column bound, so a year that straddles the floor is decided
+  from the previous iterate (no binary, as planned) and can lag one SC step.
+
+Next: step 6 (measure on the synthetic couple) and step 7 (docs).
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
@@ -775,6 +812,10 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 step 5 (medical premiums + NJ line 31): **3162 passed, 1 skipped** (full
+suite, 6:10; +8 tests in `test_nj_medical.py` and `test_itemized.py`). flake8 only upstream's
+`localsearch.py:31`; `ruff check src tests ui` passes.
 
 2026-10-11, Phase 3 step 3 review fixes: **3154 passed, 1 skipped** (full suite, 7:15; +30 tests in
 `test_itemized.py`). flake8 only upstream's `localsearch.py:31`; `ruff check src tests ui` passes.

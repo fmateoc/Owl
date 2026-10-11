@@ -127,6 +127,8 @@ class StateTaxParams:
                       other income (NJ line 28b); -1 = no such extension
     ptd_cap_n      -- shape (N_n,) property tax deduction cap (NJ line 41; 0 = the state has none)
     ptd_rent_share_n -- shape (N_n,) percent of rent that counts as property tax for that deduction
+    med_floor_pct_n -- shape (N_n,) percent of NJ gross income (line 29) medical expenses must
+                       exceed (NJ Worksheet F line 2: 2); 0 = the state has no medical deduction
     itemized       -- per-year itemized-deduction settings (StateItemizedParams)
 
     The flag arrays are per year because the state can change during the plan.
@@ -155,6 +157,7 @@ class StateTaxParams:
     rx_earned_n: np.ndarray
     ptd_cap_n: np.ndarray
     ptd_rent_share_n: np.ndarray
+    med_floor_pct_n: np.ndarray
     itemized: StateItemizedParams
 
 
@@ -413,6 +416,7 @@ def st_taxParams(
     rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))  # cap, age, earned-income limit
     ptd_cap_n = np.zeros(N_n)
     ptd_rent_share_n = np.zeros(N_n)
+    med_floor_pct_n = np.zeros(N_n)
     item_s = _read_itemized(entry_single, state, N_n)
     item_m = _read_itemized(entry_mfj, state, N_n)
     itemized = StateItemizedParams.empty(N_n)
@@ -451,6 +455,9 @@ def st_taxParams(
             gp = np.asarray(gamma_n, dtype=float) if ptd.get("indexed", False) else np.ones(len(gamma_n))
             ptd_cap_n[n] = float(ptd["cap"]) * gp[n]
             ptd_rent_share_n[n] = float(ptd["rent_share"])
+        mded = entry.get("medical_deduction")
+        if mded is not None:
+            med_floor_pct_n[n] = float(mded["floor_pct"])
         src = item_m if filing_status_n[n] == 1 else item_s
         itemized.allowed_n[n] = src.allowed_n[n]
         itemized.income_taxes_n[n] = src.income_taxes_n[n]
@@ -540,6 +547,7 @@ def st_taxParams(
         rx_earned_n=rx[2],
         ptd_cap_n=ptd_cap_n,
         ptd_rent_share_n=ptd_rent_share_n,
+        med_floor_pct_n=med_floor_pct_n,
         itemized=itemized,
     )
 
@@ -578,6 +586,7 @@ def st_schedule(
     rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))
     ptd_cap_n = np.zeros(N_n)
     ptd_rent_share_n = np.zeros(N_n)
+    med_floor_pct_n = np.zeros(N_n)
     itemized = StateItemizedParams.empty(N_n)
 
     for n, s in enumerate(states_n):
@@ -602,6 +611,7 @@ def st_schedule(
         rx[:, n] = [p.rx_cap_n[n], p.rx_age_n[n], p.rx_earned_n[n]]
         ptd_cap_n[n] = p.ptd_cap_n[n]
         ptd_rent_share_n[n] = p.ptd_rent_share_n[n]
+        med_floor_pct_n[n] = p.med_floor_pct_n[n]
         it = p.itemized
         itemized.allowed_n[n] = it.allowed_n[n]
         itemized.income_taxes_n[n] = it.income_taxes_n[n]
@@ -630,6 +640,7 @@ def st_schedule(
         rx_earned_n=rx[2],
         ptd_cap_n=ptd_cap_n,
         ptd_rent_share_n=ptd_rent_share_n,
+        med_floor_pct_n=med_floor_pct_n,
         credit_n=credit_n,
         itemized=itemized,
         **flags,

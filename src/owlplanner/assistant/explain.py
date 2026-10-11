@@ -413,9 +413,13 @@ def _state_exclusion(plan, n):
 def _state_property_tax_deduction(plan, n):
     """Property tax deduction claimed in year n (NJ line 41), today's $; only where claimed."""
     pt = getattr(plan, "st_pt_n", None)
-    if pt is None or pt[n] <= 0.5:
-        return {}
-    return {"property_tax_deduction": _round(float(pt[n]) / plan.gamma_n[n])}
+    out = {}
+    if pt is not None and pt[n] > 0.5:
+        out["property_tax_deduction"] = _round(float(pt[n]) / plan.gamma_n[n])
+    med = getattr(plan, "st_med_n", None)
+    if med is not None and med[n] > 0.5:
+        out["medical_deduction"] = _round(float(med[n]) / plan.gamma_n[n])
+    return out
 
 
 def _loc(locality):

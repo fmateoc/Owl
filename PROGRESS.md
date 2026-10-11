@@ -612,6 +612,76 @@ Deviations from the plan (§5 step 3), for the review:
 3. Non-itemizer charity is inside S_n whenever `withItemized != "none"` (so a plan with charity
    lines and no itemizing still gets it). Under `"none"` it is absent, as today.
 
+## Step 3 review (2026-10-11, independent pass over `5070619`)
+
+Measured on HEAD with the date frozen at 2026-01-01 (scripts not committed). Full suite: 3124
+passed, 1 skipped (the 3121 above undercounts: `test_itemized.py` has 17 tests, not 14).
+
+Bugs, verified by a run:
+
+1. **The SALT phase-down never applies.** `solve()` zeroes `MAGI_n` before `_buildOffsetMap`,
+   so `_setup_federal_itemized` always computes the cap at MAGI 0. The comment at
+   `_computeNLstuff` ("one solve stale") is wrong. NY couple, MAGI $694k-877k in 2026-2029:
+   $40,400-41,624 claimed every year (statutory: $10,000), the same on three solves in a row.
+   No warning either.
+2. **The default `"loop"` changes plans that never itemize.** `Case_chris+pat` (FL, no
+   budget, zero candidate years): basis $117,052.45 -> $116,919.95. Cause: the standard-branch
+   rows `e <= S + B` written for every year (same bound as the column) change a
+   non-converging SC loop's path. Writing that row only for `_sb_lp` bonus years restores
+   $117,052.45 exactly (checked). Loop-mode standard years in `_item_years` still carry pinned
+   columns and rows, which moves the NY residency plan by $11 with no year itemized.
+3. **`"optimize"` itemizes where it loses, at the default gap.** `Case_jordan+taylor`:
+   2027 and 2029 itemize $31,323 / $33,108 against a standard of $36,494 / $38,566, and 2040
+   takes the standard with $32,258 itemizable (MILP gap 0.23%, loop oscillatory). Bequest
+   $2,650,296, below both `"none"` ($2,651,672) and `"loop"` ($2,651,846). With `gap=1e-7`
+   those years are correct and the loop converges. `_federal_itemized_shortfall` reports this as
+   "tax brackets filled out of order ... the objective is unaffected", which is false here: it is
+   a suboptimal binary, not a tie, and the repair keeps the binaries.
+
+Plan items not done (plan §4 and §5 step 3), none in the deviations list:
+
+4. No warnings for the SALT phase-down threshold, the 2/37 limit or Pease (grep finds no
+   `pease`, `2/37` or SALT warning in `plan.py` / `tax_federal.py`).
+5. Under a pre-TCJA reversion the charity floor (`FEDCF_n`) and the non-itemizer charity
+   (`_nonitemizer_charity_n`) still apply; the plan says no charity floor after `yOBBBA`. Both
+   are OBBBA rules. Small amounts.
+
+Cost (example sweep, none / loop / optimize): `"loop"` costs nothing measurable. `"optimize"`
+adds a `zi` in almost every year of any state-tax plan, because the candidate rule bounds state
+tax by the top rate x (flows + the whole portfolio): `Case_morgan` (OR) 0.3 s -> 30.8 s,
+37 candidate years, 0 itemized; `Case_john+sally` 0.1 -> 5.1 s; `Case_kim+sam-spending`
+0.4 -> 8.2 s. The household files are to use `"optimize"` (D4); step 6 should measure this
+before that default is kept.
+
+Tests:
+
+6. `test_guard_all_seventeen_examples_unchanged` loads three configs and solves none: the
+   name and docstring claim what it does not check (and bug 2 shows the claim is false).
+7. `test_local_search_returns_an_integral_plan`: the Summary says `local search -> loop` (the
+   search kept the loop's plan), and `(item_n == 0) | (item_n > 0)` always holds.
+8. Of the four loosened assertions, three still pass at their old tolerance on HEAD:
+   `test_moving_earlier_never_lowers_spending` (strict order holds: 108,213.22 <= 108,299.11
+   <= 109,129.18), the STMF `rtol=0.02`, and the tiered-exclusion test with `maxTime=2` and
+   `gap > 1e-4`. Only the NYIR one fails (max error 0.0018 vs 1e-4; 3e-5 under `"none"`).
+   The tiered-exclusion change (`>= 0.0`) makes that assertion empty; PROGRESS calls it a
+   local-search time budget, which it is not.
+9. Plan tests not written: finite-difference marginal cost of a conversion in an itemizing
+   year, payoff at a linked sale, constraint replay, tie check, optimize >= loop at the switch.
+
+Checked and correct: `Case_devon` (+$1,199/yr under loop) itemizes 2032-2051 because Owl's
+2032 reversion uncaps SALT (CA tax $19.8k-34.9k vs a $12.7k-22.5k standard) and 2026 by $301.
+SALT = min(cap, property tax + state/local tax paid) in the hand test; e = itemized + bonus in
+itemizing years; state taxable income adds back `e`, so federal itemizing does not leak into
+state income. Under the 2032 reversion the pre-TCJA AMT (SALT is an add-back) is not modeled,
+so the reversion-case values of itemizing (§3.2: $88-93k) are upper bounds (recalled rule, not
+computed).
+
+Nits: `_item_fixed` is never set (dead branch); `_setup_federal_itemized` calls
+`_spending_bounds_n` and the property-tax terms twice and builds `terms["pt"]` without using it;
+`_federal_itemized_shortfall` under `_sb_lp` leaves the bonus out of `best` while `e_n`
+includes it (understates a shortfall); `_nonitemizer_charity_n` uses the budget at scale 1,
+not the amount paid at `g_n` (matters only for charity lines under $2,000).
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date

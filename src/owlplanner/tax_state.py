@@ -57,7 +57,7 @@ class StateItemizedParams:
     salt_cap_n     -- shape (N_n,) cap on the real-estate-tax side of the SALT total (0 = no cap;
                       NY does not cap real estate taxes)
     mortgage_limit_n -- shape (N_n,) acquisition-debt limit for mortgage interest (NY: $1M)
-    medical_floor_n  -- shape (N_n,) percent of AGI medical expenses must exceed (NY: 7.5)
+    medical_floor_n  -- shape (N_n,) percent of federal AGI medical expenses must exceed (NY: 10)
     adj_agi_start_n  -- shape (N_n,) AGI where the itemized-deduction adjustment begins (0 = none)
     adj_width_n      -- shape (N_n,) AGI dollars over which the cut phases in
     adj_pct_n        -- shape (N_n,) percent of the deduction taken at the top of that width

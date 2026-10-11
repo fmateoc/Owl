@@ -115,7 +115,12 @@ New York (IT-196-I 2025):
   $200,000 and the cut is 25% x min(NYAGI - start, 50,000)/50,000 of the deduction (Worksheet 3; the
   filing-status-to-amount mapping on line 2 is garbled in the PDF text: single/MFS $100,000, HoH
   $150,000, MFJ $200,000 is my reading, to confirm on the form image). 50% above $525,000, other
-  rules above $1M: out of this household's range.
+  rules above $1M: out of this household's range. *(Confirmed 2026-10-11: pypdf's layout mode
+  gives the filing-status circles as private-use glyphs U+F081/F083 -> $100,000, U+F084 ->
+  $150,000, U+F082/F085 -> $200,000, i.e. statuses 1/3, 4, 2/5.)*
+- **Medical: above 10% of federal AGI** (IT-196 (2025) form, line 3: "Multiply line 2 by 10%
+  (0.10)", line 2 = IT-201 line 19, federal AGI). Not the federal 7.5%. *(Added 2026-10-11 in the
+  step 2 review; step 2 had shipped 7.5.)*
 - Property tax credits/rebates reduce the real estate taxes deducted (lines 5-7).
 - NY standard deduction MFJ $16,050, not indexed (`taxes_state.toml`).
 
@@ -297,7 +302,7 @@ Data (`taxes_state.toml`, NY_MFJ and NY_Single; generic keys, documented in the 
 
 ```toml
 itemized = { allowed = true, income_taxes = false, salt_cap = 0, mortgage_limit = 1000000,
-             medical_floor = 7.5, adjustment_agi_start = 200000, adjustment_width = 50000,
+             medical_floor = 10, adjustment_agi_start = 200000, adjustment_width = 50000,
              adjustment_pct = 25 }   # IT-196-I (2025) lines 41 and 46, Worksheet 3
 ```
 

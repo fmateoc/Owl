@@ -99,7 +99,9 @@
 #                                                        (0 = no cap; NY does not cap real estate)
 #                                 mortgage_limit       = acquisition-debt limit for mortgage
 #                                                        interest (NY: $1,000,000, the pre-TCJA rule)
-#                                 medical_floor        = percent of AGI medical must exceed (7.5)
+#                                 medical_floor        = percent of federal AGI medical must exceed
+#                                                        (NY: 10, IT-196 (2025) line 3; the federal
+#                                                        floor is 7.5)
 #                                 adjustment_agi_start = state AGI where the itemized-deduction
 #                                                        adjustment begins (NY MFJ $200,000;
 #                                                        Single $100,000; 0 = no adjustment)
@@ -1334,12 +1336,12 @@ roth_conversion_eligible = true
 recapture_agi_start = 107650  # benefit recapture, Tax Law sec. 601(d); see the header
 recapture_width = 50000
 recapture_until = 5000000  # the 25M cliff (flat 10.9%) is not modeled
-# IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
+# IT-196 (2025) line 3, IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
 itemized.allowed = true
 itemized.income_taxes = false
 itemized.salt_cap = 0
 itemized.mortgage_limit = 1000000
-itemized.medical_floor = 7.5
+itemized.medical_floor = 10  # IT-196 (2025) line 3: 10% of federal AGI
 itemized.adjustment_agi_start = 100000
 itemized.adjustment_width = 50000
 itemized.adjustment_pct = 25
@@ -1363,12 +1365,12 @@ roth_conversion_eligible = true
 recapture_agi_start = 107650  # benefit recapture, Tax Law sec. 601(d); see the header
 recapture_width = 50000
 recapture_until = 5000000  # the 25M cliff (flat 10.9%) is not modeled
-# IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
+# IT-196 (2025) line 3, IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
 itemized.allowed = true
 itemized.income_taxes = false
 itemized.salt_cap = 0
 itemized.mortgage_limit = 1000000
-itemized.medical_floor = 7.5
+itemized.medical_floor = 10  # IT-196 (2025) line 3: 10% of federal AGI
 itemized.adjustment_agi_start = 200000
 itemized.adjustment_width = 50000
 itemized.adjustment_pct = 25

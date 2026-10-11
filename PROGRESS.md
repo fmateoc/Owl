@@ -396,8 +396,9 @@ Size M from `phase3-plan.md` §5 step 2 (3.1). On `claude/eager-cray-s0fvks` aft
 - **Data** (`taxes_state.toml`, NY_Single / NY_MFJ, dotted keys under the entry, documented in the
   header): `itemized.allowed`, `income_taxes` (NY subtracts state/local income taxes from Schedule
   A), `salt_cap` (0 = no cap on real estate), `mortgage_limit` ($1M, the pre-TCJA rule),
-  `medical_floor` (7.5% of federal AGI), `adjustment_agi_start` / `width` / `pct` (line 46,
-  Worksheet 3: MFJ $200k, Single $100k, 25% over $50k). Verified against IT-196-I (2025). Parsed
+  `medical_floor` (shipped as 7.5%; **NY's is 10%**, IT-196 line 3, corrected in the review below),
+  `adjustment_agi_start` / `width` / `pct` (line 46, Worksheet 3: MFJ $200k, Single $100k, 25% over
+  $50k). Verified against IT-196-I (2025), except the medical floor. Parsed
   into `StateTaxParams.itemized` (`StateItemizedParams`, per year, follows moves and the filing
   status). `income_taxes = true` is refused for now (it would couple the deduction to the tax that
   produces it).
@@ -422,7 +423,7 @@ Size M from `phase3-plan.md` §5 step 2 (3.1). On `claude/eager-cray-s0fvks` aft
   no price): `_itemized_shortfall` joins `_exclusion_shortfall` in `_bracket_order_excess`, including
   a year that took the standard while more was claimable.
 - **Local search**: `zsi` is a family (`localsearch.FAMILIES`, labelled "state itemizing").
-- **Reporting**: `st_item_n` (unadjusted total, 0 when standard), `st_itemizing_n`; Taxes sheet
+- **Reporting**: `st_item_n` (unadjusted total, 0 when standard; after the cut since the review), `st_itemizing_n`; Taxes sheet
   columns and a Summary line only when nonzero; `plan_metrics` `state_itemized_today`; explain tags
   for the new rows.
 - **Tests**: `tests/tax/test_state_itemized.py` (20: data parse, moves and filing status, owner
@@ -461,6 +462,66 @@ medical floors wired to `care`/Medicare as LP expressions (step 5 tightens the f
 same iterate), measuring (step 6), docs (step 7). The 50% cut above $525k MFJ and the rules above
 $1M NYAGI are out of scope.
 
+### Step 2 review (2026-10-11)
+
+Review of `ec73d60` after the commit; six fixes on the same branch.
+
+1. **NY medical floor is 10%, not 7.5%** (verified: IT-196 (2025) form, line 3 "Multiply line 2 by
+   10% (0.10)", line 2 = federal AGI). The 7.5% came from the plan's sketch; §3.1 had not checked
+   it. Data, header, `StateItemizedParams` doc and tests corrected. The federal floor stays 7.5%
+   (step 3/5 must not reuse NY's value). Worksheet 3's filing-status amounts also confirmed: in
+   pypdf's layout mode the circles come out as U+F081/F083 -> $100k, U+F084 -> $150k,
+   U+F082/F085 -> $200k (statuses 1/3, 4, 2/5), matching the data.
+2. **`zmed` only where the medical amount depends on the plan.** `_medicare_premium_ub_n` was
+   filled from `Cbar_nq` in every Medicare mode (`mediVals` runs regardless), and `M_n > 0` also
+   created a binary, so every Medicare year of a NY owner got one (28 in the test owner plan, also
+   under `withMedicare="None"`). Now a binary only for a discretionary medical line when net
+   spending is not pinned, or for the `m` column under `withMedicare="optimize"`; elsewhere
+   `max(0, paid - F)` is a column bound. **Correction to the review's own measurement:** local
+   search switches `withMedicare` to `"optimize"` (`Plan._applyBreakpointOptions`), so those
+   28 binaries are needed there; the "59 s -> 40 s" figure in the review came from removing them,
+   which is not a valid speed-up. In loop/None modes they are gone (test).
+3. **A priori rule from the bounds on net spending** (`_spending_bounds_n`, `_first_year_spending`
+   factored out of `_add_objective_constraints`): under maxBequest without slack every `g_n` is
+   pinned, so property tax/charity/medical paid are known and every candidate year is decided
+   before the solve (31 of 31 free `zsi` -> 0 in the owner plan), and the big-M gates use the
+   spending ceiling instead of the income ceiling. maxSpending still leaves `zsi` free.
+4. **Tests** (`test_state_itemized.py`, 20 -> 28): vacuous assertions replaced (a "local search"
+   test that ran no local search and rounded a bool array; `imed >= -1`); new: maxBequest fixes
+   every year; maxSpending leaves the choice free; Medicare alone adds no binary in loop mode,
+   does under optimize; the `zmed = 0` branch (paid below the floor); the claim equals paid - F in
+   years with positive taxable income (not just `<=`), under maxBequest, maxSpending and
+   `withMedicare="optimize"`; local search on a short plan returns one branch per year and no
+   medical above the floor; the shortfall in a NY year without columns. The first versions of two
+   new tests were degenerate (medical half of spending: NY taxable income 0, so any claim was a
+   tie); rewritten on years with positive taxable income.
+5. **Reporting:** `st_item_n` is now the deduction taken (after the line 46 cut), so the Summary
+   line and `state_itemized_today` no longer overstate it where NYAGI > $200k. The cut and the
+   medical floor are restored from the accepted iterate before the final aggregation (`NYIR_n`
+   was not restored at all, unlike `STR_n`; a cycle can accept an earlier iterate). For that the
+   floor became an SC-loop parameter, `STMF_n` (10% x previous iterate's federal AGI), with a
+   convergence move (only where medical paid clears one of the two floors) and a fixed-point
+   residual entry "state itemized".
+6. **Shortfall** counts the itemized total only in years with columns; elsewhere only the standard.
+
+Measured (2026-10-11, synthetic owner plan from the tests, old and new run in parallel pairs, so
+times are contended; same objective in every pair):
+
+| case | `ec73d60` | after the fixes |
+|---|---|---|
+| owner, maxBequest, local search | 59.8 s; 31 free `zsi`, 28 `zmed` | 60.6 s; 0 free `zsi`, 28 `zmed` |
+| owner + $3k medical, maxSpending, local search | 193.9 s | 177.0 s |
+| owner + $3k medical, maxSpending, loop | 107.1 s | 96.7 s |
+
+So no measurable speed-up on these cases. Open for step 6: a discretionary medical line under
+maxSpending costs ~100 s in loop mode (31 `zsi` + 31 `zmed` free; ~4 s without the medical line);
+whether `zmed` should be a local-search family rather than `ALWAYS_FREE` is not measured.
+
+Not fixed (from the review, minor): `itemized.mortgage_limit` is only read as "> 0" (the limit is
+the hardcoded `pre_tcja=True` rule); Medicare premiums count only in years that already have a
+deductible line or a mortgage (renter asymmetry, small at a 10% floor); NY lines 5-7 (property tax
+net of STAR credits/rebates) are not modeled, to document in step 7.
+
 ## Upstream 2026.10.10 merged (2026-10-10, on `claude/eager-cray-s0fvks`)
 
 Upstream `dev` `f41fcdc` (six commits; `main` = `dev`): node counts in the Summary and a public
@@ -477,6 +538,9 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 step 2 review fixes: **3105 passed, 1 skipped** (full suite, 6 min; +8 itemized
+tests). flake8 only upstream's `localsearch.py:31`.
 
 2026-10-10, Phase 3 step 2 (NY itemized) after the pre-commit review: **3097 passed, 1 skipped**
 (full suite, 7 min; +20 tests). flake8 only upstream's `localsearch.py:31`. Six bugs found and

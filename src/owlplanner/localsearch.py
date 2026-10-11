@@ -63,8 +63,11 @@ import numpy as np
 FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx", "zsi")
 # Binaries the search never pins: the senior-bonus phase-out has one per bonus year, two or three
 # in all, so every restricted problem keeps them free. Only an LP solve, which relaxes them, pins them.
-# "zmed", the medical-floor switch (one per year with a medical claim), is the same shape: a handful
-# per plan, and pinning one would freeze a max(0, .) the search cannot reopen.
+# "zmed", the medical-floor switch, is kept free too: pinning one would freeze a max(0, .) the search
+# cannot reopen. It exists only in years whose medical amount depends on the plan (a discretionary
+# medical line when net spending is free, or the premium under withMedicare="optimize"), and is fixed
+# to 0 where the amount paid cannot reach the floor; a budget with no medical line under maxBequest
+# has none.
 ALWAYS_FREE = ("zsb", "zmed")
 RESIDUAL_FAMILY = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zj": "NIIT", "zl": "LTCG"}
 FAMILY_LABEL = {

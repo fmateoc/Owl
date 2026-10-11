@@ -63,6 +63,7 @@ uv pip install --python .venv/bin/python pypdf   # only for reading tax PDFs
 - **TOML arrays must be homogeneous** for the `toml` package: write `[[100000.0, 100.0], [125000.0, 37.5]]`, not mixed ints and floats.
 - **Owl units:** `setAccountBalances` takes thousands of dollars; `setPension`/`setSocialSecurity` take monthly amounts. Test plans with balances entered in dollars (1000x too large) came back "infeasible" with no other hint.
 - **TOML encoding:** files must be UTF-8. A Windows-1252 em dash stops `owlcli` with a `UnicodeDecodeError`.
+- **Mode options are normalized to lowercase** (`utils.normalize_mode_option`): `withMedicare="None"` becomes `"none"`. Comparing `options.get("withMedicare") == "None"` is always false.
 - **LP rows in dollars times dollars:** a profile row written as D_0 g_n - D_n g_0 (both in dollars) made HiGHS call feasible plans infeasible. Keep coefficients of order 1 (divide by a reference amount), as upstream's own rows do.
 - **Ties where cash has no price:** with no bequest target, money left at the end is worthless, so the LP may overpay tax in late years at no cost. Upstream's bracket-order check turns tax pricing on; the fork extends it to an NJ exclusion claimed short (`_exclusion_shortfall`). Any new "at most" bound on a tax benefit needs the same check.
 - **Tests freeze the date at 2026-01-01** (`tests/conftest.py`): a script run outside pytest uses today and can give another plan; freeze the date the same way to reproduce a test.

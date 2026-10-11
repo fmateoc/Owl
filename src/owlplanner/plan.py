@@ -141,11 +141,6 @@ TIME_LIMIT = 900
 # The NJ exclusion's tier binaries are free only in years whose state income, in the previous
 # iterate, was at most this multiple of the top tier ceiling; elsewhere the exclusion is off.
 RX_WINDOW = 1.5
-# Fork: federal itemizing (withItemized="optimize") frees a year's zi binary once an iterate's
-# itemized total comes within this share of the standard deduction (either side); elsewhere zi
-# follows the loop rule. As RX_WINDOW, a heuristic: the free set only grows, and a year whose
-# itemized total moves far between iterates is still decided by the loop rule.
-ITEM_WINDOW = 0.5
 # Default cap, in branch-and-bound nodes, on a HiGHS MILP that carries free exclusion tier binaries,
 # when neither maxTime nor mipMaxNodes is given: large-balance cases can take far longer to prove
 # optimal, so the plan is returned with its gap. A node cap, like upstream's local search steps,
@@ -434,7 +429,7 @@ class Plan:
     # snapshot/restore/blend and the iteration trace pick it up automatically.
     _SC_PARAMS = (
         "M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "RXF_n", "NYIR_n", "STMF_n", "FEDMF_n", "FEDCF_n", "FEDSC_n",
-        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "FIX_n",
+        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "_st_zi_n", "_st_medl_n",
     )
 
     def _snapshot_sc(self):
@@ -612,6 +607,7 @@ class Plan:
         # State itemized deduction (fork): NY IT-196 and the like.
         self.st_item_ok_n = np.zeros(self.N_n, dtype=bool)  # The state lets a filer itemize
         self.st_item_mi_n = np.zeros(self.N_n)  # Deductible mortgage interest under the state's limit
+        self.st_e_n = np.zeros(self.N_n)  # State deduction taken (standard or itemized)
         self.st_ipt_n = np.zeros(self.N_n)  # Property tax claimed on the state itemized schedule
         self.st_ich_n = np.zeros(self.N_n)  # Charity claimed
         self.st_imed_n = np.zeros(self.N_n)  # Medical claimed (above the floor)
@@ -621,10 +617,11 @@ class Plan:
         self.STMF_n = np.zeros(self.N_n)  # State itemized medical floor, $ (SC-loop parameter)
         self._itemized = tax_state.StateItemizedParams.empty(self.N_n)  # Per-year itemized settings
         self._st_item_years = []  # Plan years with itemized columns; see _st_item_candidate_years
-        self._st_item_med_years = []  # Subset whose medical claim is above a floor (binary zmed)
+        self._st_item_lp = False  # True when withItemized != "none" and a state year can itemize
+        self._st_zi_n = np.zeros(self.N_n)  # State itemize/standard choice (1/0) (SC-loop parameter)
+        self._st_medl_n = np.zeros(self.N_n)  # State: medical paid above its floor (1/0) (SC-loop parameter)
         # Federal itemized deduction (fork): Schedule A vs the standard deduction.
-        self._item_lp = False  # True when withItemized != "none" and a year can itemize
-        self._item_optimize = False  # withItemized="optimize": zi binaries; else loop-fixed
+        self._item_lp = False  # True when withItemized != "none" (federal and state itemizing on)
         self.item_mi_n = np.zeros(self.N_n)  # Deductible mortgage interest (Pub. 936 limit)
         self.item_salt_n = np.zeros(self.N_n)  # SALT claimed
         self.item_char_n = np.zeros(self.N_n)  # Charity claimed (above the 0.5% floor)
@@ -639,15 +636,11 @@ class Plan:
         self.NJMF_n = np.zeros(self.N_n)  # NJ line 31 medical floor, $ (SC-loop parameter)
         self._nj_medl_n = np.zeros(self.N_n)  # NJ: medical paid above its floor (1/0) (SC-loop parameter)
         self._item_years = []  # Plan years with federal itemized columns
-        self._item_med_years = []  # Subset whose medical claim needs a floor binary (zmedf)
-        self._item_ch_years = []  # Subset whose charity claim needs a floor binary (zch)
         self._item_nch_years = []  # Years with a non-itemizer charity column (nch)
-        self._item_zi_n = np.zeros(self.N_n)  # Itemize/standard choice (1/0) outside zi's free set (SC-loop parameter)
-        self._item_chl_n = np.zeros(self.N_n)  # Loop mode: charity paid above its floor (1/0) (SC-loop parameter)
-        self._item_medl_n = np.zeros(self.N_n)  # Loop mode: medical paid above its floor (1/0) (SC-loop parameter)
-        self.FIX_n = np.zeros(self.N_n)  # Optimize mode: 1 where zi is free (SC-loop parameter)
+        self._item_zi_n = np.zeros(self.N_n)  # Itemize/standard choice (1/0) (SC-loop parameter)
+        self._item_chl_n = np.zeros(self.N_n)  # Charity paid above its floor (1/0) (SC-loop parameter)
+        self._item_medl_n = np.zeros(self.N_n)  # Medical paid above its floor (1/0) (SC-loop parameter)
         self._item_ded_rows = set()  # Years whose deduction rows _add_federal_itemized writes
-        self._item_free_rows = set()  # Optimize mode: years with a free zi in the last build
         self._item_obbba_n = np.ones(self.N_n, dtype=bool)  # Years before a pre-TCJA reversion
         self._medicare_premium_ub_n = np.zeros(self.N_n)  # Upper bound on the m variable's premium
         self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
@@ -2865,24 +2858,22 @@ class Plan:
 
         # return None
 
-    def _setup_federal_itemized(self, objective, options):
-        """Candidate years and a priori bounds for the federal itemized deduction.
+    def _setup_itemized(self, objective, options):
+        """Candidate years and a priori bounds for the itemized deductions.
 
-        Called from _buildOffsetMap before the columns are laid out. withItemized: "none" (off,
-        today's plans), "loop" (the branch comes from the previous iterate, no binary) or
-        "optimize" (a zi binary where the a priori rule does not decide). The loop's branch is a
-        loop parameter (_item_zi_n), set in _computeNLstuff with the floors and the SALT cap.
+        Called from _buildOffsetMap. withItemized: "none" (the standard deduction, federal and
+        state; no NJ line 31) or "loop" (default). The federal and state branches (itemize or
+        not) and the sides of the medical and charity floors come from the previous iterate
+        (loop parameters _item_zi_n, _st_zi_n, _item_chl_n, _item_medl_n, _st_medl_n, set in
+        _computeNLstuff with the floors and the SALT cap), so itemizing adds rows, never a column
+        or a binary.
 
         Everything here must hold for any plan the solve can reach, so it uses no loop parameter:
         the SALT cap before its MAGI phase-down, the floors at zero, net spending's bounds, and an
         income bound from the account balances (_item_income_ub_n).
         """
-        mode = options.get("withItemized", "loop")
-        self._item_optimize = mode == "optimize"
-        self._item_lp = mode != "none"
+        self._item_lp = options.get("withItemized", "loop") != "none"
         self._item_years = []
-        self._item_med_years = []
-        self._item_ch_years = []
         self._item_nch_years = []
         self.item_std_n = np.zeros(self.N_n)
         self._item_nch_lo_n = np.zeros(self.N_n)
@@ -2894,7 +2885,7 @@ class Plan:
             return
         # item_base_n is the plain standard (65+ additions included) without the senior bonus:
         # the bonus is B_n on top of either branch. The standard branch also carries the
-        # non-itemizer charity (an LP column, nch), so S_n = item_base_n + nch_n.
+        # non-itemizer charity, so S_n = item_base_n + nch_n.
         self.item_base_n = tx.standard_without_bonus(
             self.yobs, self.i_d, self.n_d, self.N_n, self.gamma_n, self.yOBBBA
         )
@@ -2928,19 +2919,8 @@ class Plan:
         UB = salt_ub + self.item_mi_n + self._item_char_ub_n + self._item_med_ub_n
         has_ded = (pt_ub + self._item_char_ub_n + self._item_med_ub_n + self.item_mi_n + self._item_state_tax_ub_n) > 0
         # A year whose largest itemized total cannot beat the smallest standard always takes the
-        # standard and gets no columns, so such a plan is unchanged and stays an LP.
+        # standard and gets no rows, so such a plan is unchanged.
         self._item_years = [int(n) for n in np.flatnonzero(has_ded & (UB > self.item_base_n + self._item_nch_lo_n))]
-        # Floor binaries only where the amount paid depends on the plan (as NY's zmed).
-        # Optimize mode only: loop mode decides each floor from the previous iterate.
-        g_pinned = objective == "maxBequest" and self.lambdha == 0
-        if self._item_optimize:
-            # Also where premiums are LP columns or HSA distributions come out of them: a
-            # switch-free row would bound those columns from below.
-            prem_lp = self._medical_premium_lp_n()
-            self._item_med_years = [
-                int(n) for n in self._item_years if (coef_med[n] > 0 and not g_pinned) or prem_lp[n]
-            ]
-            self._item_ch_years = [int(n) for n in self._item_years if coef_ch[n] > 0 and not g_pinned]
 
     def _item_income_ub_n(self):
         """Upper bound on a year's income that state tax can be charged on ($ nominal).
@@ -3007,23 +2987,26 @@ class Plan:
             "med": self._budget_amount_terms(budgeting.MEDICAL),
         }
 
-    def _item_floor_flags(self, g_n=None):
-        """Loop mode: whether each year's charity / medical paid is above its floor (1/0).
+    def _floor_flags(self, sched, g_n=None):
+        """Whether each year's charity / medical paid is above its floor (1/0), per schedule.
 
-        A priori where the amount is known to clear the floor or not; otherwise at the last
-        solution's net spending g_n (0 before any solution). withItemized="loop" claims paid - F
-        where the flag is 1 and nothing where it is 0, so its rows need no max(0, .) switch.
+        sched is "fed" (Schedule A: 0.5% charity floor, 7.5% medical floor) or "st" (the state's
+        itemized schedule: medical floor only). A priori where the amount is known to clear the
+        floor or not; otherwise at the last solution's net spending g_n and premiums (0 before
+        any solution). The rows claim paid - floor where the flag is 1 and nothing where it is
+        0, so they need no max(0, .) switch.
         """
         chl, medl = np.zeros(self.N_n), np.zeros(self.N_n)
-        if not self._item_lp or not self._item_years:
+        years = self._item_years if sched == "fed" else self._st_item_years
+        if not self._item_lp or not years:
             return chl, medl
         terms = self._item_terms()
         (cc, kc), (cm, km) = terms["ch"], terms["med"]
         # Premiums at the last solution: the loop constants plus the m / maca columns (which carry
         # them under withMedicare / withACA = "optimize"), less HSA distributions.
         prem_n = self._medical_premium_values() if g_n is not None else np.zeros(self.N_n)
-        for n in self._item_years:
-            am = self._item_amounts(n, terms)
+        for n in years:
+            am = self._itemized_amounts(n, terms, sched)
             for flag, key, const, coef, F, extra in (
                 (chl, "ch", cc, kc, am["Fc"], 0.0),
                 (medl, "med", cm, km, am["Fm"], float(prem_n[n])),
@@ -3038,13 +3021,13 @@ class Plan:
         return chl, medl
 
     def _item_loop_choice(self, pot=None, g_n=None):
-        """The branch withItemized="loop" writes into the next LP, per year (1 = itemize).
+        """The federal branch the next LP takes, per year (1 = itemize).
 
         A year whose smallest itemized total beats the largest standard always itemizes (the LP
         writes that branch whatever this says, so the reported choice must agree). Otherwise the
         year itemizes when the itemized total the last solution could claim (pot) beats the
-        standard it could take; with no solution yet, it starts on the standard: zi=1 caps e_n at
-        the itemized total, so a wrong first guess can make a plan infeasible.
+        standard it could take; with no solution yet, it starts on the standard: the itemized
+        branch caps e_n at the itemized total, so a wrong first guess can make a plan infeasible.
         """
         choice = np.zeros(self.N_n)
         if not self._item_lp or not self._item_years:
@@ -3052,10 +3035,29 @@ class Plan:
         terms = self._item_terms()
         S_sol = self._item_standard_n(g_n) if pot is not None else None
         for n in self._item_years:
-            am = self._item_amounts(n, terms)
+            am = self._itemized_amounts(n, terms, "fed")
             if am["lb"] >= self.item_base_n[n] + self._item_nch_hi_n[n]:
                 choice[n] = 1.0
             elif pot is not None and pot[n] > S_sol[n]:
+                choice[n] = 1.0
+        return choice
+
+    def _st_item_loop_choice(self, pot=None):
+        """The state branch the next LP takes, per year (1 = itemize), as _item_loop_choice.
+
+        The line 46 cut scales the itemized total, so the comparison is keep * total against the
+        state standard (keep = 1 - NYIR_n).
+        """
+        choice = np.zeros(self.N_n)
+        if not self._item_lp or not self._st_item_years:
+            return choice
+        terms = self._item_terms()
+        for n in self._st_item_years:
+            am = self._itemized_amounts(n, terms, "st")
+            keep, std = 1.0 - float(self.NYIR_n[n]), float(self.st_sigmaBar_n[n])
+            if keep * am["lb"] >= std:
+                choice[n] = 1.0
+            elif keep * am["ub"] > std and pot is not None and keep * pot[n] > std:
                 choice[n] = 1.0
         return choice
 
@@ -3214,15 +3216,17 @@ class Plan:
             or with_medi
             or bool(self.slcsp_annual > 0)
         )
-        self._st_med_lp = st_lp and bool(np.any(self.st_medd_floor_pct_n > 0)) and has_med_expense
+        # Itemized deductions (federal Schedule A, the state's itemized schedule, NJ line 31) are
+        # rows on existing columns, all under withItemized (_setup_itemized).
+        self._setup_itemized(objective, options)
+        self._st_med_lp = (
+            self._item_lp and st_lp and bool(np.any(self.st_medd_floor_pct_n > 0)) and has_med_expense
+        )
         vm.add_if(self._st_med_lp, "st_med", self.N_n)  # NJ medical deduction (line 31)
-        # State itemized deduction (NY IT-196): claimed components and one binary per year that
-        # has something to deduct and is not decided a priori. A year with no deductible budget
-        # line and no mortgage interest adds no columns, so a plan without them stays an LP.
-        self._st_item_years = self._st_item_candidate_years() if st_lp else []
-        N_item = len(self._st_item_years)
-        st_item_lp = N_item > 0
-        self._st_item_lp = st_item_lp
+        # State itemized deduction (NY IT-196): a year with no deductible budget line and no
+        # mortgage interest always takes the standard and gets no row.
+        self._st_item_years = self._st_item_candidate_years() if (st_lp and self._item_lp) else []
+        self._st_item_lp = bool(self._st_item_years)
         # Upper bound on the Medicare premium the m variable can carry under withMedicare="optimize",
         # so a medical claim that counts premiums is not truncated by its column bound. Zero in the
         # other modes: m is pinned to zero there, and the premium is the loop's M_n (or nothing).
@@ -3230,34 +3234,6 @@ class Plan:
         if medi and getattr(self, "Cbar_nq", None) is not None and self.Cbar_nq.size:
             top = np.max(self.Cbar_nq, axis=1)
             self._medicare_premium_ub_n[self.nm : self.nm + len(top)] = top
-        # The medical claim is max(0, paid - floor*AGI). Where the amount paid is known before the
-        # solve it is a column bound; where it depends on the plan it is not one upper bound, and
-        # the year gets a binary zmed. The amount depends on the plan through a discretionary
-        # medical line when net spending is not pinned (maxBequest without slack pins every g_n),
-        # and through the m variable under withMedicare="optimize".
-        g_pinned = objective == "maxBequest" and self.lambdha == 0
-        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL) if st_lp else (None, None)
-        self._st_item_med_years = []
-        if st_item_lp:
-            prem_lp = self._medical_premium_lp_n()  # m, maca or HSA distributions in medical paid
-            self._st_item_med_years = [
-                int(n) for n in self._st_item_years if (coef_med[n] > 0 and not g_pinned) or prem_lp[n]
-            ]
-        N_med = len(self._st_item_med_years)
-        vm.add_if(st_item_lp, "st_ipt", N_item)  # property tax on the state itemized schedule
-        vm.add_if(st_item_lp, "st_ich", N_item)  # charity
-        vm.add_if(st_item_lp, "st_imed", N_item)  # medical above the floor
-        # Federal itemized deduction (Schedule A). withItemized="loop" adds no column (rows on
-        # existing columns, _add_federal_itemized_rows). "optimize" adds claim columns and a zi per
-        # candidate year; a year whose itemized total cannot beat the standard gets none.
-        self._setup_federal_itemized(objective, options)
-        item_cols = self._item_lp and self._item_optimize and bool(self._item_years)
-        N_fitem = len(self._item_years)
-        vm.add_if(item_cols, "isalt", N_fitem)  # SALT claimed (property tax + state/local income tax)
-        vm.add_if(item_cols, "ich", N_fitem)  # charity above the 0.5% floor
-        vm.add_if(item_cols, "imed", N_fitem)  # medical above the 7.5% floor
-        # Non-itemizer charity (standard branch only), in every year with a charity line.
-        vm.add_if(self._item_optimize and bool(self._item_nch_years), "nch", len(self._item_nch_years))
         rx_lp = st_lp and self._rx_active
         N_rx = self.st_rx_limit_kn.shape[0] + 1 if rx_lp else 0  # tiers plus "above the last ceiling"
         vm.add_if(rx_lp, "st_rx", self.N_n)  # income-tiered retirement exclusion
@@ -3277,15 +3253,6 @@ class Plan:
         vm.add_if(ordering, "zo", 2, self.N_n)  # withdrawal-ordering gates (taxable_first)
         vm.add_if(rx_lp, "zx", self.N_n, N_rx)  # exclusion tier selectors
         vm.add_if(sb_lp, "zsb", len(self._sb_years))  # senior bonus fully phased out, bonus years
-        vm.add_if(st_item_lp, "zsi", N_item)  # state itemizing (1 = itemized, 0 = standard)
-        vm.add_if(st_item_lp and N_med, "zmed", N_med)  # medical above the floor (max(0, paid - F))
-        # Federal itemizing (optimize mode): one zi per candidate year, pinned outside the free set;
-        # floor switches only where the amount depends on the plan (as zmed above).
-        N_fmed = len(self._item_med_years)
-        N_fch = len(self._item_ch_years)
-        vm.add_if(item_cols, "zi", N_fitem)  # federal itemizing (1 = itemized)
-        vm.add_if(item_cols and N_fch, "zch", N_fch)  # charity above the 0.5% floor
-        vm.add_if(item_cols and N_fmed, "zmedf", N_fmed)  # medical above the 7.5% floor
         self.vm = vm
 
         self.nvars = vm.nvars
@@ -3317,7 +3284,7 @@ class Plan:
         self._add_standard_exemption_bounds()
         if self._st_lp:
             self._add_state_tax_bounds()
-            self._add_state_itemized(objective, options)
+            self._add_state_itemized()
         self._add_defunct_constraints()
         self._add_roth_conversion_constraints(options)
         self._add_safety_net(options)
@@ -3539,22 +3506,6 @@ class Plan:
                 out = out - np.sum(w[:, 3, :Nn], axis=0)
         return out
 
-    def _medical_premium_lp_n(self):
-        """Per year, whether medical paid has LP terms (m, maca or HSA distributions).
-
-        A switch-free floor row (claim <= paid - F, claim >= 0) is a hard lower bound on such
-        terms: under withMedicare="optimize" it would force m up to the floor and can make the
-        MIP infeasible. Those years need the max(0, .) switch.
-        """
-        out = self._medicare_premium_ub_n[: self.N_n] > 0
-        if getattr(self, "_aca_lp", False):
-            aca = np.zeros(self.N_n, dtype=bool)
-            aca[: getattr(self, "n_aca", 0)] = True
-            out = out | aca
-        if self._has_hsa():
-            out = np.ones(self.N_n, dtype=bool)
-        return out
-
     def _premium_ub_build_n(self, options):
         """Mode-independent upper bound on each year's premiums, for decisions made at build ($).
 
@@ -3692,136 +3643,44 @@ class Plan:
         has_ded = (lines > 0) | (self.st_item_mi_n > 0)
         return [int(n) for n in np.flatnonzero(self.st_item_ok_n & has_ded)]
 
-    def _state_itemized_amounts(self, n, g_lo, g_hi, terms):
-        """A priori bounds on the year's state itemized claims, from net spending's bounds (nominal $).
-
-        Returns a dict of (lo, hi) pairs for "pt", "ch" and "med" (medical above the floor, which
-        is what can be claimed), and "lb" / "ub" for the whole itemized total, mortgage interest
-        included. Budget amounts are const + coef * g_n with coef >= 0, so they are increasing in
-        g_n. The medical floor is STMF_n, the state's percentage of the previous iterate's federal
-        AGI; the premium the m column can carry (withMedicare="optimize") enters the upper bound only.
-        """
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
-        F = float(self.STMF_n[n])
-        # prem_ub is the total (loop constant + the m / maca columns' upper bounds); the lo side
-        # is the loop constant less what HSA distributions can take back, so the claim is never
-        # above what the plan can actually pay.
-        prem_lo = self._medical_premium_lo(n)
-        prem_ub = self._medical_premium_ub(n)
-        out = {
-            "pt": (max(0.0, const_pt[n] + coef_pt[n] * g_lo), max(0.0, const_pt[n] + coef_pt[n] * g_hi)),
-            "ch": (max(0.0, const_ch[n] + coef_ch[n] * g_lo), max(0.0, const_ch[n] + coef_ch[n] * g_hi)),
-            "med": (
-                max(0.0, const_med[n] + coef_med[n] * g_lo + prem_lo - F),
-                max(0.0, const_med[n] + coef_med[n] * g_hi + prem_ub - F),
-            ),
-            "F": F,
-        }
-        mi = float(self.st_item_mi_n[n])
-        out["lb"] = float(out["pt"][0] + out["ch"][0] + out["med"][0] + mi)
-        out["ub"] = float(out["pt"][1] + out["ch"][1] + out["med"][1] + mi)
-        return out
-
-    def _add_state_itemized(self, objective, options):
+    def _add_state_itemized(self):
         """State itemized deduction where the state allows one (NY: IT-196, lines 41 and 46).
 
         NY lets a filer itemize whether or not they itemize federally. The itemized total is
         property tax (uncapped), charity, medical above a floor of federal AGI (IT-196 line 3:
-        10%), and mortgage interest up to the state's limit; state and local income taxes are
-        subtracted from Schedule A and so stay out. Above the AGI start the total is cut by
-        adj_pct% over adj_width (line 46): a bilinear term, so the rate NYIR_n comes from the
-        previous iterate's state AGI.
+        10%, STMF_n from the previous iterate), and mortgage interest up to the state's limit;
+        state and local income taxes are subtracted from Schedule A and so stay out. Above the AGI
+        start the total is cut by adj_pct% over adj_width (line 46): a bilinear term, so the rate
+        NYIR_n comes from the previous iterate's state AGI too.
 
-        The deduction is the existing st_e column, whose bound is raised to the larger of the
-        standard and the (adjusted) itemized total. A binary zsi_j picks the branch where the a
-        priori bounds do not: keep*LB >= standard forces itemizing, keep*UB <= standard forces
-        the standard (keep = 1 - NYIR, the line 46 cut), and a free zsi is held to one of the
-        two by
-            st_e <= st_sigmaBar*(1 - zsi) + (1 - NYIR)*(st_ipt + st_ich + st_imed + mi*zsi).
-        LB and UB come from the bounds on net spending (_spending_bounds_n): under maxBequest
-        without spending slack every g_n is pinned, so they are equal and every year is decided
-        before the solve.
+        The deduction is the existing st_e column. As for the federal deduction, the branch
+        comes from the a priori bounds where they decide (keep*LB >= standard itemizes, keep*UB
+        <= standard keeps the standard; keep = 1 - NYIR_n) and from the previous iterate
+        elsewhere (_st_zi_n): an itemizing year gets
+            st_e <= keep * (property tax + charity + medical claim + mortgage interest)
+        on existing columns, and a standard year nothing beyond _add_state_tax_bounds. LB and UB
+        come from the bounds on net spending: under maxBequest without spending slack every g_n is
+        pinned, so every year is decided before the solve.
         """
         if not getattr(self, "_st_item_lp", False):
             return
         vm = self.vm
         terms = self._item_terms()
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
-        g_lo_n, g_hi_n = self._spending_bounds_n(objective, options)
-        g_hi_n = np.minimum(g_hi_n, self._ceiling_n[: self.N_n])
-        med_index = {n: j for j, n in enumerate(self._st_item_med_years)}
-        for j, n in enumerate(self._st_item_years):
-            ipt, ich, imed = vm["st_ipt"].idx(j), vm["st_ich"].idx(j), vm["st_imed"].idx(j)
-            zsi = vm["zsi"].idx(j)
-            zmed = vm["zmed"].idx(med_index[n]) if n in med_index else None
-            std = float(self.st_sigmaBar_n[n])
-            mi = float(self.st_item_mi_n[n])
-            am = self._state_itemized_amounts(n, float(g_lo_n[n]), float(g_hi_n[n]), terms)
-            lb, ub = am["lb"], am["ub"]
-            keep = 1.0 - float(self.NYIR_n[n])
-            # The line 46 cut scales the itemized total, so the a priori rule compares the
-            # adjusted amounts with the standard: keep*lb >= std means itemizing cannot lose,
-            # keep*ub <= std means the standard cannot lose.
-            if keep * ub <= std:
-                # The standard wins even at the largest itemized total the plan allows.
-                for c in (zsi, ipt, ich, imed) + ((zmed,) if zmed is not None else ()):
-                    self.B.setRange(c, 0, 0)
+        for n in self._st_item_years:
+            am = self._itemized_amounts(n, terms, "st")
+            keep, std = 1.0 - float(self.NYIR_n[n]), float(self.st_sigmaBar_n[n])
+            if keep * am["ub"] <= std:
                 continue
-            force_item = keep * lb >= std
-            self.B.setRange(zsi, 1, 1) if force_item else self.B.setRange(zsi, 0, 1)
-            ub_pt, ub_ch, ub_med = am["pt"][1], am["ch"][1], am["med"][1]
-            # Claimed components: at most what was paid, and zero unless this year itemizes.
-            self.B.setRange(ipt, 0, ub_pt)
-            self.B.setRange(ich, 0, ub_ch)
-            self.B.setRange(imed, 0, ub_med)
-            if not force_item:
-                self.A.addNewRow({ipt: 1, zsi: -ub_pt}, -np.inf, 0, tag=("state_item_pt_gate", n))
-                self.A.addNewRow({ich: 1, zsi: -ub_ch}, -np.inf, 0, tag=("state_item_ch_gate", n))
-                if ub_med > 0:
-                    self.A.addNewRow({imed: 1, zsi: -ub_med}, -np.inf, 0, tag=("state_item_med_gate", n))
-            # What was paid.
-            self.A.addNewRow({ipt: 1, vm["g"].idx(n): -coef_pt[n]}, -np.inf, float(const_pt[n]),
-                             tag=("state_item_pt_paid", n))
-            self.A.addNewRow({ich: 1, vm["g"].idx(n): -coef_ch[n]}, -np.inf, float(const_ch[n]),
-                             tag=("state_item_ch_paid", n))
-            # Medical above floor% of federal AGI (Schedule A); Medicare premiums count as medical.
-            # Where the amount paid is known before the solve, max(0, paid - F) is the column bound
-            # set above. Otherwise it is not one upper bound (imed <= paid - F is infeasible when
-            # paid < F, and clamping the cut deletes the floor), so the year has a binary zmed:
-            # 1 claims the excess, 0 claims nothing.
-            if zmed is not None:
-                if ub_med <= 0:
-                    # Paid cannot clear the floor this iterate: nothing to claim, nothing to choose.
-                    self.B.setRange(zmed, 0, 0)
-                else:
-                    self.B.setRange(zmed, 0, 1)
-                    prem_fixed, prem_lp = self._medical_premium_terms(n)
-                    paid_rhs = float(const_med[n] + prem_fixed) - am["F"]
-                    # zmed=1: imed <= paid - F. zmed=0: the row relaxes by `relax` and the claim
-                    # row zeros imed. Paid is at least min(0, premium lower bound) (negative when
-                    # HSA distributions can exceed the premiums), so F plus that is enough; one
-                    # dollar of margin.
-                    relax = max(am["F"], 0.0) + max(0.0, -self._medical_premium_lo(n)) + 1.0
-                    floor_row = {imed: 1, vm["g"].idx(n): -coef_med[n], zmed: relax}
-                    for idx, coef in prem_lp.items():
-                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
-                    self.A.addNewRow(
-                        floor_row,
-                        -np.inf, paid_rhs + relax, tag=("state_item_med_floor", n),
-                    )
-                    self.A.addNewRow({imed: 1, zmed: -ub_med}, -np.inf, 0, tag=("state_item_med_claim", n))
-            # The deduction: standard or the adjusted itemized total.
-            self.B.setRange(vm["st_e"].idx(n), 0, max(std, keep * ub))
-            if force_item:
-                self.A.addNewRow(
-                    {vm["st_e"].idx(n): 1, ipt: -keep, ich: -keep, imed: -keep},
-                    -np.inf, keep * mi, tag=("state_item_deduction", n),
-                )
-            else:
-                row = self.A.newRow(
-                    {vm["st_e"].idx(n): 1, ipt: -keep, ich: -keep, imed: -keep, zsi: std - keep * mi}
-                )
-                self.A.addRow(row, -np.inf, std, tag=("state_item_deduction", n))
+            if keep * am["lb"] < std and self._st_zi_n[n] < 0.5:
+                continue
+            lin, const = self._claim_terms(n, terms, 0.0, True, am["Fm"], self._st_medl_n[n] >= 0.5, pt=True)
+            e = vm["st_e"].idx(n)
+            row = {e: 1.0}
+            for c, v in lin.items():
+                row[c] = row.get(c, 0.0) - keep * v
+            self.A.addNewRow(row, -np.inf, keep * (const + float(self.st_item_mi_n[n])),
+                             tag=("state_item_deduction", n))
+            self.B.setRange(e, 0, keep * am["ub"])
 
     def _state_itemized_adjustment(self):
         """NYAGI itemized-deduction adjustment rate (NY line 46, Worksheet 3), per year.
@@ -3892,28 +3751,31 @@ class Plan:
         nch = np.minimum(self._nonitemizer_cap_n(), np.maximum(0.0, const_ch + coef_ch * g))
         return self.item_base_n + nch
 
-    def _item_amounts(self, n, terms):
-        """A priori bounds on the year's federal itemized claims ($ nominal).
+    def _itemized_amounts(self, n, terms, sched):
+        """A priori bounds on the year's itemized claims ($ nominal), per schedule.
 
-        Returns (lo, hi) per component and for the whole itemized total (mortgage interest
-        included), from net spending's bounds. Budget amounts are const + coef * g_n. The SALT cap
-        (FEDSC_n) and the medical/charity floors (FEDMF_n / FEDCF_n) are loop parameters from the
-        previous iterate's AGI. Medical paid is the budget's `medical` lines plus Owl's premiums
-        (Medicare Part B/D + IRMAA and the ACA net premium).
+        Returns (lo, hi) for "pt" (federal: SALT, property tax + the state and local income tax
+        the plan pays, capped at FEDSC_n; state: property tax, uncapped), "ch" and "med" (above
+        their floors), and "lb" / "ub" for the whole itemized total, mortgage interest included,
+        from net spending's bounds. Budget amounts are const + coef * g_n with coef >= 0. The
+        floors are loop parameters from the previous iterate's AGI: FEDCF_n / FEDMF_n federally,
+        none / STMF_n for the state. Medical paid is the budget's `medical` lines plus Owl's
+        premiums (Medicare Part B/D + IRMAA and the ACA net premium) less HSA distributions.
         """
         (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
         g_lo, g_hi = float(self._item_g_lo_n[n]), float(self._item_g_hi_n[n])
-        Fm, Fc = float(self.FEDMF_n[n]), float(self.FEDCF_n[n])
-        salt_cap = float(self.FEDSC_n[n])
+        if sched == "fed":
+            Fm, Fc, mi = float(self.FEDMF_n[n]), float(self.FEDCF_n[n]), float(self.item_mi_n[n])
+            cap, st_ub = float(self.FEDSC_n[n]), float(self._item_state_tax_ub_n[n])
+        else:
+            Fm, Fc, mi = float(self.STMF_n[n]), 0.0, float(self.st_item_mi_n[n])
+            cap, st_ub = np.inf, 0.0
         prem_lo = self._medical_premium_lo(n)  # less what HSA distributions can take back
         prem_ub = self._medical_premium_ub(n)
-        # SALT is property tax + the state and local income tax the plan pays (capped).
         pt_hi = max(0.0, const_pt[n] + coef_pt[n] * g_hi)
         pt_lo = max(0.0, const_pt[n] + coef_pt[n] * g_lo)
-        salt_hi = min(pt_hi + float(self._item_state_tax_ub_n[n]), salt_cap)
-        salt_lo = min(pt_lo, salt_cap)
         out = {
-            "pt": (salt_lo, salt_hi),
+            "pt": (min(pt_lo, cap), min(pt_hi + st_ub, cap)),
             "ch": (max(0.0, const_ch[n] + coef_ch[n] * g_lo - Fc), max(0.0, const_ch[n] + coef_ch[n] * g_hi - Fc)),
             "med": (
                 max(0.0, const_med[n] + coef_med[n] * g_lo + prem_lo - Fm),
@@ -3922,10 +3784,46 @@ class Plan:
             "Fm": Fm,
             "Fc": Fc,
         }
-        mi = float(self.item_mi_n[n])
         out["lb"] = float(out["pt"][0] + out["ch"][0] + out["med"][0] + mi)
         out["ub"] = float(out["pt"][1] + out["ch"][1] + out["med"][1] + mi)
         return out
+
+    def _claim_terms(self, n, terms, Fc, ch_on, Fm, med_on, pt=False):
+        """(lin, const): the year's claims as an affine function of LP columns (nominal $).
+
+        Charity paid - Fc where ch_on, medical paid - Fm where med_on (Owl's premiums, less HSA
+        distributions, count as medical), and the property tax paid when pt is set; the amount
+        is sum(lin[c] * x[c]) + const. A claim the loop puts above its floor while this LP's
+        amount falls below it goes negative: the year's tax is overstated by the lag, and no
+        lower bound on spending or on the premium columns results.
+        """
+        g = self.vm["g"].idx(n)
+        lin, const = {}, 0.0
+        parts = ([("pt", 0.0)] if pt else []) + ([("ch", Fc)] if ch_on else []) + ([("med", Fm)] if med_on else [])
+        for key, F in parts:
+            c, k = terms[key]
+            lin[g] = lin.get(g, 0.0) + float(k[n])
+            const += float(c[n]) - F
+            if key == "med":
+                prem_fixed, prem_lp = self._medical_premium_terms(n)
+                const += prem_fixed
+                for idx, v in prem_lp.items():
+                    lin[idx] = lin.get(idx, 0.0) + v
+        return {c: v for c, v in lin.items() if v != 0.0}, const
+
+    def _claim_values(self, x, Fc, ch_on, Fm, med_on):
+        """The claims of _claim_terms at a solution, per year: (charity, medical) ($ nominal).
+
+        From the solution vector x when given, else the aggregated results. A claim is paid -
+        floor where its flag is 1 (negative while the loop lags), 0 elsewhere.
+        """
+        g = self.g_n if x is None else self.vm["g"].extract(x)
+        terms = self._item_terms()
+        (cc, kc), (cm, km) = terms["ch"], terms["med"]
+        ch = np.where(ch_on >= 0.5, cc + kc * g - Fc, 0.0)
+        prem = self._medical_premium_values(x)  # premiums less HSA distributions
+        med = np.where(med_on >= 0.5, cm + km * g + prem - Fm, 0.0)
+        return ch, med
 
     def _add_federal_itemized(self, objective, options):
         """max(standard, itemized) for the federal deduction (Schedule A, P.L. 119-21).
@@ -3939,20 +3837,17 @@ class Plan:
         mortgage interest MI_n. The deduction is the existing e_n column; its bound is raised
         only in years that may itemize or take the non-itemizer charity.
 
-        Each candidate year gets a branch: "std" (a priori, or the loop's choice), "item" (a
-        priori, or the loop's choice), or "free" (optimize mode, years in the free set FIX_n near
-        the switch: a zi binary decides). withItemized="loop" writes the itemized branch as rows on
-        existing columns and the standard branch as nothing at all, so a year that never itemizes
-        leaves the LP exactly as withItemized="none" builds it (extra rows, or even pinned zero
-        columns, can move a plan whose loop does not converge). withItemized="optimize" uses claim
-        columns (isalt, ich, imed, nch) and the binaries zi, zch, zmedf.
+        Each candidate year gets a branch, "std" or "item": a priori where the bounds decide, else
+        the previous iterate's (_item_zi_n). The itemized branch is rows on existing columns and
+        the standard branch nothing at all, so a year that never itemizes leaves the LP exactly as
+        withItemized="none" builds it (extra rows, or even pinned zero columns, can move a plan
+        whose loop does not converge).
 
         SALT is cash-basis: year n's property tax and state/local income tax are deducted in
         year n, with exactly the state terms _add_net_cash_flow charges (_state_tax_terms). The
         rows that carry e_n here replace senior_bonus_deduction in their years (_item_ded_rows).
         """
         self._item_ded_rows = set()
-        self._item_free_rows = set()
         if not self._item_lp:
             return
         vm = self.vm
@@ -3988,29 +3883,21 @@ class Plan:
 
         branch = {}
         for n in self._item_years:
-            am = self._item_amounts(n, terms)
+            am = self._itemized_amounts(n, terms, "fed")
             if am["ub"] <= base_n[n] + nch_lo[n]:
                 b = "std"
             elif am["lb"] >= base_n[n] + nch_hi[n]:
                 b = "item"
-            elif self._item_optimize and self.FIX_n[n] >= 0.5:
-                b = "free"
             else:
                 b = "item" if self._item_zi_n[n] >= 0.5 else "std"
             branch[n] = (b, am)
-        if self._item_optimize:
-            self._add_federal_itemized_cols(branch, terms, ded_row, raise_e)
-        else:
-            self._add_federal_itemized_rows(branch, terms, ded_row, raise_e)
+        self._add_federal_itemized_rows(branch, terms, ded_row, raise_e)
         # Standard years with a non-itemizer charity: e <= S0 + min(cap, charity paid).
         for n in self._item_nch_years:
             if branch.get(n, ("std",))[0] != "std":
                 continue
             self.B.setRange(vm["e"].idx(n), 0, float(std_ub[n] + nch_hi[n]))
-            if self._item_optimize:
-                ded_row(n, {vm["nch"].idx(self._item_nch_years.index(n)): -1.0}, base_n[n], "item_deduction")
-            else:
-                self._add_nch_rows(n, terms, ded_row)
+            self._add_nch_rows(n, terms, ded_row)
 
     def _add_nch_rows(self, n, terms, ded_row):
         """Loop mode, standard year: e <= S0 + cap and e <= S0 + charity paid (no column)."""
@@ -4023,31 +3910,24 @@ class Plan:
                     "item_nch_paid")
 
     def _add_federal_itemized_rows(self, branch, terms, ded_row, raise_e):
-        """withItemized="loop": the itemized branch as rows on existing columns.
+        """The itemized branch as rows on existing columns.
 
         e <= MI + min(cap, pt + st) + charity claim + medical claim + bonus, as two rows (the min
         of two terms is an upper bound by both). The claims are paid - floor in years the loop
         found above the floor (_item_chl_n / _item_medl_n, a priori where the amount is known),
-        and nothing otherwise. Medical paid counts Owl's premiums as well as the budget's lines.
-        Standard years get no rows.
+        and nothing otherwise (_claim_terms). Standard years get no rows.
         """
         vm = self.vm
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
+        const_pt, coef_pt = terms["pt"]
         for n, (b, am) in branch.items():
             if b != "item":
                 continue
             g = vm["g"].idx(n)
-            lin, rhs = {}, float(self.item_mi_n[n])
-            if self._item_chl_n[n] >= 0.5:
-                lin[g] = lin.get(g, 0.0) - float(coef_ch[n])
-                rhs += float(const_ch[n]) - am["Fc"]
-            if self._item_medl_n[n] >= 0.5:
-                lin[g] = lin.get(g, 0.0) - float(coef_med[n])
-                prem_fixed, prem_lp = self._medical_premium_terms(n)
-                for idx, coef in prem_lp.items():
-                    lin[idx] = lin.get(idx, 0.0) - coef
-                rhs += float(const_med[n]) + prem_fixed - am["Fm"]
-            lin = {c: v for c, v in lin.items() if v != 0.0}
+            claims, const = self._claim_terms(
+                n, terms, am["Fc"], self._item_chl_n[n] >= 0.5, am["Fm"], self._item_medl_n[n] >= 0.5
+            )
+            lin = {c: -v for c, v in claims.items()}
+            rhs = float(self.item_mi_n[n]) + const
             cap = float(self.FEDSC_n[n])
             if cap < _SALT_NO_CAP:
                 ded_row(n, lin, rhs + cap, "item_deduction_cap")
@@ -4058,103 +3938,6 @@ class Plan:
                 row[idx] = row.get(idx, 0.0) - coef
             row = {c: v for c, v in row.items() if v != 0.0}
             ded_row(n, row, rhs + float(const_pt[n]) + st_const, "item_deduction")
-            raise_e(n, am["ub"])
-
-    def _add_federal_itemized_cols(self, branch, terms, ded_row, raise_e):
-        """withItemized="optimize": claim columns and, in free years, a zi binary per year.
-
-            e_n - isalt - ich - imed - nch + (base_n - MI_n)*zi <= base_n + B_n,  nch <= cap*(1 - zi)
-        zi=0 gives e <= base + nch + B (standard); zi=1 gives e <= MI + isalt + ich + imed + B.
-        Outside the free set zi is pinned to the branch the loop rule gives, without gates.
-        """
-        vm = self.vm
-        g = vm["g"]
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
-        base_n = self.item_base_n
-        nch_lo, nch_hi = self._item_nch_lo_n, self._item_nch_hi_n
-        med_index = {n: j for j, n in enumerate(self._item_med_years)}
-        ch_index = {n: j for j, n in enumerate(self._item_ch_years)}
-        nch_index = {n: j for j, n in enumerate(self._item_nch_years)}
-        # Non-itemizer charity: at most the cap and the cash charity paid that year.
-        for n, j in nch_index.items():
-            c = vm["nch"].idx(j)
-            self.B.setRange(c, 0, float(nch_hi[n]))
-            if coef_ch[n] > 0 and nch_lo[n] < nch_hi[n]:
-                self.A.addNewRow({c: 1, g.idx(n): -coef_ch[n]}, -np.inf, float(const_ch[n]), tag=("item_nch_paid", n))
-        for j, n in enumerate(self._item_years):
-            b, am = branch[n]
-            isalt, ich, imed, zi = vm["isalt"].idx(j), vm["ich"].idx(j), vm["imed"].idx(j), vm["zi"].idx(j)
-            zmed = vm["zmedf"].idx(med_index[n]) if n in med_index else None
-            zch = vm["zch"].idx(ch_index[n]) if n in ch_index else None
-            nch = vm["nch"].idx(nch_index[n]) if n in nch_index else None
-            if b == "std":
-                for c in [isalt, ich, imed, zi] + [c for c in (zmed, zch) if c is not None]:
-                    self.B.setRange(c, 0, 0)
-                continue
-            free = b == "free"
-            self.B.setRange(zi, 0, 1) if free else self.B.setRange(zi, 1, 1)
-            ub_salt = float(am["pt"][1])
-            self.B.setRange(isalt, 0, max(ub_salt, 0.0))
-            self.B.setRange(ich, 0, am["ch"][1])
-            self.B.setRange(imed, 0, am["med"][1])
-            if free:
-                self._item_free_rows.add(n)
-                if ub_salt > 0:
-                    self.A.addNewRow({isalt: 1, zi: -ub_salt}, -np.inf, 0, tag=("item_salt_gate", n))
-                if am["ch"][1] > 0:
-                    self.A.addNewRow({ich: 1, zi: -am["ch"][1]}, -np.inf, 0, tag=("item_ch_gate", n))
-                if am["med"][1] > 0:
-                    self.A.addNewRow({imed: 1, zi: -am["med"][1]}, -np.inf, 0, tag=("item_med_gate", n))
-                if nch is not None:
-                    self.A.addNewRow({nch: 1, zi: float(nch_hi[n])}, -np.inf, float(nch_hi[n]),
-                                     tag=("item_nch_gate", n))
-            elif nch is not None:
-                self.B.setRange(nch, 0, 0)  # an itemizer has no non-itemizer charity
-            # SALT paid: property tax + state and local income tax (the terms the cash-flow row
-            # charges).
-            st_coeffs, st_const = self._state_tax_terms(n)
-            salt_row = {isalt: 1, g.idx(n): -coef_pt[n]}
-            for idx, coef in st_coeffs.items():
-                salt_row[idx] = salt_row.get(idx, 0) - coef
-            self.A.addNewRow(salt_row, -np.inf, float(const_pt[n]) + st_const, tag=("item_salt_paid", n))
-            # Charity above its floor, medical above its floor (budget lines plus, for medical,
-            # Owl's premiums). Known amount -> one row; else a switch: z=1 claims paid - F (and
-            # needs paid >= F), z=0 claims nothing.
-            for col, sw, ub_c, const_c, coef_c, F, tag in (
-                (ich, zch, am["ch"][1], const_ch[n], coef_ch[n], am["Fc"], "item_ch"),
-                (imed, zmed, am["med"][1], const_med[n], coef_med[n], am["Fm"], "item_med"),
-            ):
-                prem_fixed, prem_lp = (0.0, {}) if tag == "item_ch" else self._medical_premium_terms(n)
-                extra = dict(prem_lp)
-                rhs_c = float(const_c) + prem_fixed
-                if sw is not None:
-                    if ub_c <= 0:
-                        self.B.setRange(sw, 0, 0)
-                        continue
-                    self.B.setRange(sw, 0, 1)
-                    # z=0 relaxes the row by F plus what HSA distributions can take below zero.
-                    relax = max(F, 0.0) + 1.0
-                    if tag == "item_med":
-                        relax += max(0.0, -self._medical_premium_lo(n))
-                    floor_row = {col: 1, g.idx(n): -float(coef_c), sw: relax}
-                    for idx, coef in extra.items():
-                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
-                    self.A.addNewRow(floor_row, -np.inf,
-                                     rhs_c - F + relax, tag=(tag + "_floor", n))
-                    self.A.addNewRow({col: 1, sw: -ub_c}, -np.inf, 0, tag=(tag + "_claim", n))
-                elif ub_c > 0:
-                    floor_row = {col: 1, g.idx(n): -float(coef_c)}
-                    for idx, coef in extra.items():
-                        floor_row[idx] = floor_row.get(idx, 0.0) - coef
-                    self.A.addNewRow(floor_row, -np.inf, rhs_c - F, tag=(tag + "_floor", n))
-            row = {isalt: -1.0, ich: -1.0, imed: -1.0}
-            if free:
-                if nch is not None:
-                    row[nch] = -1.0
-                row[zi] = float(base_n[n]) - float(self.item_mi_n[n])
-                ded_row(n, row, float(base_n[n]), "item_deduction")
-            else:
-                ded_row(n, row, float(self.item_mi_n[n]), "item_deduction")
             raise_e(n, am["ub"])
 
     def _state_tax_paid_n(self, x=None):
@@ -4182,39 +3965,52 @@ class Plan:
             st = st + np.sum(lt_f * self.lt_theta_tn, axis=0)
         return st
 
-    def _item_potential_n(self, x=None):
+    def _item_potential_n(self, x=None, sched="fed"):
         """Itemized total the plan could claim per year ($), whether or not it does.
 
-        SALT (min of the cap and property tax + state tax paid), charity above its floor,
-        medical above its floor, and mortgage interest; at the solution x, or at the aggregated
-        results. The loop's branch, the dominance fix and the checks compare it with S_n; the
-        claimed components are gated to zero in a standard year, so the claim cannot decide.
+        Federal: SALT (min of the cap and property tax + state tax paid), charity and medical
+        above their floors, and mortgage interest. State: property tax, charity, medical above the
+        state floor, and mortgage interest, before the line 46 cut. At the solution x, or at the
+        aggregated results. The loop's branch and the checks compare it with the standard.
         """
         g = self.g_n if x is None else self.vm["g"].extract(x)
         terms = self._item_terms()
         (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
         pt = np.maximum(0.0, cp + kp * g)
-        ch = np.maximum(0.0, cc + kc * g - self.FEDCF_n)
         prem = self._medical_premium_values(x)  # premiums less HSA distributions
+        if sched == "st":
+            med = np.maximum(0.0, cm + km * g + prem - self.STMF_n)
+            return np.maximum(0.0, pt + np.maximum(0.0, cc + kc * g) + med + self.st_item_mi_n)
+        ch = np.maximum(0.0, cc + kc * g - self.FEDCF_n)
         med = np.maximum(0.0, cm + km * g + prem - self.FEDMF_n)
         salt = np.minimum(self.FEDSC_n, pt + self._state_tax_paid_n(x))
         return np.maximum(0.0, salt + ch + med + self.item_mi_n)
 
     def _item_allowed_parts(self, x=None):
-        """Loop mode: (SALT, charity, medical) the itemized rows allow at the solution ($ per year).
+        """(SALT, charity, medical) the federal itemized rows allow at the solution ($ per year).
 
         SALT = min(cap, property tax + state tax paid); charity and medical are paid - floor where
         the loop's flags say the floor is cleared (they can be negative while the loop moves),
         zero elsewhere.
         """
         g = self.g_n if x is None else self.vm["g"].extract(x)
-        terms = self._item_terms()
-        (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
+        cp, kp = self._item_terms()["pt"]
         salt = np.minimum(self.FEDSC_n, np.maximum(0.0, cp + kp * g) + self._state_tax_paid_n(x))
-        ch = np.where(self._item_chl_n >= 0.5, cc + kc * g - self.FEDCF_n, 0.0)
-        prem = self._medical_premium_values(x)  # premiums less HSA distributions
-        med = np.where(self._item_medl_n >= 0.5, cm + km * g + prem - self.FEDMF_n, 0.0)
+        ch, med = self._claim_values(x, self.FEDCF_n, self._item_chl_n, self.FEDMF_n, self._item_medl_n)
         return salt, ch, med
+
+    def _st_item_allowed_n(self, x=None):
+        """State itemized total the rows allow at the solution, before the line 46 cut ($ per year).
+
+        Property tax and charity paid, medical paid - floor where _st_medl_n says the floor is
+        cleared, and mortgage interest; in the state's itemizing years only (_st_zi_n).
+        """
+        g = self.g_n if x is None else self.vm["g"].extract(x)
+        terms = self._item_terms()
+        (cp, kp), (cc, kc) = terms["pt"], terms["ch"]
+        _, med = self._claim_values(x, 0.0, np.zeros(self.N_n), self.STMF_n, self._st_medl_n)
+        total = np.maximum(0.0, cp + kp * g) + np.maximum(0.0, cc + kc * g) + med + self.st_item_mi_n
+        return np.where(self._st_item_branch_n(), total, 0.0)
 
     def _item_bonus_n(self, x=None):
         """The senior bonus the solution's deduction carries, per year ($)."""
@@ -4229,106 +4025,46 @@ class Plan:
         return np.maximum(0.0, self.sigmaBar_n - self.item_base_n)
 
     def _item_branch_n(self, x=None):
-        """The branch the solution took per year (True = itemized): zi, or the loop's choice."""
+        """The federal branch the solution took per year (True = itemized): the loop's choice."""
         out = np.zeros(self.N_n, dtype=bool)
-        if not self._item_years:
-            return out
-        if self._item_optimize and "zi" in self.vm:
-            if x is None:
-                return self.itemizing_n.copy()
-            zi = self.vm["zi"].extract(x)
-            for j, n in enumerate(self._item_years):
-                out[n] = zi[j] >= 0.5
-            return out
         for n in self._item_years:
             out[n] = self._item_zi_n[n] >= 0.5
         return out
 
-    def _item_dominated_n(self, x=None, tol=1.0):
+    def _st_item_branch_n(self):
+        """The state branch per year (True = itemized): the loop's choice, in candidate years."""
+        out = np.zeros(self.N_n, dtype=bool)
+        for n in getattr(self, "_st_item_years", []):
+            out[n] = self._st_zi_n[n] >= 0.5
+        return out
+
+    def _item_dominated_n(self, x=None, tol=1.0, sched="fed"):
         """Years whose branch gives the smaller deduction at the solution's own amounts ($ lost).
 
-        Itemizing below the standard, or taking the standard with a larger itemized total. In
-        loop mode it is the loop's lag; in optimize mode a binary left by the MIP gap, which
-        _fix_dominated_itemizing removes.
+        Itemizing below the standard, or taking the standard with a larger itemized total: the
+        loop's lag (the branch comes from the previous iterate). sched "fed" or "st"; the state
+        compares the itemized total after the line 46 cut with the state standard.
         """
         lost = np.zeros(self.N_n)
-        if not self._item_lp or not self._item_years:
+        years = self._item_years if sched == "fed" else getattr(self, "_st_item_years", [])
+        if not self._item_lp or not years:
             return lost
-        g = self.g_n if x is None else self.vm["g"].extract(x)
-        pot = self._item_potential_n(x)
-        S = self._item_standard_n(g)
-        item = self._item_branch_n(x)
-        for n in self._item_years:
+        if sched == "fed":
+            g = self.g_n if x is None else self.vm["g"].extract(x)
+            pot, S, item = self._item_potential_n(x), self._item_standard_n(g), self._item_branch_n(x)
+        else:
+            pot = (1.0 - self.NYIR_n) * self._item_potential_n(x, "st")
+            S, item = self.st_sigmaBar_n, self._st_item_branch_n()
+        for n in years:
             diff = (S[n] - pot[n]) if item[n] else (pot[n] - S[n])
             if diff > tol:
                 lost[n] = diff
         return lost
 
-    def _fix_dominated_itemizing(self, xx, objfn, options):
-        """Put each optimize-mode zi on the branch its own solution prefers, by an LP re-solve.
-
-        A MILP stopped at its gap can leave a zi on the smaller deduction (Case_jordan+taylor at a
-        0.23% gap itemized $31,323 against a $36,494 standard). Given the solution, the other
-        branch is feasible with the same spending and binaries (raise or drop the claimed
-        components, keep e), so an LP with every binary pinned and those zi flipped is feasible
-        and no worse. Its new state tax can change the comparison elsewhere: repeat a few times.
-        The floor switches are pinned to what the solution's own amounts call for.
-        """
-        if not (self._item_optimize and "zi" in self.vm and self._item_years):
-            return xx, objfn
-        vm = self.vm
-        terms = self._item_terms()
-        (cc, kc), (cm, km) = terms["ch"], terms["med"]
-        for _ in range(3):
-            lost = self._item_dominated_n(xx)
-            if not np.any(lost > 0):
-                break
-            zi = vm["zi"].extract(xx)
-            g = vm["g"].extract(xx)
-            overrides = {}
-            for c in range(vm.nconts, self.nvars):
-                v = float(np.round(xx[c]))
-                overrides[c] = (v, v)
-            flips = 0
-            for j, n in enumerate(self._item_years):
-                v = float(np.round(zi[j]))
-                if lost[n] > 0 and n in self._item_free_rows:
-                    v = 1.0 - v
-                    flips += 1
-                overrides[vm["zi"].idx(j)] = (v, v)
-            if not flips:
-                break  # outside the free set the branch is the loop rule's: the residual tracks it
-            # Medical paid includes Owl's premiums less HSA distributions, as in the claim rows.
-            prem = self._medical_premium_values(xx)
-            for years, name, const, coef, F, extra in (
-                (self._item_ch_years, "zch", cc, kc, self.FEDCF_n, np.zeros(self.N_n)),
-                (self._item_med_years, "zmedf", cm, km, self.FEDMF_n, prem),
-            ):
-                for j, n in enumerate(years):
-                    v = 1.0 if const[n] + coef[n] * g[n] + extra[n] - F[n] > 1.0 else 0.0
-                    overrides[vm[name].idx(j)] = (v, v)
-            _, yy, ok, msg, _ = self._run_mip(
-                self.A, self.B, self.c, dict(options), col_overrides=overrides, lp_relax=True, update_warm=False
-            )
-            if not ok or yy is None:
-                self.mylog.vprint(f"Itemizing: re-solve on the better branch failed ({msg}); keeping the MILP's.")
-                break
-            yy = np.asarray(yy, dtype=float)
-            c_arr = np.asarray(self.c.arrays(), dtype=float)
-            gain = float(np.dot(c_arr, xx) - np.dot(c_arr, yy))  # the objective is minimized
-            if gain < -1e-9 * max(1.0, abs(objfn)):
-                break
-            self.mylog.vprint(
-                f"Itemizing: {flips} year(s) moved to the larger deduction "
-                f"(objective improved by {gain:,.4g})."
-            )
-            xx, objfn = yy, objfn - gain
-        return xx, objfn
-
     def _check_itemizing(self):
         """Warnings on the federal itemized deduction of the solved plan (rules not modeled).
 
-        - A branch giving the smaller deduction (loop lag, or a dominance fix that failed).
+        - A branch giving the smaller deduction (the loop's lag), federal or state.
         - The SALT cap the LP used is the previous iterate's (MAGI phase-down): report a gap with
           the cap this plan's own MAGI implies, in years claiming at the cap.
         - The 2/37 limit (IRC 68 as amended by P.L. 119-21 sec. 70111): itemized deductions are
@@ -4337,18 +4073,19 @@ class Plan:
         - Pease (IRC 68 before TCJA), only after a pre-TCJA reversion: itemized deductions other
           than medical cut by 3% of AGI over a threshold, at most 80% of them. Not modeled.
         """
+        gam = self.gamma_n[: self.N_n]
+        for sched, who in (("st", "State"), ("fed", "Federal")):
+            lost = self._item_dominated_n(sched=sched)
+            if np.any(lost > 0):
+                yrs = [int(self.year_n[n]) for n in np.flatnonzero(lost > 0)]
+                self.mylog.print(
+                    f"{who} itemizing: {len(yrs)} year(s) ({yrs[0]}-{yrs[-1]}) take the smaller deduction "
+                    f"(the self-consistent loop's lag), {u.d(np.sum(lost / gam))} of deduction left "
+                    "unclaimed (today's $).",
+                    tag="WARNING",
+                )
         if not self._item_lp or not self._item_years:
             return
-        gam = self.gamma_n[: self.N_n]
-        lost = self._item_dominated_n()
-        if np.any(lost > 0):
-            yrs = [int(self.year_n[n]) for n in np.flatnonzero(lost > 0)]
-            why = "the MIP gap" if self._item_optimize else "the self-consistent loop's lag"
-            self.mylog.print(
-                f"Federal itemizing: {len(yrs)} year(s) ({yrs[0]}-{yrs[-1]}) take the smaller deduction "
-                f"({why}), {u.d(np.sum(lost / gam))} of deduction left unclaimed (today's $).",
-                tag="WARNING",
-            )
         year_n = np.asarray(self.year_n)
         cap_own = self._salt_cap_n(self.MAGI_n)
         at_cap = self.itemizing_n & (self.item_salt_n >= self.FEDSC_n - 1.0)
@@ -6393,57 +6130,22 @@ class Plan:
         return short
 
     def _itemized_shortfall(self, x=None):
-        """State deduction the solution could take on the itemized schedule but does not, per year ($).
+        """State deduction the solution's own branch allows but does not take, per year ($).
 
-        The LP bounds each claim from above only, so where a year's cash has no price a smaller
-        deduction is as good and the plan reports state tax it does not owe. The shortfall is the
-        better of the standard and the (cut) itemized total, less the deduction actually taken.
+        The itemized total after the line 46 cut in an itemizing year, the standard elsewhere,
+        less the deduction taken. The LP bounds st_e from above only, so where a year's cash has
+        no price a smaller deduction is as good and the plan reports state tax it does not owe.
         Used like _exclusion_shortfall: it is subtracted from the year's taxable income when
-        measuring brackets filled out of order, which turns tax pricing on for the repair.
+        measuring brackets filled out of order, which turns tax pricing on for the repair. Only
+        years the state lets itemize count: a NJ year after a NY move must not invent one.
         """
         Nn = self.N_n
-        if not getattr(self, "_st_item_lp", False) or "st_ipt" not in self.vm:
+        if not getattr(self, "_st_item_lp", False):
             return np.zeros(Nn)
-        if x is None:
-            ipt, ich, imed = self.st_ipt_n, self.st_ich_n, self.st_imed_n
-            g_n = self.g_n
-            st_e = self.st_agi_n - self.st_ti_n - self.st_rx_n - self.st_pt_n - self.st_med_n
-        else:
-            vm = self.vm
-            ipt_j = vm["st_ipt"].extract(x)
-            ich_j = vm["st_ich"].extract(x)
-            imed_j = vm["st_imed"].extract(x)
-            g_n = vm["g"].extract(x)
-            ipt = np.zeros(Nn)
-            ich = np.zeros(Nn)
-            imed = np.zeros(Nn)
-            for j, n in enumerate(self._st_item_years):
-                ipt[n] = ipt_j[j]
-                ich[n] = ich_j[j]
-                imed[n] = imed_j[j]
-            st_e = vm["st_e"].extract(x) if "st_e" in vm else np.zeros(Nn)
-        terms = self._item_terms()
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
-        # Claimable medical is max(0, paid - floor*AGI), matching the zmed row. Only the premiums
-        # the plan actually pays count (M_n + ACA_n + m + maca, less HSA distributions):
-        # _medicare_premium_ub_n is a big-M, not a cost.
-        # Mortgage interest is a parameter the deduction row always includes in full, so it belongs
-        # in pot but not in the claimed components (ipt+ich+imed). The itemized total counts only in
-        # years with itemized columns: elsewhere the LP can take the standard and nothing else, and
-        # a shortfall there (Medicare above the floor in a NY year without a deductible line) could
-        # never be removed. Only years the state lets itemize count at all: a NJ year after a NY
-        # move must not invent a shortfall either.
-        F = self.STMF_n
-        prem = self._medical_premium_values(x)  # premiums less HSA distributions
-        paid_med = np.maximum(0.0, const_med + coef_med * g_n + prem - F)
-        pot = const_pt + coef_pt * g_n + const_ch + coef_ch * g_n + paid_med + self.st_item_mi_n
-        cols_n = np.zeros(Nn, dtype=bool)
-        cols_n[self._st_item_years] = True
-        pot = np.where(cols_n, pot, 0.0)
+        st_e = self.st_e_n if x is None else self.vm["st_e"].extract(x)
         keep = 1.0 - self.NYIR_n
-        best = np.maximum(self.st_sigmaBar_n, keep * pot)
-        short = np.maximum(0.0, best - st_e)
-        return np.where(self.st_item_ok_n, short, 0.0)
+        amount = np.where(self._st_item_branch_n(), keep * self._st_item_allowed_n(x), self.st_sigmaBar_n)
+        return np.where(self.st_item_ok_n, np.maximum(0.0, amount - st_e), 0.0)
 
     def _federal_itemized_shortfall(self, x=None):
         """Federal deduction the solution's own branch allows but does not take, per year ($).
@@ -6453,8 +6155,8 @@ class Plan:
         deduction is as good and the plan reports federal tax it does not owe. Used like
         _exclusion_shortfall: it is subtracted from the year's taxable income when measuring
         brackets filled out of order, which turns tax pricing on for the repair. A branch that is
-        itself the smaller one is not a tie and the repair cannot change it: _item_dominated_n,
-        _fix_dominated_itemizing and _check_itemizing deal with that.
+        itself the smaller one is not a tie (the loop's lag) and the repair cannot change it:
+        _item_dominated_n and _check_itemizing report it.
         """
         Nn = self.N_n
         if not self._item_lp or not (self._item_years or self._item_nch_years):
@@ -6463,11 +6165,8 @@ class Plan:
         e_n = self.e_n if x is None else vm["e"].extract(x)
         g = self.g_n if x is None else vm["g"].extract(x)
         branch = self._item_branch_n(x)
-        if self._item_optimize:
-            item = self._item_potential_n(x)
-        else:
-            salt, ch, med = self._item_allowed_parts(x)
-            item = salt + ch + med + self.item_mi_n
+        salt, ch, med = self._item_allowed_parts(x)
+        item = salt + ch + med + self.item_mi_n
         amount = np.where(branch, item, self._item_standard_n(g))
         short = np.maximum(0.0, amount + self._item_bonus_n(x) - e_n)
         cols_n = np.zeros(Nn, dtype=bool)
@@ -6844,7 +6543,7 @@ class Plan:
             "withLTCG",  # LTCG handling: "loop" (default) or "optimize"
             "withNIIT",  # NIIT handling: "loop" (default) or "optimize"
             "withSeniorBonus",  # OBBBA 65+ bonus phase-out: "loop" (default) or "optimize"
-            "withItemized",  # federal itemized deduction: "none", "loop" (default) or "optimize"
+            "withItemized",  # itemized deductions, federal and state: "loop" (default) or "none"
             "withMedicare",
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
@@ -7076,8 +6775,6 @@ class Plan:
             tx.seniorBonusSchedule(self.yobs, self.i_d, self.n_d, self.N_n)[0]
         ):
             fams.append("senior bonus")
-        if options.get("withItemized", "loop") == "optimize":
-            fams.append("itemizing")
         return fams
 
     def _breakpointMethodLabel(self, options, fallback=False):
@@ -7112,8 +6809,6 @@ class Plan:
             options["withLTCG"] = "optimize"
             options["withNIIT"] = "optimize"
             options["withSeniorBonus"] = "optimize"
-            if options.get("withItemized", "loop") != "none":
-                options["withItemized"] = "optimize"
             if options.get("withMedicare", "loop") not in ("none", "None", False):
                 options["withMedicare"] = "optimize"
             if self.slcsp_annual > 0:
@@ -7161,7 +6856,7 @@ class Plan:
         loop_opts = {k: v for k, v in myoptions.items()
                      if k not in ("mipStrategy", "breakpointMethod", "localSearchTime",
                                   "localSearchStepTime", "localSearchRadius", "localSearchStepNodes")}
-        for opt in ("withSSTaxability", "withLTCG", "withNIIT", "withACA", "withSeniorBonus", "withItemized"):
+        for opt in ("withSSTaxability", "withLTCG", "withNIIT", "withACA", "withSeniorBonus"):
             if loop_opts.get(opt) == "optimize":
                 loop_opts[opt] = "loop"
         if loop_opts.get("withMedicare") == "optimize":
@@ -7272,91 +6967,57 @@ class Plan:
         return self._mipNodeCount - nodes if self._mipRunCount > runs else -1
 
     def _itemized_sc_moves(self, sc_lp, xx, g_today):
-        """Loop-residual moves of the fork's itemized-deduction loop parameters (today's $).
+        """Loop-residual moves of the itemized-deduction loop parameters (today's $).
 
-        Each is how far this iterate's own income moves a quantity its LP was built with:
-        the NY line 46 rate and medical floor, and the federal branch, floors and SALT cap.
+        Each is how far this iterate's own income moves a quantity its LP was built with: the
+        branches (federal, state), the floors and which side of them each amount is on (federal
+        charity and medical, state medical, NJ line 31), the SALT cap, and the NY line 46 rate.
         """
         moves = []
-        # NYIR_n is a rate (the line 46 cut), not a dollar amount: a change of drho moves the
-        # itemized deduction by drho * the itemized total. Weight by what rho multiplies, so a
-        # move in a standard-taken year still registers if it could flip the branch.
+
+        def floor(paid, name, live_n):
+            # A floor moves the claim only where the amount paid clears one of the two floors.
+            F, F0 = getattr(self, name), sc_lp[name]
+            lo = np.minimum(F, F0)
+            d = np.minimum(np.abs(F - F0), np.maximum(paid - lo, 0.0))
+            moves.append(np.sum(np.where(live_n & (paid > lo), d, 0.0) / g_today))
+
+        def flip(name, by_n, live_n):
+            # A flag or branch that flips moves the claim by by_n (what is paid above or below the
+            # floor; the larger of the two branches).
+            f = live_n & (np.abs(getattr(self, name) - sc_lp[name]) > 0)
+            moves.append(np.sum(np.where(f, np.abs(by_n), 0.0) / g_today))
+
+        terms = self._item_terms()
+        (c_pt, k_pt), (c_ch, k_ch), (c_med, k_med) = terms["pt"], terms["ch"], terms["med"]
+        ch_paid = c_ch + k_ch * self.g_n
+        med_paid = c_med + k_med * self.g_n + self._medical_premium_values()  # as the claim rows
         if self._st_item_lp:
-            terms = self._item_terms()
-            (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = (
-                terms["pt"], terms["ch"], terms["med"]
-            )
-            pot_n = (
-                const_pt + coef_pt * self.g_n + const_ch + coef_ch * self.g_n + const_med
-                + coef_med * self.g_n + self.st_item_mi_n
-            )
-            base_n = np.where(self.st_item_ok_n, np.maximum(self.st_item_n, pot_n), 0.0)
-            moves.append(
-                np.sum(np.abs(self.NYIR_n - sc_lp["NYIR_n"]) * base_n / g_today)
-            )
-            # The medical floor moves the claim only where the medical paid clears one of the
-            # two floors; elsewhere the claim is zero either way.
-            paid_med = const_med + coef_med * self.g_n + self._medical_premium_values()
-            lo_F = np.minimum(self.STMF_n, sc_lp["STMF_n"])
-            med_live = self.st_item_ok_n & (paid_med > lo_F)
-            dF = np.minimum(np.abs(self.STMF_n - sc_lp["STMF_n"]), np.maximum(paid_med - lo_F, 0.0))
-            moves.append(np.sum(np.where(med_live, dF, 0.0) / g_today))
-        # NJ line 31: the floor moves the claim where medical paid clears one of the two floors,
-        # and a flag that flips moves it by what is paid above (or below) the floor.
+            st_n = np.zeros(self.N_n, dtype=bool)
+            st_n[self._st_item_years] = True
+            pot = self._item_potential_n(sched="st")
+            # NYIR_n is a rate (the line 46 cut): a change of drho moves the deduction by drho x
+            # the itemized total, also in a standard-taken year, where it could flip the branch.
+            moves.append(np.sum(np.where(st_n, np.abs(self.NYIR_n - sc_lp["NYIR_n"]) * pot, 0.0) / g_today))
+            floor(med_paid, "STMF_n", st_n)
+            flip("_st_medl_n", med_paid - self.STMF_n, st_n)
+            flip("_st_zi_n", np.maximum(self.st_sigmaBar_n, (1.0 - self.NYIR_n) * pot), st_n)
         if self._st_med_lp:
-            const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
-            paid = const_med + coef_med * self.g_n + self._medical_premium_values(hsa=False)
+            # NJ line 31 counts premiums without subtracting HSA distributions.
+            nj_paid = c_med + k_med * self.g_n + self._medical_premium_values(hsa=False)
             on = self.st_medd_floor_pct_n > 0
-            lo = np.minimum(self.NJMF_n, sc_lp["NJMF_n"])
-            d = np.minimum(np.abs(self.NJMF_n - sc_lp["NJMF_n"]), np.maximum(paid - lo, 0.0))
-            moves.append(np.sum(np.where(on & (paid > lo), d, 0.0) / g_today))
-            flip = on & (np.abs(self._nj_medl_n - sc_lp["_nj_medl_n"]) > 0)
-            moves.append(np.sum(np.where(flip, np.abs(paid - self.NJMF_n), 0.0) / g_today))
-        # Federal floors (FEDMF_n / FEDCF_n), SALT cap (FEDSC_n) and the loop's branch. Only
-        # years with itemized columns can claim, so only they can move.
+            floor(nj_paid, "NJMF_n", on)
+            flip("_nj_medl_n", nj_paid - self.NJMF_n, on)
         if self._item_lp and self._item_years:
-            cols_n = np.zeros(self.N_n, dtype=bool)
-            cols_n[self._item_years] = True
-            # A flip of the choice is a move: the next LP would take the other branch (loop
-            # mode; optimize mode outside the free set, where zi is pinned to it).
-            fixed = cols_n if not self._item_optimize else cols_n & (sc_lp["FIX_n"] < 0.5)
-            dz = np.where(fixed, np.abs(self._item_zi_n - sc_lp["_item_zi_n"]), 0.0)
-            if np.any(dz > 0):
-                moves.append(np.sum(dz * np.maximum(self.item_std_n, self.item_n) / g_today))
-            t2 = self._item_terms()
-            (c_pt, k_pt), (c_ch, k_ch), (c_med, k_med) = t2["pt"], t2["ch"], t2["med"]
-            med_paid = c_med + k_med * self.g_n + self._medical_premium_values()  # as the claim rows
-            if self._item_optimize:
-                # Years newly freed: the next LP can take the other branch there.
-                added = cols_n & (self.FIX_n >= 0.5) & (sc_lp["FIX_n"] < 0.5)
-                if np.any(added):
-                    moves.append(np.sum(self.item_std_n[added] / g_today[added]))
-            else:
-                # A floor flag that flips moves the claim by what is paid above (or below) it.
-                for flag, paid, F in (
-                    ("_item_chl_n", c_ch + k_ch * self.g_n, self.FEDCF_n),
-                    ("_item_medl_n", med_paid, self.FEDMF_n),
-                ):
-                    flip = cols_n & (np.abs(getattr(self, flag) - sc_lp[flag]) > 0)
-                    if np.any(flip):
-                        moves.append(np.sum(np.abs(paid - F)[flip] / g_today[flip]))
-            for paid, F in (
-                (c_ch + k_ch * self.g_n, "FEDCF_n"),
-                (med_paid, "FEDMF_n"),
-            ):
-                # A floor moves the claim only where the amount paid clears one of the two.
-                lo = np.minimum(getattr(self, F), sc_lp[F])
-                live = cols_n & (paid > lo)
-                d = np.minimum(np.abs(getattr(self, F) - sc_lp[F]), np.maximum(paid - lo, 0.0))
-                if np.any(live):
-                    moves.append(np.sum(np.where(live, d, 0.0) / g_today))
+            fed_n = np.zeros(self.N_n, dtype=bool)
+            fed_n[self._item_years] = True
+            flip("_item_zi_n", np.maximum(self.item_std_n, self.item_n), fed_n)
+            flip("_item_chl_n", ch_paid - self.FEDCF_n, fed_n)
+            flip("_item_medl_n", med_paid - self.FEDMF_n, fed_n)
+            floor(ch_paid, "FEDCF_n", fed_n)
+            floor(med_paid, "FEDMF_n", fed_n)
             # The cap moves the claim only where SALT paid is above the lower of the two caps.
-            salt_paid = np.maximum(0.0, c_pt + k_pt * self.g_n) + self._state_tax_paid_n(xx)
-            lo = np.minimum(self.FEDSC_n, sc_lp["FEDSC_n"])
-            live = cols_n & (salt_paid > lo)
-            if np.any(live):
-                d = np.minimum(np.abs(self.FEDSC_n - sc_lp["FEDSC_n"]), np.maximum(salt_paid - lo, 0.0))
-                moves.append(np.sum(np.where(live, d, 0.0) / g_today))
+            floor(np.maximum(0.0, c_pt + k_pt * self.g_n) + self._state_tax_paid_n(xx), "FEDSC_n", fed_n)
         return moves
 
     def _new_iteration_trace(self):
@@ -7704,9 +7365,6 @@ class Plan:
                 self._infeasible = False
                 break
 
-            # Optimize mode: a zi the MIP gap left on the smaller deduction goes to the larger one.
-            xx, objfn = self._fix_dominated_itemizing(xx, objfn, options)
-
             if self._tax_tiebreak_on:
                 # Report the objective without the tie-break, so iterates compare on the same terms.
                 objfn -= TAX_TIEBREAK * float(np.dot(self._tax_cost_vector(), xx))
@@ -7867,7 +7525,7 @@ class Plan:
             # floor; the NJ line 31 floor and flag), so restore them first.
             for name in (
                 "FEDMF_n", "FEDCF_n", "FEDSC_n", "_item_zi_n", "_item_chl_n", "_item_medl_n",
-                "NYIR_n", "STMF_n", "NJMF_n", "_nj_medl_n",
+                "NYIR_n", "STMF_n", "_st_zi_n", "_st_medl_n", "NJMF_n", "_nj_medl_n",
             ):
                 setattr(self, name, sc_lp[name])
             # The medical shortfalls also read the loop premiums M_n / ACA_n, which are restored
@@ -8107,19 +7765,18 @@ class Plan:
         res["LTCG"] = (self.U_n - self._ltcg_tax_implied()) / g
         if self._str_active:
             res["state recapture"] = (self.STR_n - self._state_recapture_implied()) / g
-        if getattr(self, "_st_item_lp", False):
-            # The itemized deduction taken less the one this plan's own AGI allows: the line 46 rate
-            # and the medical floor are the previous iterate's. Claims below what was paid (ties)
-            # are kept as claimed; only medical above the plan's own floor and the rate count.
+        if self._st_item_lp:
+            # State deduction taken less max(standard, itemized) at the plan's own AGI (line 46
+            # rate, medical floor) and branch, where state taxable income is positive.
             terms = self._item_terms()
-            const_med, coef_med = terms["med"]
-            paid_med = const_med + coef_med * self.g_n + self._medical_premium_values()
+            (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
             F_true = self._itemized.medical_floor_n / 100.0 * self.MAGI_n
-            med_true = np.minimum(self.st_imed_n, np.maximum(0.0, paid_med - F_true))
-            keep_true = 1.0 - self._state_itemized_adjustment()
-            total_true = self.st_ipt_n + self.st_ich_n + med_true + self.st_item_mi_n
-            implied = np.where(self.st_itemizing_n, keep_true * total_true, 0.0)
-            res["state itemized"] = (self.st_item_n - implied) / g
+            med = np.maximum(0.0, cm + km * self.g_n + self._medical_premium_values() - F_true)
+            pot = np.maximum(0.0, cp + kp * self.g_n) + np.maximum(0.0, cc + kc * self.g_n) + med + self.st_item_mi_n
+            implied = np.maximum(self.st_sigmaBar_n, (1.0 - self._state_itemized_adjustment()) * pot)
+            cols_n = np.zeros(Nn, dtype=bool)
+            cols_n[self._st_item_years] = True
+            res["state itemized"] = np.where(cols_n & (self.st_ti_n > 1.0), self.st_e_n - implied, 0.0) / g
         if self._st_med_lp:
             # NJ line 31 claimed less the claim the plan's own line 29 allows (the floor and the
             # flag are the previous iterate's), where state taxable income is positive.
@@ -8991,8 +8648,9 @@ class Plan:
             self.NJMF_n = np.zeros(self.N_n)  # nor the NJ line 31 floor
             self._nj_medl_n = self._nj_medical_floor_flags()
             self._item_zi_n = self._item_loop_choice()  # standard, unless itemizing is certain
-            self._item_chl_n, self._item_medl_n = self._item_floor_flags()
-            self.FIX_n = np.zeros(self.N_n)  # no free zi until an iterate shows where the switch is
+            self._item_chl_n, self._item_medl_n = self._floor_flags("fed")
+            self._st_zi_n = self._st_item_loop_choice()
+            self._st_medl_n = self._floor_flags("st")[1]
             self.M_n = np.zeros(self.N_n)
             self.ACA_n = np.zeros(self.N_n)
             # Seed I_n for first NIIT LP iteration: portfolio part is zero before first solve.
@@ -9017,19 +8675,14 @@ class Plan:
         # changes the problem only above the threshold, so below it local search still sees an
         # unchanged problem. It cannot be computed once at solve entry: solve() zeroes MAGI_n.
         self.FEDSC_n = self._salt_cap_n(self.MAGI_n)
+        # The next LP's branches: itemize where this solution's itemized total beats its
+        # standard; then which side of each floor the amounts paid are on.
         if self._item_lp and self._item_years:
-            # The next LP's branch (loop mode; optimize mode outside the free set): itemize where
-            # this solution's itemized total beats its standard. Then the floors' sides, and the
-            # years near the switch, where optimize mode frees zi.
-            pot = self._item_potential_n(x)
-            self._item_zi_n = self._item_loop_choice(pot, self.g_n)
-            self._item_chl_n, self._item_medl_n = self._item_floor_flags(self.g_n)
-            if self._item_optimize:
-                S = self._item_standard_n(self.g_n)
-                near = np.zeros(self.N_n)
-                near[self._item_years] = 1.0
-                near = np.where(np.abs(pot - S) <= ITEM_WINDOW * S, near, 0.0)
-                self.FIX_n = np.maximum(self.FIX_n, near)
+            self._item_zi_n = self._item_loop_choice(self._item_potential_n(x), self.g_n)
+            self._item_chl_n, self._item_medl_n = self._floor_flags("fed", self.g_n)
+        if self._st_item_lp:
+            self._st_zi_n = self._st_item_loop_choice(self._item_potential_n(x, "st"))
+            self._st_medl_n = self._floor_flags("st", self.g_n)[1]
         self._rx_refixed_n = self._refix_boundary_tiers()
         # Psi_n is derived directly from the tss_n LP variable in _aggregateResults
         # when withSSTaxability=="optimize"; skip the SC-loop update in that case.
@@ -9234,39 +8887,30 @@ class Plan:
         self.st_rx_n = vm["st_rx"].extract(x) if "st_rx" in vm else np.zeros(Nn)
         self.st_pt_n = vm["st_pt"].extract(x) if "st_pt" in vm else np.zeros(Nn)
         self.st_med_n = vm["st_med"].extract(x) if "st_med" in vm else np.zeros(Nn)
-        if "st_ipt" in vm:
-            ipt_j = vm["st_ipt"].extract(x)
-            ich_j = vm["st_ich"].extract(x)
-            imed_j = vm["st_imed"].extract(x)
-            zsi_j = vm["zsi"].extract(x)
-            self.st_ipt_n = np.zeros(Nn)
-            self.st_ich_n = np.zeros(Nn)
-            self.st_imed_n = np.zeros(Nn)
-            self.st_itemizing_n = np.zeros(Nn, dtype=bool)
-            for j, n in enumerate(self._st_item_years):
-                self.st_ipt_n[n] = ipt_j[j]
-                self.st_ich_n[n] = ich_j[j]
-                self.st_imed_n[n] = imed_j[j]
-                self.st_itemizing_n[n] = zsi_j[j] >= 0.5
-            # The itemized deduction taken: the total after the NYAGI adjustment (line 47) at the
-            # rate the LP was built with (NYIR_n is that rate here: the loop advances it after this
-            # aggregation, and the final one restores the accepted iterate's); 0 when standard.
-            keep_n = 1.0 - self.NYIR_n
-            self.st_item_n = np.where(
-                self.st_itemizing_n,
-                keep_n * (self.st_ipt_n + self.st_ich_n + self.st_imed_n + self.st_item_mi_n),
-                0.0,
-            )
+        self.st_e_n = vm["st_e"].extract(x) if "st_e" in vm else np.zeros(Nn)
+        # State itemized deduction: the amounts the rows allow, in the years the loop itemized.
+        # The deduction taken is the total after the NYAGI adjustment (line 47) at the rate the
+        # LP was built with (NYIR_n here: the loop advances it after this aggregation, and the
+        # final one restores the accepted iterate's); 0 when standard.
+        self.st_itemizing_n = self._st_item_branch_n() if self._st_item_lp else np.zeros(Nn, dtype=bool)
+        if self._st_item_lp:
+            g = vm["g"].extract(x)
+            terms = self._item_terms()
+            (cp, kp), (cc, kc) = terms["pt"], terms["ch"]
+            _, med = self._claim_values(x, 0.0, np.zeros(Nn), self.STMF_n, self._st_medl_n)
+            on = self.st_itemizing_n
+            self.st_ipt_n = np.where(on, np.maximum(0.0, cp + kp * g), 0.0)
+            self.st_ich_n = np.where(on, np.maximum(0.0, cc + kc * g), 0.0)
+            self.st_imed_n = np.where(on, np.maximum(0.0, med), 0.0)
+            self.st_item_n = (1.0 - self.NYIR_n) * self._st_item_allowed_n(x)
         else:
             self.st_ipt_n = np.zeros(Nn)
             self.st_ich_n = np.zeros(Nn)
             self.st_imed_n = np.zeros(Nn)
             self.st_item_n = np.zeros(Nn)
-            self.st_itemizing_n = np.zeros(Nn, dtype=bool)
         self.st_agi_n, self.st_ti_n = self._state_agi_and_ti()
 
-        # Federal itemized deduction claimed: the claim columns (optimize mode), or the amounts the
-        # loop mode's rows allow.
+        # Federal itemized deduction claimed: the amounts the itemized rows allow.
         self.item_salt_n = np.zeros(Nn)
         self.item_char_n = np.zeros(Nn)
         self.item_med_n = np.zeros(Nn)
@@ -9274,19 +8918,10 @@ class Plan:
         self.itemizing_n = np.zeros(Nn, dtype=bool)
         if self._item_lp and self._item_years:
             self.itemizing_n = self._item_branch_n(x)
-            if "isalt" in vm:
-                isalt_j = vm["isalt"].extract(x)
-                ich_j = vm["ich"].extract(x)
-                imed_j = vm["imed"].extract(x)
-                for j, n in enumerate(self._item_years):
-                    self.item_salt_n[n] = isalt_j[j]
-                    self.item_char_n[n] = ich_j[j]
-                    self.item_med_n[n] = imed_j[j]
-            else:
-                salt, ch, med = self._item_allowed_parts(x)
-                self.item_salt_n = np.where(self.itemizing_n, salt, 0.0)
-                self.item_char_n = np.where(self.itemizing_n, np.maximum(ch, 0.0), 0.0)
-                self.item_med_n = np.where(self.itemizing_n, np.maximum(med, 0.0), 0.0)
+            salt, ch, med = self._item_allowed_parts(x)
+            self.item_salt_n = np.where(self.itemizing_n, salt, 0.0)
+            self.item_char_n = np.where(self.itemizing_n, np.maximum(ch, 0.0), 0.0)
+            self.item_med_n = np.where(self.itemizing_n, np.maximum(med, 0.0), 0.0)
             # The itemized total the plan claims (mortgage interest is a parameter of the branch).
             self.item_n = np.where(
                 self.itemizing_n,

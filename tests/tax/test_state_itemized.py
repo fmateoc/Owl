@@ -6,7 +6,8 @@ and mortgage
 interest up to $1M of acquisition debt; state and local income taxes are subtracted from
 Schedule A. Above NYAGI $200,000 (MFJ) / $100,000 (Single) the total is cut by 25% over the
 next $50,000 (line 46, Worksheet 3). Standard deduction $16,050 MFJ. st_item_n is the deduction
-taken, after that cut.
+taken, after that cut. As federally, the branch and the side of the medical floor come from the
+a priori bounds or the previous iterate: rows on existing columns, no binary.
 """
 
 import io
@@ -102,11 +103,11 @@ def test_owner_itemizes_property_tax_above_the_standard():
 
 
 def test_renter_without_deductible_lines_keeps_the_standard():
-    """No deductible budget line and no mortgage: no columns at all, and the standard is taken."""
+    """No deductible budget line and no mortgage: no row at all, and the standard is taken."""
     p = _solve(_plan(property_tax=0.0, locality=""))
     assert not p.st_itemizing_n.any()
     assert np.all(p.st_item_n == 0)
-    assert "zsi" not in p.vm and "st_ipt" not in p.vm
+    assert not p._st_item_years and not any(t and t[0] == "state_item_deduction" for t in p.A.tags)
     np.testing.assert_allclose(p.st_ti_n, np.maximum(0.0, p.st_agi_n - p.st_sigmaBar_n), atol=2.0)
 
 
@@ -138,7 +139,7 @@ def test_agi_over_the_start_gets_the_line_46_cut():
 def test_nj_and_fl_have_no_state_itemized_block():
     for state, loc in (("NJ", ""), ("FL", "")):
         p = _solve(_plan(state=state, locality=loc))
-        assert "zsi" not in p.vm
+        assert not p._st_item_years
         assert not p.st_itemizing_n.any()
         assert np.all(p.st_item_n == 0)
 
@@ -173,11 +174,11 @@ def test_medical_above_the_floor_is_deductible():
     """A medical line large enough to beat the standard: the claim is paid - 10% of federal AGI.
 
     Under maxBequest every g_n is pinned, so the amount paid is known before the solve and the
-    claim is a column bound (no zmed binary).
+    side of the floor is decided a priori.
     """
     p = _solve(_plan(medical=40_000.0, core=40_000.0, property_tax=0.0))
     assert p.st_itemizing_n[:20].all()
-    assert "zmed" not in p.vm
+    assert p.vm.nbins == 0
     g = p.gamma_n[: p.N_n]
     claim = np.maximum(0.0, 40_000.0 * g - p.STMF_n)
     assert np.all(p.STMF_n[:20] > 0)
@@ -204,38 +205,30 @@ def test_deduction_taken_is_one_of_the_two_branches():
     np.testing.assert_allclose(taken[:20], expect[:20], atol=2.0)
 
 
-def _free_cols(p, name):
-    "Columns of block `name` whose bounds the builder left open (lb < ub)."
-    if name not in p.vm:
-        return 0
-    lb, ub = p.B.arrays()
-    blk = p.vm._blocks[name]
-    return int(np.sum(lb[blk.start : blk.end] < ub[blk.start : blk.end]))
-
-
 def test_maxbequest_decides_every_year_before_the_solve():
     """maxBequest without spending slack pins every g_n, so the property tax paid is known and the
-    a priori rule fixes zsi in every year ($25k > $16,050): no free binary, no big-M gate."""
+    a priori rule decides every year ($25k > $16,050), whatever the previous iterate says."""
     p = _solve(_plan())
     assert len(p._st_item_years) > 0
-    assert _free_cols(p, "zsi") == 0
-    assert not any(t and t[0] == "state_item_pt_gate" for t in p.A.tags)
+    assert p.vm.nbins == 0
+    np.testing.assert_array_equal(p._st_item_loop_choice(), p._st_zi_n)
     # A $10k property tax grows with inflation while the $16,050 NY standard is not indexed: the
     # rule fixes the standard while 10k*gamma is below it and itemizing once it is above.
     q = _solve(_plan(property_tax=10_000.0))
-    assert _free_cols(q, "zsi") == 0
     pt = 10_000.0 * q.gamma_n[: q.N_n]
     clear = np.abs(pt - q.st_sigmaBar_n) > 1.0
     np.testing.assert_array_equal(q.st_itemizing_n[clear], (pt > q.st_sigmaBar_n)[clear])
     assert not q.st_itemizing_n[0] and q.st_itemizing_n[-1]
 
 
-def test_maxspending_leaves_the_choice_to_the_solver():
-    """Net spending is free under maxSpending, so the property tax paid is not known a priori."""
+def test_maxspending_takes_the_branch_from_the_previous_iterate():
+    """Net spending is free under maxSpending, so the property tax paid is not known a priori: the
+    branch is the previous iterate's (_st_zi_n), and it is the larger deduction at convergence."""
     p = _plan()
     _solve(p, objective="maxSpending", bequest=0)
-    assert _free_cols(p, "zsi") > 0
+    assert p.vm.nbins == 0
     assert p.st_itemizing_n[:20].all()
+    assert not np.any(p._item_dominated_n(sched="st")[p.st_ti_n > 1.0] > 0)
     g = p.gamma_n[: p.N_n]
     # The property tax paid is its share of net spending; the claim follows it.
     share = 25_000.0 / 105_000.0
@@ -245,32 +238,31 @@ def test_maxspending_leaves_the_choice_to_the_solver():
 
 
 def test_medicare_premiums_alone_add_no_binaries():
-    """In loop mode the premium is the loop's M_n, known before the solve: a column bound, not a
-    zmed binary per Medicare year (the first version added 28 of them to this plan)."""
+    """The premiums count as medical without a binary per Medicare year (the first version added
+    28 of them to this plan)."""
     p = _solve(_plan(), withMedicare="loop")
     assert p.M_n.max() > 0
-    assert "zmed" not in p.vm
+    assert p.vm.nbins == 0
     F = p.STMF_n  # the floor the LP was built with: 10% of the previous iterate's AGI
     cap = np.maximum(0.0, p.M_n - F)
     assert np.all(p.st_imed_n <= cap + 1.0)
 
 
-def test_medicare_optimize_gets_a_switch_per_medicare_year():
-    """Under withMedicare="optimize" the premium is the m variable: the claim needs zmed."""
+def test_medicare_optimize_adds_no_switch():
+    """Under withMedicare="optimize" the premium is the m variable: the claim counts it, and the
+    only binaries are Medicare's own (zm)."""
     p = _solve(_plan(), withMedicare="optimize")
-    assert "zmed" in p.vm
-    assert len(p._st_item_med_years) == int(np.sum(p._medicare_premium_ub_n > 0))
+    assert {k for k, v in p.vm._blocks.items() if v.start >= p.vm.nconts and v.size} <= {"zm"}
     F = p.STMF_n  # the floor the LP was built with: 10% of the previous iterate's AGI
     cap = np.maximum(0.0, p.m_n + p.M_n - F)
     assert np.all(p.st_imed_n <= cap + 1.0)
 
 
 def test_medical_below_the_floor_claims_nothing():
-    """max(0, paid - F) where paid < F: the zmed = 0 branch. Under maxSpending the medical line is a
-    share of free net spending, so the year has a zmed binary."""
+    """max(0, paid - F) where paid < F: the claim is zero. Under maxSpending the medical line is a
+    share of free net spending, so the side of the floor comes from the previous iterate."""
     p = _plan(medical=3_000.0, expectancy=(76, 76))
     _solve(p, objective="maxSpending", bequest=0)
-    assert "zmed" in p.vm
     paid = 3_000.0 / 108_000.0 * p.g_n
     F = p.STMF_n  # the floor the LP was built with: 10% of the previous iterate's AGI
     below = (paid < F - 50.0) & p.st_itemizing_n
@@ -281,7 +273,6 @@ def test_medical_below_the_floor_claims_nothing():
 def test_medical_claim_under_maxspending_is_paid_less_the_floor():
     p = _plan(medical=15_000.0, expectancy=(76, 76))
     _solve(p, objective="maxSpending", bequest=0)
-    assert "zmed" in p.vm
     paid = 15_000.0 / 120_000.0 * p.g_n
     claim = np.maximum(0.0, paid - p.STMF_n)
     # Where NY taxable income is zero the deduction has no price and any claim is as good.
@@ -290,14 +281,13 @@ def test_medical_claim_under_maxspending_is_paid_less_the_floor():
     np.testing.assert_allclose(p.st_imed_n[pos], claim[pos], atol=1.0)
 
 
-def test_local_search_keeps_the_itemizing_choice_integral():
-    """zsi is a local-search family: under maxSpending it is free, and the plan the search returns
-    takes one branch or the other in every year (a fractional zsi would mix them)."""
+def test_local_search_takes_one_branch_per_year():
+    """Under local search the itemizing branch stays the loop's (no binary): the plan the search
+    returns takes one branch or the other in every year."""
     p = _plan(medical=3_000.0, expectancy=(76, 76))  # a short plan keeps the search to seconds
     _solve(p, objective="maxSpending", bequest=0, breakpointMethod="local-search", localSearchTime=1,
            withMedicare="loop")
     assert p.breakpointMethodUsed.startswith("local search")
-    assert _free_cols(p, "zsi") > 0
     taken = p.st_agi_n - p.st_ti_n
     expect = np.minimum(np.where(p.st_itemizing_n, p.st_item_n, p.st_sigmaBar_n), p.st_agi_n)
     pos = p.st_ti_n > 1.0
@@ -308,9 +298,17 @@ def test_local_search_keeps_the_itemizing_choice_integral():
 
 
 def test_guard_plan_without_itemizing_is_unchanged():
-    """A FL plan has no state itemized rows at all: the variable map has no zsi block."""
+    """A FL plan has no state itemized rows at all."""
     p = _solve(_plan(state="FL", locality=""))
-    assert "st_ipt" not in p.vm and "zsi" not in p.vm
+    assert not p._st_item_years
+    assert not any(t and t[0] == "state_item_deduction" for t in p.A.tags)
+
+
+def test_none_turns_state_itemizing_off():
+    """withItemized="none" is the standard deduction everywhere, the state's included."""
+    p = _solve(_plan(), withItemized="none")
+    assert not p._st_item_years and not p.st_itemizing_n.any()
+    np.testing.assert_allclose(p.st_e_n[p.st_ti_n > 1.0], p.st_sigmaBar_n[p.st_ti_n > 1.0], atol=1.0)
 
 
 def test_line_46_cut_can_make_the_standard_win():
@@ -318,13 +316,13 @@ def test_line_46_cut_can_make_the_standard_win():
 
     $20k property tax beats the $16,050 standard before the cut, but at NYAGI $225k (rho=0.125)
     the cut leaves $17,500 — still above. At rho=0.25 (NYAGI >= $250k) it leaves $15,000, below
-    the standard, so the year must not be forced to itemize.
+    the standard, so the year must take the standard.
     """
     p = _solve(_plan(property_tax=20_000.0, deferred=(2500, 2500), taxable=(200, 200)))
     # Years at the full 25% cut must not be forced into itemizing below the standard.
     full = p.NYIR_n >= 0.25 - 1e-9
     assert full.any(), "expected some years at the full 25% cut"
-    # $20k x 0.75 = $15,000 < $16,050: if zsi were pinned to 1 the deduction would lose.
+    # $20k x 0.75 = $15,000 < $16,050: forcing the itemized branch would lose.
     taken = p.st_agi_n - p.st_ti_n
     assert np.all(taken[full] >= p.st_sigmaBar_n[full] - 2.0)
     assert p.NYIR_n.max() > 0.1
@@ -341,16 +339,16 @@ def test_shortfall_is_zero_when_the_deduction_is_fully_claimed():
 def test_shortfall_sees_the_deduction_left_on_the_table():
     """A smaller deduction than was available must show up as a shortfall in today's dollars."""
     p = _solve(_plan())
-    saved = p.st_ti_n.copy()
-    p.st_ti_n = p.st_ti_n + 5_000.0  # pretend $5k less deduction was taken
+    saved = p.st_e_n.copy()
+    p.st_e_n = p.st_e_n - 5_000.0  # pretend $5k less deduction was taken
     short = p._itemized_shortfall()
     assert short[0] > 4_000.0
-    p.st_ti_n = saved
+    p.st_e_n = saved
 
 
 def test_shortfall_counts_no_itemized_total_in_years_without_columns():
     """A NY year without a deductible line can take only the standard: Medicare above the floor
-    there must not show as a shortfall the repair cannot remove (review finding 6)."""
+    there must not show as a shortfall the repair cannot remove."""
     p = _plan()
     lines = p.houseLists["Budget"].copy()
     lines.loc[lines["name"] == "pt", "end"] = THISYEAR + 9  # the house is sold after ten years
@@ -361,8 +359,7 @@ def test_shortfall_counts_no_itemized_total_in_years_without_columns():
     assert no_cols.any() and not no_cols[:10].any()
     p.M_n = np.full(p.N_n, 1e6)  # premiums far above any floor
     short = p._itemized_shortfall()
-    st_e = p.st_agi_n - p.st_ti_n - p.st_rx_n - p.st_pt_n
-    np.testing.assert_allclose(short[no_cols], np.maximum(0.0, p.st_sigmaBar_n - st_e)[no_cols], atol=1e-6)
+    np.testing.assert_allclose(short[no_cols], np.maximum(0.0, p.st_sigmaBar_n - p.st_e_n)[no_cols], atol=1e-6)
 
 
 def test_shortfall_is_zero_in_states_without_itemizing():
@@ -404,7 +401,7 @@ def test_medical_floor_is_not_clamped_away():
     assert p.st_imed_n.max() > 0
 
 
-def test_essential_lines_still_get_itemized_columns():
+def test_essential_lines_still_get_itemized_rows():
     """A negative _budget_amount_terms const must not hide the deduction (review finding 1)."""
     p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1964-09-15"], [89, 92], "ess", verbose=False,
                  logstreams=[io.StringIO()])
@@ -420,6 +417,6 @@ def test_essential_lines_still_get_itemized_columns():
     p.setStateTax("NY", locality="")
     p.setExpirationYearOBBBA(2099)
     _solve(p)
-    assert "zsi" in p.vm, "essential core must not hide the property tax deduction"
+    assert p._st_item_years, "essential core must not hide the property tax deduction"
     assert p.st_itemizing_n[:20].any()
     assert p.st_item_n.max() > 0

@@ -398,7 +398,7 @@ class SolverOptions(BaseModel):
     withNIIT: Optional[Literal["loop", "optimize"]] = None
     withSSTaxability: Optional[Union[Literal["loop", "optimize"], float]] = None
     withSeniorBonus: Optional[Literal["loop", "optimize"]] = None
-    withItemized: Optional[Literal["none", "loop", "optimize"]] = None
+    withItemized: Optional[Literal["none", "loop"]] = None
     withSSAges: Optional[Union[str, List[str]]] = None
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None

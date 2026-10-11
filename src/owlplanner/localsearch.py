@@ -58,25 +58,12 @@ import numpy as np
 # too. Left out, the LP start relaxed it to fractional tiers, and no later step could match that
 # start, so the search returned a plan claiming part of a tier above its ceiling. It has no
 # fixed-point residual: the exclusion is exact within each solve.
-# "zsi", the state itemizing choice (NY), is a family for the same reason: without a mortgage the
-# a priori rule leaves one binary per year. "zi", the federal itemizing choice, is a family too:
-# a mortgage or a large property tax leaves one per year, too many to keep free
-# in every restricted problem. The floor switches stay free: pinning one would freeze a max(0, .)
-# the search cannot reopen.
-FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx", "zsi", "zi")
+FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx")
 # Binaries the search never pins: the senior-bonus phase-out has one per bonus year, two or three
 # in all, so every restricted problem keeps them free. Only an LP solve, which relaxes them, pins them.
-# "zmed", the medical-floor switch, is kept free too: pinning one would freeze a max(0, .) the search
-# cannot reopen. It exists only in years whose medical amount depends on the plan (a discretionary
-# medical line when net spending is free, or the premium under withMedicare="optimize"), and is fixed
-# to 0 where the amount paid cannot reach the floor; a budget with no medical line under maxBequest
-# has none. "zch" / "zmedf" are the federal charity/medical floor switches (same reason).
-ALWAYS_FREE = ("zsb", "zmed", "zch", "zmedf")
+ALWAYS_FREE = ("zsb",)
 RESIDUAL_FAMILY = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zj": "NIIT", "zl": "LTCG"}
-FAMILY_LABEL = {
-    "zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion",
-    "zsi": "state itemizing", "zi": "itemizing",
-}
+FAMILY_LABEL = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion"}
 
 STEP_TIME = 60.0  # seconds per restricted solve: a backstop; the node limit below is the real cap
 # Branch-and-bound nodes per restricted solve. A node limit, unlike a time limit, gives the same

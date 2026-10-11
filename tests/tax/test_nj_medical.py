@@ -92,6 +92,13 @@ def test_medicare_alone_can_create_the_column():
     assert "st_med" in p.vm
 
 
+def test_none_turns_line_31_off():
+    """withItemized="none" is the standard deduction everywhere: no NJ line 31 either."""
+    p = _solve(_plan(medical=6_000.0), withItemized="none")
+    assert "st_med" not in p.vm
+    assert np.all(p.st_med_n == 0.0)
+
+
 def test_fl_has_no_medical_deduction():
     p = _solve(_plan(state="FL", medical=50_000.0, property_tax=0.0, taxable=(200, 200),
                      deferred=(2000, 1500)))

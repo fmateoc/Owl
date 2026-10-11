@@ -779,6 +779,84 @@ comes after line 39. Both end up reducing the tax base.
 
 Next: step 6 (measure on the synthetic couple) and step 7 (docs).
 
+## Step 5 review (2026-10-11, independent pass over `ab16b65`)
+
+Repros run on HEAD outside pytest (today's date, not the frozen 2026-01-01; scripts not
+committed), with the `_plan` helpers of `test_itemized.py` / `test_nj_medical.py`. Rules
+checked this session: NJ-1040 instructions (2025 form, `nj.gov/.../current/1040i.pdf`) line 29
+("Subtract line 28c from line 27"), line 31 and Worksheet F (2% of line 29; "Insurance
+(including amounts paid as premiums under Part B ...)"; "In general, medical expenses allowed
+for federal tax purposes are allowed for New Jersey tax purposes"); Pub. 502 (2025, irs.gov):
+Part B and Part D premiums are medical expenses, and "You can't include expenses you pay for
+with a tax-free distribution from your health savings account. You also can't use other funds
+equal to the amount of the distribution and include the expenses."
+
+Bugs, verified by a run:
+
+1. **The MCP explanation fails for an NJ plan that claims line 31.** `explain.py` emits
+   `medical_deduction` (year 0) and `medical_deduction_today` (by year), but neither is in
+   `explain_schema.py`, whose models are `extra="forbid"`. A plain NJ couple
+   (`test_nj_medical._plan()`, no medical line, default `withMedicare="loop"`,
+   `withDuals=True`): 25 of 31 years claim `st_med` on premiums alone and `build_explanation`
+   raises `ValidationError` (9 errors). Every NJ retiree plan whose premiums exceed 2% of NJ
+   gross income (about $245k for $4,870) hits this. Fix: add both fields and a sentence to the
+   state note; test explain on an NJ plan.
+2. **HSA distributions are deducted again.** `_add_hsa_medical_cap` lets `w[i,3,n]` reach
+   `M_n + m + other_medical_n`; the medical claims count the same premiums. FL couple born 1958,
+   HSA $60k each, medical line $30k, `withItemized="optimize"`: 2026 HSA withdrawal $4,870 =
+   the premiums, `item_med` $22,936 = 34,870 − 11,934 (Pub. 502: $18,066). Same in 2027-2029.
+   Fix: subtract `sum_i w[i,3,n]` from medical paid in the federal, NY and NJ rows (existing
+   columns, linear). NY's claim has carried `M_n + m` since step 2, so NY had it before this
+   commit. NJ: I did not find HSA text in the NJ-1040 instructions; NJ's treatment not checked.
+3. **Federal candidate years ignore premiums under the default loop modes.**
+   `_setup_federal_itemized` runs inside `_buildOffsetMap`, after `solve()` zeroes `M_n` and
+   `ACA_n` (plan.py:6842-6843 then 6918), so `np.maximum(0.0, self.M_n + self.ACA_n)` at
+   plan.py:2892 is always 0, and `_medicare_premium_ub_n` / the ACA bound are nonzero only under
+   the optimize modes. FL couple aged 62, property tax $20k, `setACA(24)`, `withItemized=
+   "optimize"`, default `withACA="loop"`: 2026-2028 ACA $24.0k-25.4k, AGI $141k-146k, itemized
+   by hand $33,444 / $34,465 / $35,519 against a standard of $32,200 / $33,102 / $34,028; no
+   candidate year, standard taken. Same pattern as step-3 review bug 1 (a loop value read at
+   offset-map time). Fix: a mode-independent premium bound at build (Medicare: the top
+   `Cbar` premium in Medicare years whatever the mode; ACA: `slcsp_aca_n` in ACA years).
+4. **`withMedicare="optimize"` + `withItemized="loop"` drops the premiums from the floor
+   flag.** `_item_floor_flags` adds `M_n + ACA_n` only, which is 0 when the `m` column carries
+   the premium (NJ's `_nj_medical_floor_flags` adds `m_n` / `maca_n`). FL couple born 1958,
+   property tax $34k, medical line $6k: `_item_medl_n` = [0, 1, 1, 0] in 2026-2029 with line +
+   m − floor = $5,036 / $4,836 / $6,391 / $5,127; medical claim 0 in 2026 and 2029, where the
+   other three mode pairs claim $4.7k-5.1k. Fix: add `m_n` (+ `maca_n`) at `g_n`, as NJ does.
+
+Read, not run:
+
+5. The NJ row in a year flagged from the previous iterate is a lower bound on spending:
+   `st_med >= 0` and `st_med <= const + coef*g + prem - F` force `coef*g + m >= F - const -
+   prem_fixed`. The previous iterate satisfies it and `g` is pinned (`maxBequest`) or maximized
+   (`maxSpending`), so I did not find a case where it binds; under `withMedicare="optimize"` it
+   can only push `m` up. The federal loop avoids this because its claim sits inside the bound
+   on `e`. Note, no change proposed.
+6. `_nj_medical_paid` reads `_ceiling_n` behind a `hasattr` guard: it is not set in
+   `__init__`, and on a plan's first solve iteration 0 runs before `_buildConstraints` sets it,
+   so the a priori bound there leaves out the discretionary medical part (the flag is decided
+   one iterate later). Harmless lag; initialize it in `__init__` (CLAUDE.md convention).
+7. NY candidacy (`_st_item_candidate_years`) still needs a budget line or mortgage interest:
+   premiums alone never open a NY year. Small (NY standard $16,050 against premiums less 10% of
+   AGI); document as a choice.
+8. `setMedicalExpenses` (`other_medical_n`, upstream's HSA cap) is in no medical claim. Owl
+   does not charge it as spending, so leaving it out is defensible; say so in the docs (step 7).
+
+Tests:
+
+9. No test covers the `m` / `maca` coefficients (`withMedicare` / `withACA` = `"optimize"`),
+   HSA withdrawals, or explain on an NJ plan: where bugs 1, 2 and 4 are.
+10. `test_claim_is_zero_below_the_floor` is wrapped in `if "st_med" in p.vm:`; the column exists
+    in that case, but the guard would let the test pass empty. Assert it.
+
+Checked and correct: NJ floor on line 29 = line 27 − 28c (`st_agi_n - st_rx_n`); premiums
+(Part B named, Part D and ACA by the federal-conformity sentence) count for NJ; the exclusion's
+line-27 row adds `st_med` back (its comment "inside line 27" reads wrongly; the arithmetic is
+right); `NJMF_n` / `_nj_medl_n` restored with the other SC parameters. `test_nj_medical.py`,
+`test_itemized.py` and `test_mcp_explain.py`: 70 passed. flake8 only upstream's
+`localsearch.py:31`; `ruff check` passes.
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date

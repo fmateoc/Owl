@@ -191,6 +191,10 @@ Enhanced STAR (tax.ny.gov): 65+, income up to $110,750 for 2026 benefits ($113,5
 where **income = federal AGI minus the taxable part of IRA distributions**, from the tax year two
 years earlier. Conversions and IRA withdrawals do not count, so for this household it is close to
 a fixed amount; entering property tax net of STAR (as the notes already say) is adequate.
+*(Revised 2026-10-11, user: not adequate. Scenarios are about the future (a move, a purchase,
+Enhanced STAR from 65), and the credit figures are not at hand to enter net. New homeowners get
+the STAR credit as a check, not a lower bill (tax.ny.gov, verified 2026-10-11). STAR is to be
+modeled as a rule with per-district data; see PROGRESS.md, "Step 2 review".)*
 
 Reading: at up to $4,000-6,500 a year, Stay NJ is an order of magnitude larger than any NY-vs-NJ
 income-tax difference measured so far (NJ minus NY $430-1,006/yr under local search and the

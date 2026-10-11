@@ -517,10 +517,38 @@ So no measurable speed-up on these cases. Open for step 6: a discretionary medic
 maxSpending costs ~100 s in loop mode (31 `zsi` + 31 `zmed` free; ~4 s without the medical line);
 whether `zmed` should be a local-search family rather than `ALWAYS_FREE` is not measured.
 
-Not fixed (from the review, minor): `itemized.mortgage_limit` is only read as "> 0" (the limit is
-the hardcoded `pre_tcja=True` rule); Medicare premiums count only in years that already have a
-deductible line or a mortgage (renter asymmetry, small at a 10% floor); NY lines 5-7 (property tax
-net of STAR credits/rebates) are not modeled, to document in step 7.
+Not fixed (from the review):
+
+- `itemized.mortgage_limit` is only read as "> 0" (the limit is the hardcoded `pre_tcja=True` rule).
+- **Medicare in years without itemized columns.** A NY year with no property-tax, charity or
+  medical budget line and no mortgage has no itemized columns and takes the standard; Medicare
+  premiums count only in years with columns (a renter with a medical or charity line does get
+  them). The missing deduction is max(0, premiums - 10% x AGI), and it changes the result only if
+  it beats the NY standard ($16,050 MFJ, $8,000 single). From Owl's own premium table
+  (`tx.mediVals`, CMS 2026 values in `tax_federal.py`; Part D base premium 0 by default; read in
+  code, not checked against CMS) the couple pays $4,870 in the base tier and $17,498 / $18,742 in
+  the top two (MAGI over $410k / $750k two years earlier); a survivor $2,435 and $8,749 / $9,371
+  (over $205k / $500k). So the standard loses only in those top two tiers with that year's AGI
+  under about $14.5k / $26.9k (couple) or $7.5k / $13.7k (survivor): a very large income two years
+  earlier followed by near-zero AGI. Never in the lower tiers. Not fixed because counting Medicare
+  in every NY Medicare year would add columns to every NY plan and, under local search (Medicare
+  optimized), `zsi`/`zmed` binaries where 10% of AGI is low. (The review first called this a
+  renter asymmetry "small at a 10% floor", unmeasured and too broad; corrected 2026-10-11.)
+- **STAR is not modeled, and "enter property tax net of STAR" is not a usable instruction**
+  (user, 2026-10-11): the plan runs future scenarios (a later move, a purchase, Basic STAR becoming
+  Enhanced at 65), where nobody has the credit figures to enter. Verified on tax.ny.gov (STAR
+  eligibility page, 2026-10-11): the STAR exemption (a lower school tax bill) is closed to new
+  homeowners, who get the STAR credit instead, "a check or direct deposit"; Basic STAR has no age
+  restriction and an income limit of $500,000 for the credit; Enhanced STAR is for 65 and older
+  (its income limit and definition in `phase3-plan.md` §3.4). So for a future purchase the bill a
+  listing shows is the bill paid, and the credit is a separate inflow. Leaving it out overstates the
+  cost of owning in NY by the credit, and overstates the IT-196 deduction (lines 5-7 reduce real
+  estate taxes by the credit received). Needed: the credit as a rule (Basic, then Enhanced from 65
+  while income is under the limit), its amount from data per school district, reducing both the
+  cash cost and the itemized property tax. Where the per-district amounts are published, and how
+  the credit grows, are not verified yet. Supersedes the "enter net" advice in `phase3-plan.md` §3.4
+  and the Phase 2 roadmap row; it belongs with the senior relief of step 9, which has the same
+  problem for Stay NJ / ANCHOR.
 
 ## Upstream 2026.10.10 merged (2026-10-10, on `claude/eager-cray-s0fvks`)
 

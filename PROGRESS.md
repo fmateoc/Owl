@@ -838,8 +838,18 @@ Read, not run:
    so the a priori bound there leaves out the discretionary medical part (the flag is decided
    one iterate later). Harmless lag; initialize it in `__init__` (CLAUDE.md convention).
 7. NY candidacy (`_st_item_candidate_years`) still needs a budget line or mortgage interest:
-   premiums alone never open a NY year. Small (NY standard $16,050 against premiums less 10% of
-   AGI); document as a choice.
+   premiums alone never open a NY year. Not new: the step-2 review notes (`51dec3f`) quantified
+   it and left it by decision (the NY standard loses only in the top two IRMAA tiers with
+   near-zero AGI). Bug 3 is the federal counterpart, and there SALT makes it bite.
+8a. *(Second review pass, 2026-10-11.)* The bracket-order repair reads loop values one SC step
+   ahead. The block before `_repairBracketOrder` restores `FEDMF_n`, `FEDCF_n`, `FEDSC_n` and
+   `_item_zi_n` "first" because the repair's tie check reads them, but `NJMF_n` / `_nj_medl_n`
+   (new), `STMF_n` / `NYIR_n` and `M_n` / `ACA_n` are restored after it (plan.py:7741-7776).
+   Step 5 made `_nj_medical_shortfall` and the federal `_item_allowed_parts` /
+   `_item_potential_n` read `M_n + ACA_n`, so moving only `NJMF_n` up is not enough: the
+   premiums are ahead too. The repair re-solves the LP already built (no rebuild), so only its
+   trigger and its accept test (`new_excess < excess`) are measured on the advanced values.
+   Small once the loop has converged; not measured.
 8. `setMedicalExpenses` (`other_medical_n`, upstream's HSA cap) is in no medical claim. Owl
    does not charge it as spending, so leaving it out is defensible; say so in the docs (step 7).
 
@@ -848,7 +858,10 @@ Tests:
 9. No test covers the `m` / `maca` coefficients (`withMedicare` / `withACA` = `"optimize"`),
    HSA withdrawals, or explain on an NJ plan: where bugs 1, 2 and 4 are.
 10. `test_claim_is_zero_below_the_floor` is wrapped in `if "st_med" in p.vm:`; the column exists
-    in that case, but the guard would let the test pass empty. Assert it.
+    in that case, but the guard would let the test pass empty. Assert it. It also compares a
+    nominal floor with the line's today's-dollar $3,000 (`below = floor > 3_000.0`): the claim
+    there reaches $4,412 in 2049, which is the same $3,000 at gamma 1.887 ($5,662 nominal) less a
+    $1,250 floor (run). Compare against the nominal amount paid.
 
 Checked and correct: NJ floor on line 29 = line 27 − 28c (`st_agi_n - st_rx_n`); premiums
 (Part B named, Part D and ACA by the federal-conformity sentence) count for NJ; the exclusion's

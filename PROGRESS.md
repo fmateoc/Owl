@@ -550,6 +550,23 @@ Not fixed (from the review):
   and the Phase 2 roadmap row; it belongs with the senior relief of step 9, which has the same
   problem for Stay NJ / ANCHOR.
 
+## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
+
+Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
+and identical tree. New on top: `b8eb79c` (regret sweep reports the solves stopped at the node
+limit, `node_limit_hits`) and `844a7ec` (Ruff B905, `zip(..., strict=True)` in tests and the UI).
+`upstream/claude/magical-archimedes-2uo16r` has nothing beyond `d6970b2` (merged 2026-10-09).
+
+- Conflicts: `plan.py`, `CHANGELOG.md` (the replayed commit; kept ours, plus the new CHANGELOG
+  paragraph). `export.py` auto-merged into a **duplicate `_node_limit_hits`** with no conflict
+  marker; kept ours. A `git stash` run by mistake mid-merge cleared the merge state; the merge was
+  redone and its resolution restored from the stash (checked identical before committing).
+- Ruff: upstream lints with Ruff B rules, which the fork did not run. Three B905 hits in fork code
+  (`tax_state.py` x2, `tests/tax/test_state_recapture.py`) fixed: `itertools.pairwise` for the
+  adjacent-pair loops (`strict=True` would raise there), `strict=True` on `exclusion_share`.
+  `ruff check src tests ui` now passes and is part of the lint command in CLAUDE.md.
+- Effect on Phase 3: none on tax content; details in `phase3-plan.md` §10.
+
 ## Upstream 2026.10.10 merged (2026-10-10, on `claude/eager-cray-s0fvks`)
 
 Upstream `dev` `f41fcdc` (six commits; `main` = `dev`): node counts in the Summary and a public
@@ -566,6 +583,9 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, upstream `dev` `844a7ec` merged: **3107 passed, 1 skipped** (full suite, 6 min; +2 upstream
+regret-sweep tests). flake8 only upstream's `localsearch.py:31`; `ruff check src tests ui` passes.
 
 2026-10-11, Phase 3 step 2 review fixes: **3105 passed, 1 skipped** (full suite, 6 min; +8 itemized
 tests). flake8 only upstream's `localsearch.py:31`.

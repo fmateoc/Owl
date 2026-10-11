@@ -488,7 +488,9 @@ in Y+2) stays out: the benefit is placed in the year of the income it depends on
   state tax terms appear in two rows; the shared helper keeps them identical.
 - **Upstream edits to the senior bonus rows** (`_add_senior_bonus_lp`, 2026-10-09, still moving:
   `upstream/claude/magical-archimedes-2uo16r` touches local search the same week): the federal
-  deduction row replaces theirs under `_sb_lp`. Expect merge conflicts there; keep the change local.
+  deduction row replaces theirs under `_sb_lp`. Expect merge conflicts there; keep the change local. *(2026-10-11: that
+  branch has nothing beyond `d6970b2`, already merged; upstream `dev` through `844a7ec` did not
+  touch the senior-bonus rows. The risk stands for future upstream work, §10.)*
 - **Policy**: SALT schedule, Stay NJ funding and Owl's 2032 reversion are all assumptions about
   law; each is a parameter to vary, not a fact.
 - **Loop noise**: any NY-vs-NJ difference under ~1% stays unresolved unless local search and the
@@ -571,3 +573,33 @@ Interaction with fork code, resolved in the merge:
 
 Effect on Phase 3: none on the tax content. Steps 2-3 inherit node counting for `zsi` / `zi` for
 free; any cap they need goes in `_node_limit` (§5 conventions); step 6 measures with the new rows.
+
+## 10. Upstream `dev` 844a7ec merged (2026-10-11): effect on this plan
+
+Fetched 2026-10-11. **Upstream rewrote `dev`**: `f41fcdc`, merged here on 2026-10-10, is no longer
+on it; `e5949e8` replaces it with the same author date and an identical tree (`git diff f41fcdc
+e5949e8` is empty; `plan.py`, `export.py`, `localsearch.py`, `PARAMETERS.md` unchanged between
+`f41fcdc` and `844a7ec`). Two new commits on top: `b8eb79c` (the conversion regret sweep returns
+`node_limit_hits`, summed over every solve of a scenario, and `summarize_conversion_regret` reports
+them) and `844a7ec` (Ruff B905: `zip()` calls state `strict=True`; tests and `ui/Financial_Profile.py`
+only). `main` = `dev`.
+
+Merge notes: the replayed commit conflicted in `plan.py` and `CHANGELOG.md` (kept ours, which
+already carries it) and **auto-merged `export.py` into a second copy of `_node_limit_hits`**, with
+no conflict marker; Python would have taken the later definition silently, so tests would not
+have caught it. Removed by keeping our `export.py`.
+
+Effect on Phase 3:
+
+- **Tax content: none.** No change to tax, budget, Medicare, the senior bonus or local search.
+- **Lint:** upstream lints with Ruff (`pyproject.toml`: rules E4, E7, E9, F, B), which flake8
+  does not cover. The fork had three B905 hits (`tax_state.py` x2, `test_state_recapture.py`),
+  fixed in the merge (`itertools.pairwise` for the two adjacent-pair loops, where `strict=True`
+  would raise, and `strict=True` on the other). Patches offered upstream (step 8) must pass
+  `ruff check` as well as flake8; new code in steps 3-9 uses `strict=` on every `zip()`.
+- **Step 6 (measure):** sweeps through `run_conversion_regret_sweep` now report the solves stopped
+  at a node limit; the fork's caps reach that count through `Plan._node_limit` (§9), so it covers
+  the NJ exclusion's cap and any cap a `zsi` / `zi` block needs.
+- **Syncing:** a rewritten upstream `dev` means a commit we merged can disappear upstream. Compare
+  the new commits' trees with the ones already merged before resolving, as here.
+

@@ -1,5 +1,7 @@
 """NY benefit recapture (Tax Law sec. 601(d)): the tax computation worksheets of the IT-201-I."""
 
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
@@ -93,7 +95,7 @@ def test_taxable_income_crossing_a_threshold_jumps_by_the_phased_in_increment(br
 def test_recapture_never_decreases_with_agi(brackets):
     ti = 300_000.0
     values = [_rec(brackets, agi, ti) for agi in np.linspace(100_000, 600_000, 60)]
-    assert all(b >= a - 1e-9 for a, b in zip(values, values[1:]))
+    assert all(b >= a - 1e-9 for a, b in pairwise(values))
 
 
 # ---------------------------------------------------------------------------

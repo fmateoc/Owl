@@ -30,6 +30,7 @@ import toml
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -297,7 +298,7 @@ def _read_exclusion_tiers(entry: dict) -> list:
     """Read retirement_exclusion_tiers as [(income ceiling, share as a decimal), ...], lowest first."""
     tiers = entry.get("retirement_exclusion_tiers", [])
     out = [(float(lim), float(pct) / 100.0) for lim, pct in tiers]
-    if any(b[0] <= a[0] for a, b in zip(out, out[1:])):
+    if any(b[0] <= a[0] for a, b in pairwise(out)):
         raise ValueError(f"retirement_exclusion_tiers must have increasing income ceilings: {tiers}.")
     return out
 
@@ -687,7 +688,7 @@ def exclusion_share(income: float, limits: np.ndarray, shares: np.ndarray) -> fl
     excluded. The cliffs are the statute's: NJ's married filers with income of 100,000 exclude all of
     their eligible income up to the cap, and with 100,001 only half of it.
     """
-    for lim, share in zip(limits, shares):
+    for lim, share in zip(limits, shares, strict=True):
         if income <= lim:
             return float(share)
     return 0.0

@@ -462,3 +462,64 @@ def test_care_line_of_100k_itemizes_with_premiums():
     # Before the line starts, a year without another deductible takes the standard.
     early = ~late
     assert not q.itemizing_n[early].any() or q.item_med_n[early].max() <= 1.0
+
+
+def test_hsa_distributions_are_not_deducted_again():
+    """Pub. 502 (2025): expenses paid with a tax-free HSA distribution cannot be deducted, nor other
+    funds equal to it. Step-5 review: the HSA paid the premiums and the claim counted them too."""
+    p = _plan(state="FL", property_tax=20000.0, core=40000.0, medical=30000.0,
+              birth=("1958-03-15", "1958-09-15"))
+    p.setAccountBalances(taxable=[150, 150], taxDeferred=[900, 600], taxFree=[75, 75], hsa=[60, 60])
+    q = _solve(p, withItemized="optimize", withMedicare="loop")
+    hsa = q.w_ijn[:, 3, :].sum(axis=0)
+    yrs = q.itemizing_n & (q.item_med_n > 1.0) & (hsa > 1.0)
+    assert yrs.sum() >= 2
+    (cm, km) = q._budget_amount_terms("medical")
+    paid = cm + km * q.g_n + q.medicare_n - hsa
+    expect = np.maximum(0.0, paid - q.FEDMF_n)
+    np.testing.assert_allclose(q.item_med_n[yrs], expect[yrs], rtol=0.01, atol=2.0)
+
+
+def test_aca_premiums_open_itemizing_years_in_loop_mode():
+    """Step-5 review: the candidate years were chosen with M_n = ACA_n = 0 (solve() resets them
+    before the offset map), so premiums alone never opened a federal itemizing year under the
+    default loop modes. A pre-65 couple paying a full ACA premium itemizes property tax + it."""
+    p = _plan(state="FL", property_tax=20000.0, core=60000.0, taxable=(300, 300))
+    p.setACA(24)
+    q = _solve(p, withItemized="optimize", withMedicare="loop")
+    (cp, kp) = q._budget_amount_terms("property tax")
+    med = np.maximum(0.0, q.aca_costs_n + q.medicare_n - 0.075 * q.MAGI_n)
+    item = np.minimum(q.FEDSC_n, cp + kp * q.g_n) + med
+    wins = item > q.item_std_n + 500.0
+    assert wins.any()
+    assert q.itemizing_n[wins].all()
+
+
+def _medicare_optimize_plan(property_tax, medical, **kw):
+    return _plan(state="FL", property_tax=property_tax, core=kw.pop("core", 20000.0), medical=medical,
+                 birth=("1958-03-15", "1958-09-15"), **kw)
+
+
+def test_loop_floor_flag_counts_the_optimized_premium():
+    """Step-5 review: under withMedicare="optimize" the premium is the m column (M_n = 0), and the
+    loop's medical-floor flag read M_n + ACA_n only, so the premium never cleared the floor."""
+    p = _medicare_optimize_plan(34000.0, 6000.0, taxable=(300, 300), deferred=(100, 50))
+    q = _solve(p, withItemized="loop", withMedicare="optimize")
+    (cm, km) = q._budget_amount_terms("medical")
+    paid = cm + km * q.g_n + q.m_n
+    clear = q.itemizing_n & (paid - q.FEDMF_n > 1000.0)
+    assert clear.sum() >= 3
+    assert np.all(q._item_medl_n[clear] >= 0.5)
+    np.testing.assert_allclose(q.item_med_n[clear], (paid - q.FEDMF_n)[clear], rtol=0.01, atol=2.0)
+
+
+def test_optimized_medicare_with_a_known_medical_line_stays_feasible():
+    """Step-5 review: a year with a pinned medical line got a switch-free floor row
+    imed <= line + m - F with imed >= 0, a lower bound on m; with the floor above what m can reach,
+    HiGHS called the MIP infeasible and the loop accepted an early iterate."""
+    log = io.StringIO()
+    p = _medicare_optimize_plan(39000.0, 3000.0, core=40000.0, taxable=(100, 100), deferred=(900, 700), log=log)
+    q = _solve(p, withItemized="optimize", withMedicare="optimize")
+    text = log.getvalue()
+    assert "could not be solved" not in text and "unsolvable" not in text
+    assert q.itemizing_n[:4].all()

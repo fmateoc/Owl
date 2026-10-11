@@ -870,6 +870,66 @@ right); `NJMF_n` / `_nj_medl_n` restored with the other SC parameters. `test_nj_
 `test_itemized.py` and `test_mcp_explain.py`: 70 passed. flake8 only upstream's
 `localsearch.py:31`; `ruff check` passes.
 
+## Step 5 review fixes (2026-10-11)
+
+All four bugs, items 5, 6 and 8a, and test defect 10; one more bug found while fixing (11).
+Each new bug test was run against `68001e4` (a worktree with the new tests and the old `src`):
+the five marked "fails before" do.
+
+1. **Explain:** `medical_deduction` / `medical_deduction_today` added to `explain_schema.py`
+   (optional fields, `SCHEMA_VERSION` unchanged), and a sentence in the state note.
+   `test_explanation_reports_the_medical_deduction` (fails before).
+2. **HSA:** `_medical_premium_terms(n, hsa=True)` puts −1 on `w[i,3,n]`, so every federal and NY
+   medical row counts premiums less the year's HSA distributions; `_medical_premium_values`
+   gives the same amount at a solution (shortfalls, flags, reports, the loop residual). The a
+   priori lower bound (`_medical_premium_lo`) drops to `ACA_n − other medical`, because the HSA
+   cap lets the distributions take back the whole Medicare premium; the NY and federal `z=0`
+   relaxations grow by that amount. All distributions are subtracted, including any against
+   `setMedicalExpenses`' amount, which is in no claim: the claim can only be understated by it.
+   NJ: not subtracted. NJ does not follow federal HSA treatment; I did not find HSA text in the
+   NJ-1040 instructions, and the only sources found (bill trackers for S474 / A2634, not
+   nj.gov) say the federal HSA advantages are not in the NJ gross income tax. Owl does not
+   model NJ's own HSA rules. `test_hsa_distributions_are_not_deducted_again` (fails before).
+   Repro after: 2026 `item_med` $18,366 = 34,870 − 4,870 − 11,634.
+3. **Federal candidates:** `_premium_ub_build_n` bounds premiums from the tables (top IRMAA tier
+   unless `withMedicare="none"`; the ACA benchmark in ACA years) in every mode.
+   `test_aca_premiums_open_itemizing_years_in_loop_mode` (fails before). Repro after: 2026-2028
+   itemize; bequest $2,400,848 → $2,401,730.
+4. **Floor flag:** `_item_floor_flags` reads `_medical_premium_values()` (m and maca included).
+   `test_loop_floor_flag_counts_the_optimized_premium` (fails before). Repro after: flags
+   [1, 1, 1, 1], medical claimed in 2026 and 2029.
+5. **NJ row:** in a flagged year `st_med` may go down to the smallest `paid − F` instead of 0,
+   so the row bounds neither spending nor `m` / `maca` from below; the year's tax is
+   overstated by the lag instead, as the federal loop's rows do. `_nj_medical_shortfall` uses
+   `paid − F` unclipped in flagged years (a lag is not a tie). Guard test
+   `test_optimized_medicare_never_bounds_the_premium_from_below` (passes before too: I did
+   not find an NJ plan where the old row bound).
+6. `_ceiling_n` initialized in `__init__` and reset at solve entry; `_nj_medical_paid`
+   computes the ceiling when it is not built yet.
+8a. Before `_repairBracketOrder`, all the fork's loop parameters are restored to the accepted
+   LP's (`FEDMF_n`, `FEDCF_n`, `FEDSC_n`, `_item_zi_n`, and now `_item_chl_n`, `_item_medl_n`,
+   `NYIR_n`, `STMF_n`, `NJMF_n`, `_nj_medl_n`). `M_n` / `ACA_n` are the accepted LP's during
+   the repair only, then put back, so aggregation sees what it saw before. `_item_chl_n` /
+   `_item_medl_n` were never restored before; they now stay at the LP's after the solve, so a
+   loop-mode plan reports the claims its own rows allowed. No test: not measured on a
+   non-converged loop.
+10. `test_claim_is_zero_below_the_floor` asserts the column and compares with the nominal
+   amount paid and the LP's floor `NJMF_n`. Against the floor recomputed from the final
+   iterate it is off by exactly $1,000 in 3 of 17 years: the SC lag, not a bug.
+11. **New: under `withMedicare="optimize"` the federal and NY switch-free medical rows bounded
+   `m` from below.** A year whose amount paid looked known (pinned `g`, no medical binary) got
+   `imed ≤ line + m − F` with `imed ≥ 0`, i.e. `m ≥ F − line`, since step 5 put `m` (and
+   `maca`) in that row. FL couple born 1958, property tax $39k, medical line $3k, both modes
+   `"optimize"`: HiGHS called iterations 1-4 infeasible, the loop accepted an early iterate
+   (floor $6.1k instead of $11.6k) and warned of brackets out of order. Local search sets
+   `withMedicare="optimize"`, so it would meet this too. Fix: such years get the floor switch
+   (`_medical_premium_lp_n`: an `m` bound, an ACA LP year, or any HSA), as NY already did for
+   `m`. `test_optimized_medicare_with_a_known_medical_line_stays_feasible` (fails before).
+   Cost: plans with an HSA now carry `zmed` / `zmedf` in every itemizing candidate year
+   (both are `ALWAYS_FREE` in local search); step 6 should count them.
+
+Not changed: item 7 (NY premium-only years, step-2 decision) and item 8 (docs, step 7).
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
@@ -903,6 +963,10 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 step 5 review fixes: **3168 passed, 1 skipped** (full suite, 7:51; +6 tests
+in `test_itemized.py` and `test_nj_medical.py`). flake8 only upstream's `localsearch.py:31`;
+`ruff check src tests ui` passes. No AMO reference moved.
 
 2026-10-11, Phase 3 step 5 (medical premiums + NJ line 31): **3162 passed, 1 skipped** (full
 suite, 6:10; +8 tests in `test_nj_medical.py` and `test_itemized.py`). flake8 only upstream's

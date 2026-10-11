@@ -411,7 +411,10 @@ def _state_exclusion(plan, n):
 
 
 def _state_property_tax_deduction(plan, n):
-    """Property tax deduction claimed in year n (NJ line 41), today's $; only where claimed."""
+    """State deductions claimed in year n, today's $; only where claimed.
+
+    property_tax_deduction (NJ line 41) and medical_deduction (NJ line 31).
+    """
     pt = getattr(plan, "st_pt_n", None)
     out = {}
     if pt is not None and pt[n] > 0.5:
@@ -879,7 +882,10 @@ def _state_bracket_analysis(plan):
         "(New Jersey's pension and other retirement income exclusion); exclusion_ceiling marks a year "
         "held at one of its income ceilings, where the next dollar would lose part of the exclusion. "
         "property_tax_deduction is the state's deduction for property taxes or a share of rent "
-        "(New Jersey line 41, from the budget's property tax and rent lines), taken after the exclusion.",
+        "(New Jersey line 41, from the budget's property tax and rent lines), taken after the exclusion. "
+        "medical_deduction is the state's deduction for medical expenses above a share of gross income "
+        "(New Jersey line 31: above 2% of NJ gross income, from the budget's medical lines and the "
+        "Medicare and ACA premiums).",
     }
     if getattr(plan, "locality", ""):
         out["locality"] = plan.locality

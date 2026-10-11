@@ -113,9 +113,54 @@ def test_claim_is_zero_below_the_floor():
     """A small medical line does not clear 2% of NJ gross income at high income: nothing claimed."""
     p = _solve(_plan(medical=3_000.0, core=80_000.0, taxable=(200, 200), deferred=(2000, 1500),
                      property_tax=0.0))
-    if "st_med" in p.vm:
-        floor = p.st_medd_floor_pct_n / 100.0 * np.maximum(0.0, p.st_agi_n - p.st_rx_n)
-        # Where the floor exceeds what was paid, the claim is zero.
-        below = floor > 3_000.0
-        assert below.any()
-        assert np.all(p.st_med_n[below] <= 1.0)
+    assert "st_med" in p.vm
+    # The floor the accepted LP used (2% of the previous iterate's line 29), and the nominal
+    # amount paid ($3,000 today grows with inflation), not 3,000.
+    floor = p.NJMF_n
+    (cm, km) = p._budget_amount_terms("medical")
+    paid = cm + km * p.g_n
+    below = floor > paid + 1.0
+    assert below.any()
+    assert np.all(p.st_med_n[below] <= 1.0)
+    above = paid > floor + 1.0
+    np.testing.assert_allclose(p.st_med_n[above], (paid - floor)[above], rtol=0.05, atol=2.0)
+
+
+def test_explanation_reports_the_medical_deduction():
+    """Step-5 review: explain emitted medical_deduction keys its schema (extra="forbid") rejected,
+    so any NJ plan whose premiums clear 2% of NJ gross income failed to explain."""
+    from owlplanner.assistant.explain import build_explanation
+
+    p = _solve(_plan(), withMedicare="loop", withDuals=True)  # premiums only, no medical line
+    assert (p.st_med_n > 0.5).any()
+    ex = build_explanation(p)
+    assert "error" not in ex
+    rows = ex["state_tax_brackets"]["by_year"]
+    assert any(r.get("medical_deduction_today", 0) > 0 for r in rows)
+
+
+def test_optimized_medicare_never_bounds_the_premium_from_below():
+    """Under withMedicare="optimize" the premium is the m column. A claim row with st_med >= 0 in
+    a year flagged from the previous iterate was a lower bound on m (step-5 review); the claim may
+    go negative instead, and the loop solves every iterate."""
+    log = io.StringIO()
+    p = owl.Plan(["Joe", "Jane"], ["1958-03-15", "1958-09-15"], [89, 92], "nj medicare optimize",
+                 verbose=True, logstreams=[log])
+    p.setSpendingProfile("budget")
+    p.setAccountBalances(taxable=[200, 200], taxDeferred=[900, 700], taxFree=[75, 75])
+    p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
+    p.setRates("conservative")
+    p.setSocialSecurity([3000, 2400], [70, 70])
+    p.houseLists["Budget"] = conditionDebtsAndFixedAssetsDF(
+        pd.DataFrame([_line("core", "core", 60_000.0), _line("med", "medical", 2_000.0)]), "Budget")
+    p.setStateTax("NJ")
+    p.setExpirationYearOBBBA(2099)
+    q = _solve(p, withMedicare="optimize")
+    assert "st_med" in q.vm
+    text = log.getvalue()
+    assert "unsolvable" not in text and "could not be solved" not in text
+    (cm, km) = q._budget_amount_terms("medical")
+    paid = cm + km * q.g_n + q.medicare_n
+    # Against the floor the accepted LP used (NJMF_n, the previous iterate's line 29).
+    assert np.all(q.st_med_n <= np.maximum(0.0, paid - q.NJMF_n) + 2.0)
+    assert (q.st_med_n > 1.0).any()

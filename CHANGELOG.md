@@ -10,12 +10,18 @@ phase-down), home mortgage interest from `Debts` (Pub. 936 limit), and budget li
 to the standard deduction; non-itemizers also deduct up to $1,000 ($2,000 MFJ) of cash charity.
 
 `withItemized` (`"none"` / `"loop"` / `"optimize"`, default `"loop"`) picks how the branch is
-chosen: `"optimize"` puts a binary on each year the a priori bounds do not decide, `"loop"` takes
-the branch the previous iterate's amounts imply, `"none"` is the old behaviour (always the
-standard). A year whose itemized total cannot beat the standard gets no columns, so a plan with no
-mortgage, no medical/charity lines, and property tax + state tax under the standard amount is
-unchanged and stays a pure LP. Rent is not federal SALT. The medical/charity floors are loop
-parameters (like the NY floor), not LP expressions of AGI.
+chosen. `"loop"` takes the branch the previous iterate's amounts imply and writes the itemized
+branch as rows on existing columns: it adds no column and no binary, and a year that never
+itemizes adds nothing, so a plan that never itemizes is exactly the `"none"` plan. `"optimize"`
+adds claim columns and a binary per candidate year, free only in years whose itemized total has
+come within 50% of the standard (elsewhere the loop rule), and moves any binary the MIP gap leaves
+on the smaller deduction to the larger one by an LP re-solve. `"none"` is the old behaviour
+(always the standard). The SALT cap's MAGI phase-down, the medical/charity floors and (loop mode)
+which side of each floor a year is on are loop parameters (like the NY floor). After a pre-TCJA
+reversion (`yOBBBA`) SALT is uncapped and the OBBBA charity rules (0.5% floor, non-itemizer
+deduction) end. Rent is not federal SALT. Not modeled, reported as warnings: the 2/37 limit in
+the 37% bracket, Pease after a reversion, a SALT cap one iterate stale, and a year left on the
+smaller deduction.
 
 #### New: budget lines can follow an age clock; a JSON budget file
 

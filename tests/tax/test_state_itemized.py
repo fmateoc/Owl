@@ -122,9 +122,10 @@ def test_agi_over_the_start_gets_the_line_46_cut():
     # with): it tracks the formula on this plan's own AGI to the loop's tolerance.
     excess = np.clip(p.st_agi_n - 200_000.0, 0.0, 50_000.0)
     expect_rho = 0.25 * excess / 50_000.0
-    # One SC step of AGI movement is enough to miss a tight tolerance once federal
-    # itemizing is also in play (it moves conversions).
-    np.testing.assert_allclose(p.NYIR_n[:20], expect_rho[:20], atol=5e-3)
+    # This plan also itemizes federally in 2026-2029 (SALT + property tax), and its loop ends
+    # oscillating: the rate lags the accepted iterate's AGI by up to 0.0018 there (3e-5 with
+    # withItemized="none"; measured 2026-10-11).
+    np.testing.assert_allclose(p.NYIR_n[:20], expect_rho[:20], atol=2.5e-3)
     assert np.all((p.NYIR_n >= 0) & (p.NYIR_n <= 0.25))
     # st_item is the deduction taken: the property tax after the line 46 cut (1 - rho).
     g = p.gamma_n[: p.N_n]
@@ -183,9 +184,8 @@ def test_medical_above_the_floor_is_deductible():
     g = p.gamma_n[: p.N_n]
     claim = np.maximum(0.0, 40_000.0 * g - p.STMF_n)
     assert np.all(p.STMF_n[:20] > 0)
-    # The floor is the previous iterate's federal AGI x 10%. One SC step of MAGI movement is
-    # enough to miss 2% here once federal itemizing is also in play (it moves conversions).
-    np.testing.assert_allclose(p.STMF_n[:20], 0.10 * p.MAGI_n[:20], rtol=0.05)
+    # The floor is the previous iterate's federal AGI x 10%.
+    np.testing.assert_allclose(p.STMF_n[:20], 0.10 * p.MAGI_n[:20], rtol=0.02)
     pos = p.st_ti_n > 1.0
     assert pos[:20].sum() >= 10
     np.testing.assert_allclose(p.st_imed_n[pos], claim[pos], atol=1.0)

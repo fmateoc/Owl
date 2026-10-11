@@ -204,15 +204,9 @@ def test_free_set_only_grows_and_holds_the_years_near_the_ceilings():
 def test_time_limit_keeps_the_tiers_and_reports_the_gap():
     """A $2.5M couple does not prove optimal quickly. With a short maxTime the first MILP stops on the
     limit, later iterations keep its tiers, the plan's gap is that MILP's, and the tax stays statutory."""
-    # A short cap: a fast machine can otherwise close the gap inside 2s and never record
-    # _rx_fixed (the test is about the limit binding, not about how long that takes). Too
-    # short and the solver errors out without a feasible solution to keep.
-    p = _couple(tax_deferred=(1500, 1000), maxTime=0.5)
+    p = _couple(tax_deferred=(1500, 1000), maxTime=2)
     assert p._rx_fixed is not None
-    # The gap the capped MILP reported is kept; a fast machine can close it inside the cap,
-    # so only "reported" is required, not a positive size (the sibling node-limit test pins
-    # a cap that cannot close).
-    assert p.solverGap >= p._rx_fixed[2] >= 0.0
+    assert p.solverGap >= p._rx_fixed[2] > 1e-4
     for n in range(p.N_n):
         assert p.st_T_n[n] == pytest.approx(_statutory_tax(p, n), abs=1.0)
 

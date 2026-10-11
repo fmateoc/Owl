@@ -381,6 +381,11 @@ mortgage interest.
 - SALT cap phase-down: `salt_cap_n` from the previous iterate's MAGI (no binary); warn when MAGI
   exceeds the threshold. Under a pre-TCJA reversion (`year >= yOBBBA`): no SALT cap, $1M mortgage
   limit, no charity floor, Pease not modeled (warn if AGI passes its threshold, recalled amounts).
+- *(Step-3 review, 2026-10-11: as built, loop mode writes the itemized branch as rows on existing
+  columns (no `zi`, no claim columns, no floor switches) and nothing in a standard year, so a plan
+  that never itemizes is the `"none"` plan exactly; optimize mode frees `zi` only near the switch
+  (`ITEM_WINDOW`) and fixes binaries left on the smaller deduction by an LP re-solve. The SALT cap's
+  phase-down is a loop parameter. See PROGRESS.md, "Step 3 review fixes".)*
 - Loop mode: the same rows with `zi_n` fixed to the previous iterate's choice (itemize when the
   itemized amount at the previous solution exceeded `S_n`; iteration 0 from budget amounts and zero
   state tax), as `_rx_fixed` does for the NJ tiers. The LP then still prices state tax against its

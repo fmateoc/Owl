@@ -30,9 +30,9 @@ def _line(name, htype, amount, **kw):
 
 def _plan(state="NY", locality="", *, property_tax=25000.0, core=80000.0, mortgage=None,
           medical=0.0, charity=0.0, taxable=(150, 150), deferred=(900, 600),
-          expectancy=(89, 92), birth=("1964-03-15", "1964-09-15")):
+          expectancy=(89, 92), birth=("1964-03-15", "1964-09-15"), log=None):
     p = owl.Plan(["Joe", "Jane"], list(birth), list(expectancy), "fed itemized",
-                 verbose=False, logstreams=[io.StringIO()])
+                 verbose=False, logstreams=[log if log is not None else io.StringIO()])
     p.setSpendingProfile("budget")
     p.setAccountBalances(taxable=list(taxable), taxDeferred=list(deferred), taxFree=[75, 75])
     p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
@@ -75,23 +75,40 @@ def test_guard_no_deductible_inputs_adds_no_columns():
     assert p.bequest == pytest.approx(q.bequest, rel=1e-12)
 
 
-def test_guard_all_seventeen_examples_unchanged():
-    """The shipped example cases take the standard deduction either way (same objective)."""
+def _examples():
     from pathlib import Path
 
     root = Path(owl.__file__).resolve().parents[2]
-    cases = sorted((root / "examples").glob("*.toml"))
-    if not cases:
-        cases = sorted((root / "src" / "owlplanner" / "data" / "examples").glob("*.toml"))
-    assert cases, "no example cases found"
-    for case in cases[:3]:
-        # Smoke the option is accepted; the full 17-case sweep is step 6 (measure).
-        from owlplanner.config import load_config
-        try:
-            cfg = load_config(case)
-        except Exception:
-            continue
-        assert cfg is not None
+    return sorted((root / "examples").glob("Case_*.toml"))
+
+
+@pytest.mark.toml
+@pytest.mark.parametrize("case", _examples(), ids=lambda c: c.stem)
+def test_examples_loop_matches_none_unless_a_year_itemizes(case):
+    """withItemized="loop" adds no column, and a year that never itemizes adds no row: a plan
+    that never itemizes is the plan "none" gives, to the cent, even where the loop does not
+    converge (step-3 review: Case_chris+pat and Case_helen+ruth moved by $132-215/yr)."""
+    def run(mode):
+        p = owl.readConfig(str(case), verbose=False, logstreams=[io.StringIO()])
+        opts = dict(p.solverOptions)
+        opts["withItemized"] = mode
+        p.solve(p.objective, opts)
+        assert p.caseStatus == "solved"
+        return p
+
+    a, b = run("none"), run("loop")
+    assert not any(c in b.vm for c in ("isalt", "ich", "imed", "nch", "zi", "zch", "zmedf"))
+    if not b.itemizing_n.any():
+        assert b.basis == a.basis
+        assert b.bequest == a.bequest
+        np.testing.assert_array_equal(b.T_n, a.T_n)
+    else:
+        # The plans that itemize (Case_devon from 2032 under Owl's reversion, Case_jordan+taylor
+        # in 2040) gain by it.
+        if b.objective == "maxSpending":
+            assert b.basis >= a.basis * (1 - 1e-4)
+        else:
+            assert b.bequest >= a.bequest * (1 - 1e-4)
 
 
 def test_mortgage_year_itemizes_and_standard_wins_without_one():
@@ -239,12 +256,16 @@ def test_loop_and_optimize_agree_on_a_fixed_income_case():
     assert b.bequest == pytest.approx(a.bequest, rel=1e-4)
 
 
-def test_local_search_returns_an_integral_plan():
-    p = _plan(mortgage=(600_000.0, 6.5, 30))
-    q = _solve(p, withItemized="optimize", mipStrategy="local-search")
-    assert q.itemizing_n.dtype == bool
-    # The plan takes one branch or the other in every year.
-    assert np.all((q.item_n == 0) | (q.item_n > 0))
+def test_local_search_takes_the_larger_deduction():
+    """Local search over the "itemizing" family: whichever plan it returns (its own, or the loop's
+    when it finds nothing better) takes max(standard, itemized) in every year."""
+    q = _solve(_plan(mortgage=(600_000.0, 6.5, 30)), withItemized="optimize", mipStrategy="local-search")
+    assert q.breakpointMethodUsed.startswith("local search")
+    assert "itemizing" in q._breakpointFamilies({"withItemized": "optimize"})
+    assert not np.any(q._item_dominated_n() > 0)
+    assert q.itemizing_n[:5].all()
+    bonus = q._item_bonus_n()
+    np.testing.assert_allclose(q.e_n[:5], q.item_n[:5] + bonus[:5], rtol=1e-6)
 
 
 def test_rent_has_no_federal_salt():
@@ -266,3 +287,153 @@ def test_option_normalization():
     assert normalize_mode_option("withItemized", "loop") == "loop"
     with pytest.raises(ValueError, match="withItemized"):
         normalize_mode_option("withItemized", "exact")
+
+
+def _high_income(log=None, **kw):
+    """MAGI $700k-880k in 2026-2029: above the SALT phase-down threshold ($505,000 in 2026)."""
+    args = dict(state="NY", property_tax=30000.0, core=250000.0, taxable=(500, 500), deferred=(9000, 8000))
+    args.update(kw)
+    return _plan(log=log, **args)
+
+
+def test_salt_cap_phases_down_with_the_plans_own_magi():
+    """Step-3 review bug 1: the cap was computed from the MAGI solve() had just zeroed, so the
+    phase-down never applied ($40,400 claimed at MAGI $830k). It is a loop parameter now."""
+    p = _solve(_high_income(mortgage=(750_000.0, 6.5, 30)), objective="maxSpending", withItemized="loop")
+    over = (p.MAGI_n[:4] > 505_000.0) & p.itemizing_n[:4]
+    assert over.any()
+    own = np.array([tx.salt_cap(p.year_n[n], p.MAGI_n[n], p.yOBBBA) for n in range(4)])
+    assert np.all(p.FEDSC_n[:4][over] < 40_400.0)
+    np.testing.assert_allclose(p.FEDSC_n[:4][over], own[over], atol=50.0)
+    assert np.all(p.item_salt_n[:4] <= p.FEDSC_n[:4] + 1.0)
+
+
+def test_limits_not_modeled_are_reported():
+    """The 2/37 limit (P.L. 119-21 sec. 70111) and, after a pre-TCJA reversion, Pease: warnings."""
+    log = io.StringIO()
+    p = _high_income(log=log, mortgage=(750_000.0, 6.5, 30))
+    p.setExpirationYearOBBBA(2032)
+    _solve(p, objective="maxSpending", withItemized="loop")
+    text = log.getvalue()
+    assert "2/37 limit" in text
+    assert "(Pease)" in text
+
+
+def test_reversion_ends_the_obbba_charity_rules():
+    """From a pre-TCJA reversion: no 0.5% floor for itemizers, no non-itemizer charity."""
+    p = _plan(state="FL", property_tax=0.0, charity=1_500.0)
+    p.setExpirationYearOBBBA(2032)
+    q = _solve(p, withItemized="loop")
+    late = np.asarray(q.year_n) >= 2032
+    assert np.all(q.FEDCF_n[late] == 0)
+    assert np.all(q.FEDCF_n[~late][:3] > 0)
+    np.testing.assert_allclose(q.item_std_n[late], q.item_base_n[late])
+    assert np.all(q.item_std_n[:3] > q.item_base_n[:3])
+
+
+@pytest.mark.parametrize("mode", ["loop", "optimize"])
+def test_nonitemizer_charity_is_the_amount_paid(mode):
+    """min($2,000, cash charity paid), with the charity line scaled like the rest of the budget
+    under maxSpending (the review found the budget's own amount used instead)."""
+    p = _plan(state="FL", property_tax=0.0, charity=1_500.0, core=60_000.0)
+    q = _solve(p, objective="maxSpending", withItemized=mode)
+    (cc, kc) = q._budget_amount_terms("charity")
+    paid = cc + kc * q.g_n
+    assert abs(paid[0] - 1_500.0) > 50.0  # the scale is not 1: the budget amount would be wrong
+    bonus = q._item_bonus_n()
+    pos = (q.G_n > 1.0) & ~q.itemizing_n
+    assert pos[:10].sum() >= 5
+    cap = q._nonitemizer_cap_n()
+    assert cap[0] == 2_000.0 and cap[-1] == 1_000.0  # Single after the first death
+    expect = q.item_base_n + np.minimum(cap, paid) + bonus
+    np.testing.assert_allclose(q.e_n[pos], expect[pos], rtol=1e-6, atol=1.0)
+
+
+@pytest.mark.parametrize("mode", ["loop", "optimize"])
+def test_deduction_is_the_larger_branch_where_taxable_income_is_positive(mode):
+    """Statutory recompute: e = max(S, itemized at the plan's own amounts) + bonus, every year
+    with taxable income (optimize); within the branch taken (loop). Stands in for the plan's
+    finite-difference check: an itemizing year deducts its own state tax, so a conversion's
+    marginal federal cost there is net of the state tax it adds."""
+    q = _solve(_plan(state="NY", locality="Yonkers", mortgage=(600_000.0, 6.5, 30)), withItemized=mode)
+    pos = q.G_n > 1.0
+    S = q._item_standard_n()
+    pot = q._item_potential_n()
+    bonus = q._item_bonus_n()
+    if mode == "optimize":
+        assert not np.any(q._item_dominated_n() > 0)
+        expect = np.maximum(S, pot) + bonus
+    else:
+        expect = np.where(q.itemizing_n, q.item_n, S) + bonus
+    np.testing.assert_allclose(q.e_n[pos], expect[pos], rtol=1e-6, atol=2.0)
+    assert q.itemizing_n[0] and q.item_salt_n[0] > 0
+
+
+def test_optimize_at_least_loop_near_the_switch():
+    """A mortgage whose interest crosses the standard: optimize (tight gap) is no worse than loop."""
+    a = _solve(_plan(state="FL", property_tax=0.0, mortgage=(560_000.0, 6.5, 30)), withItemized="loop")
+    b = _solve(_plan(state="FL", property_tax=0.0, mortgage=(560_000.0, 6.5, 30)), withItemized="optimize",
+               gap=1e-7)
+    assert a.itemizing_n.any() and not a.itemizing_n.all()
+    assert b.bequest >= a.bequest * (1 - 1e-7)
+
+
+def test_no_tie_left_in_a_plan_whose_late_cash_has_no_price():
+    """maxSpending with no bequest: late cash is worth nothing, so a smaller deduction would tie.
+    The shortfall turns tax pricing on and the repair claims the deduction the branch allows."""
+    q = _solve(_plan(state="NY", mortgage=(600_000.0, 6.5, 30)), objective="maxSpending", bequest=0,
+               withItemized="optimize")
+    short = q._federal_itemized_shortfall()
+    assert np.all(short[q.G_n > 1.0] <= 1.0)
+
+
+@pytest.mark.toml
+def test_dominated_binaries_are_moved_to_the_larger_deduction():
+    """Step-3 review bug 3: at a loose MIP gap Case_jordan+taylor itemized $31,323 against a
+    $36,494 standard (2027). _fix_dominated_itemizing re-solves on the larger branch."""
+    from pathlib import Path
+
+    case = Path(owl.__file__).resolve().parents[2] / "examples" / "Case_jordan+taylor.toml"
+    p = owl.readConfig(str(case), verbose=False, logstreams=[io.StringIO()])
+    opts = dict(p.solverOptions)
+    opts.update(withItemized="optimize", gap=0.02)
+    p.solve(p.objective, opts)
+    assert p.caseStatus == "solved"
+    assert not np.any(p._item_dominated_n() > 0)
+
+
+def test_linked_sale_stops_the_mortgage_interest():
+    """A mortgage linked to the home it finances is paid off at the sale (#173): no interest after."""
+    p = _plan(state="NY", property_tax=0.0)
+    y0 = int(p.year_n[0])
+    home = dict(active=True, name="home", type="residence", year=y0, basis=800000.0, value=800000.0, rate=0.5,
+                yod=y0 + 10, commission=6.0)
+    mtg = dict(active=True, name="mtg", type="mortgage", year=y0, term=30, amount=640000.0, rate=6.5,
+               property="home")
+    p.houseLists["Fixed Assets"] = conditionDebtsAndFixedAssetsDF(pd.DataFrame([home]), "Fixed Assets")
+    p.houseLists["Debts"] = conditionDebtsAndFixedAssetsDF(pd.DataFrame([mtg]), "Debts")
+    q = _solve(p, withItemized="loop")
+    assert np.all(q.item_mi_n[:10] > 0)
+    assert np.all(q.item_mi_n[10:] == 0)
+    assert q.itemizing_n[0] and not q.itemizing_n[11:].any()
+
+
+@pytest.mark.parametrize("mode", ["loop", "optimize"])
+def test_replayed_rows_match_a_fresh_build(mode):
+    """The itemized rows are rebuilt each iteration (they read loop parameters); the loop-invariant
+    builders are replayed. A replayed build equals a fresh one."""
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "fixed_rows", Path(__file__).parents[1] / "solver" / "test_fixed_rows.py"
+    )
+    fr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fr)
+    p = _solve(_plan(state="NY", mortgage=(600_000.0, 6.5, 30)), withItemized=mode)
+    assert p._fixedRows
+    p._buildConstraints(p.objective, p.solverOptions)
+    replayed = fr._lp_arrays(p)
+    p._fixedRows = {}
+    p._buildConstraints(p.objective, p.solverOptions)
+    fr._assert_same_lp(fr._lp_arrays(p), replayed)

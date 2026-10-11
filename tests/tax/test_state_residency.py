@@ -181,11 +181,8 @@ def test_moving_earlier_never_lowers_spending():
     stay = _solve(_plan("NY"))
     late = _solve(_plan("NY", [(THISYEAR + 10, "FL")]))
     early = _solve(_plan("NY", [(THISYEAR + 2, "FL")]))
-    # Under the default loop a difference under ~1% can come from the loop settling on a
-    # different fixed point (CLAUDE.md, Loop noise); $70 on $108k is 0.06%.
-    assert stay.basis <= late.basis * 1.01 + 1.0
-    assert late.basis * 0.99 <= early.basis + 1.0
-    assert late.basis > stay.basis * 0.99
+    assert stay.basis <= late.basis + 1e-6 <= early.basis + 2e-6
+    assert late.basis > stay.basis
 
 
 def test_move_year_is_billed_by_the_destination():

@@ -682,6 +682,66 @@ Nits: `_item_fixed` is never set (dead branch); `_setup_federal_itemized` calls
 includes it (understates a shortfall); `_nonitemizer_charity_n` uses the budget at scale 1,
 not the amount paid at `g_n` (matters only for charity lines under $2,000).
 
+## Step 3 review fixes (2026-10-11)
+
+All review findings above fixed. Measured with the date frozen at 2026-01-01, example sweep of
+all 18 cases under `none` / `loop` / `optimize` (script not committed).
+
+- **Bug 1 (SALT phase-down):** the cap is a loop parameter `FEDSC_n` (`_SC_PARAMS`), reset to the
+  unreduced cap at solve start and recomputed from each iterate's AGI in `_computeNLstuff`; the
+  residual counts its moves where SALT paid is above the lower cap. NY couple at MAGI $700k-880k:
+  cap used $10,000 = the cap at its own MAGI (was $40,400). The candidate rule uses the unreduced
+  cap (a superset). A cap still one iterate stale in the final plan is a warning.
+- **Bug 2 (non-itemizing plans moved):** `"loop"` now adds **no column and no binary**: the
+  itemized branch is two rows on existing columns, `e <= MI + min(cap, pt + st) + claims + bonus`
+  (a min of two terms is an upper bound by both), and a standard year gets nothing. Charity/medical
+  claims are paid - floor where the loop's flags `_item_chl_n` / `_item_medl_n` (loop parameters,
+  a priori where the amount is known) say the floor is cleared. The e bound is left bit for bit as
+  `_add_standard_exemption_bounds` wrote it outside years that may itemize. Rows that carry e in a
+  year replace `senior_bonus_deduction` in that year only (`_item_ded_rows`). Result: every
+  example that never itemizes gives the `none` plan to the cent (basis, bequest, `T_n`), including
+  `Case_chris+pat` and `Case_helen+ruth` (pinned zero columns alone had moved helen+ruth by
+  $215/yr: its loop does not converge). Guard test over all 18 examples.
+- **Bug 3 (dominated binaries):** `_fix_dominated_itemizing` after each optimize-mode solve: a
+  free zi on the smaller deduction (at the solution's own amounts) is flipped and the LP re-solved
+  with every binary pinned (the flipped point is feasible with the same spending, so the LP is no
+  worse); up to three rounds. `Case_jordan+taylor` at `gap=0.02`: without it 3 dominated years
+  ($5,171 / $5,458 / $2,141 of deduction, bequest $2,650,296), with it none ($2,651,846). The tie
+  check (`_federal_itemized_shortfall`) is now within the branch taken, so a dominated branch is no
+  longer reported as "brackets filled out of order ... objective unaffected".
+- **Cost (`"optimize"`):** a valid income bound replaces the old one (fixed income + what can leave
+  tax-deferred + the taxable balance, from upstream's `_gateCeilings`, which takes an `ss_in`
+  override for this; state tax on the state's own brackets, top rate with NY recapture). It admits
+  more candidate years than the old (unsound for late years) bound, so `zi` is now **free only in
+  years whose itemized total has come within `ITEM_WINDOW` = 50% of the standard** (loop parameter
+  `FIX_n`, grows only, as the NJ exclusion's `RXF_n`); elsewhere zi is pinned to the loop rule.
+  Times (optimize, before -> after): `Case_morgan` 30.8 -> 0.7 s, `Case_kim+sam-spending` 8.2 ->
+  0.9 s, `Case_john+sally` 5.1 -> 0.2 s, `Case_devon` 5.3 -> 0.7 s. `optimize` vs `none` on
+  non-itemizing examples: within $47/yr (`Case_helen+ruth`, 0.02%; pinned columns in a MIP).
+- **Plan items:** warnings for the 2/37 limit (P.L. 119-21 sec. 70111 text read on govinfo
+  2026-10-11: 2/37 of the lesser of itemized, or taxable income + itemized above the 37% bracket
+  start) and for Pease after a reversion (2017 amounts $313,800 MFJ / $261,500 single, Rev. Proc.
+  2016-55 sec. 3.15, read 2026-10-11; brought to 2026 with Owl's own 35.1% pre-TCJA adjustment;
+  3% of AGI over, at most 80% of non-medical itemized, recalled rule), for a SALT cap one iterate
+  stale, and for a year left on the smaller deduction. From `yOBBBA` the charity floor and the
+  non-itemizer charity are zero.
+- **Nits:** non-itemizer charity is min(cap, the cash charity *paid*) (rows in loop mode, a gated
+  column `nch` in optimize mode); `_item_fixed` (dead) removed; setup computes each term once; the
+  shortfall uses the bonus the solution carries (`_item_bonus_n`), also under `_sb_lp`. The federal
+  loop parameters are restored to the accepted LP's before the bracket-order repair, which reads
+  them.
+- **Tests:** the four loosened assertions are back to their pre-step-3 form except the NYIR
+  tolerance (2.5e-3: that plan itemizes federally in 2026-2029 and its loop oscillates; measured
+  0.0018, 3e-5 under `none`). The tiered-exclusion time-limit test is restored as it was; with
+  `maxTime=0.5` its gap assertion failed 2 of 3 runs here, with 2 s it passed 4 of 4 (time-based,
+  machine-dependent, not a step-3 matter). New in `test_itemized.py` (47 tests): 18-example guard,
+  local search takes the larger deduction, SALT phase-down, 2/37 and Pease warnings, reversion ends
+  the charity rules, non-itemizer charity at the amount paid (both modes), statutory recompute
+  e = max(S, itemized) + bonus (optimize) / within the branch (loop) in place of the finite
+  difference, optimize >= loop near the switch, no tie left under maxSpending with no bequest,
+  dominated binaries fixed (`Case_jordan+taylor` at gap 2%), linked sale stops the interest,
+  constraint replay (both modes).
+
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 Upstream rewrote `dev`: `f41fcdc` (merged 2026-10-10) is replaced by `e5949e8`, same author date
@@ -715,6 +775,10 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 step 3 review fixes: **3154 passed, 1 skipped** (full suite, 7:15; +30 tests in
+`test_itemized.py`). flake8 only upstream's `localsearch.py:31`; `ruff check src tests ui` passes.
+No AMO reference moved (`Case_devon` under `loop` unchanged at $249,505.32).
 
 2026-10-11, Phase 3 step 3 (federal itemized, `withItemized`): **3121 passed, 1 skipped** (full
 suite, 5:18; +14 itemized tests, +1 upstream count after the AMO re-record). flake8 only upstream's

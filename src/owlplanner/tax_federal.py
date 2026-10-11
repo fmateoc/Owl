@@ -239,6 +239,11 @@ MORTGAGE_LIMIT_LEGACY = 1_000_000.0  # line 3: debt taken out before 2017-12-16;
 MEDICAL_FLOOR = 0.075  # medical expenses above 7.5% of AGI
 CHARITY_FLOOR = 0.005  # itemizers deduct cash charity above 0.5% of the contribution base (2026+)
 NONITEMIZER_CHARITY = np.array([1000.0, 2000.0])  # non-itemizer cash charity cap, Single / MFJ
+# Pease (IRC 68 before TCJA), used only to warn after a pre-TCJA reversion: 2017 applicable
+# amounts, Single / MFJ (Rev. Proc. 2016-55 sec. 3.15, verified 2026-10-11), brought to 2026 with
+# the same 35.1% adjustment as the pre-TCJA brackets above.
+PEASE_THRESHOLD_2017 = np.array([261_500.0, 313_800.0])
+PRE_TCJA_ADJUSTMENT = 1.351
 
 # SALT cap schedule (IRC 164(b)(7), P.L. 119-21 sec. 70120): $40,000 in 2025, $40,400 in 2026,
 # +1%/yr through 2029, then $10,000. Before 2030 the cap is cut by 30% of MAGI over a threshold

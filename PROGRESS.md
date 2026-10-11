@@ -389,6 +389,78 @@ Size S from `phase3-plan.md` §5 step 1 (3.0).
 
 Phase 5 now has a concrete case to serve: scenario 4b. The earnings test would let `withSSAges` optimize the working spouse too; a per-scenario PIA (or recomputing it from extra work years) would remove the manual PIA step. Medicare past 65 with employer coverage (delayed Part B) only matters if the worker goes past 65.
 
+## Phase 3 step 2 — NY itemized deduction (2026-10-10)
+
+Size M from `phase3-plan.md` §5 step 2 (3.1). On `claude/eager-cray-s0fvks` after the step-1 work.
+
+- **Data** (`taxes_state.toml`, NY_Single / NY_MFJ, dotted keys under the entry, documented in the
+  header): `itemized.allowed`, `income_taxes` (NY subtracts state/local income taxes from Schedule
+  A), `salt_cap` (0 = no cap on real estate), `mortgage_limit` ($1M, the pre-TCJA rule),
+  `medical_floor` (7.5% of federal AGI), `adjustment_agi_start` / `width` / `pct` (line 46,
+  Worksheet 3: MFJ $200k, Single $100k, 25% over $50k). Verified against IT-196-I (2025). Parsed
+  into `StateTaxParams.itemized` (`StateItemizedParams`, per year, follows moves and the filing
+  status). `income_taxes = true` is refused for now (it would couple the deduction to the tax that
+  produces it).
+- **LP** (`Plan._add_state_itemized`, beside `_add_state_tax_bounds`, not `@_fixedAcrossIterations`):
+  the deduction is the existing `st_e` column, whose bound is raised to the larger of the standard
+  and the adjusted itemized total. Components `st_ipt` / `st_ich` / `st_imed`, binary `zsi` (one per
+  candidate year). A priori: `LB` (essential property tax + charity + mortgage interest) ≥ standard
+  forces itemizing, `UB` (every deductible line at the income ceiling + Medicare + mortgage interest)
+  ≤ standard forces the standard; otherwise a free `zsi` and
+  `st_e ≤ st_sigmaBar*(1 - zsi) + (1 - NYIR)*(st_ipt + st_ich + st_imed + mi*zsi)`.
+- **NYAGI adjustment** (`NYIR_n`, a new `_SC_PARAMS` entry): `25% × min(max(NYAGI − start, 0), width)/width`
+  from the previous iterate's `st_agi_n` (bilinear: rate × deduction).
+- **Mortgage interest**: `st_item_mi_n` from `deductible_mortgage_interest(..., pre_tcja=True)`
+  (the $1M NY limit), set in `processDebtsAndFixedAssets`.
+- **Medical floor**: a constant cut from the previous iterate's federal AGI (`MAGI_n`), clamped so
+  the bound stays non-negative. As a hard `floor*AGI` on the claim it makes every year without
+  medical expenses infeasible (found on the first smoke test). Step 5 can tighten it.
+- **Only candidate years get columns** (`_st_item_candidate_years`: the state allows itemizing and
+  a budget line or mortgage interest exists). A plan with none stays a pure LP — that is what
+  `test_amo_postprocess.TestNoBinaries` requires of `Case_cameron`.
+- **Tie check** (step 4's mechanism, needed to claim the full deduction in late years where tax has
+  no price): `_itemized_shortfall` joins `_exclusion_shortfall` in `_bracket_order_excess`, including
+  a year that took the standard while more was claimable.
+- **Local search**: `zsi` is a family (`localsearch.FAMILIES`, labelled "state itemizing").
+- **Reporting**: `st_item_n` (unadjusted total, 0 when standard), `st_itemizing_n`; Taxes sheet
+  columns and a Summary line only when nonzero; `plan_metrics` `state_itemized_today`; explain tags
+  for the new rows.
+- **Tests**: `tests/tax/test_state_itemized.py` (20: data parse, moves and filing status, owner
+  itemizes property tax, renter keeps the standard with no new columns, the line 46 cut, NJ/FL
+  unchanged, a NY→NJ move stops it, Yonkers surcharge on the reduced tax, mortgage interest,
+  medical above the floor, charity, constraint replay, the FL guard, and the review regressions
+  below). `test_state_residency.py` compares the nested `itemized` field.
+
+Pre-commit review (same day, one pass plus an independent reviewer) found and fixed six bugs:
+
+1. The a priori rule used the raw LB/UB against the standard, ignoring the line 46 cut: with
+   `rho=0.25` a $20k property tax is $15k after the cut, below the $16,050 standard, but was
+   forced to itemize. Now `keep*LB >= std` / `keep*UB <= std`.
+2. `_itemized_shortfall` counted mortgage interest in `pot` but not in the claimed components, so
+   every itemizing year showed a permanent shortfall and kept the tax tie-break on. Now
+   `max(std, keep*pot) - st_e`.
+3. `_st_item_candidate_years` summed `_budget_amount_terms` consts (dollars, and **negative** with
+   essential lines) with coefs (shares). An essential core + discretionary property tax gave
+   `const_pt = -40k`, so the whole deduction vanished. Now flags on `budget.by_type`.
+4. The medical floor was a constant cut clamped at `const+M`, which deleted the floor whenever it
+   exceeded the constant part and let every discretionary medical dollar through (a $40k line
+   claimed $40k against a $7k floor). Now `max(0, paid - floor*AGI)` with one binary `zmed` per
+   medical year (`localsearch.ALWAYS_FREE`); the sign of its big-M row was wrong in the first
+   attempt (it relaxed instead of binding) and is covered by a test.
+5. `_itemized_shortfall` ran in every year, so a NY→NJ move invented ~$25k/yr of phantom shortfall
+   in the NJ years and flipped the tax tie-break on for a re-solve that could never help. Now
+   masked to `st_item_ok_n`.
+6. The SC residual compared `NYIR_n` (a rate) divided by gamma, which never registers. Now weighted
+   by the itemized total, including years that took the standard (a rho move can flip the branch).
+
+Also: `_medicare_premium_ub_n` (a big-M for the `m` column) must not enter the shortfall's claimable
+amount — only `m_n + M_n` is a cost. `withMedicare="optimize"` medical claims count the `m` variable.
+
+Not in this step (per the plan): the federal itemized deduction (`withItemized`, step 3), the
+medical floors wired to `care`/Medicare as LP expressions (step 5 tightens the floor's AGI to the
+same iterate), measuring (step 6), docs (step 7). The 50% cut above $525k MFJ and the rules above
+$1M NYAGI are out of scope.
+
 ## Upstream 2026.10.10 merged (2026-10-10, on `claude/eager-cray-s0fvks`)
 
 Upstream `dev` `f41fcdc` (six commits; `main` = `dev`): node counts in the Summary and a public
@@ -405,6 +477,12 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-10, Phase 3 step 2 (NY itemized) after the pre-commit review: **3097 passed, 1 skipped**
+(full suite, 7 min; +20 tests). flake8 only upstream's `localsearch.py:31`. Six bugs found and
+fixed before commit (listed under step 2); the medical-floor row was rewritten twice (a hard
+`st_imed ≤ paid − 0.075·AGI` is infeasible without medical expenses, and clamping the cut deletes
+the floor — `max(0, ·)` needs a binary).
 
 2026-10-10, upstream 2026.10.10 merged, after the step-1 review fixes: **3077 passed, 1 skipped**
 (full suite, 7 min; +3 step-1 tests, +11 upstream `test_mip_nodes.py`). flake8 only upstream's

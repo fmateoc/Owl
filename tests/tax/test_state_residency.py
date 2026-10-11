@@ -85,7 +85,12 @@ def test_constant_schedule_matches_single_state(state):
     sched = _params([state] * 30)
     assert sched.N_st == single.N_st
     for name in single.__dataclass_fields__:
-        np.testing.assert_array_equal(getattr(sched, name), getattr(single, name), err_msg=name)
+        a, b = getattr(sched, name), getattr(single, name)
+        if hasattr(b, "__dataclass_fields__"):  # nested (StateItemizedParams)
+            for sub in b.__dataclass_fields__:
+                np.testing.assert_array_equal(getattr(a, sub), getattr(b, sub), err_msg=f"{name}.{sub}")
+        else:
+            np.testing.assert_array_equal(a, b, err_msg=name)
 
 
 def test_columns_follow_the_state_in_force():

@@ -90,6 +90,29 @@ CONSTRAINT_FAMILIES = {
         "tax-deferred withdrawals, Roth conversions, and pension; the value is the gain per "
         "today's-$ of additional exemptible income.",
     },
+    "state_item_pt_paid": {
+        "class": "policy",
+        "label": "state itemized property tax limited to the amount paid",
+        "indices": ("year",),
+    },
+    "state_item_ch_paid": {
+        "class": "policy",
+        "label": "state itemized charity limited to the amount given",
+        "indices": ("year",),
+    },
+    "state_item_med_floor": {
+        "class": "policy",
+        "label": "state itemized medical above the AGI floor",
+        "indices": ("year",),
+        "note": "Years where the medical deduction is limited by expenses above a percent of AGI "
+        "(Medicare premiums count as medical); the value is the gain per today's-$ of additional "
+        "qualified medical expense.",
+    },
+    "state_item_deduction": {
+        "class": "structural",
+        "label": "state deduction is the standard or the itemized total",
+        "indices": ("year",),
+    },
     "ltcg_room20": {
         "class": "policy",
         "label": "room left below the 20% capital-gains bracket",
@@ -139,6 +162,10 @@ CONSTRAINT_FAMILIES = {
     "niit_excess": {"class": "artifact", "label": "NIIT excess-over-threshold big-M"},
     "niit_nii": {"class": "artifact", "label": "NIIT investment-income big-M"},
     "niit_nii_cap": {"class": "artifact", "label": "NIIT cap at 3.8% of investment income"},
+    "state_item_pt_gate": {"class": "artifact", "label": "state itemizing big-M gate"},
+    "state_item_ch_gate": {"class": "artifact", "label": "state itemizing big-M gate"},
+    "state_item_med_gate": {"class": "artifact", "label": "state itemizing big-M gate"},
+    "state_item_med_claim": {"class": "artifact", "label": "medical-floor big-M gate"},
     "irmaa_amo": {"class": "artifact", "label": "IRMAA bracket exactly-one selector"},
     "irmaa_bracket_lb": {"class": "artifact", "label": "IRMAA bracket bound big-M"},
     "irmaa_bracket_ub": {"class": "artifact", "label": "IRMAA bracket bound big-M"},

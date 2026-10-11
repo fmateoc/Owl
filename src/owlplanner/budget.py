@@ -83,6 +83,8 @@ HOUSEHOLD_TYPES = frozenset({"rent", "property tax", "insurance", "maintenance"}
 
 PROPERTY_TAX = "property tax"
 RENT = "rent"
+MEDICAL = "medical"
+CHARITY = "charity"
 
 CALENDAR = "calendar"
 AGE = "age"

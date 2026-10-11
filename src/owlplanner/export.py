@@ -562,6 +562,11 @@ def build_summary_dic(plan, N=None):
         for label, arr in parts:
             if np.any(arr > 0):
                 _summary_currency_pair(dic, label, np.sum(arr[:N] / plan.gamma_n[:N]), np.sum(arr[:N]))
+    if np.any(getattr(plan, "st_item_n", 0) > 0):
+        _summary_currency_pair(
+            dic, "Total state itemized deduction",
+            np.sum(plan.st_item_n[:N] / plan.gamma_n[:N]), np.sum(plan.st_item_n[:N]),
+        )
 
     taxPaid = np.sum(plan.medicare_n[:N], axis=0)
     taxPaidNow = np.sum(plan.medicare_n[:N] / plan.gamma_n[:N], axis=0)
@@ -925,6 +930,7 @@ def plan_metrics(plan, N=None) -> dict:
         "niit_nominal": _s(plan.J_n[:N]),
         "state_tax_today": _st(plan.st_T_n[:N]),
         "state_tax_nominal": _s(plan.st_T_n[:N]),
+        "state_itemized_today": _st(getattr(plan, "st_item_n", np.zeros(N))[:N]),
         "medicare_today": _st(plan.medicare_n[:N]),
         "medicare_nominal": _s(plan.medicare_n[:N]),
         "aca_today": _st(plan.aca_costs_n[:N]),
@@ -995,6 +1001,7 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "niit_nominal": (f"Total net investment income tax paid{_N}", "usd"),
     "state_tax_today": (f"Total state income tax paid{_T}", "usd"),
     "state_tax_nominal": (f"Total state income tax paid{_N}", "usd"),
+    "state_itemized_today": (f"Total state itemized deduction{_T}", "usd"),
     "medicare_today": (f"Total Medicare premiums paid{_T}", "usd"),
     "medicare_nominal": (f"Total Medicare premiums paid{_N}", "usd"),
     "aca_today": (f"Total ACA premiums paid{_T}", "usd"),
@@ -1290,6 +1297,9 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
             TxDic["of which local"] = plan.lt_T_n
     if np.any(plan.st_pt_n > 0):
         TxDic["property tax deduction"] = plan.st_pt_n
+    if np.any(getattr(plan, "st_item_n", 0) > 0):
+        TxDic["state itemized deduction"] = plan.st_item_n
+        TxDic["state itemizing"] = plan.st_itemizing_n.astype(float)
     TxDic["Medicare+IRMAA"] = plan.medicare_n
     if np.any(plan.aca_costs_n > 0):
         TxDic["ACA premiums"] = plan.aca_costs_n

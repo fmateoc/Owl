@@ -87,6 +87,29 @@
 #                               $50 alternative credit (line 56) is not modeled. Omit for states
 #                               without it. Amounts are not indexed (same figures in the 2020 and
 #                               2025 NJ-1040 instructions).
+#   itemized                  = optional, the state's own itemized deduction (fork; NY only,
+#                               verified against IT-196-I 2025). Omit, or set allowed = false,
+#                               for a state without one. Written as dotted keys under the entry
+#                               (itemized.allowed, itemized.mortgage_limit, ...):
+#                                 allowed              = true
+#                                 income_taxes         = whether state and local income taxes stay
+#                                                        in the itemized total (NY subtracts them:
+#                                                        Schedule A under the IRC as before TCJA)
+#                                 salt_cap             = cap on the real-estate-tax side of SALT
+#                                                        (0 = no cap; NY does not cap real estate)
+#                                 mortgage_limit       = acquisition-debt limit for mortgage
+#                                                        interest (NY: $1,000,000, the pre-TCJA rule)
+#                                 medical_floor        = percent of AGI medical must exceed (7.5)
+#                                 adjustment_agi_start = state AGI where the itemized-deduction
+#                                                        adjustment begins (NY MFJ $200,000;
+#                                                        Single $100,000; 0 = no adjustment)
+#                                 adjustment_width     = AGI over which the cut phases in (50,000)
+#                                 adjustment_pct       = percent of the deduction taken at the top
+#                                                        of that width (25)
+#                               NY itemizing is allowed whether or not one itemizes federally.
+#                               The adjustment (line 46, Worksheet 3) is applied from the previous
+#                               iterate's AGI in the LP. Amounts are not indexed. The 50% cut
+#                               above $525,000 (MFJ) and the rules above $1M are not modeled.
 #
 # Exemption caps are per person: each spouse's exemption is limited by that spouse's own
 # age and eligible income (tax-deferred withdrawals, Roth conversions, pensions), and an
@@ -1311,6 +1334,15 @@ roth_conversion_eligible = true
 recapture_agi_start = 107650  # benefit recapture, Tax Law sec. 601(d); see the header
 recapture_width = 50000
 recapture_until = 5000000  # the 25M cliff (flat 10.9%) is not modeled
+# IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
+itemized.allowed = true
+itemized.income_taxes = false
+itemized.salt_cap = 0
+itemized.mortgage_limit = 1000000
+itemized.medical_floor = 7.5
+itemized.adjustment_agi_start = 100000
+itemized.adjustment_width = 50000
+itemized.adjustment_pct = 25
 
 [NY_MFJ]
 brackets = [
@@ -1331,6 +1363,15 @@ roth_conversion_eligible = true
 recapture_agi_start = 107650  # benefit recapture, Tax Law sec. 601(d); see the header
 recapture_width = 50000
 recapture_until = 5000000  # the 25M cliff (flat 10.9%) is not modeled
+# IT-196-I (2025) lines 41 and 46, Worksheet 3; see the header for the keys.
+itemized.allowed = true
+itemized.income_taxes = false
+itemized.salt_cap = 0
+itemized.mortgage_limit = 1000000
+itemized.medical_floor = 7.5
+itemized.adjustment_agi_start = 200000
+itemized.adjustment_width = 50000
+itemized.adjustment_pct = 25
 
 [ND_Single]
 # ND: SB 2302 (2023) dramatically simplified brackets. 2026 structure (inflation-adjusted

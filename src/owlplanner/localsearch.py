@@ -58,12 +58,19 @@ import numpy as np
 # too. Left out, the LP start relaxed it to fractional tiers, and no later step could match that
 # start, so the search returned a plan claiming part of a tier above its ceiling. It has no
 # fixed-point residual: the exclusion is exact within each solve.
-FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx")
+# "zsi", the state itemizing choice (NY), is a family for the same reason: without a mortgage the
+# a priori rule leaves one binary per year.
+FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx", "zsi")
 # Binaries the search never pins: the senior-bonus phase-out has one per bonus year, two or three
 # in all, so every restricted problem keeps them free. Only an LP solve, which relaxes them, pins them.
-ALWAYS_FREE = ("zsb",)
+# "zmed", the medical-floor switch (one per year with a medical claim), is the same shape: a handful
+# per plan, and pinning one would freeze a max(0, .) the search cannot reopen.
+ALWAYS_FREE = ("zsb", "zmed")
 RESIDUAL_FAMILY = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zj": "NIIT", "zl": "LTCG"}
-FAMILY_LABEL = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion"}
+FAMILY_LABEL = {
+    "zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion",
+    "zsi": "state itemizing",
+}
 
 STEP_TIME = 60.0  # seconds per restricted solve: a backstop; the node limit below is the real cap
 # Branch-and-bound nodes per restricted solve. A node limit, unlike a time limit, gives the same

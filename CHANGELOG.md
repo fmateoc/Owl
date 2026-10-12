@@ -1,27 +1,51 @@
 ### Unreleased
 
-#### New: the federal deduction is max(standard, itemized) (`withItemized`)
+#### New: itemized deductions, federal and state (`withItemized`)
 
-Schedule A is built from the expenses the plan already knows: property tax and the state and local
-income tax Owl charges (SALT, capped — $40,400 in 2026, $10,000 from 2030, with the MAGI
-phase-down), home mortgage interest from `Debts` (Pub. 936 limit), and budget lines typed
-`charity` (above 0.5% of AGI) and `medical` (above 7.5% of AGI). The choice of branch is
-`max(standard, itemized)`. Itemizers keep the OBBBA $6,000 senior bonus and lose the 65+ additions
-to the standard deduction; non-itemizers also deduct up to $1,000 ($2,000 MFJ) of cash charity.
+Each year deducts the larger of the standard deduction and the itemized total, built from the
+expenses the plan already knows. Federally (Schedule A, P.L. 119-21): SALT, which is the budget's
+`property tax` lines plus the state and local income tax the plan pays (cash basis, the same terms
+the cash flow charges), capped at $40,400 in 2026, +1%/yr through 2029 and $10,000 from 2030, the
+cap reduced by 30% of MAGI over $505,000 (2026) before 2030; home mortgage interest from `Debts`
+rows of type `mortgage` (Pub. 936 Table 1: $750,000 of acquisition debt, $1M for loans taken out
+before 2018; a loan linked to `real estate` is a rental's and is left out); `charity` lines above
+0.5% of AGI; and `medical` lines plus Owl's Medicare Part B/D (IRMAA included) and ACA net
+premiums, less the year's HSA distributions (Pub. 502), above 7.5% of AGI. Itemizers keep the
+OBBBA $6,000 senior bonus and lose the 65+ additions; non-itemizers also deduct up to $1,000
+($2,000 MFJ) of cash charity. After a pre-TCJA reversion (`obbba_expiration_year`) SALT is
+uncapped, the mortgage limit is $1M and the OBBBA charity rules end.
 
-`withItemized` (`"none"` / `"loop"` / `"optimize"`, default `"loop"`) picks how the branch is
-chosen. `"loop"` takes the branch the previous iterate's amounts imply and writes the itemized
-branch as rows on existing columns: it adds no column and no binary, and a year that never
-itemizes adds nothing, so a plan that never itemizes is exactly the `"none"` plan. `"optimize"`
-adds claim columns and a binary per candidate year, free only in years whose itemized total has
-come within 50% of the standard (elsewhere the loop rule), and moves any binary the MIP gap leaves
-on the smaller deduction to the larger one by an LP re-solve. `"none"` is the old behaviour
-(always the standard). The SALT cap's MAGI phase-down, the medical/charity floors and (loop mode)
-which side of each floor a year is on are loop parameters (like the NY floor). After a pre-TCJA
-reversion (`yOBBBA`) SALT is uncapped and the OBBBA charity rules (0.5% floor, non-itemizer
-deduction) end. Rent is not federal SALT. Not modeled, reported as warnings: the 2/37 limit in
-the 37% bracket, Pease after a reversion, a SALT cap one iterate stale, and a year left on the
-smaller deduction.
+New York's own itemized deduction (IT-196, 2025): property tax without a cap, charity, medical
+above 10% of federal AGI, mortgage interest under the $1M limit, state and local income taxes left
+out, and the line 46 cut (up to 25% of the deduction between NYAGI $200,000 and $250,000 MFJ;
+$100,000-$150,000 single). New York lets a filer itemize whether or not the federal return
+itemizes. New Jersey deducts medical expenses above 2% of NJ gross income (line 31, Worksheet F;
+Medicare premiums included, HSA distributions not subtracted). Data: `itemized` and
+`medical_deduction` entries in `taxes_state.toml`.
+
+`withItemized = "loop"` (default) or `"none"` (the standard deduction everywhere, federal and
+state, as before). The branch (itemize or not) and which side of each floor an amount is on come
+from the previous iteration of the self-consistent loop, as do the floors, the SALT phase-down and
+the NY cut: itemizing adds rows on existing columns, never a column or a binary, and a year that
+never itemizes leaves the plan exactly as `"none"` builds it. The loop's lag shows in the plan:
+a warning when a year takes the smaller deduction, and the *itemized*, *state itemized* and
+*state medical* entries of `fixedPointResidual`. Not modeled, reported as warnings: the 2/37
+limit in the 37% bracket and Pease after a reversion. Not modeled: AMT, other Schedule A items,
+NY's rules above $525,000. Results: Taxes sheet columns and Summary lines when nonzero;
+`plan_metrics` keys `itemized_deductions_today` and `state_itemized_today`.
+
+#### New: `medical` and `charity` budget types
+
+Two Budget line types for the deductions above. `care` stays non-deductible (assisted-living room
+and board is not a medical expense unless care is the main reason): use `medical` for deductible
+care. `Budget.by_type(..., essential=)` filters by tier.
+
+#### Fixed: the New Jersey property tax deduction under essential budget lines
+
+The line 41 deduction was bounded by the lines' share of net spending, which is wrong once some
+lines are essential and the rest scale by k: it claimed $12,625 against $12,000 paid at k = 1.137,
+and $9,600 at k = 0.474. Each deductible amount is now the essential part at its amount plus a
+share of the discretionary part (`Plan._budget_amount_terms`).
 
 #### New: budget lines can follow an age clock; a JSON budget file
 

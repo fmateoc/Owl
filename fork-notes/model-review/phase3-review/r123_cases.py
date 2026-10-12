@@ -126,3 +126,16 @@ if __name__ == "__main__":
                 out[name] = solve(couple(s, loc, lines, mortgage=m), objective, opts)
                 print(name, out[name].get("obj"), out[name].get("time"), out[name].get("bins"), flush=True)
         json.dump(out, open(out_path, "w"), indent=1)
+
+
+def compare(before_path, after_path):
+    """Print the before/after table of two JSON files written by this script."""
+    b, a = json.load(open(before_path)), json.load(open(after_path))
+    for k, x in b.items():
+        y = a.get(k, {})
+        if x.get("status") != "solved" or y.get("status") != "solved":
+            print(k, x.get("status"), y.get("status"))
+            continue
+        d = y["obj"] - x["obj"]
+        print(f"{k:32s} {x['obj']:>14,.2f} {y['obj']:>14,.2f} {d:>+10,.2f} {100 * d / max(abs(x['obj']), 1):>+8.4f}%"
+              f" {x['time']:>6.1f}s {y['time']:>6.1f}s")

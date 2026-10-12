@@ -453,7 +453,7 @@ exact LP and local search, statutory law (base, D1) and the 2032 reversion (sens
 
 Record in PROGRESS.md; raw output next to the script.
 
-### Step 7: docs — size S
+### Step 7: docs — size S (done 2026-10-11, after R1-R3 of `phase3-review.md`; PROGRESS.md)
 
 Documentation.py and PARAMETERS (Budget types, `withItemized`), modeling-capabilities (remove
 "itemized deductions not modeled"), CHANGELOG (fork section), `taxes_state.toml` header (`itemized`
@@ -511,6 +511,9 @@ locally on them; D3-D5 as recommended)
   step 2, so the order 3.1 > 3.2 > 3.4 is confirmed on real numbers; the full baseline can follow.
 - **D3. Stay NJ.** Recommended: as a scenario lever now (no code), code only if the household's NJ
   income is near a tier boundary.
+- *(Superseded 2026-10-11: `"optimize"` was removed after the review measured no gain from it,
+  `phase3-review.md` R1; `withItemized` is `"none"` | `"loop"`, default `"loop"`, and also covers NY
+  itemizing and NJ line 31.)*
 - **D4. Default of `withItemized` in the fork.** Recommended: `"optimize"` in the household's case
   files (exact, few binaries), upstream-style default `"loop"` in code when deductible inputs exist,
   `"None"` reproducing today's plans.

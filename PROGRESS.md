@@ -1081,6 +1081,33 @@ NY itemizing and NJ line 31 too; R3 one mechanism for max(0, paid − floor); R4
 below); R5 size against upstream before step 8 (federal part ~750 lines of methods vs 89 for
 `withSeniorBonus`).
 
+## Phase 3 R1-R3 and step 7 (2026-10-11, after the review)
+
+The user chose R1-R3 of `fork-notes/phase3-review.md`; details and the before/after table in its
+Part C.
+
+- **R1:** `withItemized = "optimize"` removed; the option is `"none"` | `"loop"` (default).
+- **R2:** `"none"` is the standard deduction everywhere: no NY itemizing, no NJ line 31 either.
+- **R3:** NY itemizing follows the federal pattern: branch and medical-floor side from the a
+  priori bounds or the previous iterate, one row per itemizing year, no column, no binary.
+  Phase 3 adds no binary at all now; the fork's changes to `localsearch.py`, `tools.py` and
+  `stresstests.py` for Phase 3 are gone.
+- Before/after, date frozen at 2026-10-11: 18 examples and all exact-LP cases identical to the
+  cent; NY `maxSpending` with a medical line 103 s -> 0.4 s (−$50/yr); local search with a
+  mortgage −0.31% (NY) / +0.30% (NJ), read as search noise (unproven).
+- **Step 7 (docs):** `info/modeling-capabilities.md` (an *Itemized deductions* row; Debts, Budget,
+  state and loop rows updated), `info/PARAMETERS.md` (`withItemized`), `ui/Documentation.py`
+  (Budget types; an *Itemized deductions* paragraph after rent vs buy), `CHANGELOG.md` (itemized
+  deductions federal and state; `medical` / `charity` types; the NJ line 41 fix under essential
+  lines), `phase0-scenarios.md` (sections 3 and 5: the deductions are modeled, measured stakes, a
+  `--set solver_options.withItemized=none` recipe), template (`withItemized = "loop"`).
+  `taxes_state.toml`'s header was updated in the review commit.
+- Scenario 5 with the deductions (exact, synthetic couple): +$13.1k (cash) / +$70.4k (mortgage)
+  of bequest under statutory law; cash vs mortgage narrows from $204k to $147k, not reversed;
+  cash vs rent turns from −$4.6k to +$8.5k (0.6%, unresolved).
+
+Next: step 8 (upstream, concept level, `phase3-plan.md` §5), or Phase 5 / STAR as needed.
+
 ## Upstream dev 390f02f merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
 2026.10.11: `setMedicalInflation` / `medical_inflation_excess` (Medicare, ACA and other medical
@@ -1088,7 +1115,7 @@ expenses grow faster than inflation; contributed by Dmitry Fink, #182). Conflict
 only. Fork change: `_medical_premium_lo` grows the HSA cap's other-medical amount with
 `_medical_n`, as upstream's `_add_hsa_medical_cap` now does. Questions for Phase 4 in
 `phase3-review.md` R4 (budget `medical` lines grow at their own rate; upstream's
-`setMedicalExpenses` is in no claim and not charged as spending).
+`setMedicalExpenses` is in no claim; it only caps HSA withdrawals, as part of general spending).
 
 ## Upstream dev 844a7ec merged (2026-10-11, on `claude/eager-cray-s0fvks`)
 
@@ -1123,6 +1150,10 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-11, Phase 3 R1-R3 (`c1c88a3`): **3178 passed, 1 skipped** (full suite in a worktree with
+`PYTHONPATH=src`, 6:59; 3184 − 8 optimize-mode tests + 2 `"none"` tests). flake8 only upstream's
+`localsearch.py:31`; `ruff check src tests ui` passes. No AMO reference moved.
 
 2026-10-11, Phase 3 review fixes + upstream `dev` `390f02f` merged: **3184 passed, 1 skipped**
 (full suite, 7:54; before: 3168 on `e634c81`; +2 review regression tests, +12 upstream

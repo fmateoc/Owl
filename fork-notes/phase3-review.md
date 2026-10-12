@@ -189,9 +189,9 @@ so the claims follow. One fork line must change with it: `_medical_premium_lo` u
 `other_medical_k * gamma_n`, which becomes `other_medical_k * _medical_n(gamma_n)`. Two
 consistency questions it raises for Phase 4: budget `medical` lines grow at their own real
 `rate`, not at upstream's excess (should a `medical` line default to it?); and upstream's own
-medical input (`setMedicalExpenses`) is in no claim and is not charged as spending (only an HSA
-cap), which a federal proposal upstream has to address: which medical amount would Schedule A
-read?
+medical input (`setMedicalExpenses`) is in no claim: it only caps HSA withdrawals (its help text:
+"treated as part of general living costs"), which a federal proposal upstream has to address:
+which medical amount would Schedule A read?
 
 **R5. Size against upstream's scale before step 8.** Phase 3 adds about 1,240 lines of new
 methods to `plan.py` (federal 748, NY 206, NJ 102, shared medical 107, shared budget/spending
@@ -219,3 +219,48 @@ roughly what a loop-only design needs.
   editable install whose `.pth` points at `/home/user/Owl/src`, so a worktree with `.venv`
   symlinked imports `/home/user/Owl/src/owlplanner` (checked: `owlplanner.__file__` from the
   worktree). Set `PYTHONPATH=$PWD/src` in the worktree to test its own code.
+
+---
+
+## Part C — R1-R3 done, then step 7 (2026-10-11, same day)
+
+The user chose R1-R3. Commit `c1c88a3` (code), then step 7 (docs).
+
+- **R1:** `withItemized` is `"none"` | `"loop"`; `"optimize"` is refused. Gone: the claim
+  columns, `zi` / `zch` / `zmedf`, `FIX_n`, `ITEM_WINDOW`, `_fix_dominated_itemizing`, the
+  "itemizing" local-search family; the breakpoint presets no longer touch `withItemized`.
+- **R2:** `"none"` also turns off NY itemizing and NJ line 31.
+- **R3:** NY takes its branch and its medical floor's side from the a priori bounds or the
+  previous iterate (`_st_zi_n`, `_st_medl_n`), with one row on existing columns per itemizing year;
+  `zsi`, `zmed` and the NY claim columns are gone. Federal and NY share `_itemized_amounts`,
+  `_claim_terms`, `_claim_values`, `_floor_flags`. Phase 3 now adds no binary anywhere;
+  `localsearch.py`, `assistant/tools.py` and `stresstests.py` carry upstream's lists again.
+- Size: `c1c88a3` is +559 / −899 lines (11 files).
+
+Before / after (`r123_cases.py`, date frozen at 2026-10-11, before = `b9064ec`, after = `c1c88a3`;
+`r123_compare_2026-10-11.txt`):
+
+| cases | result |
+|---|---|
+| 18 examples, own options | identical to the cent |
+| step-6 probes and NY-vs-NJ, exact LP, `"loop"` | identical to the cent |
+| NY owner, local search (no mortgage, $20k / $25k) | identical; 63 -> 37 s |
+| NY + $3k medical, `maxSpending`, exact | identical; 13.8 -> 0.1 s |
+| same, full loop | −$50/yr (−0.04%); 103 -> 0.4 s |
+| NY + $3k medical, `maxBequest`, local search | −$603 (−0.08%); 67 -> 42 s |
+| NY + mortgage, local search | −$2,120 (−0.31%); 37 -> 24 s |
+| NJ + mortgage, local search | +$2,031 (+0.30%); 122 -> 122 s |
+| `"none"` on NY plans | now without NY itemizing (R2): −$38.6k (owner) / −$76.7k (mortgage) |
+
+Under local search the two mortgage cases move by 0.3% in opposite directions: the search no
+longer flips the itemizing branch (the old "itemizing" family) and takes another path. Both are
+under the 1% band, so I read them as search noise, not as a loss from R1; that reading is not
+proven (one case each way).
+
+Full suite on `c1c88a3`: 3178 passed, 1 skipped (3184 − 8 tests of the optimize mode + 2 tests
+of `"none"`).
+
+Scenario 5 under `"loop"` (`housing_loop.py`, exact, frozen date) matches step 6's optimize
+values to the dollar; with `"none"` now also dropping NY itemizing, the deductions together are
+worth +$13.1k (cash) and +$70.4k (mortgage) of bequest under statutory law, +$10.2k / +$108.7k
+under the 2032 reversion (`housing_loop_2026-10-11.txt`).

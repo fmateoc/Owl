@@ -695,7 +695,7 @@ where:
   *medical*, *charity*, *other*. Lines of another type are left out, with a warning. *rent* and
   *property tax* also feed a state's property tax deduction where the state has one (New Jersey,
   NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \\$15,000). *medical* and
-  *charity* are the deductible care and giving lines (Phase 3 itemized deductions). *care* is not
+  *charity* are the deductible care and giving lines (itemized deductions, below). *care* is not
   deductible by default: assisted-living room and board is not medical expense unless care is the
   main reason — use *medical* for deductible care.
 - *year* is the first calendar year of the line. A year before the plan start is read as the plan start.
@@ -743,8 +743,26 @@ maintenance) as budget lines. *Buy with a mortgage*: the same, with the down pay
 and the loan in *Debts*. When the home is sold within the plan, end its lines the year before *yod* and
 name the home in the loan's *property* column, so that the sale pays off the loan. Home equity is not
 spendable, so compare the variants with *maxBequest* at a fixed net spending: the final bequest counts the
-home, net of any remaining debt. Mortgage interest is not deducted (the federal standard deduction is
-assumed).
+home, net of any remaining debt. The mortgage interest is deducted when itemizing beats the standard
+deduction (below).
+
+*Itemized deductions.* Each year deducts the larger of the standard deduction and the itemized total.
+Federally the itemized total is the state and local taxes (the *property tax* lines plus the state and
+local income tax the plan pays, up to the SALT cap: \\$40,400 in 2026, rising 1% a year through 2029,
+reduced above \\$505,000 of MAGI, and \\$10,000 from 2030), home mortgage interest (from *Debts* rows of
+type *mortgage*, within the \\$750,000 limit, \\$1 million for loans from before 2018), *charity* lines
+above 0.5% of AGI, and *medical* lines plus the Medicare and ACA premiums the plan pays, less HSA
+withdrawals, above 7.5% of AGI. Itemizers keep the \\$6,000 senior deduction and lose the extra standard
+deduction for age 65; those who do not itemize also deduct up to \\$1,000 (\\$2,000 for a couple) of
+charity. New York has its own itemized deduction, taken whether or not the federal return itemizes:
+property tax without a cap, charity, medical above 10% of AGI and mortgage interest, reduced by up to
+25% above \\$200,000 of NY income for a couple. New Jersey deducts medical above 2% of its gross income.
+Whether a year itemizes, and the income-based floors, follow the previous step of the self-consistent
+loop. The solver option *withItemized* = "none" turns all of this off (the standard deduction
+everywhere). Not modeled: the alternative minimum tax, the limit on itemized deductions in the 37%
+bracket (its amount is reported). *Other medical expenses* on the Run Options page only cap HSA withdrawals
+(they are part of general spending), so they are not deducted: enter deductible medical costs as *medical*
+budget lines.
 """)
 
     with st.expander(":orange[**Fixed Income**]", expanded=expand_all, type="compact"):

@@ -1,0 +1,6 @@
+yOBBBA 2099 rent      none     1,428,594  loop     1,428,594  diff +0  fed item yrs 0  st item yrs 0 (none: 0)
+yOBBBA 2099 cash      none     1,423,993  loop     1,437,134  diff +13,141  fed item yrs 0  st item yrs 28 (none: 0)
+yOBBBA 2099 mortgage  none     1,220,008  loop     1,290,362  diff +70,354  fed item yrs 4  st item yrs 31 (none: 0)
+yOBBBA 2032 rent      none     1,305,061  loop     1,305,061  diff +0  fed item yrs 0  st item yrs 0 (none: 0)
+yOBBBA 2032 cash      none     1,304,847  loop     1,315,073  diff +10,226  fed item yrs 3  st item yrs 28 (none: 0)
+yOBBBA 2032 mortgage  none     1,098,702  loop     1,207,446  diff +108,744  fed item yrs 26  st item yrs 31 (none: 0)

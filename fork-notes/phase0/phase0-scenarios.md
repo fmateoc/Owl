@@ -66,9 +66,21 @@ owlcli compare otherFiles/Case_us.toml --set 'basic_info.moves=[{"year": 2032, "
 NY benefit recapture (above $107,650 of NY AGI) applies automatically, and the Yonkers surcharge
 includes it. NJ's retirement-income exclusion (lines 28a-28c) is modeled exactly (a MILP; see
 `CLAUDE.md`), and so is the NJ property tax deduction (line 41, Phase 2): homeowners deduct
-property taxes up to $15,000, tenants 18% of rent. Not modeled: NYC household and school-tax
-credits, part-year residency, the $50 NJ property tax credit, NJ ANCHOR/Senior Freeze/Stay NJ,
-and NY STAR (enter those as big-ticket items or net them off the budget's property tax line).
+property taxes up to $15,000, tenants 18% of rent. Phase 3 added NY's own itemized deduction
+(IT-196: property tax uncapped, mortgage interest, charity, medical above 10% of AGI) and NJ's
+medical deduction (line 31), both under `withItemized` (default `"loop"`), with the federal
+itemized deduction. Without NY itemizing the NY-vs-NJ owner comparison leaned toward NJ: on the
+synthetic couple, same day, NY itemizing was worth $27-39k of bequest exact and $6-11k under local
+search at $20-25k of property tax (`fork-notes/phase3-review.md`, A.2). To see what the
+deductions are worth for us, switch them off in the variant only:
+
+```bash
+owlcli compare otherFiles/Case_us.toml --set solver_options.withItemized=none
+```
+
+Not modeled: NYC household and school-tax credits, part-year residency, the $50 NJ property tax
+credit, NJ ANCHOR/Senior Freeze/Stay NJ, and NY STAR (enter those as big-ticket items or net them
+off the budget's property tax line; STAR as a rule is still to do, PROGRESS.md "Step 2 review").
 
 Differences under about 1% between residency variants can be loop noise rather than a real
 difference, with either sign (see `PROGRESS.md`, NJ stakes). Keep the solver options identical
@@ -135,7 +147,8 @@ Two inputs to set per scenario by hand:
 
 Spending comes from a budget: `spending_profile = "budget"` builds the spending profile from the
 `Budget` sheet of the HFP workbook, one line per item (`core` spending, `rent`, `property tax`,
-`insurance`, `maintenance`, `car`, `travel`, `care`, `other`). `amount` is annual, in today's
+`insurance`, `maintenance`, `car`, `travel`, `care`, `medical`, `charity`, `other`; `property tax`,
+`medical` and `charity` are deductible when itemizing wins, `care` is not). `amount` is annual, in today's
 dollars; `rate` is real growth above inflation in percent (0.5 is 0.5%); `year` and `end` are the
 first and last calendar years (`end` 0 = through the plan end; negative counts back from it);
 `survivor` is the percent kept after the first death (blank: the case's 60%, or 100 for the four
@@ -206,12 +219,26 @@ owlcli compare otherFiles/Case_us_housing.toml \
 
 Loop noise rules from the residency section apply.
 
-Not modeled, so read cash vs mortgage with care: the **mortgage interest deduction** (federal
-itemized deductions and NY's own; Phase 3). Owl assumes the standard deduction, so a mortgage
-looks worse than it would be while itemizing beats the standard deduction (most likely in
-2026-2029, while the SALT cap is higher; recalled, not verified). The cash-vs-mortgage result
-also turns on the mortgage rate against the assumed returns: with fixed rates it is a point
-estimate; historical or stochastic ranges show the spread.
+The **mortgage interest deduction** is modeled (Phase 3, `withItemized`, default `"loop"`): the
+loan's interest, the property tax and the state income tax are itemized federally when that beats
+the standard deduction (mostly 2026-2029, while the SALT cap is $40,400), and on NY's own schedule
+every year it wins there. On the synthetic couple (exact LP, plans starting 2026-10-11, $600k home,
+$480k at 6.5%; `fork-notes/model-review/phase3-review/housing_loop.py`), the deductions together
+add $13.1k of bequest to buying with cash and $70.4k to the mortgage (statutory law; $10.2k and
+$108.7k under the 2032 reversion). They narrow cash vs mortgage from $204k to $147k without
+reversing it, and turn cash vs rent from rent ahead by $4.6k to cash ahead by $8.5k (0.6%: under the 1% below
+which the Phase 1 rule calls a difference unresolved). To see what they are worth on our numbers:
+
+```bash
+owlcli compare otherFiles/Case_us_housing.toml \
+  --set household_financial_profile.HFP_file_name=HFP_us_buy_mortgage.xlsx \
+  --set solver_options.withItemized=none
+```
+
+compares the rent base (with deductions) to the mortgage variant without them; run the same
+command without the last `--set` for the mortgage with them. The cash-vs-mortgage result also
+turns on the mortgage rate against the assumed returns: with fixed rates it is a point estimate;
+historical or stochastic ranges show the spread.
 
 `maxSpending` answers another question with a budget: how large a version of this budget can be
 afforded (every line scales, rent included). Use it for "can we afford this budget" (the basis

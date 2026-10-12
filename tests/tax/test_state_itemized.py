@@ -420,3 +420,15 @@ def test_essential_lines_still_get_itemized_rows():
     assert p._st_item_years, "essential core must not hide the property tax deduction"
     assert p.st_itemizing_n[:20].any()
     assert p.st_item_n.max() > 0
+
+
+def test_other_medical_expenses_are_deductible_without_a_budget_medical_line():
+    """NY reads setMedicalExpenses when the budget has no `medical` line, as the federal claim does."""
+    p = _plan(core=40_000.0, property_tax=0.0)
+    p.setMedicalExpenses(40)
+    q = _solve(p)
+    assert q.st_itemizing_n[:20].all()
+    claim = np.maximum(0.0, 40_000.0 * q._medical_n(q.gamma_n)[: q.N_n] - q.STMF_n)
+    pos = q.st_ti_n > 1.0
+    assert pos[:20].sum() >= 10
+    np.testing.assert_allclose(q.st_imed_n[pos], claim[pos], atol=1.0)

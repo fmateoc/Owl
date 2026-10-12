@@ -482,3 +482,48 @@ def test_itemized_row_families_are_registered_for_explain():
     phase3 = {f for f in fams if f.startswith(("item_", "state_item_", "state_medical"))}
     assert {"item_deduction", "state_item_deduction", "state_medical_deduction"} <= phase3
     assert phase3 <= set(CONSTRAINT_FAMILIES), sorted(phase3 - set(CONSTRAINT_FAMILIES))
+
+
+def test_other_medical_expenses_are_the_medical_paid_without_a_budget_medical_line():
+    """setMedicalExpenses (the MCP's other_medical_expenses: out-of-pocket qualified medical
+    expenses, IRC 213(d)) is the medical paid when the budget has no `medical` line."""
+    p = _plan(state="FL", property_tax=0.0, core=40_000.0)
+    p.setMedicalExpenses(60)
+    q = _solve(p, withItemized="loop")
+    assert q.itemizing_n[0]
+    paid = 60_000.0 * q._medical_n(q.gamma_n)[: q.N_n] + q.medicare_n + q.aca_costs_n
+    expect = np.maximum(0.0, paid - q.FEDMF_n)
+    pos = q.itemizing_n & (q.item_med_n > 1.0)
+    assert pos[:15].sum() >= 5
+    np.testing.assert_allclose(q.item_med_n[pos], expect[pos], rtol=0.02, atol=1.0)
+
+
+def test_other_medical_expenses_count_in_a_plan_without_a_budget():
+    """The MCP path: no Budget sheet, the default profile, medical entered as other_medical_expenses."""
+    def plan():
+        p = owl.Plan(["Joe", "Jane"], ["1964-03-15", "1964-09-15"], [89, 92], "no budget",
+                     verbose=False, logstreams=[io.StringIO()])
+        p.setSpendingProfile("flat")
+        p.setAccountBalances(taxable=[150, 150], taxDeferred=[900, 600], taxFree=[75, 75])
+        p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
+        p.setRates("conservative")
+        p.setSocialSecurity([3000, 2400], [70, 70])
+        p.setMedicalExpenses(60)
+        p.setExpirationYearOBBBA(2099)
+        return p
+
+    on = _solve(plan(), withItemized="loop", netSpending=80)
+    off = _solve(plan(), withItemized="none", netSpending=80)
+    assert on.itemizing_n[:10].all()
+    assert on.item_med_n[0] > 10_000.0
+    assert on.bequest > off.bequest
+
+
+def test_a_budget_medical_line_replaces_other_medical_expenses():
+    """One source: with a budget `medical` line, setMedicalExpenses is not added to it."""
+    a = _solve(_plan(state="FL", property_tax=0.0, medical=60_000.0, core=40_000.0), withItemized="loop")
+    p = _plan(state="FL", property_tax=0.0, medical=60_000.0, core=40_000.0)
+    p.setMedicalExpenses(30)
+    b = _solve(p, withItemized="loop")
+    assert a.item_med_n.max() > 10_000.0
+    np.testing.assert_allclose(b.item_med_n, a.item_med_n, atol=0.01)

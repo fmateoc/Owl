@@ -9,8 +9,9 @@ the cash flow charges), capped at $40,400 in 2026, +1%/yr through 2029 and $10,0
 cap reduced by 30% of MAGI over $505,000 (2026) before 2030; home mortgage interest from `Debts`
 rows of type `mortgage` (Pub. 936 Table 1: $750,000 of acquisition debt, $1M for loans taken out
 before 2018; a loan linked to `real estate` is a rental's and is left out); `charity` lines above
-0.5% of AGI; and `medical` lines plus Owl's Medicare Part B/D (IRMAA included) and ACA net
-premiums, less the year's HSA distributions (Pub. 502), above 7.5% of AGI. Itemizers keep the
+0.5% of AGI; and `medical` lines (or, in a plan without one, the `other_medical_expenses` amount
+of `setMedicalExpenses`) plus Owl's Medicare Part B/D (IRMAA included) and ACA net premiums, less
+the year's HSA distributions (Pub. 502), above 7.5% of AGI. Itemizers keep the
 OBBBA $6,000 senior bonus and lose the 65+ additions; non-itemizers also deduct up to $1,000
 ($2,000 MFJ) of cash charity. After a pre-TCJA reversion (`obbba_expiration_year`) SALT is
 uncapped, the mortgage limit is $1M and the OBBBA charity rules end.

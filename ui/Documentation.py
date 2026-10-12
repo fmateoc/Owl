@@ -760,9 +760,9 @@ property tax without a cap, charity, medical above 10% of AGI and mortgage inter
 Whether a year itemizes, and the income-based floors, follow the previous step of the self-consistent
 loop. The solver option *withItemized* = "none" turns all of this off (the standard deduction
 everywhere). Not modeled: the alternative minimum tax, the limit on itemized deductions in the 37%
-bracket (its amount is reported). *Other medical expenses* on the Run Options page only cap HSA withdrawals
-(they are part of general spending), so they are not deducted: enter deductible medical costs as *medical*
-budget lines.
+bracket (its amount is reported). *Other medical expenses* on the Run Options page are the medical
+expense of these deductions when the budget has no *medical* line; with one, the budget's lines are used
+and *Other medical expenses* only cap HSA withdrawals, so nothing is counted twice.
 """)
 
     with st.expander(":orange[**Fixed Income**]", expanded=expand_all, type="compact"):
@@ -1566,7 +1566,7 @@ in today's dollars. Like most fields in the interface, it is **in thousands**.
 IRS rules allow HSA withdrawals only up to total qualified medical expenses (QMEs).
 This field, combined with Medicare costs, caps tax-free HSA withdrawals each year.
 If zero, HSA withdrawals are limited to Medicare costs only.
-Field is ignored if plan has no HSA.
+Field is ignored if plan has no HSA, except by the itemized deductions (see *Itemized deductions*).
 Note: these expenses are treated as part of general living costs in the cash flow — they do not
 appear separately in the *Healthcare* slice of the spending pie chart, which covers insurance
 premiums only.

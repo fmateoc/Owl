@@ -1140,13 +1140,41 @@ Schedule A medical expense (Pub. 969: HSA qualified medical expenses are IRC 213
 the Schedule A definition; read on irs.gov 2026-10-12). The proposal now counts medical among the
 amounts Owl already knows and asks whether Schedule A may read it (question 2).
 
-Fork-side question this raises (open, not changed): the fork's federal and NY medical claims read
+Fork-side question this raised (fixed the same day, next section): the fork's federal and NY medical claims read
 budget `medical` lines plus premiums, less all HSA distributions; `other_medical_k` is in no
 claim (documented in `_medical_premium_terms`: the claim can only be understated). A household
 that enters its out-of-pocket medical through `other_medical_expenses`, as upstream's intake now
 asks, gets no deduction for it, and its HSA distributions against it are still subtracted from
 the premiums. Options: read `other_medical_k` in the claim when the plan has no budget `medical`
 line (one source, no double count), or refuse/warn when both are set. Decide with Phase 4.
+
+## other_medical_expenses in the medical claims (2026-10-12, on `claude/eager-cray-s0fvks`)
+
+The user chose the first option above. `Plan._medical_amount_terms()` is the household's own
+medical expense for every claim (federal Schedule A, NY IT-196, NJ line 31, their candidate years,
+floor flags, residuals and the NJ shortfall check): the budget's `medical` lines when it has any
+(`_budget_has_medical`), otherwise `setMedicalExpenses`' amount (`other_medical_k`, nominal, grown
+with `_medical_n`, coefficient 0 on net spending). One source, never both. `other_medical_k > 0`
+also opens the NJ line 31 column, as a `medical` line did. Premiums and the HSA subtraction are
+unchanged, so an HSA that pays the other medical amount now takes it back from a claim that
+contains it.
+
+- Tests (5 new): federal claim with no budget `medical` line (FL, $60k); the MCP path with no
+  Budget sheet (flat profile, `netSpending` 80: itemizes the first 10 years, bequest above
+  `"none"`); a budget `medical` line wins (claims identical with `setMedicalExpenses(30)` added);
+  NJ line 31 and NY IT-196 read it. On the previous commit four of them fail (the guard passes on
+  both, as it should).
+- Examples that set `other_medical_expenses` (joe $3k, kim+sam $2k x 2): basis and bequest
+  identical to the cent before and after (date frozen at 2026-01-01); no year itemizes in either.
+- Docs: CHANGELOG fork entry, `modeling-capabilities.md` (itemized row: the old "in no claim"
+  sentence replaced), `Documentation.py` (itemized paragraph; one clause on the Qualified Medical
+  Expenses field).
+- Full suite **3198 passed, 1 skipped** (7:50). flake8: only upstream's `localsearch.py:31`; ruff
+  clean.
+- Semantics, stated in the docs: `other_medical_expenses` is a fixed amount, so under
+  `maxSpending` it does not scale with spending; a `medical` budget line does. With a Budget
+  profile and no `medical` line, it is counted as paid even though the budget lines do not list
+  it (upstream says it sits inside net spending).
 
 ## Phase 3 step 8 — upstream proposal drafted (2026-10-12, on `claude/eager-cray-s0fvks`)
 

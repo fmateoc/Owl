@@ -2984,7 +2984,7 @@ class Plan:
         return {
             "pt": self._budget_amount_terms(budgeting.PROPERTY_TAX),
             "ch": self._budget_amount_terms(budgeting.CHARITY),
-            "med": self._budget_amount_terms(budgeting.MEDICAL),
+            "med": self._medical_amount_terms(),
         }
 
     def _floor_flags(self, sched, g_n=None):
@@ -3212,7 +3212,8 @@ class Plan:
         # loop). mediVals always builds Cbar, so it cannot be the flag.
         with_medi = str(options.get("withMedicare", "loop")).lower() != "none"
         has_med_expense = (
-            (self.budget is not None and bool(np.any(self.budget.by_type(budgeting.MEDICAL) > 0)))
+            self._budget_has_medical()
+            or self.other_medical_k > 0
             or with_medi
             or bool(self.slcsp_annual > 0)
         )
@@ -3427,6 +3428,29 @@ class Plan:
         const = gam * (ess - coef * E)
         return const, coef
 
+    def _budget_has_medical(self):
+        "True when the budget has a `medical` line with an amount in some plan year."
+        return self.budget is not None and bool(np.any(self.budget.by_type(budgeting.MEDICAL) > 0))
+
+    def _other_medical_paid_n(self):
+        "setMedicalExpenses' amount per year ($ nominal), growing with the medical index (_medical_n)."
+        gam = getattr(self, "gamma_n", None)
+        if self.other_medical_k <= 0 or gam is None:
+            return np.zeros(self.N_n)
+        return self.other_medical_k * self._medical_n(gam)[: self.N_n]
+
+    def _medical_amount_terms(self):
+        """(const_n, coef_n) of the household's own medical expense, as _budget_amount_terms.
+
+        The budget's `medical` lines when it has any; otherwise setMedicalExpenses' amount
+        (other_medical_expenses: out-of-pocket qualified medical expenses, IRC 213(d), the same
+        definition as Schedule A), a fixed amount (coef 0). One source, never both, so nothing
+        is counted twice. Owl's premiums are added separately (_medical_premium_terms).
+        """
+        if self._budget_has_medical():
+            return self._budget_amount_terms(budgeting.MEDICAL)
+        return self._other_medical_paid_n(), np.zeros(self.N_n)
+
     def _has_hsa(self):
         "True when an HSA has a balance or contributions (the HSA cap rows exist)."
         return bool(np.any(self.beta_ij[:, 3] > 0) or np.any(self.kappa_ijn[:, 3, :] > 0))
@@ -3443,8 +3467,8 @@ class Plan:
         w[i,3,n]): Pub. 502 (2025), "You can't include expenses you pay for with a tax-free
         distribution from your health savings account. You also can't use other funds equal to
         the amount of the distribution and include the expenses." All of the year's HSA
-        distributions are subtracted, including any paid against setMedicalExpenses' amount,
-        which is in no claim: the claim can only be understated by that. Federal and NY
+        distributions are subtracted; setMedicalExpenses' amount, which they may also pay, is in
+        the claim when the budget has no `medical` line (_medical_amount_terms). Federal and NY
         (Schedule A based) only; NJ does not follow federal HSA treatment (not modeled), so its
         line 31 passes hsa=False.
         """
@@ -3541,13 +3565,13 @@ class Plan:
                 self.A.addRow(row, -np.inf, self.st_ptd_const_n[n], tag=("state_property_tax_deduction", n))
 
     def _nj_medical_paid(self, n, g=None):
-        """Medical paid in year n for the NJ line 31 claim: budget `medical` + Owl's premiums.
+        """Medical paid in year n for the NJ line 31 claim: _medical_amount_terms + premiums.
 
         At net spending g when given; else an upper bound (net spending at the income ceiling,
         premiums at their column bounds). HSA distributions are not subtracted (hsa=False in
         _medical_premium_terms: NJ does not follow federal HSA treatment).
         """
-        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        const_med, coef_med = self._medical_amount_terms()
         prem_fixed, _ = self._medical_premium_terms(n, hsa=False)
         paid = float(const_med[n] + prem_fixed)
         if g is not None:
@@ -3569,7 +3593,7 @@ class Plan:
         flags = np.zeros(self.N_n)
         if not getattr(self, "_st_med_lp", False):
             return flags
-        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        const_med, coef_med = self._medical_amount_terms()
         prem_n = self._medical_premium_values(hsa=False) if g_n is not None else None
         for n in range(self.N_n):
             if self.st_medd_floor_pct_n[n] <= 0:
@@ -3592,7 +3616,7 @@ class Plan:
         NJMF_n, 2% of the previous iterate's line 29. st_med is a bounded variable beside st_pt
         (no binary): the claim is at most what was paid minus the floor, and a year whose paid
         amount does not clear the floor claims nothing (_nj_medl_n, as the federal loop's
-        _item_medl_n). Medical paid is the budget's `medical` lines plus Owl's premiums
+        _item_medl_n). Medical paid is _medical_amount_terms plus Owl's premiums
         (Medicare Part B/D + IRMAA and the ACA net premium; the NJ-1040 instructions name
         Part B).
 
@@ -3604,7 +3628,7 @@ class Plan:
         vm = self.vm
         if not getattr(self, "_st_med_lp", False) or "st_med" not in vm:
             return
-        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        const_med, coef_med = self._medical_amount_terms()
         for n in range(self.N_n):
             if self.st_medd_floor_pct_n[n] <= 0 or self._nj_medl_n[n] < 0.5:
                 self.B.setRange(vm["st_med"].idx(n), 0, 0)
@@ -3624,7 +3648,8 @@ class Plan:
     def _st_item_candidate_years(self):
         """Plan years that might itemize: the state allows it and something is deductible.
 
-        A budget line of a deductible type or home mortgage interest. A year with none of them
+        A budget line of a deductible type, setMedicalExpenses' amount when the budget has no
+        `medical` line (_medical_amount_terms), or home mortgage interest. A year with none of them
         always takes the standard, so it gets no columns (and a plan with no such year anywhere
         stays a pure LP). The budget's amounts, not _budget_amount_terms, decide: a const there
         can be negative (essentials minus the discretionary share of E) and is in dollars while
@@ -3633,13 +3658,13 @@ class Plan:
         if not np.any(self.st_item_ok_n):
             return []
         if self.budget is not None:
-            lines = (
-                self.budget.by_type(budgeting.PROPERTY_TAX)
-                + self.budget.by_type(budgeting.CHARITY)
-                + self.budget.by_type(budgeting.MEDICAL)
-            )
+            lines = self.budget.by_type(budgeting.PROPERTY_TAX) + self.budget.by_type(budgeting.CHARITY)
         else:
             lines = np.zeros(self.N_n)
+        if self._budget_has_medical():
+            lines = lines + self.budget.by_type(budgeting.MEDICAL)
+        else:
+            lines = lines + self._other_medical_paid_n()
         has_ded = (lines > 0) | (self.st_item_mi_n > 0)
         return [int(n) for n in np.flatnonzero(self.st_item_ok_n & has_ded)]
 
@@ -3759,7 +3784,7 @@ class Plan:
         their floors), and "lb" / "ub" for the whole itemized total, mortgage interest included,
         from net spending's bounds. Budget amounts are const + coef * g_n with coef >= 0. The
         floors are loop parameters from the previous iterate's AGI: FEDCF_n / FEDMF_n federally,
-        none / STMF_n for the state. Medical paid is the budget's `medical` lines plus Owl's
+        none / STMF_n for the state. Medical paid is _medical_amount_terms plus Owl's
         premiums (Medicare Part B/D + IRMAA and the ACA net premium) less HSA distributions.
         """
         (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
@@ -6090,7 +6115,7 @@ class Plan:
         else:
             claimed = self.vm["st_med"].extract(x)
             g_n = self.vm["g"].extract(x)
-        const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+        const_med, coef_med = self._medical_amount_terms()
         prem = self._medical_premium_values(x, hsa=False)
         paid = np.maximum(0.0, const_med + coef_med * g_n + prem)
         # A flagged year's row allows paid - F, negative while the loop lags (see
@@ -7780,7 +7805,7 @@ class Plan:
         if self._st_med_lp:
             # NJ line 31 claimed less the claim the plan's own line 29 allows (the floor and the
             # flag are the previous iterate's), where state taxable income is positive.
-            const_med, coef_med = self._budget_amount_terms(budgeting.MEDICAL)
+            const_med, coef_med = self._medical_amount_terms()
             paid = const_med + coef_med * self.g_n + self._medical_premium_values(hsa=False)
             F_true = self.st_medd_floor_pct_n / 100.0 * np.maximum(0.0, self.st_agi_n - self.st_rx_n)
             implied = np.where(self.st_medd_floor_pct_n > 0, np.maximum(0.0, paid - F_true), 0.0)

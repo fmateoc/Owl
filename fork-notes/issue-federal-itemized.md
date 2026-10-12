@@ -74,10 +74,12 @@ NJ; plans start 2026-10-11):
   near the switch).
 - Rules (P.L. 119-21, IRS instructions, Pub. 936): `phase3-plan.md` §3.1, verified 2026-10-10.
 
+The fork follows the rule question 2 proposes since 2026-10-12: its claims read
+`other_medical_expenses` when the budget has no `medical` line, never both (PROGRESS.md).
+
 Inferred, not measured (stated as such in the text): with `medical_inflation_excess` > 0 the
 medical amounts grow faster than the 7.5%-of-AGI floor, so the medical part of Schedule A grows
-over the plan. The fork's claim reads budget `medical` lines and premiums, not
-`other_medical_k` (see PROGRESS.md for the fork-side question this raises).
+over the plan.
 
 Not verified, and kept out of the text: whether turning the rule on by default would change any
 existing upstream example (they have no mortgage and no budget; the fork's 18-example run compared

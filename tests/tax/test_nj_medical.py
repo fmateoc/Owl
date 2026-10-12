@@ -186,3 +186,17 @@ def test_line_31_lag_counts_in_the_residuals():
     sc["NJMF_n"] = sc["NJMF_n"] + 1000.0
     moves = p._itemized_sc_moves(sc, None, p.gamma_n[: p.N_n])
     assert sum(float(m) for m in moves) > 0
+
+
+def test_other_medical_expenses_are_claimed_without_a_budget_medical_line():
+    """setMedicalExpenses is the medical paid when the budget has no `medical` line; it opens
+    the line 31 column on its own (Medicare off here)."""
+    p = _plan(core=40_000.0, taxable=(200, 200), deferred=(2000, 1500), property_tax=0.0)
+    p.setMedicalExpenses(100)
+    q = _solve(p)
+    assert "st_med" in q.vm
+    paid = 100_000.0 * q._medical_n(q.gamma_n)[: q.N_n]
+    floor = q.st_medd_floor_pct_n / 100.0 * np.maximum(0.0, q.st_agi_n - q.st_rx_n)
+    pos = q.st_med_n > 1.0
+    assert pos.sum() >= 10
+    np.testing.assert_allclose(q.st_med_n[pos], np.maximum(0.0, paid - floor)[pos], rtol=0.05, atol=2.0)

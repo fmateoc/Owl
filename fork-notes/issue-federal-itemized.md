@@ -1,6 +1,7 @@
 # Draft upstream design issue: federal itemized deductions (Phase 3 step 8), for the user to post
 
-Status: draft, 2026-10-12. Not posted. Concept level (`phase3-plan.md` §2, lessons 2, 4, 7, 8;
+Status: draft, 2026-10-12; revised the same day after merging upstream `dev` `810a6cd` (MCP
+health-care parameters). Not posted. Concept level (`phase3-plan.md` §2, lessons 2, 4, 7, 8;
 `phase3-review.md` R5): the contract and the measured stakes, not the fork's code. Federal only;
 NY itemizing and NJ line 31 stay in the fork (lesson 3).
 
@@ -15,7 +16,8 @@ Discussion numbers and dates are from those pages, not from the fork's notes):
 - **#175 is Discussion #177.** Last comment: ours of 2026-10-09 (`issue-175-reply-3.md`, posted;
   the notes said "user to post"), ending with three questions. No maintainer reply since; his
   2026-10-08 comment said he was nearly out of tokens for the week.
-- Upstream `dev` is still `390f02f` (fetched 2026-10-12; already merged here).
+- Upstream `dev` moved to `810a6cd` on 2026-10-11 evening (three commits, MCP and explainer
+  only; merged here 2026-10-12). It changes question 2 and the medical bullet (below).
 
 Recommendation: a **new issue**, not a comment on #177. The proposal is a federal tax rule in core;
 #177 is about Owl-budget, and our questions there are unanswered, so a comment would stack on
@@ -26,7 +28,8 @@ the loop noise already noted.
 
 ## What the text rests on
 
-Verified on stock upstream `dev` `390f02f` (`git show upstream/dev:...`, 2026-10-12):
+Verified on stock upstream `dev` (`git show upstream/dev:...`, 2026-10-12; `390f02f`, then
+`810a6cd`, which touches none of the files cited in this list except as noted):
 
 - `info/modeling-capabilities.md:29`: "Itemized deductions not modeled; standard deduction only."
   `papers/owl.tex:970` and `:1015` say the same for federal and state.
@@ -39,6 +42,19 @@ Verified on stock upstream `dev` `390f02f` (`git show upstream/dev:...`, 2026-10
   `get_mortgage_interest_array` is 83 lines on top of these.
 - State income tax is an LP quantity (`st_T_n`, `_add_state_taxable_income`); Medicare and ACA
   premiums are computed per year; `setMedicalExpenses` only caps HSA withdrawals (its docstring).
+- `810a6cd` (`17870e7`, `83ba462`): `other_medical_expenses` (= `setMedicalExpenses`) and
+  `medical_inflation_excess` become MCP parameters of every parameter tool; the intake prompt asks
+  for "yearly out-of-pocket qualified medical expenses (other_medical_expenses: dental, vision,
+  co-pays, deductibles)" **only when anyone has an HSA balance** (`intake.py`); `explain_results`
+  gains a `health_care` section (lifetime Medicare premiums with the IRMAA part, ACA net premiums,
+  other medical expenses, HSA withdrawals) whose note says: "Other medical expenses sit inside net
+  spending; they only cap tax-free HSA withdrawals." No change to the model (`plan.py`,
+  `tax_federal.py` untouched).
+- IRS Pub. 969 (irs.gov, read 2026-10-12 with WebFetch): HSA qualified medical expenses are
+  "medical care (as defined in Code section 213(d))", the Schedule A definition, and expenses paid
+  by a tax-free HSA distribution cannot also be deducted on Schedule A. Medicare premiums are
+  HSA-qualified at 65+ (not Medigap); ACA premiums are not. So `other_medical_expenses` is, by its
+  own description, the Schedule A medical amount, and upstream's HSA cap is the same 213(d) set.
 - `withSeniorBonus` is `"loop"` (default) or `"optimize"` (`plan.py:2630`, `:4987`).
 - Owl's default reverts to pre-TCJA in 2032 (`yOBBBA = 2032`, `plan.py:477`): MFJ standard
   deduction $17,160 instead of $32,200, today's $ (`tax_federal.py:97`, `:101`).
@@ -58,6 +74,11 @@ NJ; plans start 2026-10-11):
   near the switch).
 - Rules (P.L. 119-21, IRS instructions, Pub. 936): `phase3-plan.md` §3.1, verified 2026-10-10.
 
+Inferred, not measured (stated as such in the text): with `medical_inflation_excess` > 0 the
+medical amounts grow faster than the 7.5%-of-AGI floor, so the medical part of Schedule A grows
+over the plan. The fork's claim reads budget `medical` lines and premiums, not
+`other_medical_k` (see PROGRESS.md for the fork-side question this raises).
+
 Not verified, and kept out of the text: whether turning the rule on by default would change any
 existing upstream example (they have no mortgage and no budget; the fork's 18-example run compared
 loop with optimize, not with off).
@@ -73,16 +94,20 @@ two places that matter for planning: a household with a mortgage, and every plan
 default reversion to pre-TCJA law in 2032, where the standard deduction roughly halves and SALT is
 uncapped again.
 
-**The idea.** Owl already knows two of the itemizable amounts and part of a third:
+**The idea.** Owl already knows three of the itemizable amounts:
 
 - mortgage interest, from the Debts rows of type `mortgage` (payments minus the fall in balance,
   with the #173 payoff rule);
 - the state and local income tax it computes itself, which goes into SALT;
-- medical: the Medicare and ACA premiums it computes.
+- medical: the Medicare and ACA premiums it computes, plus `other_medical_expenses`, which since
+  the health-care MCP work in 2026.10.11 is a household input in its own right. Its description (dental, vision,
+  co-pays, deductibles) is the Schedule A medical expense: HSA "qualified medical expenses" are
+  medical care as defined in IRC 213(d), the same definition (Pub. 969). What the HSA paid
+  tax-free comes off, as Pub. 969 requires; Owl knows that too.
 
-The rest is spending a budget knows: property tax, cash charity, out-of-pocket medical. That is a
-contract question for Owl-budget (#177): next to the spending series, the budget would hand Owl
-the deductible part of it by category and year. With core vs discretionary lines, those amounts
+What is left is spending only a budget knows: property tax and cash charity (and medical lines,
+if a budget itemizes them). That is a contract question for Owl-budget (#177): next to the
+spending series, the budget would hand Owl the deductible part of it by category and year. With core vs discretionary lines, those amounts
 have to follow the scale on the discretionary part under `maxSpending` (a deductible amount fixed
 as a share of total spending is wrong as soon as the scale moves away from 1).
 
@@ -90,6 +115,9 @@ Owl would then take max(standard, itemized) each year, with the OBBBA details: S
 phase-down until 2030 and $10k after, the $750k loan limit, the 7.5% medical floor, the 0.5%
 charity floor for itemizers and the $1k/$2k charity deduction for non-itemizers, the senior bonus
 kept by itemizers while the 65+ additions are lost. Under the pre-TCJA reversion, no SALT cap.
+With `medical_inflation_excess` above zero, medical costs grow faster than a 7.5%-of-AGI floor
+that keeps pace with inflation, so the medical part would grow over the plan (I have not measured
+that; the stakes below have no medical expenses).
 
 **Shape: loop only, no binary.** I first built it like `withSeniorBonus` (loop, plus an optimize
 mode with a binary per year) and then removed the optimize mode, because it bought nothing. The
@@ -123,9 +151,11 @@ by tens of thousands of dollars.
 
 1. Would you take this in core, given the standard-deduction assumption is stated in the docs? If
    yes: on by default, or opt-in like the other `with*` options?
-2. Which medical amount should Schedule A read: `setMedicalExpenses` (today it only caps HSA
-   withdrawals), a budget category, or both?
-3. Should the deductible categories be part of the Owl-budget contract in #177, or an input of
+2. Medical: may Schedule A read `other_medical_expenses` (today, per `explain_results`, it "only
+   caps tax-free HSA withdrawals"), less the HSA's tax-free withdrawals? If so, the intake would
+   ask for it from everyone, not only HSA holders, and a budget's medical lines would have to be
+   the same amount, not a second one, or it counts twice.
+3. Should property tax and charity be part of the Owl-budget contract in #177, or inputs of
    their own on the Owl side until Owl-budget exists?
 
 I have a working version in my fork (federal plus two state schedules I keep there); I would rather

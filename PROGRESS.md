@@ -139,7 +139,7 @@ Upstream: the pinned loop was filed as #171 and **declined** (2026-10-05/06): a 
 9. #170 envelope model and #171 pinned loop (one conversation) — declined in favor of local search; findings reply posted 2026-10-06
 10. #167 reply posted 2026-10-06
 11. Filed by the user after 2026-10-07: housing ledger + NJ property tax deduction (design issue); #173 loan payoff at a sale (implemented upstream as a `property` link, merged); #174 `--solver-opt` numeric text (fixed upstream, merged)
-12. Federal itemized deductions (Phase 3 step 8): design issue drafted 2026-10-12, `fork-notes/issue-federal-itemized.md`, concept level, not posted
+12. Federal itemized deductions (Phase 3 step 8): design issue drafted 2026-10-12, revised after upstream `810a6cd`, `fork-notes/issue-federal-itemized.md`, concept level, not posted
 
 #158 was closed without an upstream change (2026-10-07); the fork keeps its recapture. If upstream ever lands it, merge `dev` and drop our duplicate, as with #149, #155, #157 and the 2026.10.5-7 fixes.
 
@@ -1109,6 +1109,45 @@ Part C.
 
 Next: step 8 (upstream, concept level, `phase3-plan.md` §5), or Phase 5 / STAR as needed. *(Step 8 drafted 2026-10-12, below.)*
 
+## Upstream dev 810a6cd merged (2026-10-12, on `claude/eager-cray-s0fvks`)
+
+Three upstream commits of 2026-10-11 evening (`main` = `dev`), MCP and explainer only; no change to
+`plan.py`, `tax_federal.py` or any tax rule:
+
+- `17870e7`: the MCP parameter tools take `other_medical_expenses` (= `setMedicalExpenses`),
+  `medical_inflation_excess`, `include_medicare_part_d`, `medicare_part_d_base_premium`; HSA
+  balances without `other_medical_expenses` are flagged in `assumed_defaults`; the intake prompt
+  asks for out-of-pocket qualified medical expenses when anyone has an HSA, and about Part D at
+  63+. `explain_case` / `owlcli explain` get a `health_care` block; `explain_results` gets the
+  premium added by the next IRMAA tier, the ACA MAGI against the Medicaid line and the 400% FPL
+  cliff, and a `health_care` section (lifetime Medicare premiums with the IRMAA part and years,
+  ACA net premiums, other medical expenses, HSA withdrawals). Its note: "Other medical expenses
+  sit inside net spending; they only cap tax-free HSA withdrawals."
+- `83ba462`: the explainer allows `THRESHOLD_SLACK = BRACKET_MARGIN / 2` when comparing a MAGI
+  with an IRMAA or ACA threshold (a MAGI parked on a cliff came back $0.0008 above it);
+  `net_premium_this_year` reads `aca_costs_n` (was `ACA_n`, zero in optimize mode).
+- `810a6cd`: CHANGELOG.
+
+Merge: one conflict, `tests/mcp/test_mcp_explain.py` (both sides appended tests at the same
+place: the fork's NY locality/recapture tests and upstream's health-care tests; kept both).
+No duplicated definitions in the touched files (grep). flake8: only upstream's
+`localsearch.py:31`; ruff clean. The three merged test files: 209 passed. Full suite: **3193 passed, 1 skipped** (6:53; 3178 on
+2026-10-11 plus upstream's new tests).
+
+Effect on the fork: none on plans. Effect on step 8: `other_medical_expenses` is now a
+first-class household input whose description (dental, vision, co-pays, deductibles) is the
+Schedule A medical expense (Pub. 969: HSA qualified medical expenses are IRC 213(d) medical care,
+the Schedule A definition; read on irs.gov 2026-10-12). The proposal now counts medical among the
+amounts Owl already knows and asks whether Schedule A may read it (question 2).
+
+Fork-side question this raises (open, not changed): the fork's federal and NY medical claims read
+budget `medical` lines plus premiums, less all HSA distributions; `other_medical_k` is in no
+claim (documented in `_medical_premium_terms`: the claim can only be understated). A household
+that enters its out-of-pocket medical through `other_medical_expenses`, as upstream's intake now
+asks, gets no deduction for it, and its HSA distributions against it are still subtracted from
+the premiums. Options: read `other_medical_k` in the claim when the plan has no budget `medical`
+line (one source, no double count), or refuse/warn when both are set. Decide with Phase 4.
+
 ## Phase 3 step 8 — upstream proposal drafted (2026-10-12, on `claude/eager-cray-s0fvks`)
 
 `fork-notes/issue-federal-itemized.md`: a new design issue on federal itemized deductions, concept
@@ -1133,6 +1172,11 @@ itemizing, NJ line 31 and Stay NJ stay in the fork.
   2026-10-09 (reply 3, posted) with three open questions. Upstream `dev` still `390f02f`. Hence a
   new issue rather than a #177 comment (lesson 9: don't stack); timing is the user's call.
 - No code change; tests not run.
+- Revised the same day after merging `810a6cd` (section above): medical moved from "part of a
+  third" to the amounts Owl knows (premiums + `other_medical_expenses`, less HSA withdrawals,
+  Pub. 969); question 2 asks whether Schedule A may read `other_medical_expenses` and whether
+  the intake would then ask everyone; question 3 narrowed to property tax and charity; one
+  sentence on `medical_inflation_excess` (inferred, not measured).
 
 Next: post the issue (user), then Phase 5 (part-time work / SS earnings test) or STAR as needed.
 

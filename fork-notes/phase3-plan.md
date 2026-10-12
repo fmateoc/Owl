@@ -460,7 +460,7 @@ Documentation.py and PARAMETERS (Budget types, `withItemized`), modeling-capabil
 keys), `phase0-scenarios.md` section 5 (drop the "not modeled" caveat; add the `withItemized`
 option) and the template (`withItemized`, `obbba_expiration_year` per D1).
 
-### Step 8: upstream — after step 6
+### Step 8: upstream — after step 6 (drafted 2026-10-12: `issue-federal-itemized.md`, a new design issue, loop-only after R1; #158 was closed 2026-10-07 without a reply, so the last bullet no longer applies as written; our reply 3 on #177 is still unanswered)
 
 - Federal part only, at the concept level, in the #175 Discussion or a new design issue, after the
   measured stakes exist: "Owl already knows two itemizable amounts (mortgage interest from Debts,

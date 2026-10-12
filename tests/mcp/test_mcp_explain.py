@@ -5,6 +5,7 @@ Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
 import asyncio
+import datetime
 import json
 
 import pytest
@@ -14,6 +15,7 @@ from owlplanner.assistant.explain_schema import SCHEMA_VERSION, PlanExplanation
 from owlplanner.assistant.tools import _build_plan_from_params, explain_results
 
 BILL_TOML = "examples/Case_bill.toml"
+THISYEAR = datetime.date.today().year
 
 
 def _run(coro):
@@ -355,3 +357,115 @@ def test_build_explanation_labels_each_year_with_its_state_after_a_move():
     assert all(r["state"] == "NY" and r["locality"] == "Yonkers" for y, r in rows.items() if y < move)
     assert any(y < move for y in rows)
     assert not any(y >= move for y in rows)  # years without a state income tax are omitted (upstream)
+
+
+@pytest.mark.toml
+def test_health_care_section_totals_match_the_plan():
+    plan = _solved_plan(state="TX")
+    hc = build_explanation(plan)["health_care"]
+    g = plan.gamma_n[: plan.N_n]
+    assert hc["medicare_premiums_total"] == pytest.approx(float((plan.medicare_n / g).sum()), abs=0.01)
+    assert hc["aca_net_premiums_total"] == 0
+    assert hc["medical_inflation_excess_pct"] == 0
+    assert 0 <= hc["irmaa_surcharges_total"] <= hc["medicare_premiums_total"]
+
+
+@pytest.mark.toml
+def test_irmaa_next_tier_cost_is_one_tier_of_surcharges():
+    """Pat is on Medicare in year 2; crossing tier 0 adds one tier of Part B and D surcharges."""
+    import owlplanner.tax_federal as tx
+
+    plan = _solved_plan(state="TX")
+    irmaa = build_explanation(plan)["this_year"]["threshold_proximity"]["irmaa"]
+    if irmaa["current_tier"] == 0:
+        step = (tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1]) * plan._medical_n(plan.gamma_n)[2] / plan.gamma_n[2]
+        assert irmaa["next_tier_premium_increase_today"] == pytest.approx(step, abs=0.01)
+    assert irmaa["next_tier_premium_increase_today"] > 0
+
+
+def _aca_plan():
+    plan = _build_plan_from_params(
+        names=["Morgan"],
+        birth_dates=[f"{THISYEAR - 55}-03-01"],
+        life_expectancy=[88],
+        state="TX",
+        taxable=[300_000],
+        tax_deferred=[600_000],
+        roth=[100_000],
+        hsa=None,
+        cost_basis=None,
+        ss_monthly_pias=[2500],
+        ss_ages=[67],
+        pension_monthly_amounts=None,
+        pension_ages=None,
+        rate_method="conservative",
+        slcsp=14_000,
+    )
+    plan.solve("maxSpending", {"units": "1", "withDuals": True})
+    return plan
+
+
+@pytest.mark.toml
+def test_aca_cliffs_use_the_aca_magi():
+    import owlplanner.tax_federal as tx
+
+    plan = _aca_plan()
+    aca = build_explanation(plan)["this_year"]["threshold_proximity"]["aca"]
+    fpl_year = THISYEAR if THISYEAR in tx._ACA_FPL else max(tx._ACA_FPL)
+    fpl = float(tx._ACA_FPL[fpl_year][0])
+    assert aca["aca_magi"] == pytest.approx(float(plan.MAGI_aca_n[0]), abs=0.01)
+    assert aca["subsidy_cliff"] == pytest.approx(4 * fpl, abs=0.01)
+    assert aca["medicaid_line"] == pytest.approx(tx._ACA_MEDICAID_RATIO * fpl, abs=0.01)
+    assert ("headroom_to_subsidy_cliff" in aca) != ("above_subsidy_cliff_by" in aca)
+
+
+def test_caveat_names_aca_premiums():
+    plan = _solved_plan(state="TX")
+    assert any("ACA premiums" in c for c in build_explanation(plan)["caveats"])
+
+
+@pytest.mark.toml
+def test_aca_magi_parked_on_an_edge_reads_as_on_it():
+    """The solver returns a MAGI parked on an edge a fraction of a cent above it."""
+    from owlplanner.assistant.explain import _aca_cliffs
+
+    plan = _aca_plan()
+    edges = _aca_cliffs(plan)
+    plan.MAGI_aca_n[0] = edges["subsidy_cliff"] + 0.0008
+    on_cliff = _aca_cliffs(plan)
+    assert "above_subsidy_cliff_by" not in on_cliff
+    assert on_cliff["headroom_to_subsidy_cliff"] == 0
+    assert on_cliff["premium_jump_at_cliff"] > 0
+    plan.MAGI_aca_n[0] = edges["medicaid_line"] + 0.0008
+    assert _aca_cliffs(plan).get("covered_by_medicaid") is True
+    # Past the $2 margin is past the edge.
+    plan.MAGI_aca_n[0] = edges["subsidy_cliff"] + 2.0
+    assert _aca_cliffs(plan)["above_subsidy_cliff_by"] == pytest.approx(2.0)
+
+
+@pytest.mark.toml
+def test_irmaa_magi_parked_on_a_threshold_reads_as_below_it():
+    import owlplanner.tax_federal as tx
+
+    plan = _solved_plan(state="TX")
+    status = 1 if (plan.N_i == 2 and plan.n_d > 2) else 0
+    first = float(plan.gamma_n[2] * tx.irmaaBrackets[status][1])
+    plan.MAGI_n[0] = first + 0.0008
+    irmaa = build_explanation(plan)["this_year"]["threshold_proximity"]["irmaa"]
+    assert irmaa["current_tier"] == 0
+    assert irmaa["headroom_to_next_tier"] == 0
+    step = (tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1]) * plan._medical_n(plan.gamma_n)[2] / plan.gamma_n[2]
+    assert irmaa["next_tier_premium_increase_today"] == pytest.approx(step, abs=0.01)
+
+
+@pytest.mark.toml
+def test_aca_net_premium_reads_the_premium_of_either_mode():
+    """In optimize mode ACA_n stays zero and the premium is in aca_costs_n."""
+    plan = _aca_plan()
+    premium = float(plan.ACA_n[0])
+    assert premium > 0
+    plan._aca_lp = True
+    plan.maca_n = plan.ACA_n.copy()
+    plan.ACA_n[:] = 0
+    aca = build_explanation(plan)["this_year"]["threshold_proximity"]["aca"]
+    assert aca["net_premium_this_year"] == pytest.approx(premium, abs=0.01)

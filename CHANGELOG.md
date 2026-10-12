@@ -240,6 +240,32 @@ fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
 ### Version 2026.10.11
 
+#### New: health care in the MCP, from setting it to explaining it
+
+The tools that take parameters (`run_from_params`, `save_case`, `compare_to_baseline`,
+`explain_results`, and the stress tools) accept `other_medical_expenses`,
+`medical_inflation_excess`, `include_medicare_part_d`, and `medicare_part_d_base_premium`, which
+before could be set only in a case file. HSA balances given without `other_medical_expenses` are
+flagged in `assumed_defaults`: the HSA can then pay only Medicare premiums and stays mostly locked.
+The intake prompt asks for out-of-pocket medical expenses when there is an HSA and about drug
+coverage at Medicare age. `explain_case` and `owlcli explain` report a `health_care` block (Medicare
+start years and Part D, ACA benchmark and start year, other medical expenses, medical inflation).
+`explain_results` gives what crossing the next IRMAA tier adds to premiums, the ACA MAGI against the
+Medicaid line and the 400% FPL subsidy cliff with the premium at stake, and a `health_care` section
+with lifetime Medicare premiums (IRMAA part and years), ACA net premiums, out-of-pocket expenses,
+and HSA withdrawals. Its caveat now names ACA premiums among the quantities held fixed.
+
+#### Fixed: `explain_results` on a plan that parks income on an IRMAA or ACA threshold
+
+With `withMedicare` or `withACA` set to `"optimize"`, the optimizer can place MAGI exactly on a
+threshold, such as the 400% FPL subsidy cliff, and the solver returns it a fraction of a cent
+above. The explanation compared it exactly and read such a plan as past the threshold. The IRMAA
+tier and the next-tier cost, and the ACA Medicaid line and cliff, now allow a dollar of slack, as
+the convergence check does: the bracket formulations start each higher bracket $2 above its
+threshold, so no MAGI lies in between. The ACA net premium for the first year, reported before
+this release too, read a quantity that is zero in optimize mode and showed $0; it now shows the
+premium paid in either mode.
+
 #### New: medical prices can grow faster than inflation, with `setMedicalInflation`
 
 Medical prices have long outpaced general inflation, yet every health cost in a plan followed it. The

@@ -1,7 +1,10 @@
 # Draft upstream design issue: federal itemized deductions (Phase 3 step 8), for the user to post
 
 Status: draft, 2026-10-12; revised the same day after merging upstream `dev` `810a6cd` (MCP
-health-care parameters). Not posted. Concept level (`phase3-plan.md` §2, lessons 2, 4, 7, 8;
+health-care parameters). **Posted by the user as #185** (posting date not recorded here). Maintainer's
+first answer, relayed 2026-10-15: more loop quantities cause cycling and prevent monotonic convergence;
+he will run tests. Measurement against that: PROGRESS.md "Itemizing and loop convergence"; optional
+reply `issue-185-reply.md`. Concept level (`phase3-plan.md` §2, lessons 2, 4, 7, 8;
 `phase3-review.md` R5): the contract and the measured stakes, not the fork's code. Federal only;
 NY itemizing and NJ line 31 stay in the fork (lesson 3).
 

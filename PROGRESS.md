@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-12)
+# Owl fork — progress (as of 2026-10-15)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -28,8 +28,9 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #170 Envelope model | Filed with #171; one conversation with it (the maintainer answered both on #171) |
 | #171 Pinned loop | **Declined**: second model too costly; `withACA="optimize"` captures morgan's gain; maintainer's answer is local search (`breakpointMethod="local-search"`, 2026.10.6). Asked for our findings: measured, reply **posted** by the user 2026-10-06 (`fork-notes/issue-local-search-reply.md`, details `fork-notes/local-search/README.md`). Maintainer (2026-10-07): all three points right; tie rule and repeat reuse in `785217c`, merged (fork's own tie code and test dropped, theirs kept). He also notes the cost basis is still a source of non-convergence with Medicare exact (on his list) |
 | Loop anomaly (NY→FL at year 5) | Not filed (no repro beyond loop noise) |
-| #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177, its last comment as of 2026-10-12; no maintainer reply yet) |
+| #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
+| #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); optional data comment drafted, `fork-notes/issue-185-reply.md` (user's call) |
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
@@ -1176,6 +1177,84 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## Upstream dev 10b9f72 merged; maintainer replies on #185 and #177 (2026-10-15, on `claude/eager-cray-s0fvks`)
+
+Upstream since `810a6cd` (19 commits, `main` = `dev` = `10b9f72`, version 2026.10.15 + WIP):
+Roth 5-year rule compounds recent conversions at real returns, losses included (`337b02b`; HiGHS
+stalled on long historical plans, #184/#188); a plan ending before anyone reaches 65 solves
+(`f54afab`, `mediVals` clamps `nmstart`); #190 (`owlcli run` real-dollar workbook name, every
+I/O call takes a path; `saveWorkbook` returns the file name); MCP sweeps time one solve and ask
+before a run projected beyond two minutes; #191 (top IRMAA tier frozen in nominal dollars through
+2027, `tax_federal.irmaaThresholds`); `$` escaped in Markdown docs and UI strings; dependency
+updates. PR #184 (HiGHS LP fallback) was merged and then reverted upstream.
+
+Merge `c06b6af`: three doc conflicts. CHANGELOG: the fork's Unreleased section is kept above
+upstream's, with its `$` escaped as upstream now does. PARAMETERS.md: upstream's escaped
+`withSeniorBonus` row plus the fork's `withItemized`. modeling-capabilities.md: upstream's escaped
+Fixed assets row plus the fork's Debts and Budget rows. `plan.py`, `tax_federal.py`, `export.py`
+and `explain.py` auto-merged. Grep: no duplicated definitions (AST check over `src/`), no fork
+code computing IRMAA thresholds by hand (the fork's premium terms go through `mediVals` /
+`mediCosts`, so #191 reaches the medical claims). The fork adds no unescaped `$` to the docs or UI.
+flake8: only upstream's `localsearch.py:31`. ruff: one hit, in upstream's new
+`tests/plan/test_roth_maturation_losses.py:49` (B905). Upstream CI runs flake8 only, so it is left
+as is. Full suite: **3226 passed, 1 skipped** (6:32). No fork expected value moved.
+
+Maintainer replies relayed by the user:
+
+- **#185** (federal itemized deductions; the draft `issue-federal-itemized.md` was posted): "I'll
+  need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling
+  and prevents monotonic convergence. I'll run a few tests and get back to you."
+- **Discussion #177**: "Sorry for the delay. Give me a day to digest all the good info you
+  provided. I mean really good info. The soft part of discretionary spending expressed as a slack
+  variable is a total novelty in modeling deccumulation." A deferral; nothing to answer yet.
+
+### Itemizing and loop convergence (the #185 concern, measured)
+
+`fork-notes/model-review/phase3-review/itemized_convergence.py`, output
+`itemized_convergence_2026-10-15.txt` (date frozen at 2026-10-15; default loop unless marked LS).
+Iterations and endings are upstream's `convergenceType`; the residual is the largest
+`fixedPointResidual` family (in every row below it is SS taxability unless named).
+
+- 18 examples, `withItemized` none vs loop: identical iterations and endings in all 18; only
+  `Case_devon` (22 itemizing years, +$1,199 objective) and `Case_jordan+taylor` (1 year, +$174)
+  itemize.
+- Probe couple (r123's: $1.5M tax-deferred, $80k core + $25k property tax), 16 pairs:
+  - NJ, where only federal itemizing applies: 6 pairs itemize. Same ending in 5; NJmort 2099
+    maxSpending went from "oscillatory" at 11 iterations to a 2-cycle at 14. 0 to +4 iterations;
+    residual $1.1k-1.6k in both modes.
+  - NY without a mortgage (federal 0 years as enacted, 25-26 under 2032; NY 31): 2 to 7 fewer
+    iterations; two of the four went from "oscillatory" to a 2-cycle (residual $0.9k-1.4k ->
+    $1.8k-4.3k).
+  - NY with a mortgage (federal and NY IT-196): 2099: a 2-cycle at 18-19 iterations became the
+    30-iteration cap, residual $2.2k -> $42.6k (maxBequest) and $19.3k (maxSpending). 2032: none
+    already hits the cap (maxBequest residual $18.7k, maxSpending $10.0k); with itemizing, the cap
+    with $33.2k, and a 3-cycle with $72.5k.
+- Attribution (`nyattr`: NY's `_st_item_candidate_years` patched to `[]`): federal only in NY with
+  a mortgage gives 18-19 iterations and a 2-cycle in all 4 cases, residual $2.6k-4.5k. So the
+  worse NY + mortgage endings need NY IT-196 (fork-only), not federal itemizing. The line-46 cut
+  is not the cause: it never activates there (state AGI < $200k in every iterate; forcing it to
+  zero changes nothing).
+- But the loop fails without itemizing too (`ptsweep`, NY + mortgage, 2032, maxBequest): at
+  property tax $20k, $22.5k, $25k, $27.5k and $30k, **none** hits the cap (residual $18.7k-25.5k);
+  only $15k converges. With itemizing the cap is hit at the same amounts (residual $11.9k-95.8k).
+  The band where the SS loop fails moves with the data; itemizing shifts where in it a case sits.
+- Local search (`ls`, NY + mortgage, maxBequest), residuals about 0: 2032 none $498,322 <
+  federal only $670,284 < federal + NY $710,328; 2099 $600,901 < $645,667 < $686,772. The order
+  is the expected one. The loop's results there are 4-12% below local search in every mode (2032:
+  none $464,074, federal $644,003, both $625,777; 2099: $550,119, $594,395, $640,832). The loop's
+  "NY itemizing lowers the bequest by $18k" in 2032 is an unconverged iterate.
+
+Reading for #185: federal itemizing, as the fork builds it, did not add cycling that the loop did
+not already have (examples, NJ, NY federal-only). The fork's NY schedule can push an already
+fragile NY + mortgage loop over the cap. That is a fork matter, and the fork's decision recipe
+(local search for comparisons) already covers it. Optional data comment for #185:
+`fork-notes/issue-185-reply.md` (user's call).
+
+Open, not chased: why the SS-taxability loop fails on the NY + mortgage couple at $20k-30k of
+property tax even without itemizing (NY recapture and the Yonkers surcharge are loop quantities
+too; NJ with the same mortgage converges); whether stock upstream shows the same on an
+equivalent case without NY's fork machinery.
+
 ## Phase 3 step 8 — upstream proposal drafted (2026-10-12, on `claude/eager-cray-s0fvks`)
 
 `fork-notes/issue-federal-itemized.md`: a new design issue on federal itemized deductions, concept
@@ -1250,6 +1329,9 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-15, after merging upstream `dev` `10b9f72`: **3226 passed, 1 skipped** (full suite, 6:32).
+flake8 only upstream's `localsearch.py:31`; ruff only upstream's `test_roth_maturation_losses.py:49` (B905).
 
 2026-10-11, Phase 3 R1-R3 (`c1c88a3`): **3178 passed, 1 skipped** (full suite in a worktree with
 `PYTHONPATH=src`, 6:59; 3184 − 8 optimize-mode tests + 2 `"none"` tests). flake8 only upstream's

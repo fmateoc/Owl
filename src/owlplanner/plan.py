@@ -2665,8 +2665,7 @@ class Plan:
 
         wb = self.saveContributions()
 
-        if basename is None:
-            basename = self._name
+        basename = self._name if basename is None else str(basename)
 
         if Path(basename).suffixes == []:
             if not basename.startswith("HFP_"):
@@ -4367,14 +4366,17 @@ class Plan:
         - Roth contribution *principal* can be withdrawn tax- and penalty-free at any time.
         - Roth *earnings* on contributions require both (a) account age ≥ 5 years AND
           (b) age ≥ 59½ (or other exception) to be penalty-free.
-        - Each Roth *conversion* carries its own 5-year clock; conversion principal converted
-          before age 59½ is subject to the 10% penalty if withdrawn within 5 years of conversion.
+        - Each Roth *conversion* carries its own 5-year clock; conversion principal withdrawn
+          within 5 years of conversion is subject to the 10% penalty if the owner is under 59½
+          at the time of the withdrawal. The age that matters is the age at withdrawal, not at
+          conversion: converting at 58 and withdrawing at 61 incurs no penalty.
 
         Simplification: This implementation applies a single unified 5-year lookback that retains
-        all recent conversions (at compounded value) and the gains-only portion of recent
-        contributions as a minimum balance floor. Contribution *principal* is not separately tracked
-        and freed — the constraint treats it as part of the 5-year retainer, making it intentionally
-        conservative (preventing some valid early withdrawals of contribution principal). This never
+        all recent conversions (at compounded value, losses included) and the gains-only portion of recent
+        contributions as a minimum balance floor, at every age, including after 59½. Contribution
+        *principal* is not separately tracked and freed — the constraint treats it as part of the
+        5-year retainer. Both choices make it intentionally conservative (preventing some valid
+        withdrawals of contribution principal, and of conversions after 59½). This never
         allows a withdrawal that would violate IRS rules; it only restricts some withdrawals that
         would technically be permitted. Exact per-dollar basis tracking is out of scope for an LP.
         """
@@ -4386,7 +4388,13 @@ class Plan:
             h = self.horizons[i]
             for n in range(h):
                 rhs = 0
-                # To add compounded gains to cumulative amounts. Always keep cgains >= 1.
+                # Growth of a dollar converted or contributed dn years ago, to the start of year n.
+                # It follows the account's real returns, losses included: the carryover rows grow
+                # the Roth balance at those returns, so a conversion can only ever be worth this
+                # much. Flooring a loss at zero growth asked the account to keep more than recent
+                # conversions are worth; on a Roth holding only those, the one feasible point was
+                # then no conversion at all, an equality hidden behind two nearly equal sets of
+                # coefficients, on which HiGHS's simplex stalls without a verdict (#184).
                 cgains = 1
                 row = self.A.newRow()
                 row.addElem(self.vm["b"].idx(i, 2, n), 1)
@@ -4394,17 +4402,15 @@ class Plan:
                 for dn in range(1, 6):
                     nn = n - dn
                     if nn >= 0:  # Past of future is now or in the future: use variables or parameters.
-                        # Ignore market downs.
-                        cgains *= max(1, Tau1_in[i, nn])
+                        cgains *= Tau1_in[i, nn]
                         row.addElem(self.vm["x"].idx(i, nn), -cgains)
-                        # If a contribution, it has only penalty on gains, not on deposited amount.
-                        rhs += (cgains - 1) * self.kappa_ijn[i, 2, nn]
+                        # A contribution is retained for its gains only, and after a loss it has none.
+                        rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn]
                     else:  # Past of future is in the past:
                         cgains *= oldTau1
-                        # Past years are stored at the end of contributions and conversions arrays.
-                        # Use negative index to access tail of array.
-                        # Past years are stored at the end of arrays, accessed via negative indexing
-                        rhs += (cgains - 1) * self.kappa_ijn[i, 2, nn] + cgains * self.myRothX_in[i, nn]
+                        # Past years are stored at the end of the contributions and conversions
+                        # arrays, accessed via negative indexing.
+                        rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn] + cgains * self.myRothX_in[i, nn]
 
                 self.A.addRow(row, rhs, np.inf, tag=("roth_maturation", i, n))
 

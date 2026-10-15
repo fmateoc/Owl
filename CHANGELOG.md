@@ -5,21 +5,21 @@
 Each year deducts the larger of the standard deduction and the itemized total, built from the
 expenses the plan already knows. Federally (Schedule A, P.L. 119-21): SALT, which is the budget's
 `property tax` lines plus the state and local income tax the plan pays (cash basis, the same terms
-the cash flow charges), capped at $40,400 in 2026, +1%/yr through 2029 and $10,000 from 2030, the
-cap reduced by 30% of MAGI over $505,000 (2026) before 2030; home mortgage interest from `Debts`
-rows of type `mortgage` (Pub. 936 Table 1: $750,000 of acquisition debt, $1M for loans taken out
+the cash flow charges), capped at \$40,400 in 2026, +1%/yr through 2029 and \$10,000 from 2030, the
+cap reduced by 30% of MAGI over \$505,000 (2026) before 2030; home mortgage interest from `Debts`
+rows of type `mortgage` (Pub. 936 Table 1: \$750,000 of acquisition debt, \$1M for loans taken out
 before 2018; a loan linked to `real estate` is a rental's and is left out); `charity` lines above
 0.5% of AGI; and `medical` lines (or, in a plan without one, the `other_medical_expenses` amount
 of `setMedicalExpenses`) plus Owl's Medicare Part B/D (IRMAA included) and ACA net premiums, less
 the year's HSA distributions (Pub. 502), above 7.5% of AGI. Itemizers keep the
-OBBBA $6,000 senior bonus and lose the 65+ additions; non-itemizers also deduct up to $1,000
-($2,000 MFJ) of cash charity. After a pre-TCJA reversion (`obbba_expiration_year`) SALT is
-uncapped, the mortgage limit is $1M and the OBBBA charity rules end.
+OBBBA \$6,000 senior bonus and lose the 65+ additions; non-itemizers also deduct up to \$1,000
+(\$2,000 MFJ) of cash charity. After a pre-TCJA reversion (`obbba_expiration_year`) SALT is
+uncapped, the mortgage limit is \$1M and the OBBBA charity rules end.
 
 New York's own itemized deduction (IT-196, 2025): property tax without a cap, charity, medical
-above 10% of federal AGI, mortgage interest under the $1M limit, state and local income taxes left
-out, and the line 46 cut (up to 25% of the deduction between NYAGI $200,000 and $250,000 MFJ;
-$100,000-$150,000 single). New York lets a filer itemize whether or not the federal return
+above 10% of federal AGI, mortgage interest under the \$1M limit, state and local income taxes left
+out, and the line 46 cut (up to 25% of the deduction between NYAGI \$200,000 and \$250,000 MFJ;
+\$100,000-\$150,000 single). New York lets a filer itemize whether or not the federal return
 itemizes. New Jersey deducts medical expenses above 2% of NJ gross income (line 31, Worksheet F;
 Medicare premiums included, HSA distributions not subtracted). Data: `itemized` and
 `medical_deduction` entries in `taxes_state.toml`.
@@ -32,7 +32,7 @@ never itemizes leaves the plan exactly as `"none"` builds it. The loop's lag sho
 a warning when a year takes the smaller deduction, and the *itemized*, *state itemized* and
 *state medical* entries of `fixedPointResidual`. Not modeled, reported as warnings: the 2/37
 limit in the 37% bracket and Pease after a reversion. Not modeled: AMT, other Schedule A items,
-NY's rules above $525,000. Results: Taxes sheet columns and Summary lines when nonzero;
+NY's rules above \$525,000. Results: Taxes sheet columns and Summary lines when nonzero;
 `plan_metrics` keys `itemized_deductions_today` and `state_itemized_today`.
 
 #### New: `medical` and `charity` budget types
@@ -44,8 +44,8 @@ care. `Budget.by_type(..., essential=)` filters by tier.
 #### Fixed: the New Jersey property tax deduction under essential budget lines
 
 The line 41 deduction was bounded by the lines' share of net spending, which is wrong once some
-lines are essential and the rest scale by k: it claimed $12,625 against $12,000 paid at k = 1.137,
-and $9,600 at k = 0.474. Each deductible amount is now the essential part at its amount plus a
+lines are essential and the rest scale by k: it claimed \$12,625 against \$12,000 paid at k = 1.137,
+and \$9,600 at k = 0.474. Each deductible amount is now the essential part at its amount plus a
 share of the discretionary part (`Plan._budget_amount_terms`).
 
 #### New: budget lines can follow an age clock; a JSON budget file
@@ -239,6 +239,100 @@ Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are repl
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
+### Version WIP
+
+#### Fixed: the top IRMAA tier is no longer indexed before 2028
+
+Owl indexed every IRMAA threshold to inflation from the first plan year. The Bipartisan Budget Act
+of 2018 froze the top tier at \$500,000 single and \$750,000 married filing jointly, with CPI
+indexing starting only in 2028, while the lower tiers are indexed every year. Raising the top tier
+with inflation in the 2026 and 2027 bill years understated Part B and Part D premiums for households
+with MAGI near \$500k/\$750k. The top tier now stays at its nominal value through 2027 and follows
+inflation from 2028; the lower tiers are unchanged. The same thresholds are used by the
+self-consistent loop, the Medicare MILP, and the assistant's `explain` headroom. Thanks to
+@bkbaugh for reporting it, with the statute and the lines of code involved (#191).
+
+### Version 2026.10.15
+
+#### New: the assistant asks before starting a long scenario sweep
+
+A sweep's cost is the number of solves times the time each takes, and both vary widely: 1000
+Monte Carlo scenarios with Medicare solved as a MILP is a different undertaking from a few dozen
+historical years in loop mode, yet the MCP tools started either without a word. The six sweep tools
+(`run_stochastic`, `run_spending_bequest_frontier`, `run_year1_robustness`,
+`run_longevity_stochastic`, `run_historical`, `run_monte_carlo`) now time one solve of the plan
+before running the scenarios and project the total, crediting the threaded sweeps with their
+measured parallel speed-up. A run projected beyond two minutes stops there and returns
+`needs_confirmation` with the estimate, the options driving the cost (MILP families, optimized
+claiming ages) and cheaper alternatives (the loop, fewer scenarios); the assistant relays them,
+asks whether to proceed, and runs it only with `confirm_long_run=true`. The intake interview now
+asks how long the user is willing to wait, and an estimate within that budget runs without asking
+again. A run beyond an hour is flagged `very_long` and its estimate, given in hours or days, is
+always put to the user, whatever budget they stated; nothing is refused once they agree. The two
+thresholds are set by the `OWL_MCP_CONFIRM_MINUTES` and `OWL_MCP_VERY_LONG_MINUTES` environment
+variables. After the first solve, the assistant quotes its time with a rough cost for each sweep
+it offers. On
+`Case_jack+jill`, the projection for `run_stochastic` was 12 s against 11.8 s measured. Runs under
+the threshold, and every solve outside the MCP tools, are unchanged.
+
+### Version 2026.10.14
+
+#### Fixed: long historical plans no longer end in a solver error with HiGHS
+
+The Roth 5-year rule keeps the last five years of conversions in the Roth account at their
+compounded value. It compounded them with every loss year counted as zero growth, while the
+account itself grew at its real returns. After a loss, a Roth holding only recent conversions was
+then asked to keep more than they were worth, and the one plan that satisfied both was no
+conversion at all, found only through two nearly equal sets of coefficients. HiGHS's simplex
+stalled on it and Owl reported "solver error"; MOSEK found the plan. Conversions are now compounded
+at the account's real returns, losses included, and only the gains of a recent contribution are
+retained, none after a loss.
+
+The failures needed loss years in the sequence: constant returns never failed at any horizon,
+balance or inflation, and a long plan failed more often only because it spans more of them. On a
+one-person case over 65 years of historical returns, 20 failing combinations of balance, horizon
+and start year now all solve, as do all 72 historical sequences of `Case_avery+quinn` with every
+family in loop mode (8 were solver errors) and the issue #139 case. The rule only relaxes: a plan
+that converts before a loss can now do better, and no plan becomes infeasible.
+
+Thanks to Dmitry Fink (@finik) for reporting the failures and for the careful work behind them: the
+HiGHS fallback that brought them to light and the exact-arithmetic and MOSEK checks of the stuck
+models (#184), the `Not Set` status found on a bootstrapped sequence (#188), and the related change
+to which earlier iterate the loop falls back on (#186), each still under review on its own.
+
+#### Fixed: a plan that ends before anyone reaches 65
+
+Such a plan stopped with "negative dimensions are not allowed": the Medicare setup took the year
+Medicare starts to lie within the plan, and when it did not, sized its tables with a negative
+number of years. Medicare now simply does not start within the plan, and it solves with no
+premiums. This comes up when a plan is cut short, for example to find the last year a plan can
+still pay for everything on a hard market sequence.
+
+#### Fixed: `owlcli run` saves the workbook when results are in today's dollars
+
+With real-dollar worksheets selected (`worksheet_real_dollars`), `owlcli run` stopped with
+"unsupported operand type(s) for +" before saving its results (#190): the name of the real-dollar
+file was built by adding "_real" to a path as if it were text. The workbook is now saved as
+`<case>_results_real.xlsx`, and the CLI reports that name. The same mistake stopped `readConfig`,
+`saveConfig`, `saveHFP` (given no extension) and `saveWorkbookCSV` when called from Python with a
+`pathlib.Path`; every file a plan reads or writes can now be named with a path or a string, and
+`saveWorkbook` returns the name of the file it saved. Thanks to Scott Snyder (@ssnyder379) for the
+report.
+
+#### Maintenance: `astral-sh/setup-uv` 10.3.0 in the test workflow
+
+The GitHub Actions test workflow installs uv with `astral-sh/setup-uv` 10.3.0 instead of 10.2.0
+(#189, from Dependabot).
+
+#### Maintenance: Updated dependencies
+
+`streamlit` 1.65.0 → 1.66.0, `anthropic` 1.13.0 → 1.14.0, `async-lru` 2.3.0 → 2.4.0, `fonttools`
+4.66.1 → 4.67.0, `jedi` 0.20.0 → 0.20.1, `jsonpointer` 3.2.0 → 3.2.1, `nbconvert` 7.17.1 → 7.17.2,
+`numpy` 2.5.3 → 2.5.4 (Python 3.12 and up), `platformdirs` 4.12.4 → 4.13.0, `pyarrow` 25.0.1 →
+26.0.0, `pydantic` 2.14.0 → 2.14.1, `pydantic-core` 2.50.0 → 2.50.1, `soupsieve` 3.0 → 3.0.3 (2.10
+also locked), `starlette` 1.7.0 → 1.8.0, `truststore` 0.10.4 → 0.10.5; `httptools` is no longer
+required.
+
 ### Version 2026.10.11
 
 #### New: health care in the MCP, from setting it to explaining it
@@ -262,9 +356,9 @@ With `withMedicare` or `withACA` set to `"optimize"`, the optimizer can place MA
 threshold, such as the 400% FPL subsidy cliff, and the solver returns it a fraction of a cent
 above. The explanation compared it exactly and read such a plan as past the threshold. The IRMAA
 tier and the next-tier cost, and the ACA Medicaid line and cliff, now allow a dollar of slack, as
-the convergence check does: the bracket formulations start each higher bracket $2 above its
+the convergence check does: the bracket formulations start each higher bracket \$2 above its
 threshold, so no MAGI lies in between. The ACA net premium for the first year, reported before
-this release too, read a quantity that is zero in optimize mode and showed $0; it now shows the
+this release too, read a quantity that is zero in optimize mode and showed \$0; it now shows the
 premium paid in either mode.
 
 #### New: medical prices can grow faster than inflation, with `setMedicalInflation`
@@ -331,11 +425,11 @@ anthropic 1.13.0, and the `notebooks` extra to executing 2.3.0, json5 0.17.3 and
 
 #### New: the OBBBA senior bonus can be solved with the plan (`withSeniorBonus`)
 
-The $6,000 deduction for each individual aged 65 or older (tax years through 2028) shrinks by $6
-per $100 of MAGI above $75,000 single or $150,000 joint. Owl set it from the previous iteration's
+The \$6,000 deduction for each individual aged 65 or older (tax years through 2028) shrinks by \$6
+per \$100 of MAGI above \$75,000 single or \$150,000 joint. Owl set it from the previous iteration's
 MAGI, so a solve could not weigh a conversion against the bonus it costs, and could settle on a
 plan that is consistent with itself yet worse: on `Case_dana` with historical returns, holding the
-first year's Roth conversion to a smaller amount left up to $1,283 more than the optimized plan,
+first year's Roth conversion to a smaller amount left up to \$1,283 more than the optimized plan,
 in six of the start years tried. The new solver option `withSeniorBonus = "optimize"` makes the
 phase-out part of the problem, with one binary per bonus year for the point where the bonus is
 gone, three at most. The `breakpointMethod` presets set it, so the Summary's breakpoint method
@@ -382,12 +476,12 @@ to Florin Mateoc for the original suggestion (#173).
 
 The gates of the taxable-first order used one big-M for every row: the whole portfolio
 compounded at the best return any account sees, each year. With accounts invested differently
-over a long plan it reached hundreds of times the real portfolio ($973M against $13M in one
+over a long plan it reached hundreds of times the real portfolio (\$973M against \$13M in one
 case), beyond what HiGHS resolves reliably. HiGHS then called feasible plans infeasible in
 presolve, or closed the last year's gate though nothing used it, forcing the taxable account to
 end at zero. The taxable money then had no value to the objective, and the solver could spend
 it on taxes: one plan sold its whole taxable account in the first year and bought most of it
-back, paying $500k of tax, for a bequest of $3.5M instead of $5.5M. Each gate row now has its
+back, paying \$500k of tax, for a bequest of \$3.5M instead of \$5.5M. Each gate row now has its
 own bound, the best growth path through the one-way order of the accounts (tax-deferred to Roth
 to taxable), 15 times tighter in that case. Over that case's first 40 Monte Carlo paths, presolve
 no longer calls any plan infeasible (24 times before) and no plan sells and buys back its
@@ -465,7 +559,7 @@ When the loop reached its iteration limit or stalled, it returned the best itera
 including the first one unless Medicare was in loop mode. The first iterate is built from
 initial guesses: among others, ordinary income of zero, so every capital gain fits in the 0%
 bracket. Its objective therefore looks best and was chosen. With Medicare exact, one example
-returned a plan charging no capital-gains tax on $20,000 to $28,000 of gains a year, its spending
+returned a plan charging no capital-gains tax on \$20,000 to \$28,000 of gains a year, its spending
 0.8% too high. The first iterate is now chosen only when nothing else solved.
 
 #### Fixed: exact IRMAA and ACA could charge a bracket the MAGI does not reach
@@ -473,8 +567,8 @@ returned a plan charging no capital-gains tax on $20,000 to $28,000 of gains a y
 With `withMedicare` or `withACA` set to `"optimize"`, including local search, a MAGI sitting
 exactly on a threshold could be charged the higher bracket: the formulation admitted the
 threshold in both. Where the money was worth almost nothing to the objective the solver had no
-reason to choose the cheaper one, and one example was charged $622 of IRMAA its MAGI did not owe,
-another $21,812. Each higher bracket now starts $2 above its threshold.
+reason to choose the cheaper one, and one example was charged \$622 of IRMAA its MAGI did not owe,
+another \$21,812. Each higher bracket now starts \$2 above its threshold.
 
 #### New: `Case_avery+quinn`, a partial bequest that floats
 
@@ -492,7 +586,7 @@ taxability through the survivor's years.
 The weight introduced in 2026.10.7, 0.1% of a dollar, was smaller than the 0.3% gap Owl applies
 when Medicare is solved exactly. A plan within the gap counts as optimal, so the money left to
 non-spouse heirs at the first death was invisible to the solver, which could spend it on taxes
-the household did not owe: $586,494 in one example with Medicare exact, $68,038 with local
+the household did not owe: \$586,494 in one example with Medicare exact, \$68,038 with local
 search. The default is now twice the gap, and at least 1%. In that example it removes the
 overpayment; the two examples with fractions of 28% give up no final bequest.
 
@@ -500,7 +594,7 @@ overpayment; the two examples with fractions of 28% give up no final bequest.
 
 Local search keeps the self-consistent loop's plan unless it finds a better one. When the loop
 ended on a cycle, the search could find a plan worth exactly as much whose income implies the
-costs it is charged, and the loop's plan was still returned. In one example, it charged $29,703
+costs it is charged, and the loop's plan was still returned. In one example, it charged \$29,703
 more taxable Social Security than its income implied, for the same spending. On a tie, the plan
 with the smaller fixed-point residual is now kept. Reported by Florin Mateoc (#171).
 
@@ -521,9 +615,9 @@ there the 0.1% weight on the partial bequest introduced in 2026.10.7 may not cou
 With `withNIIT = "optimize"`, including local search, the tax was bounded only from below and
 relied on being minimized. Where the plan's money was worth nothing to the objective, typically
 a first spouse's assets left to non-spouse heirs while only the final bequest counts, the
-optimizer could pay it out as NIIT instead. One couple's plan charged $190,000 to $290,000 of
-NIIT a year on under $3,000 of investment income and left a partial bequest of $98,000; with the
-tax capped, the same plan leaves $2.2M for an identical final bequest. NIIT is now capped at 3.8%
+optimizer could pay it out as NIIT instead. One couple's plan charged \$190,000 to \$290,000 of
+NIIT a year on under \$3,000 of investment income and left a partial bequest of \$98,000; with the
+tax capped, the same plan leaves \$2.2M for an identical final bequest. NIIT is now capped at 3.8%
 of net investment income.
 
 #### Changed: money left at the first death to non-spouse heirs counts a little
@@ -536,7 +630,7 @@ gives up no final bequest and leaves cases with fractions of 28% unchanged; it o
 The weight can be set with the solver option `partialBequestWeight`. Local search now solves its
 small restricted problems to a 0.01% gap whatever the case's gap: at the 0.3% gap applied when
 Medicare is solved exactly, they stopped before the weight counted, and one couple's plan left
-$1.08M to the first spouse's heirs instead of $2.20M, with a final bequest $3,250 lower.
+\$1.08M to the first spouse's heirs instead of \$2.20M, with a final bequest \$3,250 lower.
 
 #### Fixed: Graphs lost its images after a visit to Reports
 
@@ -630,7 +724,7 @@ own benefits, and the result matches a solve with that age fixed. Thanks to Flor
 #### Fixed: exact NIIT mode no longer excludes plans just above the threshold
 
 With `withNIIT = "optimize"`, a year whose income exceeded the NIIT threshold by less than its
-investment income ($250k married, $200k single) could not be represented, so the optimizer never
+investment income (\$250k married, \$200k single) could not be represented, so the optimizer never
 considered plans with such a year, and a plan forced into it could be reported infeasible. Each
 year now pays 3.8% of the smaller of the excess and the investment income over every income
 range, as the statute sets it.
@@ -648,7 +742,7 @@ platform, as the TOML format requires, and a test keeps it that way.
 
 For 2026, the expected contribution between 133% and 150% of the poverty line now rises from 3.14%
 to 4.19% of income, as Rev. Proc. 2025-25 sets it, instead of from 2.10%. Households in this range
-(above the 138% Medicaid limit) were charged up to about $160 a year too little for coverage.
+(above the 138% Medicaid limit) were charged up to about \$160 a year too little for coverage.
 Thanks to Florin Mateoc (@fmateoc) for reporting it and supplying the fix (#164).
 
 #### Fixed: ACA *optimize* mode no longer reports feasible plans as infeasible
@@ -667,7 +761,7 @@ of income. This is the rule in Medicaid expansion states; the others are not mod
 `withACA = "optimize"`, the expected contribution now rises across each income band as the
 statute sets it, as in loop mode, instead of charging each band's top rate, so the two modes
 agree. Plans that can keep income at or below 138% now take advantage of it; the *morgan* example
-spends about $2,100 a year more. Thanks to Florin Mateoc (@fmateoc) for reporting it (#165).
+spends about \$2,100 a year more. Thanks to Florin Mateoc (@fmateoc) for reporting it (#165).
 
 #### Fixed: capital gains on taxable accounts with a known cost basis
 
@@ -698,21 +792,21 @@ reporting it and supplying the fix (#162).
 Owl inflated every state's brackets, deduction and exemption caps each year. Each state now says
 which of these it indexes (`brackets_indexed`, `deduction_indexed`, `exemptions_indexed` in the
 state data), so amounts fixed in statute stay nominal, for example New York's brackets, deduction
-and $20,000 pension exclusion, and New Jersey's brackets. Among the retirement exclusions, only
+and \$20,000 pension exclusion, and New Jersey's brackets. Among the retirement exclusions, only
 Maryland's is indexed. Plans in these states now show higher state tax in later years. Thanks to
 Florin Mateoc (@fmateoc) for reporting it and supplying the fix (#157).
 
 #### Fixed: Maryland and New Mexico retirement exemptions
 
-Maryland's pension exclusion is now $41,200, its 2025 maximum (it was $34,300). New Mexico's
-65+ exemption is limited to low incomes, so it is now modeled as 0 instead of $10,000.
+Maryland's pension exclusion is now \$41,200, its 2025 maximum (it was \$34,300). New Mexico's
+65+ exemption is limited to low incomes, so it is now modeled as 0 instead of \$10,000.
 
 #### Fixed: state personal exemptions and credits
 
-New Jersey's $1,000 exemption per filer and its additional $1,000 at age 65 are now applied, as are
-Maryland's $3,200 exemption and $1,000 at 65, and Ohio's $1,900 exemption. The personal credits of
+New Jersey's \$1,000 exemption per filer and its additional \$1,000 at age 65 are now applied, as are
+Maryland's \$3,200 exemption and \$1,000 at 65, and Ohio's \$1,900 exemption. The personal credits of
 Arkansas, California, Delaware, Iowa, Nebraska and Oregon now reduce state tax, as does
-California's $153 senior credit at 65. These come from new optional per-filer fields in the state
+California's \$153 senior credit at 65. These come from new optional per-filer fields in the state
 data (`personal_exemption`, `senior_exemption`, `personal_credit`, `senior_credit`), each saying
 whether it is indexed; income-based phase-outs are not modeled.
 Thanks to Florin Mateoc (@fmateoc) for pointing out the New Jersey exemption (#157).
@@ -741,10 +835,10 @@ anthropic 1.11.0, and the development tools to pyflakes 4.0.1.
 
 ### Version 2026.9.30
 
-#### Fixed: NJ income above $1M is taxed at the top rate
+#### Fixed: NJ income above \$1M is taxed at the top rate
 
 In New Jersey, a Single filer, or the surviving spouse of a couple after the first death, paid no
-NJ tax on taxable income above $1,000,000. That income is now taxed at the 10.75% top rate, so
+NJ tax on taxable income above \$1,000,000. That income is now taxed at the 10.75% top rate, so
 such plans show higher NJ tax and lower spending or bequest. No other state was affected. Thanks
 to Florin Mateoc (@fmateoc) for reporting it and supplying the fix (#149).
 
@@ -955,7 +1049,7 @@ exemption. Roth conversion income now counts toward the exemption, as do pension
 conversions are no longer taxed by states that exempt them (e.g. IL, PA, NY). A new
 `roth_conversion_eligible` field in the state tax data marks where conversion income
 qualifies; it is `false` for MD, whose pension exclusion does not cover IRAs.
-The NY exclusion now starts at age 59½, and KY's $31,110 exclusion now covers IRA
+The NY exclusion now starts at age 59½, and KY's \$31,110 exclusion now covers IRA
 distributions and conversions, not only pensions.
 
 #### Fixed: state income tax brackets and deductions updated to 2026
@@ -964,9 +1058,9 @@ The state tax table was audited against the Tax Foundation's 2026 compilation an
 enacted in the 2026 sessions. Brackets or deductions were corrected in 24 states: AL, CA, GA,
 HI, ID, IL, KS, KY, LA, MA, ME, MI, MO, MS, MT, NE, NM, OK, RI, UT, VA, VT, WI, and WV. Notable
 changes include GA's 4.99% rate, UT's 4.45% rate, KS's two-rate structure, ME's new 2% surtax
-above $1M, and CA's 1% surtax, which now starts at $1M for couples as well. The standard
+above \$1M, and CA's 1% surtax, which now starts at \$1M for couples as well. The standard
 deduction field now also includes each state's personal exemptions. Most corrections lower
-state tax by $50 to $1,300 a year at typical retiree incomes; results for cases in these
+state tax by \$50 to \$1,300 a year at typical retiree incomes; results for cases in these
 states will change.
 
 ### Version 2026.9.16

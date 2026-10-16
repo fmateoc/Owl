@@ -1,6 +1,8 @@
 # Third comment on #193: the ss-binaries experiment on the repro, for the user to post
 
-Status: draft 2026-10-16. Upstream branch `ss-binaries` (`abd39b4`, "[experiment] SS taxability
+Status: **not posted, moot** (2026-10-16): the maintainer had already concluded the experiment and
+deleted `ss-binaries` (relayed by the user; `git fetch --prune` shows the branch gone). Kept as the
+record of our measurement. Drafted 2026-10-16. Upstream branch `ss-binaries` (`abd39b4`, "[experiment] SS taxability
 MIP: one binary per year when the benefit is at least the tier gap", marked not for merge as is)
 measured on the #193 repro: `issue-193-binaries-output.txt` (`issue-193-ls.py 600 ss-bb,ss-ls`, run
 once per `OWL_SS_VARIANT`, stock code, date frozen at 2026-10-15). Nodes are `solverNodesTotal`,

@@ -1177,6 +1177,31 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## Upstream issue drafted: SS-taxability loop (2026-10-16, on `claude/eager-cray-s0fvks`)
+
+User's rule: new information or a concrete test case gets filed regardless of the maintainer's
+own tests (CLAUDE.md, Conventions). Draft `fork-notes/issue-ss-loop.md` (new issue, plus a one-line
+pointer comment for #185), repro `fork-notes/issue-ss-loop-repro.py`, plain Python on stock Owl,
+date frozen at 2026-10-15; output `issue-ss-loop-repro-output.txt` from stock `dev` `10b9f72`
+(run twice with identical output for parts 1-4). Contents, all measured on stock:
+
+- Part 1: loop vs `withSSTaxability="optimize"` on the NY + mortgage couple (flat spending
+  $95k-$115k, Roth 60/40 and 61/39, NJ): loop short by $33.7k-48.6k; 3 of 5 tied NY cases stop at
+  the cap with $9.6k-26.4k SS residual.
+- Part 2: where it comes from (conversions $852k vs $709k, taxable SS $632k vs $1,041k, federal
+  tax $207k vs $274k).
+- Part 3: the tie at a fixed SS fraction (pure LP, Psi 0.85): Joe's 2036 tax-deferred withdrawal
+  pinned $13k lower, bequest unchanged to the cent, 21 account-years move (up to $110k); $13k
+  higher costs $52.19.
+- Part 4: the Summary shows "max iteration" and an error bar of +-$358 (0.07%) on a plan $38k
+  short; the SS residual is only in the verbose log.
+- Part 5: local search $545,434 (exact SS $544,961, loop $506,651).
+- Examples (stock, `model-review/ss-loop/examples_ss_stock_2026-10-16.txt`): not general.
+- Questions: the residual in the Summary; a re-solve or a recommendation when the loop ends at
+  the cap or in a cycle with a large SS residual. Patch offered, not built.
+
+Status: user to file.
+
 ## Why the NY + mortgage loop fails without itemizing (2026-10-16, on `claude/eager-cray-s0fvks`)
 
 Asked after the #185 measurement (section below): the NY couple with a $600k mortgage hit the
@@ -1243,9 +1268,8 @@ Consequences: (1) loop-mode numbers on this kind of couple are biased low by sev
 can carry a $10k+ bias between scenarios (stock NJ vs NY at $105k: loop gap $28k, exact $17.7k);
 the decision recipe (local search, which sets `withSSTaxability="optimize"`, or the exact LP)
 already avoids it. (2) For #185: the cycling in the NY + mortgage runs is upstream's SS loop on a
-degenerate LP, with or without itemizing; this supports the reply as posted. Nothing filed;
-whether to tell upstream (a deterministic tie-break would turn the cap failures into 2-cycles;
-it would not remove the bias) is the user's call.
+degenerate LP, with or without itemizing; this supports the reply as posted. Drafted for
+upstream the same day (section above).
 
 ## Upstream dev 10b9f72 merged; maintainer replies on #185 and #177 (2026-10-15, on `claude/eager-cray-s0fvks`)
 

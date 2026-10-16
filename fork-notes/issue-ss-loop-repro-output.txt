@@ -1,0 +1,26 @@
+# fork-notes/issue-ss-loop-repro.py on stock upstream dev 10b9f72 (git worktree, PYTHONPATH=<worktree>/src), run 2026-10-16 (date frozen at 2026-10-15 by the script). Log lines removed.
+Part 1: bequest (today's $), default loop vs withSSTaxability='optimize'
+  NY spending $95k Roth 60/40: loop   948,275 (24 iterations, oscillatory (cycle length 2), SS residual $13,562) | exact   988,448 (3 iterations) | loop short by 40,173
+  NY spending $100k Roth 60/40: loop   728,034 (30 iterations, max iteration, SS residual $24,279) | exact   766,704 (3 iterations) | loop short by 38,671
+  NY spending $105k Roth 60/40: loop   506,651 (30 iterations, max iteration, SS residual $26,411) | exact   544,961 (3 iterations) | loop short by 38,310
+  NY spending $110k Roth 60/40: loop   283,374 (22 iterations, oscillatory (cycle length 2), SS residual $14,786) | exact   323,217 (3 iterations) | loop short by 39,843
+  NY spending $115k Roth 60/40: loop    63,523 (30 iterations, max iteration, SS residual $9,599) | exact   101,321 (3 iterations) | loop short by 37,798
+  NY spending $105k Roth 61/39: loop   518,267 (20 iterations, oscillatory (cycle length 2), SS residual $2,779) | exact   552,010 (3 iterations) | loop short by 33,743
+  NJ spending $105k Roth 60/40: loop   478,708 (20 iterations, oscillatory (cycle length 2), SS residual $2,214) | exact   527,310 (3 iterations) | loop short by 48,602
+
+Part 2: NY $105k, Roth 61/39 (the loop settles), lifetime totals in today's $
+  loop : Roth conversions 708,796 (2026: 121,468, 2027: 123,868); taxable SS 1,041,214; federal income tax 273,954; bequest 518,267
+  exact: Roth conversions 852,005 (2026: 232,555, 2027: 193,198); taxable SS 631,966; federal income tax 207,423; bequest 552,010
+
+Part 3: fixed SS fraction (withSSTaxability=0.85, withMedicare='none'), NY $105k, all accounts 60/40
+  free:   Joe's 2036 tax-deferred withdrawal 27,351 (today's $), bequest 621,377.74
+  pinned: Joe's 2036 tax-deferred withdrawal 40,351, bequest 621,325.55 (change -52.19); withdrawals moved by more than $1 in 13 account-years, the largest 13,000
+  pinned: Joe's 2036 tax-deferred withdrawal 14,351, bequest 621,377.74 (change +0.00); withdrawals moved by more than $1 in 21 account-years, the largest 110,143
+
+Part 4: what the Summary reports for the default loop (NY, Roth 60/40)
+  $100k: Convergence 'max iteration', objective error bar +- 523 (+- 0.07%), bequest 728,034
+  $105k: Convergence 'max iteration', objective error bar +- 358 (+- 0.07%), bequest 506,651
+  $115k: Convergence 'max iteration', objective error bar +- 404 (+- 0.64%), bequest 63,523
+
+Part 5: local search (breakpointMethod='local-search'), NY $105k, Roth 60/40
+  bequest 545,434, convergence 'monotonic', SS residual 0

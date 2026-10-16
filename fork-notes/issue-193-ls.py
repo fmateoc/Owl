@@ -3,7 +3,8 @@ mipStrategy="local-search", and the breakpointMethod presets ("local-search" and
 "branch-and-bound": every family set to "optimize"). Runs on stock Owl; same couple and frozen date
 as issue-ss-loop-repro.py (plan() below is a copy of it).
 
-Usage: issue-193-ls.py [maxTime seconds for the branch-and-bound preset, default 600]
+Usage: issue-193-ls.py [maxTime seconds for the branch-and-bound preset, default 600] [method,...]
+  methods: loop, ss-bb, ss-ls, convex, preset-ls, preset-bb (default: all but convex)
 """
 import datetime
 import io
@@ -53,11 +54,16 @@ def plan(spend, roth=60, state="NY"):
 
 METHODS = [
     ("loop", {}),
+    ("SS convex", {"withSSTaxability": "convex"}),
     ("SS exact, B&B", {"withSSTaxability": "optimize"}),
     ("SS exact, local search", {"withSSTaxability": "optimize", "mipStrategy": "local-search"}),
     ("preset local-search", {"breakpointMethod": "local-search"}),
     ("preset B&B", {"breakpointMethod": "branch-and-bound", "maxTime": BB_TIME}),
 ]
+
+KEYS = ["loop", "convex", "ss-bb", "ss-ls", "preset-ls", "preset-bb"]
+pick = sys.argv[2].split(",") if len(sys.argv) > 2 else ["loop", "ss-bb", "ss-ls", "preset-ls", "preset-bb"]
+METHODS = [m for k, m in zip(KEYS, METHODS, strict=True) if k in pick]
 
 print(f"Bequest (today's $); time; method the Summary reports; total fixed-point residual (today's $)."
       f" B&B preset with maxTime={BB_TIME:.0f} s.")

@@ -31,7 +31,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16) |
-| #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` (user to post), with a correction (exact SS takes 14-21 s, not "a few seconds") |
+| #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; checked with the repro (equals `"optimize"` to the dollar, 2-5 s); confirmation draft `issue-193-reply-2.md` |
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
@@ -1178,6 +1178,54 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## Upstream #193 fix merged: withSSTaxability="convex" (2026-10-16, on `claude/eager-cray-s0fvks`)
+
+The user posted `issue-193-reply.md`; the maintainer answered with two commits on `dev`:
+`6b02671` (`withSSTaxability="convex"`, "exact SS phase-in pricing without binaries (prototype,
+#193)") and `83a580b` (start from a flat 85%). The mode keeps taxable SS as the LP column `tss`
+above the three convex phase-in pieces; the 85% cap, the only non-convex part, is a per-year
+region taken from the previous iterate (`_update_ss_regions`, at most `SS_REGION_FLIPS` = 2
+switches a year), then probed greedily one year at a time with full solves
+(`_ssCapProbeSolve`). Opt-in; not with `withSSAges="optimize"`; falls back on the loop on an
+unsolvable iterate.
+
+Merge `ae1fb9d`: one conflict, the loop's convergence test (upstream's SS term under "convex",
+the LP's `tss` against the formula, written with the fork's `sc_lp` snapshot; the fork's
+`_SC_PARAMS` moves and itemized moves kept). Fork code that touches taxable SS checked: the state
+taxable-income rows exclude SS through `tss` when it exists, so they follow the LP's `tss`; the
+post-solve state AGI and the NY recapture read `Psi_n`, which upstream now derives from `tss`
+(allowed above 0.85 under "convex"). No duplicate definitions (AST). flake8/ruff: only the known
+upstream lines. Full suite **3228 passed, 1 skipped** (7:01; +2 upstream tests).
+
+Measured (date frozen at 2026-10-15):
+
+- Stock `dev` `83a580b`, the seven #193 cases (`issue-193-convex-output.txt`): "convex" equals
+  `withSSTaxability="optimize"` to the dollar in all seven, 2.2-5.2 s against 13-21 s, residual
+  $0. The Summary labels "convex" runs "loop" (`breakpointMethodUsed`).
+- Stock, 18 examples (`model-review/ss-loop/examples_convex_stock_2026-10-16.txt`): SS residual
+  $0 in all; objective >= the loop's in 17 (`alex+jamie` -$12); `john+sally` +72%, `morgan`
+  +2.15%, `kim+sam-bequest` +0.72%, `helen+ruth` +0.18%; 0-50 s (`jack+jill` 49.5 s). Matches the
+  commit message's claims.
+- Fork, the probe couple (`model-review/ss-loop/convex_fork_2026-10-16.txt`; fork defaults,
+  itemizing on), bequest, loop / "convex" / local-search preset:
+  NY 2032 760,903 / 819,127 / 819,098; NY+mortgage 2032 625,777 / 699,588 / 710,328;
+  NJ 2032 817,280 / 852,872 / 852,863; NJ+mortgage 2032 666,027 / 705,653 / 707,057;
+  NY 2099 825,195 / 874,558 / 876,248; NY+mortgage 2099 640,832 / 677,246 / 686,772;
+  NJ 2099 876,102 / 911,735 / 912,040; NJ+mortgage 2099 632,267 / 685,119 / 684,894.
+  "Convex" takes 2.5-9.7 s in NY but **534-962 s in NJ** (the cap probe re-solves the whole
+  plan per year, each with the NJ exclusion MILP; local search 81-176 s there).
+- Attribution of the NY+mortgage 2032 gap (`convex_attr.py`): exact SS alone gives 699,588 under
+  branch-and-bound and local search, the same as "convex"; "convex" + Medicare, NIIT or senior
+  bonus optimize: 699,588; "convex" + LTCG optimize: **710,328** = local search (618 s). The
+  $10.7k is the LTCG loop, not SS. Not measured: whether the 2099 NY gaps ($1.7k, $9.5k) are LTCG
+  too; whether the LTCG loop costs as much on stock upstream (the stock repro's presets added
+  only $270-524 over exact SS).
+
+Consequences for the fork: for NY decisions "convex" is a fast exact-SS mode (seconds); the
+decision recipe stays local search (it also covers LTCG, which "convex" leaves to the loop, and is
+faster than "convex" in NJ). Reply draft `fork-notes/issue-193-reply-2.md` (confirmation with the
+repro's numbers, morgan, the "loop" label), user's call to post.
+
 ## #193 follow-up: local search on the repro cases (2026-10-16, on `claude/eager-cray-s0fvks`)
 
 Maintainer on #193 (relayed by the user): "How does that compare with the local MILP which takes
@@ -1195,8 +1243,8 @@ binary families one by one around a local search (mipStrategy=local-search)?" Me
 - Correction to the filed issue: "3 iterations and a few seconds" for the exact SS solve was not
   timed; it is 14-21 s.
 
-Reply drafted: `fork-notes/issue-193-reply.md` (table, the correction, question 2 narrowed to a
-pointer to `breakpointMethod="local-search"` in the loop's warning). User to post.
+Reply `fork-notes/issue-193-reply.md` (table, the correction, question 2 narrowed to a pointer to
+`breakpointMethod="local-search"` in the loop's warning): posted by the user.
 
 ## Upstream issue #193: SS-taxability loop (2026-10-16, on `claude/eager-cray-s0fvks`)
 
@@ -1443,6 +1491,9 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-16, after merging upstream `dev` `83a580b` (#193 "convex"): **3228 passed, 1 skipped** (7:01).
+flake8 only upstream's `localsearch.py:31`; ruff only upstream's `test_roth_maturation_losses.py:49`.
 
 2026-10-15, after merging upstream `dev` `10b9f72`: **3226 passed, 1 skipped** (full suite, 6:32).
 flake8 only upstream's `localsearch.py:31`; ruff only upstream's `test_roth_maturation_losses.py:49` (B905).

@@ -1,6 +1,6 @@
 # Reply on #193: local search (mipStrategy="local-search") on the repro cases, for the user to post
 
-Status: draft 2026-10-16. Answers the maintainer's question on #193: "How does that compare with
+Status: **posted by the user** (2026-10-16); the maintainer answered with the "convex" fix (`issue-193-reply-2.md`). Answers the maintainer's question on #193: "How does that compare with
 the local MILP which takes binary families one by one around a local search
 (mipStrategy=local-search)?" Numbers: `fork-notes/issue-193-ls.py` on stock `dev` `10b9f72`,
 output `issue-193-ls-output.txt` (date frozen at 2026-10-15; one process on a 4-core cloud

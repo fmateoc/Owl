@@ -1,0 +1,33 @@
+# convex_fork.py (fork ae1fb9d, upstream dev 83a580b merged), run 2026-10-16, date frozen at 2026-10-15; one process, a second ran alongside part of the time. Log lines removed.
+NY 2032        loop    bequest    760,903     0.8 s  it=17 oscillatory (cycle length 2)     residual    4,307 worst ['SS', 4307.0]
+NY 2032        convex  bequest    819,127     9.7 s  it=225 oscillatory                      residual      171 worst ['itemized', 171.0]
+NY 2032        ls      bequest    819,098   154.4 s  it=21 oscillatory                      residual        7 worst ['itemized', 7.0]
+NYmort 2032    loop    bequest    625,777     1.8 s  it=30 max iteration                    residual   33,226 worst ['SS', 33226.0]
+NYmort 2032    convex  bequest    699,588     9.6 s  it=193 oscillatory                      residual       61 worst ['itemized', 61.0]
+NYmort 2032    ls      bequest    710,328    52.1 s  it=33 monotonic                        residual       25 worst ['itemized', 24.0]
+NJ 2032        loop    bequest    817,280     8.3 s  it=22 oscillatory                      residual    1,183 worst ['SS', 1182.0]
+NJ 2032        convex  bequest    852,872   597.2 s  it=373 oscillatory (cycle length 2)     residual        0 worst ['SS', 0.0]
+NJ 2032        ls      bequest    852,863   125.5 s  it=26 oscillatory                      residual       13 worst ['itemized', 13.0]
+NJmort 2032    loop    bequest    666,027    15.2 s  it=19 oscillatory                      residual    1,154 worst ['SS', 1154.0]
+NJmort 2032    convex  bequest    705,653   864.1 s  it=280 oscillatory                      residual       26 worst ['itemized', 24.0]
+NJmort 2032    ls      bequest    707,057   175.7 s  it=24 oscillatory                      residual        7 worst ['itemized', 7.0]
+NY 2099        loop    bequest    825,195     0.6 s  it=15 oscillatory (cycle length 2)     residual    1,821 worst ['SS', 1821.0]
+NY 2099        convex  bequest    874,558     2.5 s  it=73 monotonic                        residual        0 worst ['SS', 0.0]
+NY 2099        ls      bequest    876,248    42.8 s  it=18 monotonic                        residual        0 worst ['SS', 0.0]
+NYmort 2099    loop    bequest    640,832     1.0 s  it=30 max iteration                    residual   42,876 worst ['SS', 42572.0]
+NYmort 2099    convex  bequest    677,246     6.0 s  it=148 monotonic                        residual        0 worst ['state recapture', 0.0]
+NYmort 2099    ls      bequest    686,772    61.5 s  it=33 monotonic                        residual        0 worst ['SS', 0.0]
+NJ 2099        loop    bequest    876,102     2.1 s  it=18 oscillatory                      residual    1,545 worst ['SS', 1545.0]
+NJ 2099        convex  bequest    911,735   534.0 s  it=350 oscillatory                      residual        0 worst ['SS', 0.0]
+NJ 2099        ls      bequest    912,040    80.6 s  it=22 oscillatory                      residual        0 worst ['SS', 0.0]
+NJmort 2099    loop    bequest    632,267     1.4 s  it=11 oscillatory                      residual    1,450 worst ['SS', 1450.0]
+NJmort 2099    convex  bequest    685,119   961.8 s  it=320 oscillatory                      residual        0 worst ['SS', 0.0]
+NJmort 2099    ls      bequest    684,894   123.7 s  it=15 oscillatory                      residual        0 worst ['SS', 0.0]
+
+# convex_attr.py 0,1,2 then 3,4,5 (two runs, same day; 3-5 from the script's scratch predecessor with the same variants).
+NYmort 2032 SS optimize B&B                bequest    699,588   39.5 s branch-and-bound (SS) residual 61
+NYmort 2032 SS optimize LS                 bequest    699,588   47.0 s local search (SS) residual 61
+NYmort 2032 convex + Medicare optimize     bequest    699,588   13.5 s branch-and-bound (IRMAA) residual 35
+NYmort 2032 convex + LTCG optimize       bequest    710,328  618.2 s branch-and-bound (LTCG) residual 25
+NYmort 2032 convex + NIIT optimize       bequest    699,588   17.1 s branch-and-bound (NIIT) residual 61
+NYmort 2032 convex + senior bonus optimize bequest    699,588    9.0 s loop residual 61

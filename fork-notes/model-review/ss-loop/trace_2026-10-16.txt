@@ -1,0 +1,35 @@
+# trace.py runs (ny, nj full tables; the other four, first line only) and tie.py ny 29 26 2036; fork c06b6af+, run 2026-10-16, date frozen at 2026-10-15.
+ny: NY Yonkers yOBBBA 2032 pt 25,000 {}: 30 iterations, max iteration, bequest 464,074, worst residual ['SS', 18663.0]
+  objective per iteration: [591522, 414024, 428692, 439468, 446499, 451421, 454866, 457278, 458966, 460659, 461333, 462691, 462755, 462878, 463398, 463250, 463658, 463944, 463632, 463414, 463261, 463775, 463514, 463843, 464073, 463723, 463477, 463306, 463806, 463536]
+  year     SS   MAGI min..max (today $)   Psi implied   fed bracket (fill)      state taxable income
+  2034  42,408     87,348..  101,098   0.732..0.850   [15]%  40.. 59%          0..  13,751
+  2035  80,352    124,068..  137,444   0.583..0.724   [15]%  66.. 86%          0..  13,376
+  2036  80,352    122,877..  135,889   0.578..0.716   [15]%  59.. 75%          0..  13,012
+  2037  80,352    121,719..  134,376   0.574..0.708   [15]%  66.. 83%          0..  12,657
+  2038  80,352    120,592..  132,905   0.570..0.700   [15]%  58.. 77%          0..  12,313
+  2039  80,352    131,473..  131,473   0.693..0.693   [15]%  79.. 79%     11,977..  11,977
+  2040  80,352    130,081..  130,081   0.686..0.686   [15]%  76.. 76%     11,651..  11,651
+  2041  80,352    128,726..  128,726   0.678..0.678   [15]%  74.. 74%     11,334..  11,334
+  2042  80,352    127,409..  127,409   0.672..0.672   [15]%  72.. 72%     11,025..  11,025
+nj: NJ - yOBBBA 2032 pt 25,000 {}: 15 iterations, oscillatory, bequest 493,483, worst residual ['SS', 726.0]
+  objective per iteration: [598216, 466815, 481754, 485322, 487820, 489568, 490792, 491648, 492248, 492668, 492961, 493167, 493311, 493412, 493482]
+  year     SS   MAGI min..max (today $)   Psi implied   fed bracket (fill)      state taxable income
+  2034  42,408     69,835..   70,955   0.381..0.404   [10]% 100..100%          0..       0
+  2035  80,352    121,974..  123,670   0.561..0.578   [15]%  54.. 69%          0..       0
+  2036  80,352    141,172..  141,257   0.772..0.773   [15]% 100..100%          0..       0
+  2037  80,352    140,841..  140,906   0.776..0.777   [15]% 100..100%          0..       0
+  2038  80,352    140,520..  140,565   0.781..0.781   [15]% 100..100%          0..       0
+  2039  80,352    140,208..  140,233   0.785..0.786   [15]% 100..100%          0..       0
+  2040  80,352    139,903..  139,910   0.789..0.790   [15]% 100..100%          0..       0
+  2041  80,352    139,517..  139,596   0.793..0.793   [15]% 100..100%          0..       0
+  2042  80,352    139,290..  139,320   0.797..0.798   [15]% 100..100%          0..       0
+ny-noloc: NY - yOBBBA 2032 pt 25,000 {}: 30 iterations, max iteration, bequest 475,149, worst residual ['SS', 22643.0]
+ny-norecap: NY Yonkers yOBBBA 2032 pt 25,000 {} NORECAP: 23 iterations, oscillatory (cycle length 2), bequest 463,347, worst residual ['SS', 8114.0]
+ny-norecap-noloc: NY - yOBBBA 2032 pt 25,000 {} NORECAP: 30 iterations, max iteration, bequest 475,287, worst residual ['SS', 31135.0]
+ny-ssopt: NY Yonkers yOBBBA 2032 pt 25,000 {'withSSTaxability': 'optimize'}: 4 iterations, monotonic, bequest 494,962, worst residual ['SS', 0.0]
+LP of iteration 29: objective -1,090,606.77; Joe's tax-deferred withdrawal in 2036: 40,363 (today $; the loop's iterate had 27,351)
+  pinned to iteration 26's 40,363: objective -1,090,606.78, change -0.0088
+  withdrawals that moved (today $): [('Joe taxable', 2028, -166176), ('Joe taxable', 2029, 78509), ('Joe taxable', 2031, 95871), ('Joe tax-deferred', 2032, 13599), ('Joe tax-deferred', 2034, -12869), ('Joe tax-deferred', 2035, -20491), ('Joe tax-deferred', 2039, 11977), ('Joe tax-deferred', 2040, -3309), ('Joe Roth', 2032, 10370), ('Joe Roth', 2035, 6414), ('Joe Roth', 2039, -9635), ('Joe Roth', 2040, 2662), ('Jane taxable', 2028, 166176), ('Jane taxable', 2029, -78509)]
+LP of iteration 26: objective -1,090,510.59; Joe's tax-deferred withdrawal in 2036: 40,363 (today $; the loop's iterate had 40,363)
+  pinned to iteration 29's 27,351: objective -1,090,510.60, change -0.0099
+  withdrawals that moved (today $): [('Joe taxable', 2028, -166176), ('Joe taxable', 2029, 78509), ('Joe taxable', 2031, 95871), ('Joe tax-deferred', 2032, 13599), ('Joe tax-deferred', 2035, 1794), ('Joe tax-deferred', 2036, -13012), ('Joe tax-deferred', 2039, 11977), ('Joe Roth', 2032, -13599), ('Joe Roth', 2035, -1443), ('Joe Roth', 2036, 10366), ('Joe Roth', 2039, -9635), ('Joe Roth', 2040, 111), ('Jane taxable', 2028, 166176), ('Jane taxable', 2029, -78509)]

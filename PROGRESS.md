@@ -1177,6 +1177,76 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## Why the NY + mortgage loop fails without itemizing (2026-10-16, on `claude/eager-cray-s0fvks`)
+
+Asked after the #185 measurement (section below): the NY couple with a $600k mortgage hit the
+30-iteration cap with `withItemized="none"`. Scripts and outputs: `fork-notes/model-review/ss-loop/`
+(`trace.py`, `tie.py`, `alloc.py`, `stock_repro.py`, `ex_ss.py`; `*_2026-10-16.txt`; date frozen
+at 2026-10-15). Case: NY Yonkers, $25k property tax, 2032 reversion, maxBequest (bequest $464,074,
+SS residual $18,663) unless stated.
+
+**Not the fork's state code.** No Yonkers: cap, SS residual $22.6k. NY recapture forced to zero:
+2-cycle at 23 iterations, $8.1k. Neither: cap, $31.1k. The worst residual family is the SS taxable
+fraction in every case. Stock upstream `dev` `10b9f72` (worktree; same couple as flat $105k net
+spending + the same mortgage, `stock_repro.py`): cap, SS residual $26.4k.
+
+**The quantity that does not settle.** In the trace (`trace.py ny`), the years 2035-2038 have SS
+in the phase-in (implied Psi 0.57-0.72, $80k of SS in today's $; 2034, the first SS year, 0.73-0.85) and no Roth conversions.
+Over the last 10 iterations, each year's MAGI flips between two or three values about $13k
+apart, and its NY taxable income between $0 and the top of NY's first bracket ($13,012 in today's
+$ in 2036, after the $20k pension exclusion each and the standard deduction). The federal fill
+stays inside the 15% bracket (58-86% full in 2035-2038). The swap that moves is Joe's tax-deferred withdrawal
+against his Roth withdrawal (2036: $27,351 / $31k one iteration, $40,363 / $20k another).
+
+**Why it moves: the LP is degenerate at a fixed Psi.** All accounts hold the same 60/40 mix at
+fixed ("conservative") rates, so tax-deferred, Roth and taxable dollars grow identically, and
+moving a withdrawal between years with the same marginal rates costs nothing. `tie.py ny 29 26
+2036` rebuilds iteration 29's LP (its SC parameters) and pins Joe's 2036 tax-deferred withdrawal
+to iteration 26's value: the objective moves by $0.01 (both directions), while the solution moves
+by $10-20k of tax-deferred/Roth withdrawals in 2032-2040 and swaps $166k of taxable withdrawals
+between the spouses in 2028-2031. Even the unpinned rebuild returned another vertex than the loop's
+iterate ($40,363 instead of $27,351). With Psi a constant in the LP, those vertices are equally
+good. Under the IRS formula they are not: a $13k MAGI difference moves taxable SS by about
+0.14 x $80k. The next Psi then follows the solver's arbitrary pick, damped 30/70
+(`_update_Psi_n`), and never settles.
+
+**Why NJ settles.** Same couple in NJ: in 2036-2042 the federal 15% bracket is 100% full and NJ
+taxable income is zero (exclusion), so the bracket boundary pins MAGI whatever vertex the solver
+returns (MAGI within $100 or less per year over the last 10 iterations). In NY, the state's first
+bracket makes those years cost 15% + 3.9% (+ Yonkers) inside the federal bracket, so the tied swap
+moves MAGI.
+
+**Breaking the tie.** Roth at 59/41 or 61/39 stock (others 60/40), `alloc.py`: the fork's NY
+cases at $20k, $25k and $30k property tax go from the cap ($18.7k-21.9k residual) to a 2-cycle at
+20 iterations ($2.4k-2.9k), like the cases that settle; stock upstream: the same ($2.4k, $2.8k).
+Under the law as enacted (2099) the tied NY cases 2-cycle at 19 iterations ($2.2k) instead of
+hitting the cap. On stock with the tie, flat spending $95k-$115k: cap at $100k, $105k, $115k;
+2-cycles with $13.6k-14.8k residual at $95k and $110k.
+
+**The larger problem: the SS loop is biased low on this couple, converged or not.** With
+`withSSTaxability="optimize"` (exact, MILP) the same cases converge in 3-4 iterations, and the
+bequest is higher in every case run: fork NY 2032 $25k: $494,962 vs $464,074 (local search
+$498,322); stock NY: +$33.7k-40.2k at every spending level and allocation ($95k: 4.2%, $105k: 6.5-7.8%,
+$110k: 14%, $115k: 59% of a $64k bequest); stock NJ $105k: +$48.6k (10%); fork NY 2099: +$25k-60k (3-20%). Mechanism (stock, Roth 61/39, where the
+loop settles): the exact model converts $852k (today's $) instead of $709k, more of it in
+2026-2027 ($233k + $193k vs $121k + $124k), which cuts lifetime taxable SS from $1,041k to $632k
+and lifetime federal tax from $274k to $207k. With Psi fixed, the LP prices phase-in income at
+15%; the true marginal rate there is up to 15% x 1.85 (each dollar adds up to $0.85 of taxable SS).
+
+**Not general.** On the 18 examples (stock), exact SS is within +-0.5% of the loop in 16, +10% on
+`Case_john+sally`, -0.7% on `Case_morgan` (worse), and 10-700 times slower (up to 686 s,
+`kim+sam-bequest`; `examples_ss_stock_2026-10-16.txt`). The bias needs many years in the
+phase-in with income the plan can move; this couple (SS claimed at 70, $1.5M tax-deferred) has
+22 of 23 SS years there. The household's profile is of that kind.
+
+Consequences: (1) loop-mode numbers on this kind of couple are biased low by several percent, and
+can carry a $10k+ bias between scenarios (stock NJ vs NY at $105k: loop gap $28k, exact $17.7k);
+the decision recipe (local search, which sets `withSSTaxability="optimize"`, or the exact LP)
+already avoids it. (2) For #185: the cycling in the NY + mortgage runs is upstream's SS loop on a
+degenerate LP, with or without itemizing; this supports the reply as posted. Nothing filed;
+whether to tell upstream (a deterministic tie-break would turn the cap failures into 2-cycles;
+it would not remove the bias) is the user's call.
+
 ## Upstream dev 10b9f72 merged; maintainer replies on #185 and #177 (2026-10-15, on `claude/eager-cray-s0fvks`)
 
 Upstream since `810a6cd` (19 commits, `main` = `dev` = `10b9f72`, version 2026.10.15 + WIP):
@@ -1250,10 +1320,8 @@ fragile NY + mortgage loop over the cap. That is a fork matter, and the fork's d
 (local search for comparisons) already covers it. Optional data comment for #185:
 `fork-notes/issue-185-reply.md` (user's call).
 
-Open, not chased: why the SS-taxability loop fails on the NY + mortgage couple at $20k-30k of
-property tax even without itemizing (NY recapture and the Yonkers surcharge are loop quantities
-too; NJ with the same mortgage converges); whether stock upstream shows the same on an
-equivalent case without NY's fork machinery.
+Open item, answered 2026-10-16 (section above): the SS-taxability loop on a degenerate LP
+(identical growth in every account), on stock upstream too; not the fork's NY code.
 
 ## Phase 3 step 8 — upstream proposal drafted (2026-10-12, on `claude/eager-cray-s0fvks`)
 

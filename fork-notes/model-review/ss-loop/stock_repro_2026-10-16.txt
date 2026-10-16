@@ -1,0 +1,56 @@
+# stock_repro.py on stock upstream dev 10b9f72 (git worktree of upstream/dev, PYTHONPATH=<worktree>/src), run 2026-10-16, date frozen at 2026-10-15.
+# args: Roth stock %, flat net spending $k, state. Bequest in today's $.
+NY roth60 spend105k SS=loop     solved it=30 max iteration bequest=506,651 worst=SS 26,411
+   conversions (today $): total 708,796; by year {2026: 121468, 2027: 123868, 2028: 126302, 2029: 132150, 2030: 134736, 2031: 70272}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,084,556; federal tax lifetime 284,443
+NY roth60 spend105k SS=optimize solved it=3 monotonic bequest=544,961 worst=SS 0
+   conversions (today $): total 852,005; by year {2026: 232555, 2027: 193198, 2028: 147165, 2029: 133073, 2030: 135678, 2031: 10337}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,423
+NY roth59 spend105k SS=loop     solved it=20 oscillatory (cycle length 2) bequest=499,206 worst=SS 2,411
+   conversions (today $): total 708,796; by year {2026: 121468, 2027: 123868, 2028: 126302, 2029: 132150, 2030: 134736, 2031: 70272}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,094,697; federal tax lifetime 286,000
+NY roth59 spend105k SS=optimize solved it=3 monotonic bequest=538,032 worst=SS 0
+   conversions (today $): total 853,614; by year {2026: 199186, 2027: 192948, 2028: 182366, 2029: 133072, 2030: 135677, 2031: 10364}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,837
+NY roth61 spend105k SS=loop     solved it=20 oscillatory (cycle length 2) bequest=518,267 worst=SS 2,779
+   conversions (today $): total 708,796; by year {2026: 121468, 2027: 123868, 2028: 126302, 2029: 132150, 2030: 134736, 2031: 70272}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 1,041,214; federal tax lifetime 273,954
+NY roth61 spend105k SS=optimize solved it=3 monotonic bequest=552,010 worst=SS 0
+   conversions (today $): total 852,005; by year {2026: 232555, 2027: 193198, 2028: 147165, 2029: 133073, 2030: 135678, 2031: 10337}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,423
+NY roth60 spend95k SS=loop     solved it=24 oscillatory (cycle length 2) bequest=948,275 worst=SS 13,562
+   conversions (today $): total 769,534; by year {2026: 121308, 2027: 123545, 2028: 125811, 2029: 131488, 2030: 133900, 2031: 133483}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,094,129; federal tax lifetime 286,309
+NY roth60 spend95k SS=optimize solved it=3 monotonic bequest=988,448 worst=SS 0
+   conversions (today $): total 914,472; by year {2026: 232395, 2027: 192923, 2028: 149038, 2029: 132422, 2030: 134853, 2031: 72842}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,951
+NY roth60 spend100k SS=loop     solved it=30 max iteration bequest=728,034 worst=SS 24,279
+   conversions (today $): total 739,165; by year {2026: 121388, 2027: 123706, 2028: 126056, 2029: 131819, 2030: 134318, 2031: 101877}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,087,541; federal tax lifetime 284,960
+NY roth60 spend100k SS=optimize solved it=3 monotonic bequest=766,704 worst=SS 0
+   conversions (today $): total 883,239; by year {2026: 232475, 2027: 193061, 2028: 148101, 2029: 132747, 2030: 135265, 2031: 41590}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,687
+NY roth60 spend110k SS=loop     solved it=22 oscillatory (cycle length 2) bequest=283,374 worst=SS 14,786
+   conversions (today $): total 678,426; by year {2026: 121548, 2027: 124030, 2028: 126547, 2029: 132481, 2030: 135154, 2031: 38666}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,090,888; federal tax lifetime 285,179
+NY roth60 spend110k SS=optimize solved it=3 monotonic bequest=323,217 worst=SS 0
+   conversions (today $): total 841,688; by year {2026: 232634, 2027: 193336, 2028: 146229, 2029: 133398, 2030: 136091}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,159
+NY roth60 spend115k SS=loop     solved it=30 max iteration bequest=63,523 worst=SS 9,599
+   conversions (today $): total 648,057; by year {2026: 121627, 2027: 124192, 2028: 126793, 2029: 132812, 2030: 135572, 2031: 7061}
+   SS years in the phase-in (Psi < 0.85): 23 of 23; taxable SS lifetime (today $) 1,081,574; federal tax lifetime 283,425
+NY roth60 spend115k SS=optimize solved it=3 monotonic bequest=101,321 worst=SS 0
+   conversions (today $): total 828,986; by year {2026: 232714, 2027: 193473, 2028: 145485, 2029: 133725, 2030: 123589}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 206,937
+NJ roth60 spend105k SS=loop     solved it=20 oscillatory (cycle length 2) bequest=478,708 worst=SS 2,214
+   conversions (today $): total 652,715; by year {2026: 121478, 2027: 123889, 2028: 126333, 2029: 130641, 2030: 131077, 2031: 19297}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 1,121,768; federal tax lifetime 292,899
+NJ roth60 spend105k SS=optimize solved it=3 monotonic bequest=527,310 worst=SS 0
+   conversions (today $): total 846,313; by year {2026: 232578, 2027: 209706, 2028: 130111, 2029: 133138, 2030: 135753, 2031: 5026}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,265
+NJ roth61 spend105k SS=loop     solved it=20 oscillatory (cycle length 2) bequest=496,764 worst=SS 2,712
+   conversions (today $): total 697,807; by year {2026: 121478, 2027: 123889, 2028: 126333, 2029: 130641, 2030: 131077, 2031: 64389}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 1,051,357; federal tax lifetime 276,384
+NJ roth61 spend105k SS=optimize solved it=3 monotonic bequest=534,293 worst=SS 0
+   conversions (today $): total 846,313; by year {2026: 232578, 2027: 209706, 2028: 130111, 2029: 133138, 2030: 135753, 2031: 5026}
+   SS years in the phase-in (Psi < 0.85): 22 of 23; taxable SS lifetime (today $) 631,966; federal tax lifetime 207,265

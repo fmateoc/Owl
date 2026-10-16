@@ -1,0 +1,19 @@
+# ex_ss.py on stock upstream dev 10b9f72: withSSTaxability loop vs optimize on the 18 examples; run 2026-10-16, date frozen at 2026-10-15.
+Case_alex+jamie          loop       228,369 it= 8   0.2s SSres     802 oscillatory            | opt       228,357 it= 4   16.2s |  -0.01%
+Case_avery+quinn         loop     3,237,585 it=14   0.3s SSres     962 oscillatory            | opt     3,237,817 it= 4    1.4s |  +0.01%
+Case_bill                loop        36,666 it= 2   0.0s SSres       0 monotonic              | opt        36,666 it= 2    0.0s |  +0.00%
+Case_cameron             loop        18,996 it= 8   0.1s SSres  29,429 oscillatory (cycle len | opt        18,996 it= 3    0.2s |  +0.00%
+Case_chris+pat           loop       117,047 it=30   0.9s SSres  14,722 max iteration          | opt       117,223 it= 3   49.9s |  +0.15%
+Case_dana                loop        81,228 it= 3   0.1s SSres       0 monotonic              | opt        81,245 it= 5   19.8s |  +0.02%
+Case_devon               loop       248,306 it= 3   0.1s SSres       0 monotonic              | opt       248,306 it= 3    7.3s |  +0.00%
+Case_helen+ruth          loop       194,069 it= 8   0.1s SSres     612 oscillatory            | opt       194,151 it=11   21.8s |  +0.04%
+Case_jack+jill           loop       102,535 it=14   1.5s SSres   1,382 oscillatory            | opt       102,884 it=30  159.9s |  +0.34%
+Case_joe                 loop        92,575 it= 5   0.1s SSres       0 oscillatory            | opt        92,869 it=10   34.2s |  +0.32%
+Case_john+sally          loop        16,803 it= 4   0.1s SSres       0 oscillatory            | opt        18,481 it= 3   14.5s |  +9.99%
+Case_jon+jane            loop       160,677 it= 4   0.2s SSres       0 oscillatory            | opt       160,677 it= 4   10.8s |  +0.00%
+Case_jordan+taylor-qcd   loop     2,258,944 it= 4   0.1s SSres       0 monotonic              | opt     2,260,012 it= 4   90.2s |  +0.05%
+Case_jordan+taylor       loop     2,608,865 it= 4   0.1s SSres       0 monotonic              | opt     2,608,865 it= 4   15.2s |  +0.00%
+Case_kim+sam-bequest     loop     1,944,071 it=11   0.6s SSres     814 oscillatory            | opt     1,953,516 it= 5  685.9s |  +0.49%
+Case_kim+sam-spending    loop       185,949 it=10   0.3s SSres   1,355 oscillatory            | opt       186,172 it= 3   34.5s |  +0.12%
+Case_morgan              loop        40,889 it=14   0.3s SSres   1,792 oscillatory            | opt        40,601 it= 3   12.1s |  -0.70%
+Case_robin               loop        44,013 it=17   0.2s SSres   1,040 oscillatory            | opt        44,081 it= 4   13.2s |  +0.15%

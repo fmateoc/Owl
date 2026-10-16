@@ -1,7 +1,7 @@
 # Draft upstream issue: the SS-taxability loop on a couple with most SS years in the phase-in
 
-Status: **filed by the user as #193** (2026-10-16). Pointer comment for #185 below, with the number
-filled in; whether it was posted is not recorded here. Every number comes from stock upstream `dev` `10b9f72`:
+Status: **filed by the user as #193** (2026-10-16). Pointer comment for #185 below, **posted by the
+user** (relayed 2026-10-16). Every number comes from stock upstream `dev` `10b9f72`:
 `fork-notes/issue-ss-loop-repro.py` (output: `issue-ss-loop-repro-output.txt`, run twice with
 identical output) and `fork-notes/model-review/ss-loop/` (`stock_repro_2026-10-16.txt`: Roth
 59/41 on stock; `examples_ss_stock_2026-10-16.txt`: the 18 examples). The fork-only analysis
@@ -82,7 +82,7 @@ I can turn either into a patch on `dev` if you want one.
 
 ---
 
-## Pointer comment on #185
+## Pointer comment on #185 (posted)
 
 The NY + mortgage cases that hit the cap in my measurements above fail the same way on stock
 `dev` with no itemizing: it is the SS taxability loop on an LP with ties, and the loop's plan is

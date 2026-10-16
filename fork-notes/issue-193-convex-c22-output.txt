@@ -1,0 +1,30 @@
+# fork-notes/issue-193-ls.py 600 loop,convex,ss-bb on stock upstream ss-convex c22f46d (cheaper cap probe), run 2026-10-16, date frozen at 2026-10-15. Log lines removed.
+Bequest (today's $); time; method the Summary reports; total fixed-point residual (today's $). B&B preset with maxTime=600 s.
+NY spending $95k Roth 60/40
+  loop                        948,275      0.8 s  loop                                                         residual   13,562
+  SS convex                   988,448      1.2 s  loop                                                         residual        0
+  SS exact, B&B               988,448     18.7 s  branch-and-bound (SS)                                        residual        0  gap 0.01%
+NY spending $100k Roth 60/40
+  loop                        728,034      1.1 s  loop                                                         residual   24,279
+  SS convex                   766,704      1.0 s  loop                                                         residual        0
+  SS exact, B&B               766,704     16.6 s  branch-and-bound (SS)                                        residual        0  gap 0.01%
+NY spending $105k Roth 60/40
+  loop                        506,651      1.0 s  loop                                                         residual   26,411
+  SS convex                   544,961      1.0 s  loop                                                         residual        0
+  SS exact, B&B               544,961     17.4 s  branch-and-bound (SS)                                        residual        0  gap 0.01%
+NY spending $110k Roth 60/40
+  loop                        283,374      0.7 s  loop                                                         residual   14,786
+  SS convex                   323,217      0.9 s  loop                                                         residual        0
+  SS exact, B&B               323,217     21.2 s  branch-and-bound (SS)                                        residual        0
+NY spending $115k Roth 60/40
+  loop                         63,523      1.0 s  loop                                                         residual    9,599
+  SS convex                   101,321      0.9 s  loop                                                         residual        0
+  SS exact, B&B               101,321     16.8 s  branch-and-bound (SS)                                        residual        0
+NY spending $105k Roth 61/39
+  loop                        518,267      0.7 s  loop                                                         residual    2,779
+  SS convex                   552,010      0.9 s  loop                                                         residual        0
+  SS exact, B&B               552,010     19.8 s  branch-and-bound (SS)                                        residual        0
+NJ spending $105k Roth 60/40
+  loop                        478,708      0.7 s  loop                                                         residual    2,214
+  SS convex                   527,310      0.8 s  loop                                                         residual        0
+  SS exact, B&B               527,310     14.4 s  branch-and-bound (SS)                                        residual        0  gap 0.00%

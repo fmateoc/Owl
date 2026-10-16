@@ -31,7 +31,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16) |
-| #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; checked with the repro (equals `"optimize"` to the dollar, 2-5 s); confirmation draft `issue-193-reply-2.md` |
+| #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation draft `issue-193-reply-2.md` (reassessed for the branch tip; user to post) |
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
@@ -1178,6 +1178,39 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## #193 "convex" moved to upstream branch `ss-convex`; `c22f46d` merged; reply reassessed (2026-10-16)
+
+Upstream force-pushed `dev` back to `10b9f72` and moved `6b02671` + `83a580b` (same hashes) to a new
+branch `ss-convex`, with a third commit `c22f46d` ("cheaper cap probe": each probe warm-started
+from the best plan's premiums, NIIT, LTCG room, MAGI and gain fractions; later passes only over
+near-ties; the convex rows keep a fixed shape, switched through bounds, so HiGHS reuses the last
+optimal basis, `_BasisCache`, keyed on (columns, rows); `_ssProbeTrace`). The fork already had the
+first two (`ae1fb9d`), so `git merge upstream/ss-convex` brought only `c22f46d`: merge `bb00250`,
+one conflict at the loop's start (the warm start goes before the fork's `_snapshot_sc()`).
+Checked: the basis cache keys on the row count too (`lbvec` is the row bounds), so the fork's
+varying itemizing/NJ rows never get a basis of another shape. The probe's warm list has upstream's
+quantities only; the fork's `_SC_PARAMS` (NJ exclusion set `RXF_n`, itemizing branches, NY
+recapture) still start cold in each probe. Full suite **3228 passed, 1 skipped** (7:30).
+
+Measured at `c22f46d` (date frozen at 2026-10-15):
+
+- Stock, the seven #193 cases (`issue-193-convex-c22-output.txt`): "convex" = `"optimize"` to the
+  dollar in all seven, **0.8-1.2 s** (loop 0.7-1.1 s; branch-and-bound 14-21 s; `83a580b` 2.2-5.2 s).
+- Stock, 18 examples (`model-review/ss-loop/examples_convex_c22_stock_2026-10-16.txt`): SS
+  residual $0 in all; >= the loop in 17 (`alex+jamie` -$12); all under 3 s but `jack+jill` (30.5 s);
+  against `83a580b`, six examples moved by -$22 to +$21 (`morgan` 41,769 -> 41,747, now +2.10%).
+- Fork, probe couple (`model-review/ss-loop/convex_fork_c22_2026-10-16.txt`): same bequests as at
+  `83a580b` (NJ+mortgage 2032 +$12); NY 1.5-3.3 s (was 2.5-9.7 s); NJ **321-542 s** (was 534-962
+  s; local search 81-176 s).
+
+Reply reassessed: `fork-notes/issue-193-reply-2.md` rewritten for the branch tip (the fix is now a
+prototype on a branch, so the reply is evidence for moving it to `dev`): the `c22f46d` numbers, the
+speed-up since `83a580b`, `morgan` +2.10%, the "loop" label (still there: `_breakpointFamilies`
+names SS only under "optimize"). User's call to post.
+
+Open (fork-side, not done): warm-start the fork's own `_SC_PARAMS` in the cap probe (extend
+`warm_keys` there or in a fork hook) to cut the NJ times; measure before deciding.
+
 ## Upstream #193 fix merged: withSSTaxability="convex" (2026-10-16, on `claude/eager-cray-s0fvks`)
 
 The user posted `issue-193-reply.md`; the maintainer answered with two commits on `dev`:
@@ -1491,6 +1524,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-16, after merging upstream `ss-convex` `c22f46d`: **3228 passed, 1 skipped** (7:30).
 
 2026-10-16, after merging upstream `dev` `83a580b` (#193 "convex"): **3228 passed, 1 skipped** (7:01).
 flake8 only upstream's `localsearch.py:31`; ruff only upstream's `test_roth_maturation_losses.py:49`.

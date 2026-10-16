@@ -1,0 +1,9 @@
+# convex_fork.py convex (fork bb00250, upstream ss-convex c22f46d merged), run 2026-10-16, date frozen at 2026-10-15; the stock runs ran alongside for the first two cases. Log lines removed.
+NY 2032        convex  bequest    819,127     2.9 s  it=106 oscillatory                      residual      171 worst ['itemized', 171.0]
+NYmort 2032    convex  bequest    699,588     2.4 s  it=96 monotonic                        residual       40 worst ['itemized', 40.0]
+NJ 2032        convex  bequest    852,872   375.7 s  it=227 oscillatory (cycle length 2)     residual        0 worst ['SS', 0.0]
+NJmort 2032    convex  bequest    705,665   542.1 s  it=171 oscillatory                      residual       96 worst ['itemized', 89.0]
+NY 2099        convex  bequest    874,558     1.5 s  it=73 monotonic                        residual        0 worst ['SS', 0.0]
+NYmort 2099    convex  bequest    677,246     3.3 s  it=87 monotonic                        residual        0 worst ['state recapture', 0.0]
+NJ 2099        convex  bequest    911,735   321.4 s  it=201 oscillatory                      residual        0 worst ['SS', 0.0]
+NJmort 2099    convex  bequest    685,119   522.3 s  it=162 oscillatory                      residual        0 worst ['SS', 0.0]

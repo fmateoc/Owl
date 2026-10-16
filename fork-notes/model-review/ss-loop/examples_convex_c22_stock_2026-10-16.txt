@@ -1,0 +1,19 @@
+# ex_ss.py <stock worktree> convex on stock upstream ss-convex c22f46d, run 2026-10-16, date frozen at 2026-10-15.
+Case_alex+jamie          loop       228,369 it= 8   0.2s SSres     802 oscillatory            | conv       228,357 it=80    1.0s SSres       0 monotonic              |  -0.01%
+Case_avery+quinn         loop     3,237,585 it=14   0.3s SSres     962 oscillatory            | conv     3,237,817 it=83    1.2s SSres       0 monotonic              |  +0.01%
+Case_bill                loop        36,666 it= 2   0.0s SSres       0 monotonic              | conv        36,666 it= 2    0.0s SSres       0 monotonic              |  +0.00%
+Case_cameron             loop        18,996 it= 8   0.1s SSres  29,429 oscillatory (cycle len | conv        18,996 it=49    0.9s SSres       0 monotonic              |  +0.00%
+Case_chris+pat           loop       117,047 it=30   0.7s SSres  14,722 max iteration          | conv       117,237 it=165    2.7s SSres       0 oscillatory            |  +0.16%
+Case_dana                loop        81,228 it= 3   0.0s SSres       0 monotonic              | conv        81,249 it=101    1.0s SSres       0 monotonic              |  +0.03%
+Case_devon               loop       248,306 it= 3   0.0s SSres       0 monotonic              | conv       248,306 it=72    0.8s SSres       0 monotonic              |  +0.00%
+Case_helen+ruth          loop       194,069 it= 8   0.1s SSres     612 oscillatory            | conv       194,421 it=97    1.1s SSres       0 oscillatory            |  +0.18%
+Case_jack+jill           loop       102,535 it=14   1.4s SSres   1,382 oscillatory            | conv       102,759 it=307   30.5s SSres       0 monotonic              |  +0.22%
+Case_joe                 loop        92,575 it= 5   0.1s SSres       0 oscillatory            | conv        92,692 it=145    1.5s SSres       0 monotonic              |  +0.13%
+Case_john+sally          loop        16,803 it= 4   0.1s SSres       0 oscillatory            | conv        28,898 it=97    1.6s SSres       0 monotonic              | +71.99%
+Case_jon+jane            loop       160,677 it= 4   0.2s SSres       0 oscillatory            | conv       160,677 it=96    2.1s SSres       0 oscillatory            |  +0.00%
+Case_jordan+taylor-qcd   loop     2,258,944 it= 4   0.1s SSres       0 monotonic              | conv     2,263,567 it=113    1.5s SSres       0 oscillatory            |  +0.20%
+Case_jordan+taylor       loop     2,608,865 it= 4   0.1s SSres       0 monotonic              | conv     2,608,865 it=112    1.4s SSres       0 monotonic              |  +0.00%
+Case_kim+sam-bequest     loop     1,944,071 it=11   0.4s SSres     814 oscillatory            | conv     1,958,030 it=106    2.1s SSres       0 monotonic              |  +0.72%
+Case_kim+sam-spending    loop       185,949 it=10   0.3s SSres   1,355 oscillatory            | conv       186,241 it=130    2.7s SSres       0 oscillatory            |  +0.16%
+Case_morgan              loop        40,889 it=14   0.3s SSres   1,792 oscillatory            | conv        41,747 it=192    2.9s SSres       0 oscillatory            |  +2.10%
+Case_robin               loop        44,013 it=17   0.2s SSres   1,040 oscillatory            | conv        44,081 it=118    1.4s SSres       0 monotonic              |  +0.15%

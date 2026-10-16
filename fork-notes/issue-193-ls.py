@@ -3,6 +3,9 @@ mipStrategy="local-search", and the breakpointMethod presets ("local-search" and
 "branch-and-bound": every family set to "optimize"). Runs on stock Owl; same couple and frozen date
 as issue-ss-loop-repro.py (plan() below is a copy of it).
 
+Prints the whole solve's branch-and-bound node count where Owl reports one (solverNodesTotal).
+On upstream branch ss-binaries, OWL_SS_VARIANT (drop / cuts / other) selects its SS formulation.
+
 Usage: issue-193-ls.py [maxTime seconds for the branch-and-bound preset, default 600] [method,...]
   methods: loop, ss-bb, ss-ls, convex, preset-ls, preset-bb (default: all but convex)
 """
@@ -80,5 +83,7 @@ for state, roth, spend in [("NY", 60, s) for s in (95, 100, 105, 110, 115)] + [(
         beq = _compute_estate(p, p.N_n)[3] / p.gamma_n[p.N_n]
         resid = sum(v["abs_sum"] for v in (p.fixedPointResidual or {}).values())
         gap = getattr(p, "solverGap", -1)
+        nodes = getattr(p, "solverNodesTotal", -1)
         print(f"  {label:24s} {beq:>10,.0f}  {dt:7.1f} s  {p.breakpointMethodUsed:60s} residual {resid:>8,.0f}"
-              f"{f'  gap {gap:.2%}' if gap is not None and gap > 0 else ''}", flush=True)
+              f"{f'  gap {gap:.2%}' if gap is not None and gap > 0 else ''}"
+              f"{f'  nodes {nodes:,}' if nodes is not None and nodes >= 0 else ''}", flush=True)

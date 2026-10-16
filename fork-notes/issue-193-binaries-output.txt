@@ -1,0 +1,70 @@
+# issue-193-ls.py 600 ss-bb,ss-ls on stock upstream ss-binaries abd39b4, once per OWL_SS_VARIANT (dev = the formulation on dev; drop = the branch default; cuts), run 2026-10-16, date frozen at 2026-10-15; nodes = solverNodesTotal (whole solve, every loop iteration). Log lines removed.
+=== OWL_SS_VARIANT=dev
+Bequest (today's $); time; method the Summary reports; total fixed-point residual (today's $). B&B preset with maxTime=600 s.
+NY spending $95k Roth 60/40
+  SS exact, B&B               988,448     19.3 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 821
+  SS exact, local search      988,448     24.0 s  local search (SS)                                            residual        0  nodes 324
+NY spending $100k Roth 60/40
+  SS exact, B&B               766,704     18.1 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 700
+  SS exact, local search      766,704     27.1 s  local search (SS)                                            residual        0  nodes 942
+NY spending $105k Roth 60/40
+  SS exact, B&B               544,961     18.5 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 1,222
+  SS exact, local search      544,961     24.7 s  local search (SS)                                            residual        0  nodes 642
+NY spending $110k Roth 60/40
+  SS exact, B&B               323,217     22.0 s  branch-and-bound (SS)                                        residual        0  nodes 1,173
+  SS exact, local search      323,217     26.6 s  local search (SS)                                            residual        0  nodes 859
+NY spending $115k Roth 60/40
+  SS exact, B&B               101,321     18.2 s  branch-and-bound (SS)                                        residual        0  nodes 1,028
+  SS exact, local search      101,321     28.0 s  local search (SS)                                            residual        0  nodes 854
+NY spending $105k Roth 61/39
+  SS exact, B&B               552,010     22.2 s  branch-and-bound (SS)                                        residual        0  nodes 809
+  SS exact, local search      552,010     31.8 s  local search (SS)                                            residual        0  nodes 735
+NJ spending $105k Roth 60/40
+  SS exact, B&B               527,310     14.2 s  branch-and-bound (SS)                                        residual        0  gap 0.00%  nodes 730
+  SS exact, local search      527,310     27.3 s  local search (SS)                                            residual        0  nodes 477
+=== OWL_SS_VARIANT=drop
+Bequest (today's $); time; method the Summary reports; total fixed-point residual (today's $). B&B preset with maxTime=600 s.
+NY spending $95k Roth 60/40
+  SS exact, B&B               988,448     38.8 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 3,392
+  SS exact, local search      988,448     27.3 s  local search (SS)                                            residual        0  nodes 3,573
+NY spending $100k Roth 60/40
+  SS exact, B&B               766,704     43.8 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 3,793
+  SS exact, local search      766,704     27.7 s  local search (SS)                                            residual        0  nodes 3,943
+NY spending $105k Roth 60/40
+  SS exact, B&B               544,961     60.1 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 4,518
+  SS exact, local search      544,961     36.4 s  local search (SS)                                            residual        0  nodes 4,763
+NY spending $110k Roth 60/40
+  SS exact, B&B               323,217     54.0 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 4,735
+  SS exact, local search      323,217     32.9 s  local search (SS)                                            residual        0  nodes 3,328
+NY spending $115k Roth 60/40
+  SS exact, B&B               101,321     46.5 s  branch-and-bound (SS)                                        residual        0  gap 0.00%  nodes 3,686
+  SS exact, local search      101,321     35.8 s  local search (SS)                                            residual        0  nodes 4,085
+NY spending $105k Roth 61/39
+  SS exact, B&B               552,010     49.0 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 3,564
+  SS exact, local search      552,010     31.7 s  local search (SS)                                            residual        0  nodes 2,823
+NJ spending $105k Roth 60/40
+  SS exact, B&B               527,310     34.7 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 4,568
+  SS exact, local search      527,310     25.8 s  local search (SS)                                            residual        0  nodes 3,940
+=== OWL_SS_VARIANT=cuts
+Bequest (today's $); time; method the Summary reports; total fixed-point residual (today's $). B&B preset with maxTime=600 s.
+NY spending $95k Roth 60/40
+  SS exact, B&B               988,448     22.5 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 1,090
+  SS exact, local search      988,448     23.3 s  local search (SS)                                            residual        0  nodes 1,743
+NY spending $100k Roth 60/40
+  SS exact, B&B               766,704     31.1 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 1,484
+  SS exact, local search      766,704     31.4 s  local search (SS)                                            residual        0  nodes 1,747
+NY spending $105k Roth 60/40
+  SS exact, B&B               544,961     31.6 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 2,428
+  SS exact, local search      544,961     33.5 s  local search (SS)                                            residual        0  nodes 1,649
+NY spending $110k Roth 60/40
+  SS exact, B&B               323,217     30.7 s  branch-and-bound (SS)                                        residual        0  nodes 2,057
+  SS exact, local search      323,217     25.1 s  local search (SS)                                            residual        0  nodes 972
+NY spending $115k Roth 60/40
+  SS exact, B&B               101,321     22.0 s  branch-and-bound (SS)                                        residual        0  nodes 1,775
+  SS exact, local search      101,321     33.8 s  local search (SS)                                            residual        0  nodes 2,914
+NY spending $105k Roth 61/39
+  SS exact, B&B               552,010     26.2 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 1,673
+  SS exact, local search      552,010     29.0 s  local search (SS)                                            residual        0  nodes 2,005
+NJ spending $105k Roth 60/40
+  SS exact, B&B               527,310     22.3 s  branch-and-bound (SS)                                        residual        0  gap 0.01%  nodes 1,875
+  SS exact, local search      527,310     28.3 s  local search (SS)                                            residual        0  nodes 2,375

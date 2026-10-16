@@ -1,6 +1,6 @@
 # Second reply on #193: the "convex" prototype checked with the repro, for the user to post
 
-Status: draft 2026-10-16, **reassessed** after the maintainer moved the "convex" commits from `dev`
+Status: **posted by the user** (2026-10-16). Drafted 2026-10-16, **reassessed** after the maintainer moved the "convex" commits from `dev`
 to the branch `ss-convex` (`dev` force-pushed back to `10b9f72`) and added `c22f46d` (cheaper cap
 probe). The first version of this draft quoted `83a580b`; the numbers below are from the branch tip
 `c22f46d`. Sources, both on stock code, date frozen at 2026-10-15:

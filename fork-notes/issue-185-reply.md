@@ -1,6 +1,6 @@
 # Optional reply on #185 (federal itemized deductions), for the user to post or not
 
-Status: draft, 2026-10-15. Answers the maintainer's first reply ("Adding more stuff to the
+Status: **posted by the user** (relayed 2026-10-16); drafted 2026-10-15. Follow-up: #193. Answers the maintainer's first reply ("Adding more stuff to the
 recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests
 and get back to you.") with the fork's measurement, before his tests come back. Numbers:
 `fork-notes/model-review/phase3-review/itemized_convergence_2026-10-15.txt` (script

@@ -1,6 +1,9 @@
 # Draft upstream issue: the SS-taxability loop on a couple with most SS years in the phase-in
 
-Status: **filed by the user as #193** (2026-10-16). Pointer comment for #185 below, **posted by the
+Status: **filed by the user as #193** (2026-10-16). Maintainer asked the same day how it compares with
+`mipStrategy="local-search"`: answer `issue-193-reply.md` (measured, `issue-193-ls.py`). Correction
+found then: "3 iterations and a few seconds" (question 2) was never timed; the exact SS solve takes
+14-21 s. Pointer comment for #185 below, **posted by the
 user** (relayed 2026-10-16). Every number comes from stock upstream `dev` `10b9f72`:
 `fork-notes/issue-ss-loop-repro.py` (output: `issue-ss-loop-repro-output.txt`, run twice with
 identical output) and `fork-notes/model-review/ss-loop/` (`stock_repro_2026-10-16.txt`: Roth

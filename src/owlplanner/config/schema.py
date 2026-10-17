@@ -68,10 +68,16 @@ class BasicInfo(BaseModel):
     locality: str = Field(
         default="", description="City or county whose income tax applies on top of the state's (e.g. 'NYC', 'Yonkers')."
     )
+    school_district: str = Field(
+        default="",
+        description="Fork: municipality and school district of the home, for the NY STAR credit "
+        "(e.g. 'City of Yonkers / Yonkers', or 'Yonkers'; see data/property_tax_relief.toml).",
+    )
     moves: List[Dict[str, Any]] = Field(
         default=[],
-        description="Later changes of residence: [{year = 2031, state = 'FL'}], optionally with a locality. "
-        "The new residence taxes that year and every year after. Upstream Owl takes at most one move.",
+        description="Later changes of residence: [{year = 2031, state = 'FL'}], optionally with a locality "
+        "and a school_district. The new residence taxes that year and every year after. Upstream Owl takes "
+        "at most one move.",
     )
 
 
@@ -399,6 +405,7 @@ class SolverOptions(BaseModel):
     withSSTaxability: Optional[Union[Literal["loop", "optimize", "convex"], float]] = None
     withSeniorBonus: Optional[Literal["loop", "optimize"]] = None
     withItemized: Optional[Literal["none", "loop"]] = None
+    withSTAR: Optional[Literal["none", "loop", "optimize"]] = None  # fork: NY STAR credit
     withSSAges: Optional[Union[str, List[str]]] = None
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None
@@ -426,6 +433,7 @@ class SolverOptions(BaseModel):
 
     # Other
     previousMAGIs: Optional[List[float]] = None
+    previousSTARIncomes: Optional[List[float]] = None  # fork: STAR income of the two years before the plan
     oppCostX: Optional[float] = None
     units: Optional[str] = None
 

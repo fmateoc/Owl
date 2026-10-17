@@ -753,7 +753,7 @@ def test_state_move_reaches_the_plan_and_back():
     diconf["basic_info"]["moves"] = [{"year": year, "state": "FL"}]
     diconf["rates_selection"]["values"] = [6.0, 4.0, 3.3, 2.8]
     plan = config_to_plan(diconf, verbose=False, loadHFP=False)
-    assert plan.state_moves == [(year, "FL", "")]  # fork: Residence(year, state, locality)
+    assert plan.state_moves == [(year, "FL", "", "")]  # fork: Residence(year, state, locality, school_district)
     assert plan._states_n()[:4] == ["NY", "NY", "NY", "FL"]
     back = plan_to_config(plan)
     assert back["basic_info"]["moves"] == [{"year": year, "state": "FL"}]

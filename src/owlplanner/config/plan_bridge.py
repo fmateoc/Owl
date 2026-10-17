@@ -333,7 +333,7 @@ def _apply_state_to_plan(plan, known, always=False):
     moves = bi.get("moves") or []
     if always or state or moves:
         try:
-            plan.setStateTax(state, moves, bi.get("locality", ""))
+            plan.setStateTax(state, moves, bi.get("locality", ""), bi.get("school_district", ""))
         except (ValueError, KeyError, TypeError) as e:
             raise ValueError(f"Invalid state in config: {e}") from e
 
@@ -490,9 +490,16 @@ def plan_to_config(myplan: "Plan") -> dict:
     }
     if getattr(myplan, "locality", ""):
         diconf["basic_info"]["locality"] = myplan.locality
+    if getattr(myplan, "school_district", ""):
+        diconf["basic_info"]["school_district"] = myplan.school_district
     if getattr(myplan, "state_moves", ()):
         diconf["basic_info"]["moves"] = [
-            {"year": m.year, "state": m.state, **({"locality": m.locality} if m.locality else {})}
+            {
+                "year": m.year,
+                "state": m.state,
+                **({"locality": m.locality} if m.locality else {}),
+                **({"school_district": m.school_district} if m.school_district else {}),
+            }
             for m in myplan.state_moves
         ]
 

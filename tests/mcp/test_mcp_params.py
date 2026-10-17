@@ -1866,7 +1866,7 @@ def test_state_move_reaches_the_plan():
     year = datetime.date.today().year + 3
     plan = _single(state="NY", state_move={"year": year, "state": "FL"})
     assert plan.state == "NY"
-    assert plan.state_moves == [(year, "FL", "")]  # fork: Residence(year, state, locality)
+    assert plan.state_moves == [(year, "FL", "", "")]  # fork: Residence(year, state, locality, school_district)
 
 
 def test_state_move_is_validated():

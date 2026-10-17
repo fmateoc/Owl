@@ -649,7 +649,7 @@ def _move_plan(state, moves=None):
 
 def test_move_sets_the_state_of_each_year():
     p = _move_plan("ny", [{"year": date.today().year + 3, "state": "fl"}])
-    assert p.state_moves == [(date.today().year + 3, "FL", "")]  # fork: Residence(year, state, locality)
+    assert p.state_moves == [(date.today().year + 3, "FL", "", "")]  # fork: Residence, 4 fields
     assert p._states_n()[:5] == ["NY", "NY", "NY", "FL", "FL"]
     assert p._states_n()[-1] == "FL"
     p.setStateTax("NY", [(date.today().year + 3, "")])  # moving away from any state income tax

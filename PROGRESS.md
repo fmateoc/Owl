@@ -1179,6 +1179,56 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## NY STAR credit as a rule (2026-10-17, on `claude/zen-heisenberg-rfreik`)
+
+After the data check below (the user asked for STAR as a rule and allowed `pub.njleg.gov`). The
+statutes, read on nysenate.gov the same day, are in `fork-notes/star/README.md` ("Statutes"):
+Tax Law sec. 606(eee) makes the credit a refundable NY income tax credit; "affiliated income" is
+AGI less IRA distributions; Basic at most $500,000 (fixed); Enhanced from an owner's 65 at most the
+standard (RPTL 425: the SS COLA each year, never lower); RPTL 1306-a caps the credit at 102% of
+the prior year's. tax.ny.gov's survivor rule: 62 by December 31 of the year of the death, else 65.
+
+- `star.py` (schedule, implied credit, district lookup), data `data/property_tax_relief.toml`
+  (75 rows: Westchester residential and NYC classes 1/2/4, 2025 final credits), the residence's
+  new `school_district` (`residency.Residence` 4th field; basic_info and moves; a move may change
+  only the district), config schema, plan/UI bridges (canonical spelling for the UI's
+  selectbox), Create Case selectboxes, `withSTAR` = `"loop"` (default) | `"optimize"` | `"none"`,
+  `previousSTARIncomes` (default `previousMAGIs`).
+- In the plan: the credit comes off `_state_tax_terms` (outside the Yonkers surcharge), so the
+  cash flow and the SALT row follow; `st_T_n` is net of it, `st_star_n` is the part; IT-196 line 6
+  subtracts the lagged `STAR_n` (`_item_terms()["st_pt"]`, used by every state-schedule path).
+  SC parameter `STAR_n`, residual family "STAR", loop movement counted. `"optimize"`: binary
+  `zst_n` per Enhanced year, row income_(n-2) + M zst <= limit - $2 + M (the $2 margin removed a
+  $1.4k residual from an income parked on the limit); `zst` is a local-search family;
+  `breakpointMethod` sets `"optimize"`. Basic's $500k limit is a loop test in both modes.
+- Taxes sheet column *STAR credit*, Summary *Total NY STAR credit received*.
+- Docs: PARAMETERS.md, modeling-capabilities.md, CHANGELOG.md, UI Documentation, the template
+  (`school_district`), `phase0-scenarios.md`.
+
+Measured on the synthetic couple (`_plan` of `tests/tax/test_star.py`: born 1960/1961, Yonkers,
+$25k property tax, $80k core budget, `maxBequest`; run 2026-10-17, not under the frozen test date):
+
+| Case | Recipe | none | loop | optimize |
+|---|---|---|---|---|
+| $400k taxable each, SS $3,000/$2,400 | exact LP | 2,223,238 | 2,304,073 | 2,304,073 |
+| same | default loop | 2,049,327 | 2,129,932 | 2,129,932 |
+| $800k taxable each, SS $4,200/$3,600 | exact LP | 4,206,065 | 4,276,610 | 4,288,556 |
+| same | default loop | 4,020,611 | 4,097,467 | 4,097,636 |
+| same | local search | 4,089,060 (287 s) | 4,166,137 (309 s, `"optimize"`) | |
+
+Credits received: $63.2k in today's dollars over 28 years where income stays under the standard
+($57.9k loop / $61.9k optimize in the $800k exact case, where income crosses it); the bequest gain
+is $70-81k. Where income sits near the Enhanced standard the loop loses Enhanced years the MILP
+keeps (frozen-date sweep in the tests: 21 vs 23 years at $800k, 15 vs 17 at $850k, +$5-10k);
+elsewhere the two agree. Optimize costs 2-10 s instead of 0.3 s per solve.
+
+Tests: `tests/tax/test_star.py` 16 tests; full suite **3248 passed, 1 skipped** (9.5 min; three
+fork asserts on `state_moves` updated to 4-field `Residence`). flake8/ruff: only upstream's
+`localsearch.py:31` and B905 in `test_roth_maturation_losses.py`.
+
+**Bias note:** with STAR modeled and Stay NJ / ANCHOR not, a NY-vs-NJ owner comparison now leans
+toward NY by NJ's relief (65+: $4,000-6,500 a year total, `fork-notes/star/README.md`).
+
 ## STAR / Stay NJ data check (2026-10-17, on `claude/zen-heisenberg-rfreik`)
 
 Open data questions of `phase3-plan.md` §3.4 and "Step 2 review" checked on tax.ny.gov and nj.gov

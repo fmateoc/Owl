@@ -1987,13 +1987,21 @@ def genDic(plan):
     dic["status"] = ["unknown", "single", "married"][plan.N_i]
     dic["state"] = getattr(plan, "state", "")
     dic["locality"] = getattr(plan, "locality", "")
+    dic["schoolDistrict"] = getattr(plan, "school_district", "")  # fork: NY STAR credit
     moves = getattr(plan, "state_moves", [])
     dic["stateMoveEnabled"] = bool(moves)
     dic["stateMoveYear"] = int(moves[0].year) if moves else date.today().year + 5
     dic["stateMoveState"] = moves[0].state if moves else ""
     dic["stateMoveLocality"] = moves[0].locality if moves else ""
+    dic["stateMoveSchoolDistrict"] = moves[0].school_district if moves else ""
     dic["stateMovesMore"] = [  # fork: further moves, from the case file only
-        {"year": m.year, "state": m.state, **({"locality": m.locality} if m.locality else {})} for m in moves[1:]
+        {
+            "year": m.year,
+            "state": m.state,
+            **({"locality": m.locality} if m.locality else {}),
+            **({"school_district": m.school_district} if m.school_district else {}),
+        }
+        for m in moves[1:]
     ]
     # Prepend year if not there.
     tdate = plan.startDate.replace("/", "-").split("-")

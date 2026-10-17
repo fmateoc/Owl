@@ -1,5 +1,21 @@
 ### Unreleased
 
+#### New: NY STAR credit (`withSTAR`, `school_district`) (fork)
+
+The School Tax Relief credit (Tax Law sec. 606(eee)) for a NY owner: `basic_info.school_district`
+(and a move's `school_district`) names the home's municipality and school district, and the credit
+applies in the years the budget has a `property tax` line. Basic while the income two years
+earlier (federal AGI less IRA distributions) is at most \$500,000; Enhanced from the year an owner
+turns 65 while that income is at most the Enhanced standard (\$110,750 for 2026, \$113,550 for
+2027, then indexed), kept by a surviving spouse who was 62 at the death. District amounts are the
+2025 final credits from tax.ny.gov (Westchester and New York City in
+`data/property_tax_relief.toml`), growing 2% a year, the statutory cap. The credit is charged
+against the state income tax, as it is in law: the cash flow and the SALT deduction follow, and
+NY's itemized deduction subtracts it from real estate taxes (IT-196 line 6). `withSTAR = "loop"`
+(default), `"optimize"` (one binary per year for the Enhanced credit; set by `breakpointMethod`)
+or `"none"`; `previousSTARIncomes` gives the two years before the plan. The Taxes sheet has a
+*STAR credit* column and the Summary a total.
+
 #### New: itemized deductions, federal and state (`withItemized`)
 
 Each year deducts the larger of the standard deduction and the itemized total, built from the

@@ -30,8 +30,67 @@ or inferred, not checked; **[C]** = computed here from [V] figures.
 | NJ-1040 instructions 2025 | `https://www.nj.gov/treasury/taxation/pdf/current/1040i.pdf` | PDF 2025-10-21 |
 
 Not reachable: `staynj/calculation.shtml` (404 today; the Senior Freeze page still links to it as
-"Stay NJ Calculation", and its card on the Stay NJ page is commented out in the HTML);
-`pub.njleg.gov` (proxy 403), so the statute text (P.L.2023, c.75) was not read.
+"Stay NJ Calculation", and its card on the Stay NJ page is commented out in the HTML).
+`pub.njleg.gov` was blocked at first (proxy 403); allowed later the same day, see "Statutes" below.
+
+## Statutes (read 2026-10-17, second pass)
+
+| Source | URL |
+|---|---|
+| NY Tax Law sec. 606(eee) (STAR credit) | `https://www.nysenate.gov/legislation/laws/TAX/606` |
+| NY RPTL sec. 425 (STAR exemption; income standard) | `https://www.nysenate.gov/legislation/laws/RPT/425` |
+| NY RPTL sec. 1306-a (tax savings; 2% cap) | `https://www.nysenate.gov/legislation/laws/RPT/1306-A` |
+| NJ P.L.2023, c.75 (Stay NJ) | `https://pub.njleg.gov/Bills/2022/PL23/75_.HTM` |
+| IRS Pub. 530 (2025) | `https://www.irs.gov/publications/p530` |
+
+- **STAR credit** [V, 606(eee)]: "qualified taxpayer" = NY resident who owned and lived in the
+  primary residence on July 1 of the taxable year, not on a STAR exemption. "Affiliated income" =
+  federal AGI of the resident owners and spouses "reduced by distributions, to the extent included
+  in federal adjusted gross income, received from an individual retirement account and an
+  individual retirement annuity" (so 401(k)/403(b) distributions stay in). Basic: income at most
+  $500,000, a fixed amount. Enhanced: an owner 65+ on December 31; a surviving spouse 62+ keeps a
+  credit "once allowed". Each credit is "the lesser of" the district portion's tax savings and the
+  qualifying taxes (school taxes; in the five big-city school districts, city and school taxes
+  combined). It is a credit against the NY personal income tax, the excess refunded: **a
+  refundable state income tax credit**, paid in advance.
+- **Survivor** [V, tax.ny.gov eligibility page]: the survivor keeps Enhanced if 62 "by December 31
+  in the year that their age-eligible spouse passed away"; otherwise Enhanced from their own 65.
+- **Growth** [V, RPTL 1306-a(2)(a)(i)]: from 2019-20 the credit's tax savings for a portion "shall
+  not exceed" 102% of the prior year's, rounded to the dollar; the exemption's shall not exceed
+  the prior year's.
+- **Income standard** [V, RPTL 425(4)(b)(i)(C)-(E)]: each year the previous standard increased by
+  the Social Security cost-of-living adjustment; never decreased; rounded to a multiple of $50
+  (direction not read). Income year advanced one per year (two years before the benefit year).
+- **Federal** [V, Pub. 530]: "If you receive a refund or rebate of real estate taxes this year
+  for amounts you paid this year, you must reduce your real estate tax deduction by the amount
+  refunded." Whether the IRS reads the STAR credit as such a rebate was not found; as a refundable
+  state income tax credit it reduces state income tax paid instead. Either reading lowers the
+  SALT total by the credit in the year received, which is what the model does [C].
+- **Stay NJ** [V, c.75 sec. 3-4]: credit = 50% of the property tax paid on the principal residence
+  in the prior tax year; maximum $6,500 in 2026, then increased by the annual percentage increase
+  in the average residential property tax bill (DCA); an applicant gets "the greater of" the Stay
+  NJ credit or ANCHOR plus Senior Freeze; "Income" as defined in P.L.1975, c.194 (the PAAD
+  definition; not read). A surviving spouse who stays in the home keeps it.
+
+## STAR as modeled (2026-10-17)
+
+`src/owlplanner/star.py`, data `src/owlplanner/data/property_tax_relief.toml`, tests
+`tests/tax/test_star.py`.
+
+- Input: `basic_info.school_district` (and a move's `school_district`), canonical
+  "Municipality / School district" or the district alone where unique. The credit applies where
+  the year's residence has a district and the budget a `property tax` line (an owner).
+- Amounts: 2025 final credits per row, x 1.02 per year after 2025, at most the property tax paid.
+- Income: AGI less tax-deferred withdrawals and conversions (Owl's tax-deferred account is taken
+  to be an IRA), two years back; `previousSTARIncomes` (default `previousMAGIs`) for the two years
+  before the plan.
+- The credit is subtracted in `Plan._state_tax_terms` (outside the Yonkers surcharge), so the
+  cash flow and the SALT row follow; IT-196 line 6 subtracts the lagged credit `STAR_n` from the
+  real estate taxes (`_item_terms()["st_pt"]`).
+- `withSTAR = "loop"` (default; SC parameter `STAR_n`, residual family "STAR"), `"optimize"`
+  (binary `zst_n` per Enhanced year: income_(n-2) + M zst_n <= limit_n - $2 + M; a local-search
+  family), `"none"`. The Basic limit is a loop test in both modes.
+
 
 ## NY STAR
 
@@ -144,7 +203,7 @@ All [C] from the figures above, at 2025 amounts.
    amount" there [V]; I did not find a reduction of line 40a for ANCHOR or Stay NJ (searched the
    1040i text for "reduc", "ANCHOR", "Stay NJ"). For the fork's `st_pt` this means: no change for
    ANCHOR / Stay NJ, and a Senior Freeze recipient's deduction is capped at the base-year tax.
-5. **Recommendation.** Keep step 9's order: first a scenario lever (the household's PAS-1 and
+5. **Recommendation** (before STAR was modeled the same day; STAR is now a rule, above). Keep step 9's order: first a scenario lever (the household's PAS-1 and
    STAR income from a solved plan, then the benefit as an inflow in the budget), and code tiers
    only if a solved plan sits near a cliff. STAR as a rule is simpler than Stay NJ (two
    amounts per district, one cliff, income two years back that conversions do not touch) and is

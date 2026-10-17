@@ -40,6 +40,7 @@ from . import tax_federal as tx
 from . import tax_state
 from . import tax_local
 from . import residency
+from . import star
 from . import abcapi as abc
 from . import rates
 from .version import __version__, engine_commit
@@ -447,7 +448,7 @@ class Plan:
     # snapshot/restore/blend and the iteration trace pick it up automatically.
     _SC_PARAMS = (
         "M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "RXF_n", "NYIR_n", "STMF_n", "FEDMF_n", "FEDCF_n", "FEDSC_n",
-        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "_st_zi_n", "_st_medl_n",
+        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "_st_zi_n", "_st_medl_n", "STAR_n",
     )
 
     def _snapshot_sc(self):
@@ -601,7 +602,8 @@ class Plan:
         self.maca_n = np.zeros(self.N_n)  # ACA LP cost variable extraction result
         self.state = ""  # Two-letter US state for state income tax ("" = none)
         self.locality = ""  # Locality within the state, e.g. "NYC" ("" = none)
-        self.state_moves = []  # Later moves, as residency.Residence(year, state, locality)
+        self.school_district = ""  # Fork: school district of the home, for the NY STAR credit ("" = none)
+        self.state_moves = []  # Later moves, as residency.Residence(year, state, locality, school_district)
         self.N_lt = 0  # Number of local tax brackets (0 when no locality has a bracket schedule)
         self.lt_surcharge_n = np.zeros(self.N_n)  # Local surcharge as a fraction of net state tax
         self.lt_T_n = np.zeros(self.N_n)  # Local income tax per year (included in st_T_n)
@@ -616,6 +618,13 @@ class Plan:
         self.st_ptd_const_n = np.zeros(self.N_n)  # Constant part of the deductible amount (nominal $)
         self.st_ptd_coef_n = np.zeros(self.N_n)  # Its coefficient on g_n
         self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
+        # NY STAR credit (fork; star.py): a refundable state income tax credit, in st_T_n.
+        self._star = star.empty_schedule(self.N_n)  # Per-year amounts; set by solve()
+        self._star_on = False  # True when some year receives the credit
+        self._star_lp = False  # True when withSTAR="optimize" decides the Enhanced credit (zst binaries)
+        self.STAR_n = np.zeros(self.N_n)  # Credit the previous iterate's income implies (SC-loop parameter)
+        self.st_star_n = np.zeros(self.N_n)  # Credit received in the solved plan (nominal $; st_T_n is net of it)
+        self.prevSTAR = np.zeros(2)  # STAR income of the two years before the plan
         self.st_medd_floor_pct_n = np.zeros(self.N_n)  # NJ line 31 floor as percent of gross income (0 = none)
         self.st_med_n = np.zeros(self.N_n)  # NJ medical deduction claimed (LP variable, line 31)
         self._st_med_lp = False  # True when the NJ medical deduction columns exist
@@ -2032,7 +2041,7 @@ class Plan:
             self.mylog.vprint(f"ACA coverage starts in calendar year {self.aca_start_year}.")
         self.caseStatus = "modified"
 
-    def setStateTax(self, state, moves=None, locality=""):
+    def setStateTax(self, state, moves=None, locality="", school_district=""):
         """
         Set two-letter US state abbreviation for state income tax modeling.
 
@@ -2060,22 +2069,37 @@ class Plan:
         locality : str
             City or county whose income tax applies on top of the state's, e.g. 'NYC' or
             'Yonkers' for NY (see data/taxes_local.toml). Blank for none.
+        school_district : str
+            Fork: municipality and school district of the home, for the NY STAR credit, e.g.
+            'City of Yonkers / Yonkers' or just 'Yonkers' where the district name is unique (see
+            data/property_tax_relief.toml). Blank for none. A move may name its own
+            (``school_district`` key, or fourth tuple item); it does not carry over.
         """
-        state, locality = residency.normalize(state, locality)
+        state, locality, school_district = residency.normalize(state, locality, school_district)
         moves = sorted(residency.as_residence(m) for m in (moves or []))
-        residency.residence_by_year(state, locality, moves, int(self.year_n[0]), self.N_n)  # validates
+        residency.residence_by_year(state, locality, moves, int(self.year_n[0]), self.N_n, school_district)  # validates
         self.state = state
         self.locality = locality
+        self.school_district = school_district
         self.state_moves = moves
         for m in moves:
             where = f"'{m.state}'" + (f", {m.locality}" if m.locality else "")
+            where += f", school district {m.school_district}" if m.school_district else ""
             self.mylog.vprint(f"Residence from {m.year}: {where}.")
         self.caseStatus = "modified"
 
     def _residence_by_year(self):
         "(state, locality) in force in each plan year."
         return residency.residence_by_year(
-            self.state, self.locality, self.state_moves, int(self.year_n[0]), self.N_n
+            self.state, self.locality, self.state_moves, int(self.year_n[0]), self.N_n,
+            getattr(self, "school_district", ""),
+        )
+
+    def _school_district_n(self):
+        "School district (canonical, '' for none) in force in each plan year."
+        return residency.school_district_by_year(
+            self.state, self.locality, getattr(self, "school_district", ""), self.state_moves,
+            int(self.year_n[0]), self.N_n,
         )
 
     def _states_n(self):
@@ -2999,8 +3023,12 @@ class Plan:
         """Property tax, charity and medical budget amounts as (const_n, coef_n) of g_n.
 
         Shared by the federal and state itemized deductions."""
+        pt = self._budget_amount_terms(budgeting.PROPERTY_TAX)
         return {
-            "pt": self._budget_amount_terms(budgeting.PROPERTY_TAX),
+            "pt": pt,
+            # The state schedule's real estate taxes, less the STAR credit received (NY IT-196
+            # line 6); the previous iterate's credit, also under withSTAR="optimize".
+            "st_pt": (pt[0] - (self.STAR_n if self._star_on else 0.0), pt[1]),
             "ch": self._budget_amount_terms(budgeting.CHARITY),
             "med": self._medical_amount_terms(),
         }
@@ -3283,6 +3311,7 @@ class Plan:
         vm.add_if(ordering, "zo", 2, self.N_n)  # withdrawal-ordering gates (taxable_first)
         vm.add_if(rx_lp, "zx", self.N_n, N_rx)  # exclusion tier selectors
         vm.add_if(sb_lp, "zsb", len(self._sb_years))  # senior bonus fully phased out, bonus years
+        vm.add_if(self._star_lp, "zst", self.N_n)  # NY Enhanced STAR credit received (fork)
         self.vm = vm
 
         self.nvars = vm.nvars
@@ -3315,6 +3344,7 @@ class Plan:
         if self._st_lp:
             self._add_state_tax_bounds()
             self._add_state_itemized()
+            self._add_star_rows()
         self._add_defunct_constraints()
         self._add_roth_conversion_constraints(options)
         self._add_safety_net(options)
@@ -3771,7 +3801,136 @@ class Plan:
         if "lt_f" in self.vm:
             for t in range(self.N_lt):
                 coeffs[self.vm["lt_f"].idx(t, n)] = self.lt_theta_tn[t, n]
+        # The NY STAR credit is a refundable credit against the state tax (Tax Law sec. 606(eee)(2)),
+        # outside the Yonkers surcharge, which is a share of the tax before it.
+        star_coeffs, star_const = self._star_terms(n)
+        for idx, v in star_coeffs.items():
+            coeffs[idx] = coeffs.get(idx, 0.0) - v
+        const -= star_const
         return coeffs, const
+
+    # ----- NY STAR credit (fork; see star.py) ------------------------------------------------------
+    def _setup_star(self, options):
+        """Per-year STAR amounts for this solve; sets _star, _star_on and _star_lp.
+
+        The credit goes to a NY resident owner: the years with a school district and a budget
+        'property tax' line. withSTAR: "loop" (default; the credit from the previous iterate's
+        income), "optimize" (binaries zst decide the Enhanced credit on the income two years
+        earlier), "none".
+        """
+        N_n = self.N_n
+        self._star = star.empty_schedule(N_n)
+        self._star_on = self._star_lp = False
+        districts_n = self._school_district_n()
+        mode = options.get("withSTAR", "loop")
+        if not any(districts_n) or mode == "none":
+            return
+        gam = self.gamma_n[:N_n]
+        pt_n = self.budget.by_type(budgeting.PROPERTY_TAX) * gam if self.budget is not None else np.zeros(N_n)
+        owner_n = pt_n > 0
+        if not np.any(owner_n & np.array([bool(d) for d in districts_n])):
+            self.mylog.print(
+                "A school district is set, but no year in it has a budget 'property tax' line: the STAR "
+                "credit goes to owners, so none is applied.",
+                tag="WARNING",
+            )
+            return
+        self._star = star.star_schedule(
+            self._states_n(), districts_n, owner_n, pt_n, self.year_n, gam, self.yobs, self.horizons,
+            self.n_d, self.i_d,
+        )
+        self._star_on = self._star.active
+        self._star_lp = self._star_on and mode == "optimize"
+
+    def _star_income_n(self):
+        """STAR income per plan year at the aggregated results: AGI less tax-deferred withdrawals and
+        conversions (the tax-deferred account is taken to be an IRA: sec. 606(eee)(1)(B))."""
+        return self.MAGI_n - np.sum(self.w_ijn[:, 1, :] + self.x_in, axis=0)
+
+    def _star_implied_n(self):
+        """The credit per year the plan's own income implies (nominal $)."""
+        return self._star.implied_credit(self._star_income_n(), self.prevSTAR)
+
+    def _star_candidates(self):
+        """Years whose Enhanced credit the zst binaries decide (withSTAR="optimize").
+
+        An owner meets the age test, the income is the plan's (not one before it), and the
+        previous iterate kept the Basic credit (its income was under the Basic limit, which stays
+        a loop test: crossing it costs the Basic credit only).
+        """
+        if not self._star_lp:
+            return []
+        sc = self._star
+        return [n for n in range(sc.lag, self.N_n) if sc.enhanced_n[n] > sc.basic_n[n] and self.STAR_n[n] > 0]
+
+    def _star_terms(self, n):
+        """(coeffs, const): the STAR credit received in year n (nominal $) as LP terms."""
+        if not self._star_on:
+            return {}, 0.0
+        if self._star_lp and "zst" in self.vm and n in self._star_candidates():
+            sc = self._star
+            return {self.vm["zst"].idx(n): float(sc.enhanced_n[n] - sc.basic_n[n])}, float(sc.basic_n[n])
+        return {}, float(self.STAR_n[n])
+
+    def _star_received_n(self, x=None):
+        """The STAR credit received per year (nominal $): from x, or the aggregated results."""
+        out = np.zeros(self.N_n)
+        if not self._star_on:
+            return out
+        z = None
+        if self._star_lp and "zst" in self.vm:
+            z = self.vm["zst"].extract(x) if x is not None else getattr(self, "zst_n", np.zeros(self.N_n))
+        for n in range(self.N_n):
+            coeffs, const = self._star_terms(n)
+            out[n] = const + sum(v * float(z[n]) for v in coeffs.values()) if coeffs else const
+        return out
+
+    def _star_income_terms(self, n):
+        """{column: coefficient} of the STAR income of year n: AGI less tax-deferred withdrawals and
+        conversions, as in _add_magi_lp (G_n + e_n + Q_n; the LTCG allocations sum to at least Q_n,
+        so an upper bound on this sum is at least as strict as one on the income)."""
+        vm = self.vm
+        row = {vm["e"].idx(n): 1.0}
+        if "gn" in vm:
+            row[vm["gn"].idx(n)] = 1.0
+        else:
+            for t in range(self.N_t):
+                row[vm["f"].idx(t, n)] = 1.0
+        for p in range(3):
+            row[vm["q"].idx(p, n)] = 1.0
+        for i in range(self.N_i):
+            for idx in (vm["w"].idx(i, 1, n), vm["x"].idx(i, n)):
+                row[idx] = row.get(idx, 0.0) - 1.0
+        return row
+
+    def _add_star_rows(self):
+        """Enhanced STAR credit under withSTAR="optimize": zst_n = 1 only if the income of year
+        n - lag is at most the year's income standard.
+
+            income_(n-lag) + M_n zst_n <= limit_n - margin + M_n,   M_n = income ceiling - limit_n
+
+        The credit (basic_n + (enhanced_n - basic_n) zst_n) comes off the state tax in
+        _state_tax_terms, so the solver sets zst_n = 1 wherever it can and trades income for it
+        where that pays. Elsewhere zst is pinned at 0 and the credit is the loop's STAR_n.
+        """
+        if not self._star_lp or "zst" not in self.vm:
+            return
+        sc = self._star
+        cand = set(self._star_candidates())
+        for n in range(self.N_n):
+            z = self.vm["zst"].idx(n)
+            if n not in cand:
+                self.B.setRange(z, 0, 0)
+                continue
+            self.B.setRange(z, 0, 1)
+            m = n - sc.lag
+            # BRACKET_MARGIN below the standard: solved to the cent, an income parked exactly on it
+            # can read a cent above when the plan is aggregated.
+            limit = float(sc.limit_n[n]) - BRACKET_MARGIN
+            M = max(float(self._ceiling_n[m]) - limit, 1.0)
+            row = self._star_income_terms(m)
+            row[z] = M
+            self.A.addNewRow(row, -np.inf, limit + M, tag=("star_enhanced_income", n))
 
     def _salt_cap_n(self, magi_n):
         """The federal SALT cap per year at the given AGI ($ nominal; _SALT_NO_CAP when uncapped)."""
@@ -3817,7 +3976,8 @@ class Plan:
         none / STMF_n for the state. Medical paid is _medical_amount_terms plus Owl's
         premiums (Medicare Part B/D + IRMAA and the ACA net premium) less HSA distributions.
         """
-        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms["pt"], terms["ch"], terms["med"]
+        pt_key = "pt" if sched == "fed" else "st_pt"
+        (const_pt, coef_pt), (const_ch, coef_ch), (const_med, coef_med) = terms[pt_key], terms["ch"], terms["med"]
         g_lo, g_hi = float(self._item_g_lo_n[n]), float(self._item_g_hi_n[n])
         if sched == "fed":
             Fm, Fc, mi = float(self.FEDMF_n[n]), float(self.FEDCF_n[n]), float(self.item_mi_n[n])
@@ -3847,14 +4007,15 @@ class Plan:
         """(lin, const): the year's claims as an affine function of LP columns (nominal $).
 
         Charity paid - Fc where ch_on, medical paid - Fm where med_on (Owl's premiums, less HSA
-        distributions, count as medical), and the property tax paid when pt is set; the amount
+        distributions, count as medical), and the state schedule's property tax (less the STAR
+        credit) when pt is set; the amount
         is sum(lin[c] * x[c]) + const. A claim the loop puts above its floor while this LP's
         amount falls below it goes negative: the year's tax is overstated by the lag, and no
         lower bound on spending or on the premium columns results.
         """
         g = self.vm["g"].idx(n)
         lin, const = {}, 0.0
-        parts = ([("pt", 0.0)] if pt else []) + ([("ch", Fc)] if ch_on else []) + ([("med", Fm)] if med_on else [])
+        parts = ([("st_pt", 0.0)] if pt else []) + ([("ch", Fc)] if ch_on else []) + ([("med", Fm)] if med_on else [])
         for key, F in parts:
             c, k = terms[key]
             lin[g] = lin.get(g, 0.0) + float(k[n])
@@ -4018,7 +4179,7 @@ class Plan:
             st = st - st_c * (1.0 + sur)
         if lt_f is not None:
             st = st + np.sum(lt_f * self.lt_theta_tn, axis=0)
-        return st
+        return st - self._star_received_n(x)
 
     def _item_potential_n(self, x=None, sched="fed"):
         """Itemized total the plan could claim per year ($), whether or not it does.
@@ -4030,7 +4191,7 @@ class Plan:
         """
         g = self.g_n if x is None else self.vm["g"].extract(x)
         terms = self._item_terms()
-        (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
+        (cp, kp), (cc, kc), (cm, km) = terms["pt" if sched == "fed" else "st_pt"], terms["ch"], terms["med"]
         pt = np.maximum(0.0, cp + kp * g)
         prem = self._medical_premium_values(x)  # premiums less HSA distributions
         if sched == "st":
@@ -4062,7 +4223,7 @@ class Plan:
         """
         g = self.g_n if x is None else self.vm["g"].extract(x)
         terms = self._item_terms()
-        (cp, kp), (cc, kc) = terms["pt"], terms["ch"]
+        (cp, kp), (cc, kc) = terms["st_pt"], terms["ch"]
         _, med = self._claim_values(x, 0.0, np.zeros(self.N_n), self.STMF_n, self._st_medl_n)
         total = np.maximum(0.0, cp + kp * g) + np.maximum(0.0, cc + kc * g) + med + self.st_item_mi_n
         return np.where(self._st_item_branch_n(), total, 0.0)
@@ -6764,6 +6925,8 @@ class Plan:
             "withNIIT",  # NIIT handling: "loop" (default) or "optimize"
             "withSeniorBonus",  # OBBBA 65+ bonus phase-out: "loop" (default) or "optimize"
             "withItemized",  # itemized deductions, federal and state: "loop" (default) or "none"
+            "withSTAR",  # NY STAR credit (fork): "loop" (default), "optimize" or "none"
+            "previousSTARIncomes",  # STAR income of the two years before the plan (default previousMAGIs)
             "withMedicare",
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
@@ -6854,6 +7017,11 @@ class Plan:
         self.prevMAGI = np.zeros(2)
         if "previousMAGIs" in myoptions:
             self.prevMAGI = np.array(u.get_monetary_list_option(myoptions, "previousMAGIs", 2))
+        # Fork: STAR income (AGI less IRA distributions) of the two years before the plan; it sets
+        # the credit of the first two years. Without it, the MAGIs above, which can only be larger.
+        self.prevSTAR = self.prevMAGI.copy()
+        if "previousSTARIncomes" in myoptions:
+            self.prevSTAR = np.array(u.get_monetary_list_option(myoptions, "previousSTARIncomes", 2))
 
         lambdha = myoptions.get("spendingSlack", 0)
         if not (0 <= lambdha <= 50):
@@ -6933,6 +7101,8 @@ class Plan:
             self.st_item_ok_n = sp.itemized.allowed_n.copy()
             self._set_tiered_exclusion(sp)
 
+        self._setup_star(myoptions)
+
         # _adjustParameters reads the Part D options from solverOptions: give it this solve's
         # options, not the previous solve's (or those loaded with the case).
         self.solverOptions = myoptions
@@ -6998,6 +7168,8 @@ class Plan:
             tx.seniorBonusSchedule(self.yobs, self.i_d, self.n_d, self.N_n)[0]
         ):
             fams.append("senior bonus")
+        if options.get("withSTAR", "loop") == "optimize" and self._star_on:
+            fams.append("STAR")
         return fams
 
     def _breakpointMethodLabel(self, options, fallback=False):
@@ -7036,6 +7208,8 @@ class Plan:
                 options["withMedicare"] = "optimize"
             if self.slcsp_annual > 0:
                 options["withACA"] = "optimize"
+            if options.get("withSTAR", "loop") != "none":
+                options["withSTAR"] = "optimize"  # fork: NY STAR credit
             options["mipStrategy"] = preset
         strategy = options.get("mipStrategy", "branch-and-bound")
         if strategy not in ("branch-and-bound", "local-search"):
@@ -7744,6 +7918,9 @@ class Plan:
             for _name, _active in (
                 ("J_n", True), ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0),
                 ("STR_n", self._str_active),
+                # NY STAR credit charged by the loop (under "optimize" the MILP sets it, but for
+                # the IT-196 lag and the Basic limit, a few percent of the credit at most).
+                ("STAR_n", self._star_on and not self._star_lp),
             ):
                 if _active:
                     moves.append(np.sum(np.abs(getattr(self, _name) - sc_lp[_name]) / g_today))
@@ -7868,7 +8045,7 @@ class Plan:
             # floor; the NJ line 31 floor and flag), so restore them first.
             for name in (
                 "FEDMF_n", "FEDCF_n", "FEDSC_n", "_item_zi_n", "_item_chl_n", "_item_medl_n",
-                "NYIR_n", "STMF_n", "_st_zi_n", "_st_medl_n", "NJMF_n", "_nj_medl_n",
+                "NYIR_n", "STMF_n", "_st_zi_n", "_st_medl_n", "NJMF_n", "_nj_medl_n", "STAR_n",
             ):
                 setattr(self, name, sc_lp[name])
             # The medical shortfalls also read the loop premiums M_n / ACA_n, which are restored
@@ -8065,7 +8242,9 @@ class Plan:
         self.lt_T_n = self.lt_surcharge_n * state
         if self.N_lt > 0:
             self.lt_T_n = self.lt_T_n + np.sum(self.lt_f_tn * self.lt_theta_tn, axis=0)
-        self.st_T_n = state + self.lt_T_n
+        # The NY STAR credit (fork) comes off the total: it is refundable and outside the surcharge.
+        self.st_star_n = self._star_received_n()
+        self.st_T_n = state + self.lt_T_n - self.st_star_n
 
     def _ltcg_tax_implied(self):
         """Capital-gains tax the plan's own ordinary income and gains imply, stacked exactly."""
@@ -8108,11 +8287,15 @@ class Plan:
         res["LTCG"] = (self.U_n - self._ltcg_tax_implied()) / g
         if self._str_active:
             res["state recapture"] = (self.STR_n - self._state_recapture_implied()) / g
+        if self._star_on:
+            # Credit received less the credit the plan's own income (two years earlier) implies.
+            res["STAR"] = (self.st_star_n - self._star_implied_n()) / g
         if self._st_item_lp:
             # State deduction taken less max(standard, itemized) at the plan's own AGI (line 46
             # rate, medical floor) and branch, where state taxable income is positive.
             terms = self._item_terms()
             (cp, kp), (cc, kc), (cm, km) = terms["pt"], terms["ch"], terms["med"]
+            cp = cp - self.st_star_n  # IT-196 line 6: less the credit the plan received
             F_true = self._itemized.medical_floor_n / 100.0 * self.MAGI_n
             med = np.maximum(0.0, cm + km * self.g_n + self._medical_premium_values() - F_true)
             pot = np.maximum(0.0, cp + kp * self.g_n) + np.maximum(0.0, cc + kc * self.g_n) + med + self.st_item_mi_n
@@ -8991,6 +9174,10 @@ class Plan:
             self.G_n = np.zeros(self.N_n)
             self.J_n = np.zeros(self.N_n)
             self.STR_n = np.zeros(self.N_n)
+            # STAR: the credit the incomes before the plan allow, and the full credit after that.
+            self.STAR_n = np.zeros(self.N_n)
+            if self._star_on:
+                self.STAR_n = self._star.implied_credit(np.zeros(self.N_n), self.prevSTAR)
             self.RXF_n = np.zeros(self.N_n)  # the first iterate is solved without the exclusion
             self.NYIR_n = np.zeros(self.N_n)  # no NYAGI adjustment until an iterate reports AGI
             self.STMF_n = np.zeros(self.N_n)  # nor a medical floor
@@ -9013,6 +9200,8 @@ class Plan:
         self._aggregateResults(x, short=True)
         # Uses the Psi_n the LP was built with, so it has to come before _update_Psi_n.
         self.STR_n = self._state_recapture_implied()
+        if self._star_on:
+            self.STAR_n = self._star_implied_n()
         self.RXF_n = self._tiered_exclusion_free()
         self.NYIR_n = self._state_itemized_adjustment()
         self.STMF_n = self._itemized.medical_floor_n / 100.0 * self.MAGI_n
@@ -9244,6 +9433,7 @@ class Plan:
         self.st_pt_n = vm["st_pt"].extract(x) if "st_pt" in vm else np.zeros(Nn)
         self.st_med_n = vm["st_med"].extract(x) if "st_med" in vm else np.zeros(Nn)
         self.st_e_n = vm["st_e"].extract(x) if "st_e" in vm else np.zeros(Nn)
+        self.zst_n = vm["zst"].extract(x) if "zst" in vm else np.zeros(Nn)
         # State itemized deduction: the amounts the rows allow, in the years the loop itemized.
         # The deduction taken is the total after the NYAGI adjustment (line 47) at the rate the
         # LP was built with (NYIR_n here: the loop advances it after this aggregation, and the
@@ -9252,7 +9442,7 @@ class Plan:
         if self._st_item_lp:
             g = vm["g"].extract(x)
             terms = self._item_terms()
-            (cp, kp), (cc, kc) = terms["pt"], terms["ch"]
+            (cp, kp), (cc, kc) = terms["st_pt"], terms["ch"]
             _, med = self._claim_values(x, 0.0, np.zeros(Nn), self.STMF_n, self._st_medl_n)
             on = self.st_itemizing_n
             self.st_ipt_n = np.where(on, np.maximum(0.0, cp + kp * g), 0.0)

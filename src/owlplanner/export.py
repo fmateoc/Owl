@@ -563,6 +563,12 @@ def build_summary_dic(plan, N=None):
         for label, arr in parts:
             if np.any(arr > 0):
                 _summary_currency_pair(dic, label, np.sum(arr[:N] / plan.gamma_n[:N]), np.sum(arr[:N]))
+    # Fork: the NY STAR credit, a refundable state income tax credit (the state total is net of it).
+    star_n = getattr(plan, "st_star_n", None)
+    if star_n is not None and np.any(star_n > 0):
+        _summary_currency_pair(
+            dic, "Total NY STAR credit received", np.sum(star_n[:N] / plan.gamma_n[:N]), np.sum(star_n[:N])
+        )
     if np.any(getattr(plan, "st_item_n", 0) > 0):
         _summary_currency_pair(
             dic, "Total state itemized deduction",
@@ -1304,6 +1310,8 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
             TxDic["of which recapture"] = plan.st_recap_n
         if np.any(plan.lt_T_n > 0):
             TxDic["of which local"] = plan.lt_T_n
+    if np.any(getattr(plan, "st_star_n", 0) > 0):
+        TxDic["STAR credit"] = plan.st_star_n  # fork: the state tax above is net of it
     if np.any(plan.st_pt_n > 0):
         TxDic["property tax deduction"] = plan.st_pt_n
     if np.any(plan.st_med_n > 0):

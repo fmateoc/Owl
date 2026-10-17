@@ -239,7 +239,42 @@ Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are repl
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
-### Version WIP
+### Version 2026.10.16
+
+#### Fixed: optimized Social Security claiming ages can no longer be in the past
+
+When optimizing claiming ages, Owl let the solver pick any month from 62 to 70, including months
+already behind someone who has not yet claimed. The benefit table paid such a past age a full first
+year at its reduction factor, as if benefits had been collected retroactively, which SSA does not
+do. A 66 9/12-year-old planning to claim at 70 was told to claim at 65 11/12, the latest age whose
+first check would have arrived in January. The earliest claiming age offered is now the age reached
+in the current month, and a stored claiming age earlier than that counts as already claimed, so it
+stays fixed. Thanks to @sengsational for reporting it (#195).
+
+#### Fixed: optimizing one spouse's claiming age accounts for the spousal and survivor benefits
+
+When only one spouse's claiming age was optimized, the spousal add-on and the survivor benefit that
+depend on it were carried from the previous solve rather than seen by the optimizer. It therefore
+missed that claiming later raises the benefit a longer-lived spouse inherits, and could settle on an
+earlier age that pays the household less than the age entered. In the case reported in #195, with
+the other loops made exact, it chose 66 9/12 for \$186,526/yr where claiming at 70 gives
+\$188,445/yr. When one age of a couple is free, Owl now tabulates every benefit the household
+receives for each candidate age, so the choice is exact: here it picks 70. When both ages are
+optimized, spousal and survivor amounts are still settled by the self-consistent loop. Small
+differences between an optimized and a fixed-age solve at the same age can remain in loop mode,
+where taxable Social Security and Medicare premiums land on slightly different fixed points.
+
+#### Fixed: rows being typed in the Debts and Fixed Assets tables no longer vanish
+
+A row added to the *Debts* or *Fixed Assets* table stays in the browser until all its required cells
+are filled, and only then reaches Owl. Each time a row was completed, Owl stored the table and fed
+the stored copy back to the editor, which Streamlit takes as a new table: it rebuilt the editor and
+dropped every row still being typed. Entering several assets before their years, then giving the
+first one a year, made the others disappear. The editors now keep the table they started with while
+their edits go to the case, so incomplete rows stay on screen until they are finished. A row with an
+empty required cell is still left out of the case and of the downloaded workbook until it is
+completed. Not specific to the latest Streamlit release. Thanks to Dale Seng for reporting it,
+with a screencast (#194).
 
 #### Fixed: the top IRMAA tier is no longer indexed before 2028
 

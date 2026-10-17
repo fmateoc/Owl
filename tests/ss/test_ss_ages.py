@@ -248,38 +248,20 @@ class TestSurvivorOffset:
         offset = jack_jill._ssa_spousal_offset
         assert np.all(offset > -1e-6), f"Negative SS offset: min {offset.min():.2f}"
 
-    def test_survivor_folded_when_deceased_age_is_fixed(self, jack_jill):
-        """Optimizing only the survivor's age leaves the survivor stream constant, so it folds.
+    def test_pair_tabulated_when_one_age_is_free(self, jack_jill):
+        """Optimizing one spouse's age alone makes every household benefit a function of it.
 
         Jack dies first; optimizing Jill's claiming age alone keeps Jack's fixed, which is the
-        common real case (one spouse already collecting).
+        common real case (one spouse already collecting). The full streams are tabulated, so
+        the modeled benefit at the chosen ages is the benefit itself and the offset vanishes.
         """
-        from owlplanner import socialsecurity as socsec
-
         survivor_name = jack_jill.inames[1]
         jack_jill.solve("maxSpending", options={"withSSAges": survivor_name})
-        assert jack_jill._ssa_fold_survivor
+        assert jack_jill._ssa_pair_exact
 
-        survivor = socsec.compute_survivor_stream(
-            jack_jill.ssecAmounts,
-            jack_jill.ssecAges,
-            jack_jill.yobs,
-            jack_jill.mobs,
-            jack_jill.tobs,
-            jack_jill.horizons,
-            jack_jill.N_i,
-            jack_jill.N_n,
-            survivor_claim_age=jack_jill.ssecSurvivorClaimAge,
-            trim_pct=jack_jill.ssecTrimPct or 0,
-            trim_year=jack_jill.ssecTrimYear,
-        )
-        assert survivor.survivor_idx >= 0
-        nd, isv = survivor.death_year_n, survivor.survivor_idx
-        # Every candidate claiming age carries at least the survivor benefit after the death.
-        surv_nominal = survivor.annual[nd:] * jack_jill.gamma_n[:-1][nd:]
-        assert np.all(jack_jill._ssa_B_own[isv, :, nd:] >= surv_nominal - 1e-6)
-        # And the offset carries nothing after the death: the fold made it exact.
-        assert np.allclose(jack_jill._ssa_spousal_offset[isv, nd:], 0.0, atol=1e-6)
+        k_opt = np.round((np.asarray(jack_jill.ssecAges, dtype=float) - 62) * 12).astype(int)
+        np.testing.assert_allclose(jack_jill._ssaModeledBenefit(k_opt), jack_jill.zetaBar_in, atol=1e-6)
+        assert np.allclose(jack_jill._ssa_spousal_offset, 0.0, atol=1e-6)
 
     def test_optimize_solves_with_survivor_fra(self, jack_jill):
         """A deferred survivor benefit still solves and is not better than claiming earlier."""
@@ -296,14 +278,15 @@ class TestSurvivorOffset:
         assert float(deferred.g_n[0]) == pytest.approx(spending_immediate, rel=5e-3)
 
     def test_both_optimized_uses_offset_path(self, jack_jill):
-        """When the first-to-die's age is also a variable, the survivor rides in the offset.
+        """When both ages are variables, spousal and survivor amounts ride in the offset.
 
-        Jack is 63 with a claiming age of 70, so 'optimize' leaves his age free and the survivor
-        amount depends on the age the solver picks; the fold cannot apply.
+        Jack is 63 with a claiming age of 70, so 'optimize' leaves both ages free and the
+        survivor amount depends on the pair of ages the solver picks; it cannot be tabulated.
         """
         jack_jill.solve("maxSpending", options={"withSSAges": "optimize"})
         assert jack_jill.caseStatus == "solved"
-        assert not jack_jill._ssa_fold_survivor
+        assert not jack_jill._ssa_pair_exact
+        assert not np.any(jack_jill._ssa_B_cross)
         assert np.all(jack_jill._ssa_spousal_offset > -1e-6)
 
 
@@ -387,3 +370,99 @@ class TestClaimingAgeTaxes:
         fixed.setStateTax("CA")
         fixed.solve("maxSpending", options=_EXACT_OPTS)
         assert results[0][1] == pytest.approx(float(fixed.g_n[0]), abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Claiming ages already in the past cannot be chosen (issue #195)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def october_2026(monkeypatch):
+    """Run on the date issue #195 was reported, past the January date the suite freezes."""
+    import datetime
+
+    import owlplanner.plan as plan_module
+
+    class _October(datetime.date):
+        @classmethod
+        def today(cls):
+            return datetime.date(2026, 10, 17)
+
+    monkeypatch.setattr(plan_module, "date", _October)
+
+
+def _issue195_plan():
+    """Couple from issue #195: the higher earner is 66 9/12 in October 2026 and plans to claim
+    at 70; the longer-lived spouse already claimed at 62."""
+    import io
+
+    import owlplanner as owl
+
+    p = owl.Plan(
+        ["Higher Income", "Lower Income"],
+        ["1960-01-15", "1958-01-15"],
+        [75, 95],
+        "issue195",
+        verbose=False,
+        logstreams=[io.StringIO()],
+    )
+    p.setSpendingProfile("flat", 60)
+    p.setAccountBalances(taxable=[100, 50], taxDeferred=[1000, 0], taxFree=[1000, 0], hsa=[50, 0], startDate="10-16")
+    p.setAllocationRatios("individual", generic=[[[60, 40, 0, 0], [70, 30, 0, 0]], [[60, 40, 0, 0], [70, 30, 0, 0]]])
+    p.setRates("user", values=[6, 4, 3, 2.5])
+    p.setSocialSecurity([3800, 1500], [70, 62 + 1 / 12])
+    return p
+
+
+_ISSUE195_OPTS = {"withSSAges": "Higher Income", "bequest": 0}
+
+
+@pytest.mark.usefixtures("october_2026")
+class TestNoPastClaimingAge:
+    def test_past_months_blocked_in_benefit_choice(self):
+        """Every zssa column for a month already behind us is bounded to zero."""
+        p = _issue195_plan()
+        p.solve("maxSpending", options=_ISSUE195_OPTS)
+        assert p.caseStatus == "solved"
+        current = p._ssaCurrentAgeMonths(0)
+        assert current == 66 * 12 + 9
+        _, ub = p.B.arrays()
+        for k in range(p._ssa_N_K):
+            month = 62 * 12 + k
+            expected = 0 if month < current else 1
+            assert ub[p.vm["zssa"].idx(0, k)] == expected, f"Claiming month {month // 12}y{month % 12}m"
+
+    def test_optimized_age_not_in_the_past(self):
+        """The optimizer used to pick 65 11/12, collecting a full year of benefits it never could."""
+        p = _issue195_plan()
+        p.solve("maxSpending", options=_ISSUE195_OPTS)
+        assert p.caseStatus == "solved"
+        assert round(float(p.ssecAges[0]) * 12) >= 66 * 12 + 9
+        assert float(p.ssecAges[1]) == pytest.approx(62 + 1 / 12)
+
+    def test_stored_past_age_counts_as_claimed(self):
+        """A stored claiming age earlier this year is already claimed, not a free choice."""
+        p = _issue195_plan()
+        p.setSocialSecurity([3800, 1500], [66 + 6 / 12, 62 + 1 / 12])
+        assert p._ssaAgeIsFixed(0)
+        p.setSocialSecurity([3800, 1500], [67, 62 + 1 / 12])
+        assert not p._ssaAgeIsFixed(0)
+
+    def test_optimize_matches_best_fixed_age(self):
+        """With the loops made exact, optimizing must do at least as well as the entered age.
+
+        The survivor (living to 95) depends on the deceased's claiming age, but that benefit and
+        the spousal add-on were parameters from the previous iterate, so the MILP did not see
+        that claiming later raises them: it picked 66 9/12 at $186,526/yr against $188,445/yr
+        for claiming at 70. With the household's streams tabulated per candidate age it picks 70.
+        """
+        exact = {"withSSTaxability": 0.85, "withMedicare": "None", "bequest": 0}
+        fixed = _issue195_plan()
+        fixed.solve("maxSpending", options=exact)
+        p = _issue195_plan()
+        p.solve("maxSpending", options={**exact, "withSSAges": "Higher Income"})
+        assert p.caseStatus == "solved"
+        assert p._ssa_pair_exact
+        assert float(p.ssecAges[0]) == pytest.approx(70.0)
+        assert float(p.g_n[0]) >= float(fixed.g_n[0]) - 1.0

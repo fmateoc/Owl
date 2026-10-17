@@ -48,9 +48,7 @@ re-solves a MILP per year. The presets replace it anyway (`breakpointMethod` set
 "optimize"). So it is a loop-mode tool. If you keep it, the docs could say so: use it with the other
 families on the loop.
 
-**Side finding, separate from this PR:** on john+sally the local-search preset returns 20,004, while
-the branch-and-bound preset returns 31,778 (gap 0.19%, 21 s) and "convex" alone 28,898. I can file
-that separately if useful.
+(Separately, I found a local-search case unrelated to SS on john+sally; I'll file it as its own issue.)
 
 If you'd still rather not carry it, I'll cut the PR down to the warning, pointing to
 `withSSTaxability="optimize"` and `breakpointMethod="local-search"`, and drop the label change.

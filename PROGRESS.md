@@ -1260,10 +1260,18 @@ rerun (same objectives: the runs are deterministic).
   with the rest on "optimize" it is 2.3-4.9x slower than SS "optimize" (helen+ruth 867 / 252 s,
   joe 584 / 251, morgan 1,208 / 249; contended): the cap probe re-solves a MILP per year. The
   presets set SS to "optimize" (`_applyBreakpointOptions`), so "convex" is a loop-mode tool only.
-- **Side finding (not filed):** the local-search preset returns 20,004 on john+sally, far below the
-  branch-and-bound preset (31,778) and "convex" alone (28,898). Same value uncontended (20.1 s).
-  Not yet traced. The fork's rule "local search is never worse than the loop" still holds here (loop
-  16,803), but local search can sit far below the global optimum.
+- **Side finding (not filed), traced the same day, not SS:** the local-search preset returns 20,004
+  on john+sally, far below the branch-and-bound preset (31,778) and "convex" alone (28,898).
+  Families one at a time (`pr196_ls_trace_2026-10-17.txt`, uncontended): local search on SS +
+  IRMAA 31,693 (= branch-and-bound), + NIIT 31,693, + senior bonus 31,778; **+ LTCG: 16,803, the
+  plain loop's plan** ("local search -> loop"). Branch-and-bound on SS + IRMAA + LTCG gives 31,693,
+  so the loss comes from the LTCG family inside local search. In that run the search's own steps
+  report objectives of 38,268-46,090, yet the plan the loop accepts is worth $16,712, so
+  `_localSearchSolve` keeps the loop's plan. Not yet traced: why the search's objective and the
+  accepted plan disagree by $20-30k with LTCG free. The reply to PR #196 only mentions it in one
+  line; a separate issue with a stock repro is next. For the fork: decision runs use the
+  local-search preset, which includes LTCG, so this can bias our comparisons too; check how often
+  "local search -> loop" or a large preset-vs-branch-and-bound gap shows up on our cases.
 
 Reply draft `fork-notes/pr-196-reply.md`: version A (keep, opt-in for loop users, with the evidence)
 and version B (drop; the PR cut to the warning, pointing to "optimize" / local search). The user

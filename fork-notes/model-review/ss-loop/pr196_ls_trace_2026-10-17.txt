@@ -1,0 +1,51 @@
+# john+sally local-search trace, stock fb8b10e, run 2026-10-17, date frozen at 2026-10-15, uncontended.
+## pr196_ls_js3.py (LS preset / BB preset / convex; M_n is 0 under the presets, premiums are an LP column there)
+LS      bequest 20,004  M 0  x 483,657  fedT 484,202  stT 197,296  taxSS 1,268,880
+BB      bequest 31,778  M 0  x 621,573  fedT 473,695  stT 186,976  taxSS 1,125,850
+convex  bequest 28,898  M 136,349  x 595,495  fedT 479,813  stT 190,967  taxSS 1,170,808
+year | LS: x M T | BB: x M T | convex: x M T
+2026  113,502      0  30,406 |  119,804      0  31,786 |  113,502      0  30,406
+2027  215,844      0  30,283 |  222,198      0  31,667 |  215,844      0  30,283
+2028  107,007      0  10,970 |  157,210      0  29,866 |  161,010  4,870  29,845
+2029   30,848      0  30,912 |   35,267      0  32,297 |   30,848  4,870  30,912
+2030   16,455      0  24,017 |   43,187      0  32,297 |   38,768  4,870  30,912
+2031        0      0  18,710 |   43,907      0  32,297 |   35,523  4,870  29,686
+2032        0      0  14,121 |        0      0   3,677 |        0  4,870   3,677
+2033        0      0  14,121 |        0      0   3,786 |        0  4,870   3,786
+2034        0      0  14,121 |        0      0   3,892 |        0  4,870   3,892
+2035        0      0  14,121 |        0      0   3,994 |        0  4,870   3,994
+2036        0      0  14,121 |        0      0   4,095 |        0  4,870  14,121
+2037        0      0  14,121 |        0      0   4,192 |        0  4,870  14,121
+2038        0      0  14,121 |        0      0  14,121 |        0  4,870  14,121
+2039        0      0  14,121 |        0      0  14,121 |        0  4,870  14,121
+## pr196_ls_js4.py, pr196_ls_js5.py (families one at a time)
+LS SS only              18,481  26.7s local search (SS)                        res 0
+BB SS only              18,481  13.5s branch-and-bound (SS)                    res 0
+LS Medicare only        16,803   0.4s local search -> loop                     res 0
+BB Medicare only        16,803   0.2s branch-and-bound (IRMAA)                 res 0
+LS SS+Medicare          31,693  26.7s local search (SS, IRMAA)                 res 0
+convex+LS Medicare      31,693  17.5s local search (IRMAA); SS: convex         res 0
+LS SS+Med+LTCG          16,803  21.3s local search -> loop                     res 0
+LS SS+Med+NIIT          31,693  24.9s local search (SS, IRMAA, NIIT)           res 0
+LS SS+Med+SB            31,778  19.3s local search (SS, IRMAA, senior bonus)   res 0
+LS preset               20,004  18.1s local search (SS, IRMAA, LTCG, NIIT, senior bonus) res 0
+BB SS+Med+LTCG          31,693  47.1s branch-and-bound (SS, IRMAA, LTCG)       res 0
+## pr196_ls_js6.py (LS on SS+IRMAA+LTCG, log excerpt)
+2026-10-17 13:41:20 | INFO | plan:_scSolve:6202 | Objective: $16,802
+2026-10-17 13:41:20 | DEBUG | plan:_localSearchSolve:5595 | Local search: the loop's plan is worth $16,803; searching from it.
+2026-10-17 13:41:20 | DEBUG | localsearch:_step:170 | Local search, iteration 0: start: repair from the loop plan, withdrawals and conversions +-$1: objective 39,555 in 0.03s.
+2026-10-17 13:41:20 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 0 (a): IRMAA free: objective 46,090 in 0.07s.
+2026-10-17 13:41:22 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 0 (a): LTCG free: objective 46,090 in 1.98s.
+2026-10-17 13:41:24 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 0 (b): SS within 4 flips: objective 46,090 in 2.25s.
+2026-10-17 13:41:24 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 1 (a): IRMAA free: objective 46,090 in 0.09s.
+2026-10-17 13:41:26 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 1 (a): LTCG free: objective 46,090 in 2.01s.
+2026-10-17 13:41:29 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 1 (b): SS within 4 flips: objective 46,090 in 2.22s.
+2026-10-17 13:41:33 | DEBUG | localsearch:_step:170 | Local search, iteration 0: round 1 (a'): IRMAA, LTCG free: objective 46,090 in 4.38s.
+2026-10-17 13:41:33 | DEBUG | localsearch:_step:170 | Local search, iteration 1: start: previous binaries (LP): objective 38,268 in 0.02s.
+2026-10-17 13:41:33 | DEBUG | localsearch:_step:170 | Local search, iteration 1: round 0 (a): IRMAA free: objective 38,268 in 0.06s.
+2026-10-17 13:41:35 | DEBUG | localsearch:_step:170 | Local search, iteration 1: round 0 (a): LTCG free: objective 38,268 in 2.43s.
+2026-10-17 13:41:38 | DEBUG | localsearch:_step:170 | Local search, iteration 1: round 0 (b): SS within 4 flips: objective 38,268 in 2.40s.
+2026-10-17 13:41:42 | DEBUG | localsearch:_step:170 | Local search, iteration 1: round 0 (a'): IRMAA, LTCG free: objective 38,268 in 4.08s.
+2026-10-17 13:41:42 | DEBUG | localsearch:solve:252 | Local search, iteration 2: same problem as the last; reusing its plan.
+2026-10-17 13:41:42 | INFO | plan:_scSolve:6202 | Objective: $16,712
+2026-10-17 13:41:42 | DEBUG | plan:_localSearchSolve:5620 | Local search: no better plan than the loop's; keeping the loop's plan.

@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-15)
+# Owl fork — progress (as of 2026-10-17)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -1178,6 +1178,37 @@ contains it.
   `maxSpending` it does not scale with spending; a `medical` budget line does. With a Budget
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
+
+## STAR / Stay NJ data check (2026-10-17, on `claude/zen-heisenberg-rfreik`)
+
+Open data questions of `phase3-plan.md` §3.4 and "Step 2 review" checked on tax.ny.gov and nj.gov
+(PAS-1 2025 form and instructions, NJ-1040 2025 instructions, the Stay NJ Task Force report).
+Notes and sources: `fork-notes/star/README.md`; 2025 final STAR credits for Westchester (77 rows)
+and NYC (3 tax classes): `fork-notes/star/star_2025_westchester_nyc.csv`. No code changed.
+
+- STAR amounts are published per municipality and school district after school rates are set;
+  2025 credits: Yonkers Enhanced $2,455 / Basic $879; NYC $730-743 / $274-278; rest of
+  Westchester (residential rows) Enhanced $1,753-4,517, Basic $611-1,665. The credit can grow at
+  most 2% a year (exemption savings not at all), and cannot exceed the school tax paid. Enhanced
+  limit $110,750 (2026) / $113,550 (2027); STAR income = AGI minus taxable IRA distributions, two
+  years back (conversions out, 401(k) withdrawals and taxable SS in).
+- Stay NJ = 50% of the bill, at most $6,500, minus ANCHOR and Senior Freeze (handout, Task Force
+  recommendation 7; the nj.gov calculation page is 404 now). FY2027 tiers $6,500 / $5,000 /
+  $4,000 to $100k / $150k / $200k; the PAS-1 still states the statutory $500k. Its income (and
+  Senior Freeze's) is NJ-1040 line 27, before the retirement exclusion, plus gross SS, tax-exempt
+  interest and Roth earnings; ANCHOR uses line 29 ($1,500 to $150k, $1,000 to $250k, homeowners
+  of any age).
+- **Correction to §3.4's reading:** "Stay NJ up to $4,000-6,500" is the NJ total, ANCHOR
+  included. NJ minus Yonkers at 65+ is about $4,045 / $2,545 / $1,545 a year by Stay NJ tier
+  with Enhanced STAR, $5,621 / $4,121 / $3,121 with Basic, $621 above $200k and under 65.
+  Still several times the measured income-tax differences ($430-1,006/yr).
+- NJ line 41 starts from property taxes paid; Senior Freeze applicants use their base-year tax
+  (1040i Worksheet H). I did not find a reduction for ANCHOR or Stay NJ.
+- Not checked: the statute text (pub.njleg.gov blocked), federal treatment of the credits
+  ("recoveries", Pub. 525), NY senior citizens exemption / SCHE, NYC school tax credit.
+
+Next for this item: step 9 as planned (scenario lever from a solved plan's PAS-1 and STAR
+income); code tiers only if a solved plan sits near a cliff; STAR first if anything is coded.
 
 ## Upstream dev 2b34633 merged; #193 PR prepared at the maintainer's request (2026-10-17)
 

@@ -6,7 +6,9 @@ first answer, relayed 2026-10-15: more loop quantities cause cycling and prevent
 he will run tests. Measurement against that: PROGRESS.md "Itemizing and loop convergence"; optional
 reply `issue-185-reply.md`. Concept level (`phase3-plan.md` §2, lessons 2, 4, 7, 8;
 `phase3-review.md` R5): the contract and the measured stakes, not the fork's code. Federal only;
-NY itemizing and NJ line 31 stay in the fork (lesson 3).
+NY itemizing and NJ line 31 stay in the fork (lesson 3). 2026-10-17: NJ line 31 and the NJ exclusion
+are removed from the fork; the NJ stakes below were measured on them and are $18k / $24k / $96k on
+upstream's NJ (PROGRESS.md "#185 after the changes since filing").
 
 ## Where to post, and when (user's call)
 

@@ -247,7 +247,7 @@ Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are repl
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
-### Version 2026.10.16
+### Version 2026.10.17
 
 #### Fixed: optimized Social Security claiming ages can no longer be in the past
 
@@ -256,8 +256,15 @@ already behind someone who has not yet claimed. The benefit table paid such a pa
 year at its reduction factor, as if benefits had been collected retroactively, which SSA does not
 do. A 66 9/12-year-old planning to claim at 70 was told to claim at 65 11/12, the latest age whose
 first check would have arrived in January. The earliest claiming age offered is now the age reached
-in the current month, and a stored claiming age earlier than that counts as already claimed, so it
-stays fixed. Thanks to @sengsational for reporting it (#195).
+in the current month. Thanks to @sengsational for reporting it (#195).
+
+#### Changed: a past claiming age can no longer be selected for optimization, instead of being skipped
+
+An entered claiming age already behind someone means that person is collecting, so Owl left them out
+of the optimization even when they were selected, without a word, and wrote back the same age. Such
+an individual is now not offered in the *Optimize SS claiming age for...* selector (nor is `both`),
+a stale selection naming them is reset to `none`, and `withSSAges` raises an error when it selects
+them through the API. If the person is not collecting yet, enter a claiming age from this month on.
 
 #### Fixed: optimizing one spouse's claiming age accounts for the spousal and survivor benefits
 

@@ -3156,6 +3156,7 @@ class Plan:
             # the spousal and survivor amounts depend on the pair of choices -- not linear in
             # zssa -- so they are carried in the offset below and are only exact at convergence.
             free = [i for i in range(self.N_i) if not self._ssaAgeIsFixed(i)]
+            self._ssaCheckPastAges()
             self._ssa_B_cross = np.zeros_like(self._ssa_B_own)
             self._ssa_pair_exact = self.N_i == 2 and len(free) == 1
             if self._ssa_pair_exact:
@@ -5424,13 +5425,35 @@ class Plan:
         """
         Return True if individual i's SS claiming age is not a free decision variable.
 
-        An age is fixed when the individual has no PIA, has already claimed (their current
-        age this month is at or past the stored claiming age), or was not selected by withSSAges.
+        An age is fixed when the individual has no PIA or was not selected by withSSAges. A selected
+        individual is always free: _ssaCheckPastAges refuses one whose entered age is already past.
         """
         pia_i = int(self.ssecAmounts[i]) if hasattr(self, "ssecAmounts") else 0
-        already_claimed = self._ssaCurrentAgeMonths(i) >= round(float(self.ssecAges[i]) * 12)
         not_selected = i not in getattr(self, "_ssa_optimize_set", set(range(self.N_i)))
-        return pia_i == 0 or already_claimed or not_selected
+        return pia_i == 0 or not_selected
+
+    def _ssaCheckPastAges(self):
+        """
+        Refuse to optimize the claiming age of anyone whose entered claiming age is already past.
+
+        A past age reads as benefits already being collected, and a claim cannot be redone: every
+        month still open would pay more than the reduced benefit actually received. Such an
+        individual used to be left out of the optimization without a word, which also hid a
+        planned age that had merely gone by. Either way the entered age has to be settled first.
+        """
+        for i in sorted(getattr(self, "_ssa_optimize_set", set())):
+            if i >= self.N_i or self._ssaAgeIsFixed(i):
+                continue
+            entered = round(float(self.ssecAges[i]) * 12)
+            current = self._ssaCurrentAgeMonths(i)
+            if current > entered:
+                name = self.inames[i]
+                raise ValueError(
+                    f"{name}'s SS claiming age ({entered // 12}y {entered % 12}m) is already past "
+                    f"({name} is {current // 12}y {current % 12}m this month), so it cannot be optimized. "
+                    f"If {name} is already collecting benefits, do not select {name} in withSSAges; "
+                    f"otherwise enter a claiming age from this month on."
+                )
 
     @_fixedAcrossIterations
     def _configure_ss_age_variables(self):
@@ -5442,8 +5465,8 @@ class Plan:
           b) Benefit definition, for each n:
              ssb[i,n] = sum_k B_own[i,k,n] * zssa[i,k] + sum_k B_cross[i,k,n] * zssa[partner,k]
 
-        For already-claimed individuals (current age >= stored claiming age), all zssa[i,k]
-        are fixed to 0/1 via bounds so the optimizer leaves them at the recorded age.
+        For individuals not selected by withSSAges, all zssa[i,k] are fixed to 0/1 via bounds so
+        the optimizer leaves them at the recorded age.
         For individuals with zero PIA, zssa[i,0] is fixed to 1 (irrelevant, B_own=0).
         For free individuals, claiming months before 62 (eligibility) or before the current
         month are fixed to 0: B_own would otherwise pay a past claiming age a full first year.

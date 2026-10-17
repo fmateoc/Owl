@@ -201,6 +201,12 @@ income-tax difference measured so far (NJ minus NY $430-1,006/yr under local sea
 exact LP), and it has income cliffs at $100k/$150k/$200k,
 the same shape as the NJ exclusion that the fork already solves as a MILP. It is also the least
 certain number in the comparison (annual appropriations).
+*(Data check 2026-10-17, `fork-notes/star/README.md`: the $4,000-6,500 is NJ's total relief,
+ANCHOR included, and Stay NJ is 50% of the bill up to the tier cap, minus ANCHOR and Senior
+Freeze; NJ minus Yonkers at 65+ is about $1.5-4.0k/yr with Enhanced STAR, $3.1-5.6k with Basic.
+Stay NJ's income is NJ line 27 plus gross SS, not line 29; STAR's is AGI minus taxable IRA
+distributions two years back. Per-district STAR credits are published; 2025 Westchester and NYC
+in `fork-notes/star/star_2025_westchester_nyc.csv`.)*
 
 ### 3.5 Owl's default reverts federal tax law in 2032
 

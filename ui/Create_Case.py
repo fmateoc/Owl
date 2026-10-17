@@ -44,6 +44,29 @@ def _locality_choices(state):
     return [""] + _tl.valid_localities(state) if state else [""]
 
 
+@st.cache_data
+def _district_choices(state):
+    from owlplanner import star as _star
+
+    return [""] + _star.valid_districts(state) if state else [""]
+
+
+_district_help = (
+    "Fork: municipality and school district of the home, for the NY STAR credit (Basic, or Enhanced from 65 "
+    "under the income limit). It applies in years with a budget 'property tax' line. Blank for none."
+)
+
+
+def _district_select(label, district_key, state):
+    """Selectbox for the school district of a residence, when the state has STAR data."""
+    choices = _district_choices(state or "")
+    if kz.getCaseKey(district_key) not in choices:
+        kz.setCaseKey(district_key, "")
+        st.session_state.pop(kz.genCaseKey(district_key), None)
+    if len(choices) > 1:
+        kz.getSelectbox(label, choices, district_key, help=_district_help)
+
+
 def _loadHFPExample(file):
     if file:
         hfp_name = tomlex.getHFPName(file)
@@ -174,11 +197,14 @@ else:
                 "locality",
                 help="Adds the city's resident income tax on top of the state's. Blank means the rest of the state.",
             )
+        kz.initCaseKey("schoolDistrict", "")
+        _district_select("School district (NY STAR credit, optional)", "schoolDistrict", kz.getCaseKey("state"))
         thisyear = date.today().year
         kz.initCaseKey("stateMoveEnabled", False)
         kz.initCaseKey("stateMoveYear", thisyear + 5)
         kz.initCaseKey("stateMoveState", "")
         kz.initCaseKey("stateMoveLocality", "")
+        kz.initCaseKey("stateMoveSchoolDistrict", "")
         kz.initCaseKey("stateMovesMore", [])
         _move_help = (
             "Model a change of residence during the plan. "
@@ -214,9 +240,16 @@ else:
                         "stateMoveLocality",
                         help="City income tax from that year on. Blank means the rest of the state.",
                     )
-            if (kz.getCaseKey("stateMoveState"), kz.getCaseKey("stateMoveLocality")) == (
+                _district_select("New school district (optional)", "stateMoveSchoolDistrict",
+                                 kz.getCaseKey("stateMoveState"))
+            if (
+                kz.getCaseKey("stateMoveState"),
+                kz.getCaseKey("stateMoveLocality"),
+                kz.getCaseKey("stateMoveSchoolDistrict"),
+            ) == (
                 kz.getCaseKey("state"),
                 kz.getCaseKey("locality"),
+                kz.getCaseKey("schoolDistrict"),
             ):
                 st.warning("The new residence is the starting one.", icon=":material/warning:")
             if kz.getCaseKey("stateMovesMore"):

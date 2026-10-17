@@ -132,6 +132,7 @@ _MODE_OPTIONS = {
     "withSSTaxability": ("loop", "optimize", "convex"),
     "withSeniorBonus": ("loop", "optimize"),
     "withItemized": ("none", "loop"),
+    "withSTAR": ("none", "loop", "optimize"),  # fork: NY STAR credit
     "withdrawalOrder": ("optimal", "taxable_first"),
 }
 _MODE_ALIASES = {

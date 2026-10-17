@@ -1,0 +1,570 @@
+# NY School Tax Relief (STAR) credit data for Owl retirement planner (fork).
+#
+# The STAR credit (Tax Law sec. 606(eee)) is a refundable New York personal income tax credit,
+# paid in advance as a check or direct deposit around the time school taxes are due. It goes to
+# a NY resident who owns and lives in the home on July 1 of the year; homes that have had the STAR
+# exemption since 2015 keep the exemption instead (not modeled: the credit is what any purchase
+# gets). Amounts are set per municipality and school district ("portion"), and the credit cannot
+# exceed the school taxes paid (sec. 606(eee)(3)(B), (4)(B)).
+#
+# [NY] fields:
+#   description          = free text: what the numbers are and where they come from
+#   amounts_year         = benefit year of the district amounts below
+#   credit_growth_pct    = nominal growth of the amounts per year after amounts_year. RPTL sec.
+#                          1306-a(2)(a)(i)(B) caps the credit at 102% of the prior year's; the
+#                          actual growth can be lower (tax.ny.gov: "can increase by as much as 2%").
+#   basic_income_limit   = Basic STAR credit: affiliated income at most this (sec. 606(eee)(3)(A)),
+#                          a fixed amount
+#   enhanced_age         = Enhanced STAR: one owner at least this old on December 31 (sec. 606(eee)(4))
+#   surviving_spouse_age = a surviving spouse at least this old keeps an Enhanced credit already allowed
+#   enhanced_limit_years / enhanced_limit_amounts = Enhanced income standard per benefit year; later
+#                          years grow with the Social Security cost-of-living adjustment and never
+#                          decrease (RPTL sec. 425(4)(b)(i)(C)-(D)); Owl indexes them with inflation
+#   income_lag_years     = income is that of the tax year this many years before the benefit year
+#                          (tax.ny.gov: 2026 benefits use 2024 returns)
+#
+# Income ("affiliated income", sec. 606(eee)(1)(B)): federal AGI of the owners living there and
+# their spouses, less IRA distributions included in AGI (1040 line 11 minus line 4b).
+#
+# [[NY.districts]]: one row per municipality and school district. basic / enhanced = the final
+# STAR credit for amounts_year, from tax.ny.gov "STAR credit and exemption savings amounts"
+# (https://www.tax.ny.gov/pit/property/star/comparison/), county pages read 2026-10-17. Rows in
+# two tax classes (Homestead / Non-Homestead) keep the Homestead row, which applies to homes. New
+# York City rows are per property tax class (1: one- to three-family homes, 2: co-ops and condos).
+# Only Westchester County and New York City are here; to add a county, copy its page's rows.
+
+[NY]
+description = "STAR credit (Tax Law sec. 606(eee); RPTL secs. 425 and 1306-a, read on nysenate.gov 2026-10-17). Income limits from tax.ny.gov STAR eligibility (updated 2026-06-03): Basic credit $500,000; Enhanced $110,750 for 2026 benefits and $113,550 for 2027. District amounts: 2025 final credits from tax.ny.gov, Westchester and New York City pages, read 2026-10-17."
+amounts_year = 2025
+credit_growth_pct = 2.0
+basic_income_limit = 500000.0
+enhanced_age = 65
+surviving_spouse_age = 62
+enhanced_limit_years = [2026, 2027]
+enhanced_limit_amounts = [110750.0, 113550.0]
+income_lag_years = 2
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Mt. Vernon"
+school_district = "Mount Vernon"
+basic = 1350.8
+enhanced = 3669.19
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of New Rochelle"
+school_district = "New Rochelle"
+basic = 1310.08
+enhanced = 3715.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Peekskill"
+school_district = "Peekskill"
+basic = 1438.77
+enhanced = 4129.66
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Peekskill"
+school_district = "Hendrick Hudson"
+basic = 1152.44
+enhanced = 3307.81
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Rye"
+school_district = "Rye"
+basic = 805.74
+enhanced = 2046.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Rye"
+school_district = "Rye Neck"
+basic = 1184.34
+enhanced = 3150.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of White Plains"
+school_district = "White Plains"
+basic = 1358.83
+enhanced = 3769.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "City of Yonkers"
+school_district = "Yonkers"
+basic = 879.0
+enhanced = 2455.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Bedford"
+school_district = "Katonah-Lewisboro"
+basic = 1382.19
+enhanced = 3746.48
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Bedford"
+school_district = "Bedford"
+basic = 1196.69
+enhanced = 2806.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Bedford"
+school_district = "Byram Hills"
+basic = 1237.79
+enhanced = 2944.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Cortlandt"
+school_district = "Putnam Valley"
+basic = 1576.18
+enhanced = 4496.27
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Cortlandt"
+school_district = "Croton-Harmon"
+basic = 1274.08
+enhanced = 3634.49
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Cortlandt"
+school_district = "Hendrick Hudson"
+basic = 1188.32
+enhanced = 3389.83
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Cortlandt"
+school_district = "Lakeland"
+basic = 1547.24
+enhanced = 4413.7
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Cortlandt"
+school_district = "Yorktown"
+basic = 1530.66
+enhanced = 4366.41
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Eastchester"
+school_district = "Eastchester"
+basic = 1213.71
+enhanced = 3474.87
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Eastchester"
+school_district = "Tuckahoe"
+basic = 1325.05
+enhanced = 3701.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Village of Bronxville"
+school_district = "Bronxville"
+basic = 1012.95
+enhanced = 2883.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Tarrytowns"
+basic = 1447.84
+enhanced = 4155.54
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Irvington"
+basic = 1485.7
+enhanced = 4124.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Dobbs Ferry"
+basic = 1544.22
+enhanced = 4432.16
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Hastings On Hudson"
+basic = 1458.9
+enhanced = 4187.26
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Ardsley"
+basic = 1535.52
+enhanced = 4407.19
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Edgemont"
+basic = 1530.76
+enhanced = 4228.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Greenburgh"
+basic = 1066.4
+enhanced = 3060.74
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Elmsford"
+basic = 1234.27
+enhanced = 3542.56
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Pocantico Hills"
+basic = 610.85
+enhanced = 1753.23
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Greenburgh"
+school_district = "Valhalla"
+basic = 1334.45
+enhanced = 3752.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Harrison"
+school_district = "Harrison"
+basic = 918.68
+enhanced = 2563.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Lewisboro"
+school_district = "Katonah-Lewisboro"
+basic = 1496.73
+enhanced = 4059.08
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mamaroneck"
+school_district = "Mamaroneck"
+basic = 1019.51
+enhanced = 2822.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mamaroneck"
+school_district = "Scarsdale"
+basic = 1111.65
+enhanced = 3093.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Tarrytowns"
+basic = 1522.17
+enhanced = 4391.56
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Mount Pleasant"
+basic = 1280.33
+enhanced = 3621.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Pocantico Hills"
+basic = 641.7
+enhanced = 1851.35
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Valhalla"
+basic = 1401.2
+enhanced = 3972.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Pleasantville"
+basic = 1406.6
+enhanced = 4058.12
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Chappaqua"
+basic = 1399.17
+enhanced = 4036.68
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Byram Hills"
+basic = 1074.0
+enhanced = 2974.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Pleasant"
+school_district = "Briarcliff Manor"
+basic = 1470.34
+enhanced = 4242.02
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Bedford"
+basic = 1178.56
+enhanced = 2793.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Pleasantville"
+basic = 1515.65
+enhanced = 4112.67
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Chappaqua"
+basic = 1506.98
+enhanced = 4089.16
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Byram Hills"
+basic = 1218.94
+enhanced = 2977.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Ossining"
+basic = 1664.39
+enhanced = 4516.28
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of New Castle"
+school_district = "Yorktown"
+basic = 1664.77
+enhanced = 4517.32
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Castle"
+school_district = "Bedford"
+basic = 1061.87
+enhanced = 2821.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Castle"
+school_district = "Harrison"
+basic = 900.04
+enhanced = 2446.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Castle"
+school_district = "Mount Pleasant"
+basic = 1243.19
+enhanced = 3379.38
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Castle"
+school_district = "Valhalla"
+basic = 1360.25
+enhanced = 3697.59
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Castle"
+school_district = "Byram Hills"
+basic = 1098.21
+enhanced = 2985.28
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Salem"
+school_district = "Katonah-Lewisboro"
+basic = 1312.45
+enhanced = 3766.63
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of North Salem"
+school_district = "North Salem"
+basic = 1492.12
+enhanced = 3516.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Ossining"
+school_district = "Ossining"
+basic = 1555.83
+enhanced = 4465.44
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Ossining"
+school_district = "Briarcliff Manor"
+basic = 1480.97
+enhanced = 4250.58
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Pelham"
+school_district = "Pelham"
+basic = 1295.7
+enhanced = 3718.75
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Pound Ridge"
+school_district = "Katonah-Lewisboro"
+basic = 1508.15
+enhanced = 4041.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Pound Ridge"
+school_district = "Bedford"
+basic = 1306.13
+enhanced = 2704.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Rye"
+school_district = "Harrison"
+basic = 895.0
+enhanced = 2483.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Rye"
+school_district = "Rye Neck"
+basic = 1107.36
+enhanced = 3124.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Rye"
+school_district = "Port Chester-Rye"
+basic = 999.0
+enhanced = 2798.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Rye"
+school_district = "Blind Brook-Rye"
+basic = 1409.74
+enhanced = 3507.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Scarsdale"
+school_district = "Scarsdale"
+basic = 1151.49
+enhanced = 3124.75
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Somers"
+school_district = "North Salem"
+basic = 1353.96
+enhanced = 3706.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Somers"
+school_district = "Somers"
+basic = 1447.22
+enhanced = 3916.0
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Somers"
+school_district = "Lakeland"
+basic = 1480.27
+enhanced = 4240.3
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Yorktown"
+school_district = "Croton-Harmon"
+basic = 1197.75
+enhanced = 3414.47
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Yorktown"
+school_district = "Ossining"
+basic = 1439.05
+enhanced = 4102.36
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Yorktown"
+school_district = "Lakeland"
+basic = 1455.52
+enhanced = 4149.31
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Yorktown"
+school_district = "Yorktown"
+basic = 1439.36
+enhanced = 4103.25
+
+[[NY.districts]]
+county = "Westchester"
+municipality = "Town of Mount Kisco"
+school_district = "Bedford"
+basic = 1017.64
+enhanced = 2816.0
+
+[[NY.districts]]
+county = "New York City"
+municipality = "New York City"
+school_district = "New York City (class 1)"
+basic = 275.0
+enhanced = 730.0
+
+[[NY.districts]]
+county = "New York City"
+municipality = "New York City"
+school_district = "New York City (class 2)"
+basic = 274.0
+enhanced = 743.0
+
+[[NY.districts]]
+county = "New York City"
+municipality = "New York City"
+school_district = "New York City (class 4)"
+basic = 278.0
+enhanced = 738.0

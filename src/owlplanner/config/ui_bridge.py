@@ -90,6 +90,8 @@ SOLVER_UI_PASSTHROUGH_KEYS = [
     "verbose",
     "withSeniorBonus",
     "withItemized",
+    "withSTAR",  # fork: NY STAR credit
+    "previousSTARIncomes",
 ]
 
 
@@ -134,6 +136,16 @@ def _ui_asset_allocation_base(uidic: dict) -> dict[str, Any]:
         out["interpolation_center"] = _get_ui(uidic, "interpCenter", 15, float)
         out["interpolation_width"] = _get_ui(uidic, "interpWidth", 5, float)
     return out
+
+
+def _ui_district(state: str, name: str) -> str:
+    """A school district as the UI's selectbox lists it (canonical), or as written if unknown."""
+    from .. import star
+
+    try:
+        return star.canonical_district((state or "").upper().strip(), name)
+    except ValueError:
+        return name or ""
 
 
 def _start_date_to_ui(start_date: str) -> date:
@@ -193,11 +205,15 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     dic["startDate"] = _start_date_to_ui(start_date_str)
     dic["state"] = bi.get("state", "")
     dic["locality"] = bi.get("locality", "")
+    dic["schoolDistrict"] = _ui_district(bi.get("state", ""), bi.get("school_district", ""))  # fork: NY STAR
     moves = bi.get("moves") or []
     dic["stateMoveEnabled"] = bool(moves)
     dic["stateMoveYear"] = int(moves[0]["year"]) if moves else date.today().year + 5
     dic["stateMoveState"] = moves[0].get("state", "") if moves else ""
     dic["stateMoveLocality"] = moves[0].get("locality", "") if moves else ""
+    dic["stateMoveSchoolDistrict"] = (
+        _ui_district(moves[0].get("state", ""), moves[0].get("school_district", "")) if moves else ""
+    )
     dic["stateMovesMore"] = [dict(m) for m in moves[1:]]  # fork: further moves, from the case file only
 
     dic["interpMethod"] = aa.get("interpolation_method", "s-curve")
@@ -549,6 +565,8 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
     }
     if uidic.get("locality"):
         diconf["basic_info"]["locality"] = uidic["locality"]
+    if uidic.get("schoolDistrict"):
+        diconf["basic_info"]["school_district"] = uidic["schoolDistrict"]
 
     # Savings: UI $k = config $k (per doc: tables dollars, UI thousands except fixed income)
     for j, acc in enumerate(ACC_CONF):
@@ -718,6 +736,8 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
         }
         if uidic.get("stateMoveLocality"):
             first["locality"] = uidic["stateMoveLocality"]
+        if uidic.get("stateMoveSchoolDistrict"):
+            first["school_district"] = uidic["stateMoveSchoolDistrict"]
         # Fork: moves after the first come from the case file and are kept as they are.
         diconf["basic_info"]["moves"] = [first] + [dict(m) for m in uidic.get("stateMovesMore") or []]
 

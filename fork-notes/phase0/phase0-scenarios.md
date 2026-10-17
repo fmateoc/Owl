@@ -78,9 +78,22 @@ deductions are worth for us, switch them off in the variant only:
 owlcli compare otherFiles/Case_us.toml --set solver_options.withItemized=none
 ```
 
+NY STAR is modeled (2026-10-17): give the home's `school_district` in `[basic_info]` (and in a
+move to another NY home) and keep the budget's `property tax` line at the bill a listing shows
+(the credit is a separate payment, not a lower bill). Basic credit, Enhanced from 65 while the
+income two years earlier (AGI less IRA distributions) is under the limit. To see what it is worth:
+
+```bash
+owlcli compare otherFiles/Case_us.toml --set solver_options.withSTAR=none
+```
+
+For a decision near the Enhanced limit, `withSTAR = "optimize"` (or local search) lets the plan
+keep its income under it; the loop does not try. `previousSTARIncomes` (in `units`) gives the
+income of the two years before the plan; without it the two `previousMAGIs` are used.
+
 Not modeled: NYC household and school-tax credits, part-year residency, the $50 NJ property tax
-credit, NJ ANCHOR/Senior Freeze/Stay NJ, and NY STAR (enter those as big-ticket items or net them
-off the budget's property tax line; STAR as a rule is still to do, PROGRESS.md "Step 2 review").
+credit, and NJ ANCHOR/Senior Freeze/Stay NJ (enter those as big-ticket items or net them off the
+budget's property tax line; data and rules in `fork-notes/star/README.md`).
 
 Differences under about 1% between residency variants can be loop noise rather than a real
 difference, with either sign (see `PROGRESS.md`, NJ stakes). Keep the solver options identical

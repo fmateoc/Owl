@@ -1,0 +1,81 @@
+county,municipality,school_district,tax_class,enhanced_credit,enhanced_exemption_savings,enhanced_difference,basic_credit,basic_exemption_savings,basic_difference
+Westchester,City of Mt. Vernon,Mount Vernon,,3669.19,3669.19,0.00,1350.80,1350.80,0.00
+Westchester,City of New Rochelle,New Rochelle,,3715.00,3592.00,123.00,1310.08,1301.00,9.08
+Westchester,City of Peekskill,Peekskill,,4129.66,3958.00,171.66,1438.77,1438.77,0.00
+Westchester,City of Peekskill,Hendrick Hudson,,3307.81,3226.00,81.81,1152.44,1152.44,0.00
+Westchester,City of Rye,Rye,,2046.00,1853.00,193.00,805.74,796.00,9.74
+Westchester,City of Rye,Rye Neck,Homestead,3150.00,2882.00,268.00,1184.34,1184.34,0.00
+Westchester,City of Rye,Rye Neck,Non-Homestead,3588.00,3314.00,274.00,1343.90,1343.90,0.00
+Westchester,City of White Plains,White Plains,,3769.00,3416.00,353.00,1358.83,1340.00,18.83
+Westchester,City of Yonkers,Yonkers,,2455.00,2318.00,137.00,879.00,862.00,17.00
+Westchester,Town of Bedford,Katonah-Lewisboro,,3746.48,3711.00,35.48,1382.19,1382.19,0.00
+Westchester,Town of Bedford,Bedford,,2806.00,2442.00,364.00,1196.69,1196.69,0.00
+Westchester,Town of Bedford,Byram Hills,,2944.00,2564.00,380.00,1237.79,1222.00,15.79
+Westchester,Town of Cortlandt,Putnam Valley,,4496.27,4496.27,0.00,1576.18,1576.18,0.00
+Westchester,Town of Cortlandt,Croton-Harmon,,3634.49,3634.49,0.00,1274.08,1274.08,0.00
+Westchester,Town of Cortlandt,Hendrick Hudson,,3389.83,3317.00,72.83,1188.32,1188.32,0.00
+Westchester,Town of Cortlandt,Lakeland,,4413.70,4413.70,0.00,1547.24,1547.24,0.00
+Westchester,Town of Cortlandt,Yorktown,,4366.41,4318.00,48.41,1530.66,1530.66,0.00
+Westchester,Town of Eastchester,Eastchester,,3474.87,3205.00,269.87,1213.71,1213.71,0.00
+Westchester,Town of Eastchester,Tuckahoe,,3701.00,3352.00,349.00,1325.05,1325.05,0.00
+Westchester,Village of Bronxville,Bronxville,,2883.00,2612.00,271.00,1012.95,1012.95,0.00
+Westchester,Town of Greenburgh,Tarrytowns,,4155.54,4061.00,94.54,1447.84,1447.84,0.00
+Westchester,Town of Greenburgh,Irvington,,4124.00,3735.00,389.00,1485.70,1485.70,0.00
+Westchester,Town of Greenburgh,Dobbs Ferry,,4432.16,4124.00,308.16,1544.22,1544.22,0.00
+Westchester,Town of Greenburgh,Hastings On Hudson,,4187.26,3973.00,214.26,1458.90,1458.90,0.00
+Westchester,Town of Greenburgh,Ardsley,,4407.19,4128.00,279.19,1535.52,1535.52,0.00
+Westchester,Town of Greenburgh,Edgemont,,4228.00,3830.00,398.00,1530.76,1530.76,0.00
+Westchester,Town of Greenburgh,Greenburgh,,3060.74,2776.00,284.74,1066.40,1066.40,0.00
+Westchester,Town of Greenburgh,Elmsford,,3542.56,3427.00,115.56,1234.27,1234.27,0.00
+Westchester,Town of Greenburgh,Pocantico Hills,,1753.23,1717.00,36.23,610.85,610.85,0.00
+Westchester,Town of Greenburgh,Valhalla,,3752.00,3373.00,379.00,1334.45,1314.00,20.45
+Westchester,Town of Harrison,Harrison,,2563.00,2232.00,331.00,918.68,918.68,0.00
+Westchester,Town of Lewisboro,Katonah-Lewisboro,,4059.08,3559.00,500.08,1496.73,1496.73,0.00
+Westchester,Town of Mamaroneck,Mamaroneck,,2822.00,2557.00,265.00,1019.51,1019.51,0.00
+Westchester,Town of Mamaroneck,Scarsdale,,3093.00,2693.00,400.00,1111.65,1111.65,0.00
+Westchester,Town of Mount Pleasant,Tarrytowns,,4391.56,4073.00,318.56,1522.17,1522.17,0.00
+Westchester,Town of Mount Pleasant,Mount Pleasant,,3621.00,3152.00,469.00,1280.33,1280.33,0.00
+Westchester,Town of Mount Pleasant,Pocantico Hills,,1851.35,1742.00,109.35,641.70,641.70,0.00
+Westchester,Town of Mount Pleasant,Valhalla,,3972.00,3458.00,514.00,1401.20,1401.20,0.00
+Westchester,Town of Mount Pleasant,Pleasantville,,4058.12,3995.00,63.12,1406.60,1406.60,0.00
+Westchester,Town of Mount Pleasant,Chappaqua,,4036.68,3558.00,478.68,1399.17,1399.17,0.00
+Westchester,Town of Mount Pleasant,Byram Hills,,2974.00,2589.00,385.00,1074.00,1053.00,21.00
+Westchester,Town of Mount Pleasant,Briarcliff Manor,,4242.02,3962.00,280.02,1470.34,1470.34,0.00
+Westchester,Town of New Castle,Bedford,,2793.00,2429.00,364.00,1178.56,1178.56,0.00
+Westchester,Town of New Castle,Pleasantville,,4112.67,3960.00,152.67,1515.65,1515.65,0.00
+Westchester,Town of New Castle,Chappaqua,,4089.16,3676.00,413.16,1506.98,1506.98,0.00
+Westchester,Town of New Castle,Byram Hills,,2977.00,2592.00,385.00,1218.94,1196.00,22.94
+Westchester,Town of New Castle,Ossining,,4516.28,4250.00,266.28,1664.39,1664.39,0.00
+Westchester,Town of New Castle,Yorktown,,4517.32,4138.00,379.32,1664.77,1664.77,0.00
+Westchester,Town of North Castle,Bedford,,2821.00,2457.00,364.00,1061.87,1061.87,0.00
+Westchester,Town of North Castle,Harrison,,2446.00,2130.00,316.00,900.04,900.04,0.00
+Westchester,Town of North Castle,Mount Pleasant,,3379.38,2951.00,428.38,1243.19,1243.19,0.00
+Westchester,Town of North Castle,Valhalla,,3697.59,3314.00,383.59,1360.25,1360.25,0.00
+Westchester,Town of North Castle,Byram Hills,,2985.28,2621.00,364.28,1098.21,1098.21,0.00
+Westchester,Town of North Salem,Katonah-Lewisboro,,3766.63,3419.00,347.63,1312.45,1312.45,0.00
+Westchester,Town of North Salem,North Salem,,3516.00,3061.00,455.00,1492.12,1492.12,0.00
+Westchester,Town of Ossining,Ossining,,4465.44,4304.00,161.44,1555.83,1555.83,0.00
+Westchester,Town of Ossining,Briarcliff Manor,,4250.58,3978.00,272.58,1480.97,1480.97,0.00
+Westchester,Town of Pelham,Pelham,Homestead,3718.75,3386.00,332.75,1295.70,1295.70,0.00
+Westchester,Town of Pelham,Pelham,Non-Homestead,5015.51,4570.00,445.51,1747.53,1747.53,0.00
+Westchester,Town of Pound Ridge,Katonah-Lewisboro,,4041.00,3536.00,505.00,1508.15,1508.15,0.00
+Westchester,Town of Pound Ridge,Bedford,,2704.00,2354.00,350.00,1306.13,1175.00,131.13
+Westchester,Town of Rye,Harrison,,2483.00,2161.00,322.00,895.00,877.00,18.00
+Westchester,Town of Rye,Rye Neck,Homestead,3124.00,2975.00,149.00,1107.36,1094.00,13.36
+Westchester,Town of Rye,Rye Neck,Non-Homestead,3584.87,3584.87,0.00,1249.02,1249.02,0.00
+Westchester,Town of Rye,Port Chester-Rye,Homestead,2798.00,2667.00,131.00,999.00,980.00,19.00
+Westchester,Town of Rye,Port Chester-Rye,Non-Homestead,4184.70,3991.00,193.70,1458.01,1458.01,0.00
+Westchester,Town of Rye,Blind Brook-Rye,Homestead,3507.00,3091.00,416.00,1409.74,1360.00,49.74
+Westchester,Town of Rye,Blind Brook-Rye,Non-Homestead,5322.00,4634.00,688.00,2074.81,2074.81,0.00
+Westchester,Town of Scarsdale,Scarsdale,,3124.75,2759.00,365.75,1151.49,1151.49,0.00
+Westchester,Town of Somers,North Salem,,3706.00,3226.00,480.00,1353.96,1353.96,0.00
+Westchester,Town of Somers,Somers,,3916.00,3409.00,507.00,1447.22,1447.22,0.00
+Westchester,Town of Somers,Lakeland,,4240.30,4240.30,0.00,1480.27,1480.27,0.00
+Westchester,Town of Yorktown,Croton-Harmon,,3414.47,3414.47,0.00,1197.75,1197.75,0.00
+Westchester,Town of Yorktown,Ossining,,4102.36,4102.36,0.00,1439.05,1439.05,0.00
+Westchester,Town of Yorktown,Lakeland,,4149.31,4149.31,0.00,1455.52,1455.52,0.00
+Westchester,Town of Yorktown,Yorktown,,4103.25,4103.25,0.00,1439.36,1439.36,0.00
+Westchester,Town of Mount Kisco,Bedford,,2816.00,2452.00,364.00,1017.64,1017.64,0.00
+New York City,New York City,New York City,1,730.00,659.00,71.00,275.00,269.00,6.00
+New York City,New York City,New York City,2,743.00,647.00,96.00,274.00,269.00,5.00
+New York City,New York City,New York City,4,738.00,643.00,95.00,278.00,272.00,6.00

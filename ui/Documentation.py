@@ -763,6 +763,16 @@ everywhere). Not modeled: the alternative minimum tax, the limit on itemized ded
 bracket (its amount is reported). *Other medical expenses* on the Run Options page are the medical
 expense of these deductions when the budget has no *medical* line; with one, the budget's lines are used
 and *Other medical expenses* only cap HSA withdrawals, so nothing is counted twice.
+
+*NY STAR credit* (fork). With a *school district* chosen on the Create Case page (New York: Westchester
+and New York City so far), an owner (a year with a *property tax* line) receives the School Tax Relief
+credit, a check from New York State: the Basic credit while the household's income two years earlier
+(AGI less IRA withdrawals) is at most \\$500,000, and the larger Enhanced credit from the year one of you
+turns 65 while that income is at most \\$110,750 (2026; \\$113,550 for 2027, then rising with inflation).
+Keep the *property tax* line at the full bill: the credit is paid separately. The amounts are the 2025
+credits of each district, growing 2% a year. The credit comes off the state income tax in the reports,
+and off the property tax of New York's itemized deduction. The solver option *withSTAR* = "optimize"
+lets the plan keep its income under the Enhanced limit where that pays; "none" turns it off.
 """)
 
     with st.expander(":orange[**Fixed Income**]", expanded=expand_all, type="compact"):

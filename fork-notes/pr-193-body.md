@@ -10,7 +10,7 @@ two pass either way (they guard against a false warning). The session cannot edi
 `mdlacasse/Owl` (GitHub access covers the fork only): the user replaces its title and description
 with the text below.
 
-The first version of this file (title, text, the "convex" label) is in git history at `cc22dcb`.
+The previous version of this file (the "convex" PR text, as opened) is in git history at `c5a419e`.
 
 ---
 

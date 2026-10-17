@@ -1357,6 +1357,53 @@ upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fo
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
 
+## Fork NJ code removed (2026-10-17, on `claude/friendly-mccarthy-585okd`)
+
+User's decision after "NJ dropped from the investigation" (below): the fork's NJ mechanisms were
+generic in code but used by NJ alone, so removing them brings the fork closer to upstream and drops
+code nobody uses. Removed:
+- the income-tiered retirement exclusion (lines 28a-28c): `_add_state_tiered_exclusion`, the
+  `st_rx` / `rxl` / `rxb` columns and `zx` binaries, `RX_WINDOW` / `RXF_n` (free set),
+  `RX_NODE_LIMIT` / `RX_MOSEK_TIME_LIMIT`, `_rx_fixed` and `_refix_boundary_tiers`,
+  `_tiered_exclusion_free` / `_implied`, `_set_tiered_exclusion`, `_exclusion_shortfall`,
+  `tax_state._read_exclusion_tiers` / `exclusion_share`, the `zx` local-search family, the explain
+  fields, the Summary's RX node-limit note;
+- the property tax deduction (line 41): `st_pt`, `st_ptd_*`, `_add_property_tax_deduction`;
+- the medical deduction (line 31): `st_med`, `NJMF_n` / `_nj_medl_n` (loop parameters),
+  `_add_nj_medical_deduction`, `_nj_medical_*`, the "state medical" residual, the `hsa` switch of
+  the medical-premium helpers (only line 31 passed `hsa=False`);
+- with the node cap: `Plan._node_limit`, `_time_limit` and the fork's two log warnings for a MILP
+  stopped at its time or node limit (`_warn_time_limit`, `_warn_node_limit`); `_run_highs`,
+  `_countHighsNodes` and `_mosekSolve` are upstream's again, except `_run_highs`'s LP basis cache
+  (from `ss-convex`); `export._mip_node_limit` is upstream's;
+- data: the NJ sections of `taxes_state.toml` are upstream's text exactly, and the header no longer
+  documents `retirement_exclusion_*`, `property_tax_deduction`, `medical_deduction`;
+- tests: `test_state_tiered_exclusion.py`, `test_nj_medical.py`, ten NJ tests in `test_budget.py`
+  and one in `test_itemized_data.py`; four generic tests kept without their NJ assertions (now NY);
+- docs: CHANGELOG (four NJ sections out, one "Removed" entry in), CLAUDE.md, PARAMETERS.md,
+  `modeling-capabilities.md`, `Documentation.py`, `phase0-scenarios.md`.
+
+Kept: `processDebtsAndFixedAssets()` before the variable map in `solve()` (upstream calls it after):
+mortgage interest and the budget feed the itemized columns too.
+
+Size (diff against upstream `dev`): `plan.py` +2,714/-205 -> +2,146/-200; `tax_state.py` +412 -> +311;
+`taxes_state.toml` +98 -> +50; `explain.py` +120 -> +70; `export.py` +126 -> +116; whole change
++101/-1,622 lines (src +46/-846).
+
+**Regression** (`fork-notes/model-review/nj-removal/`: `regress.py`, `cases.txt`, before at
+`fe4db7f` and after, `compare_2026-10-17.txt`; date frozen at 2026-10-15): all 36 non-NJ cases
+**identical to the cent** in bequest or spending, lifetime federal and state tax, fixed-point
+residual and method label (18 examples under the loop, 6 under the local-search preset, the NY
+Yonkers probe couple with and without a mortgage under 2032 and 2099 law, loop and local search, NY
+without a locality, STAR loop and optimize). NJ cases, as expected: bequest -$43k to -$69k, lifetime
+state tax +$36k to +$45k (no exclusion or deductions), local search 138-149 s -> 42-44 s.
+
+Full suite **3193 passed, 1 skipped** (7:43; 3250 in 8:23 before). flake8/ruff: only upstream's known lines.
+
+Consequence: the fork-notes scripts that measured NJ (`nj_stakes.py`, `housing_stakes.py`'s NJ cases,
+`convex_fork.py`'s NJ cases, `local-search/*` NJ runs) depend on the removed code; they run against
+`fe4db7f` or earlier.
+
 ## NJ dropped from the investigation (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 
 User's decision: NJ is unlikely as a place to live, and with moves it complicates things for no
@@ -1388,10 +1435,8 @@ in decision runs; `CLAUDE.md`, `phase1-revised.md` and `phase0-scenarios.md` (se
 commands replaced by a move within NY) updated. Moves within NY (locality, STAR school district)
 stay; they need the fork's multi-move `Residence`.
 
-Not done: removing the NJ code. It would save the test minute and some merge exposure. It costs a
-session of edits in shared itemizing, medical-premium and loop code, which have tests that pass now.
-After it, Owl would still run an NJ case, but on upstream's NJ, with no exclusion (wrong for
-retirees). Worth doing only if the NJ code starts getting in the way.
+Removing the NJ code was first left undone (a session of edits for a small saving); the user then
+decided to remove it: see "Fork NJ code removed" above.
 
 ## STAR branch merged (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 

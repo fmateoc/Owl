@@ -65,33 +65,6 @@
 #                               change needs no other edit.
 #   recapture_width           = AGI dollars over which each tier phases in (default 50000)
 #   recapture_until           = highest bracket threshold that starts a tier
-#   retirement_exclusion_tiers = [[income_ceiling, pct], ...] — an exclusion of pensions, annuities,
-#                               IRA withdrawals and Roth conversions that depends on household
-#                               income (NJ-1040 line 28a). In the first tier whose ceiling the
-#                               state income before the exclusion does not exceed, pct percent of
-#                               eligible income is excluded, up to retirement_exclusion_cap; above
-#                               the last ceiling, nothing. The steps are cliffs, as in the statute.
-#                               Only the income of a filer who has reached retirement_exclusion_age
-#                               by December 31 is eligible. Omit for states without it.
-#   retirement_exclusion_cap  = dollar cap on that exclusion
-#   retirement_exclusion_age  = age by December 31 from which a filer's income is eligible
-#   retirement_exclusion_earned_limit = when wages are at or below this amount and every filer
-#                               has reached the age, the unused part of the cap also covers other
-#                               income (NJ line 28b): the exclusion becomes pct percent of total
-#                               income, up to the cap. Omit if the state has no such extension.
-#   property_tax_deduction    = { cap, rent_share, indexed } — deduction from taxable income for
-#                               property taxes on the main home (owners) or rent_share percent of
-#                               rent (tenants), up to cap (NJ-1040 line 41: $15,000 / 18%). It
-#                               comes after the retirement exclusion and the exemptions, so it
-#                               does not change the income that sets the exclusion tiers. The
-#                               $50 alternative credit (line 56) is not modeled. Omit for states
-#                               without it. Amounts are not indexed (same figures in the 2020 and
-#                               2025 NJ-1040 instructions).
-#   medical_deduction         = { floor_pct } — unreimbursed medical above floor_pct percent of
-#                               state gross income (NJ-1040 line 31, Worksheet F: 2% of line 29,
-#                               NJ gross income after the retirement exclusion). Includes
-#                               Medicare Part B premiums (named in the NJ-1040 instructions).
-#                               Omit for states without it.
 #   itemized                  = optional, the state's own itemized deduction (fork; NY only,
 #                               verified against IT-196-I 2025). Omit, or set allowed = false,
 #                               for a state without one. Written as dotted keys under the entry
@@ -1232,11 +1205,7 @@ pension_exemption = 0
 roth_conversion_eligible = true
 
 [NJ_Single]
-# NJ: pension/retirement exclusion (line 28a) and other retirement income exclusion (line 28b,
-# Worksheet D) as printed in the 2025 NJ-1040 instructions; the same amounts are printed for 2021,
-# 2023 and 2024. The Single/HoH/QW chart applies to a Single filer. Not modeled: the Special
-# Exclusion for filers never eligible for Social Security, disability before 62, and income of
-# one spouse who is 62+ when the other is younger (only line 28a is taken then).
+# NJ: excludes up to $100k pension/IRA if household income <= $100k (complex phaseout)
 brackets = [[0.0, 1.4], [20000.0, 1.75], [35000.0, 3.5], [40000.0, 5.525], [75000.0, 6.37], [500000.0, 8.97], [1000000.0, 10.75]]
 standard_deduction = 0
 brackets_indexed = false
@@ -1250,14 +1219,6 @@ retirement_income_exemption = 0
 exemption_age = 0
 pension_exemption = 0
 roth_conversion_eligible = true
-retirement_exclusion_tiers = [[100000.0, 100.0], [125000.0, 37.5], [150000.0, 18.75]]  # NJ-1040 (2025) line 28a chart
-retirement_exclusion_cap = 75000
-retirement_exclusion_age = 62
-retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
-# NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
-property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
-# NJ-1040 (2025) line 31, Worksheet F: medical above 2% of line 29 (NJ gross income)
-medical_deduction = { floor_pct = 2 }
 
 [NJ_MFJ]
 brackets = [[0.0, 1.4], [20000.0, 1.75], [50000.0, 2.45], [70000.0, 3.5], [80000.0, 5.525], [150000.0, 6.37], [500000.0, 8.97], [1000000.0, 10.75]]
@@ -1273,14 +1234,6 @@ retirement_income_exemption = 0
 exemption_age = 0
 pension_exemption = 0
 roth_conversion_eligible = true
-retirement_exclusion_tiers = [[100000.0, 100.0], [125000.0, 50.0], [150000.0, 25.0]]  # NJ-1040 (2025) line 28a chart
-retirement_exclusion_cap = 100000
-retirement_exclusion_age = 62
-retirement_exclusion_earned_limit = 3000  # Worksheet D, lines 4-8
-# NJ-1040 (2025) lines 40a-41: property taxes on the main home, or 18% of rent, up to $15,000
-property_tax_deduction = { cap = 15000, rent_share = 18, indexed = false }
-# NJ-1040 (2025) line 31, Worksheet F: medical above 2% of line 29 (NJ gross income)
-medical_deduction = { floor_pct = 2 }
 
 [NM_Single]
 # Audit 2026-09: HB 252 (2025) six-bracket schedule, 1.5%-5.9%; Tax Foundation 2026 table.

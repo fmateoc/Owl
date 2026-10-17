@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 import owlplanner as owl
-from owlplanner import budget, spending, tax_state
+from owlplanner import budget, spending
 from owlplanner.export import _compute_estate, budget_spending, plan_metrics
 from owlplanner.hfp_io import conditionDebtsAndFixedAssetsDF
 
@@ -211,7 +211,7 @@ def test_budget_lines_with_another_profile_warn_and_are_not_used():
     p.setSocialSecurity([2800, 2200], [70, 70])
     p.solve("maxSpending", options={**EXACT, "bequest": 0})
     assert "Budget sheet is not used" in log.getvalue()
-    assert p.budget is None and np.all(p.st_ptd_share_n == 0)
+    assert p.budget is None
 
 
 def test_budget_set_before_the_sheet_is_read_at_solve():
@@ -304,110 +304,7 @@ def test_lines_left_out_warn_at_solve():
 # ---------------------------------------------------------------------------
 
 
-def test_nj_property_tax_deduction_owner():
-    """A homeowner paying $20,000 property tax deducts the $15,000 cap."""
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt()], taxable=(400, 200))
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([4000, 3000], [62, 62], [False, False])
-    p.solve("maxBequest", options=_bequest_opts())
-    assert p.caseStatus == "solved"
-    assert p.st_ptd_n[0] == pytest.approx(15000.0)
-    assert p.st_pt_n[0] == pytest.approx(15000.0, abs=1.0)
-    assert p.st_ti_n[0] < p.st_agi_n[0]
-
-
-def test_nj_property_tax_deduction_tenant():
-    """A tenant paying $30,000 rent deducts 18% of rent ($5,400)."""
-    p = _plan(state="NJ", lines=[_core(40000.0), _rent(30000.0)], taxable=(400, 200))
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([4000, 3000], [62, 62], [False, False])
-    p.solve("maxBequest", options=_bequest_opts())
-    assert p.caseStatus == "solved"
-    assert p.st_ptd_share_n[0] == pytest.approx(5400.0 / 70000.0)
-    assert p.st_pt_n[0] == pytest.approx(5400.0, abs=1.0)
-
-
-def test_deduction_follows_spending_under_max_spending():
-    """The deductible share of net spending scales with it: at most share x g_n, at most the cap."""
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt(4000.0)], taxable=(900, 500))
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([4000, 3000], [62, 62], [False, False])
-    p.solve("maxSpending", options={**_bequest_opts(), "bequest": 0})
-    assert p.caseStatus == "solved"
-    bound = np.minimum(p.st_ptd_n, p.st_ptd_share_n * p.g_n)
-    assert np.all(p.st_pt_n <= bound + 1.0)
-    assert p.st_T_n[0] > 1.0 and p.g_n[0] > 44000.0  # taxed, and spending above the budget's first year
-    # Between the line's own amount and the cap: the deduction scaled with g_n, and the share binds.
-    assert 4000.0 < bound[0] < 15000.0
-    assert p.st_pt_n[0] == pytest.approx(bound[0], abs=1.0)
-
-
-def test_ny_has_no_property_tax_deduction():
-    p = _plan(state="NY", lines=[_core(40000.0), _pt()], taxable=(400, 200))
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([4000, 3000], [62, 62], [False, False])
-    p.solve("maxBequest", options=_bequest_opts())
-    assert p.caseStatus == "solved"
-    assert np.all(p.st_ptd_n == 0) and np.all(p.st_pt_n == 0)
-
-
-def test_move_to_new_jersey_deducts_only_there():
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt()], taxable=(400, 200))
-    p.setStateTax("NJ", [(THISYEAR + 3, "FL")])
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([4000, 3000], [62, 62], [False, False])
-    p.solve("maxBequest", options=_bequest_opts())
-    assert p.caseStatus == "solved"
-    assert np.all(p.st_ptd_n[:3] == 15000.0) and np.all(p.st_ptd_n[3:] == 0)
-
-
-def _pension_only(lines):
-    p = owl.Plan(["Joe", "Jane"], ["1962-06-15", "1963-12-15"], [85, 85], "NJ ptd", verbose=False)
-    p.setSpendingProfile("budget", 60)
-    p.setAccountBalances(taxable=[0, 0], taxDeferred=[0, 0], taxFree=[0, 0])
-    p.setAllocationRatios("individual", generic=np.array([[[60, 40, 0, 0], [60, 40, 0, 0]]] * 2))
-    p.setRates("conservative")
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.setPension([5000, 4000], [62, 62], [False, False])
-    p.houseLists["Budget"] = _df(*lines)
-    p.setStateTax("NJ")
-    p.solve("maxBequest", options=_bequest_opts())
-    assert p.caseStatus == "solved"
-    return p
-
-
-def test_deduction_does_not_change_the_exclusion_tier():
-    """Line 41 comes after line 39: the tier is set on income before the property tax deduction."""
-    p = _pension_only([_core(40000.0), _pt()])
-    assert p.st_pt_n[0] == pytest.approx(15000.0, abs=1.0)
-    # Line 27 (st_agi_n) is about $109k, in the 50% tier; the deduction would take it to about $94k,
-    # in the 100% tier, if it moved the tier. The exclusion claimed must be the statute's, set on line 27.
-    share, implied = p._tiered_exclusion_implied()
-    assert 100000 < p.st_agi_n[0] < 115000 and share[0] == 0.5
-    assert p.st_rx_n[0] == pytest.approx(implied[0], abs=2.0)
-    statutory_ti = max(0.0, np.round(p.st_agi_n[0]) - p.st_rx_n[0] - p.st_sigmaBar_n[0])
-    assert p.st_ti_n[0] == pytest.approx(statutory_ti - 15000.0, abs=2.0)
-
-
-def test_local_search_runs_with_the_deduction():
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt()], taxable=(400, 200))
-    p.setSocialSecurity([2800, 2200], [70, 70])
-    p.solve(
-        "maxSpending",
-        options={"breakpointMethod": "local-search", "localSearchTime": 1, "withMedicare": "None", "bequest": 0},
-    )
-    assert p.caseStatus == "solved"
-    assert p.st_pt_n[0] <= min(p.st_ptd_n[0], p.st_ptd_share_n[0] * p.g_n[0]) + 1.0
-
-
-def test_only_new_jersey_has_the_property_tax_deduction():
-    for s in tax_state.valid_states():
-        for filing in (0, 1):
-            entry = tax_state.get_state_entry(s, filing)
-            assert ("property_tax_deduction" in entry) == (s == "NJ")
-
-
-def test_replayed_rows_match_a_fresh_build_with_nj_budget():
+def test_replayed_rows_match_a_fresh_build_with_a_budget():
     """The loop-invariant builders are replayed after the first iteration (upstream #151)."""
     import importlib.util
 
@@ -417,12 +314,11 @@ def test_replayed_rows_match_a_fresh_build_with_nj_budget():
     fr = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fr)
 
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt()], taxable=(400, 200))
+    p = _plan(state="NY", lines=[_core(40000.0), _pt()], taxable=(400, 200))
     p.setSocialSecurity([2800, 2200], [70, 70])
     p.setPension([4000, 3000], [62, 62], [False, False])
     p.solve("maxBequest", options=_bequest_opts())
     assert p.caseStatus == "solved"
-    assert p.st_pt_n.sum() > 0
     assert p._fixedRows
     p._buildConstraints(p.objective, p.solverOptions)
     replayed = fr._lp_arrays(p)
@@ -433,16 +329,15 @@ def test_replayed_rows_match_a_fresh_build_with_nj_budget():
 
 def test_process_before_any_solve():
     """The UI computes the fixed-asset bequest before the first solve (owlbridge.getFixedAssetsBequestValue)."""
-    p = _plan(state="NJ", lines=[_core(40000.0), _pt()])
+    p = _plan(state="NY", lines=[_core(40000.0), _pt()])
     fa = pd.DataFrame([{"active": True, "name": "home", "type": "residence", "year": THISYEAR, "basis": 500000.0,
                         "value": 800000.0, "rate": 0.0, "yod": 0, "commission": 5.0}])
     p.houseLists["Fixed Assets"] = conditionDebtsAndFixedAssetsDF(fa, "Fixed Assets")
     p.processDebtsAndFixedAssets()
-    assert p.fixed_assets_bequest_value > 0
-    assert np.all(p.st_ptd_n == 0)  # the state rule is only known once solve() reads the state
+    assert p.fixed_assets_bequest_value > 0  # the state rule is only known once solve() reads the state
 
 
-def test_metrics_and_explanation_report_housing_and_the_deduction():
+def test_metrics_and_explanation_report_housing():
     from owlplanner.assistant.explain import build_explanation
     from owlplanner.assistant.explain_schema import PlanExplanation
 
@@ -454,9 +349,6 @@ def test_metrics_and_explanation_report_housing_and_the_deduction():
     assert m["housing_costs_today"] == pytest.approx(20000.0 * p.N_n, rel=1e-6)
     ex = build_explanation(p)
     PlanExplanation.model_validate(ex)
-    assert ex["this_year"]["state_tax"]["property_tax_deduction"] == pytest.approx(15000.0, abs=1.0)
-    by_year = ex["state_tax_brackets"]["by_year"]
-    assert any(r.get("property_tax_deduction_today", 0) > 0 for r in by_year)
 
 
 # ---------------------------------------------------------------------------
@@ -606,45 +498,3 @@ def test_spending_slack_applies_to_the_discretionary_part():
     ratio = disc / p.budget.discretionary_n / (disc[0] / p.budget.discretionary_n[0])
     assert np.all(ratio >= 0.9 - 1e-6) and np.all(ratio <= 1.1 + 1e-6)
     assert np.all(real >= p.budget.essential_n - 1e-3)
-
-
-# ---------------------------------------------------------------------------
-# NJ line 41 under essential lines: claimed equals paid when the cap does not bind
-# (phase3-plan.md §3.3; the old share * g_n bound was wrong whenever k != 1)
-# ---------------------------------------------------------------------------
-
-
-def _pt_claimed_equals_paid(objective, opts, expect_k_above):
-    """NJ owner: essential core $50k + property tax $12k, discretionary travel $38k.
-
-    The old bound share * g_n followed the discretionary scale k and was wrong whenever k != 1:
-    over the cap when k > 1, under the tax paid when k < 1. Each case asserts which regime it is.
-    """
-    p = _plan_ess(
-        [_ess(_core(50000.0)), _ess(_pt(12000.0)), _travel(38000.0)],
-        taxable=(2000, 1000),
-        expectancy=(89, 92),
-    )
-    p.setStateTax("NJ")
-    p.solve(objective, options=opts)
-    assert p.caseStatus == "solved"
-    k = p.discretionary_scale
-    assert (k > 1.0) if expect_k_above else (k < 1.0)
-    paid = p.budget.by_type("property tax") * p.gamma_n[:-1]
-    # Year 0: the $15k cap does not bind on the $12k line, so the claim is what was paid,
-    # not share * g_n (which followed k and was wrong).
-    assert paid[0] == pytest.approx(12000.0, rel=1e-9)
-    assert p.st_pt_n[0] == pytest.approx(12000.0, abs=1.0)
-    # Never above what the budget pays or the cap. (Claiming short in a year with no taxable
-    # income is the known cash-with-no-price degeneracy; step 4's tie check, not this bound.)
-    assert np.all(p.st_pt_n <= np.minimum(p.st_ptd_n, paid) + 1.0)
-
-
-def test_property_tax_claimed_equals_paid_under_max_spending():
-    """§3.3's maxSpending case: k > 1 used to inflate the claim above the tax paid."""
-    _pt_claimed_equals_paid("maxSpending", {**EXACT, "bequest": 0}, expect_k_above=True)
-
-
-def test_property_tax_claimed_equals_paid_under_max_bequest():
-    """§3.3's maxBequest case: k < 1 used to cut the claim below the tax paid."""
-    _pt_claimed_equals_paid("maxBequest", {**EXACT, "netSpending": 80}, expect_k_above=False)

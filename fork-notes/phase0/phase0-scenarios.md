@@ -62,21 +62,16 @@ owlcli compare otherFiles/Case_us.toml --set basic_info.locality=NYC
 owlcli compare otherFiles/Case_us.toml --set 'basic_info.moves=[{"year": 2032, "state": "NY", "locality": "", "school_district": "City of Rye / Rye"}]'
 ```
 
-**NJ is out of the investigation (2026-10-17).** The household does not expect to live there. The
-NJ rules the fork models still work (exclusion, line 41, line 31), but Stay NJ / ANCHOR / Senior
-Freeze are not modeled, so an NJ owner comparison would lean NY, and NJ variants are no longer run.
-The NJ notes below are kept for the record.
+**NJ is out of the investigation (2026-10-17).** The household does not expect to live there, and
+the fork's NJ rules (retirement exclusion, line 41, line 31) were removed the same day: an NJ case
+runs on upstream's NJ, which overstates NJ tax for retirees, so NJ variants are not run.
 
 NY benefit recapture (above $107,650 of NY AGI) applies automatically, and the Yonkers surcharge
-includes it. NJ's retirement-income exclusion (lines 28a-28c) is modeled exactly (a MILP; see
-`CLAUDE.md`), and so is the NJ property tax deduction (line 41, Phase 2): homeowners deduct
-property taxes up to $15,000, tenants 18% of rent. Phase 3 added NY's own itemized deduction
-(IT-196: property tax uncapped, mortgage interest, charity, medical above 10% of AGI) and NJ's
-medical deduction (line 31), both under `withItemized` (default `"loop"`), with the federal
-itemized deduction. Without NY itemizing the NY-vs-NJ owner comparison leaned toward NJ: on the
-synthetic couple, same day, NY itemizing was worth $27-39k of bequest exact and $6-11k under local
-search at $20-25k of property tax (`fork-notes/phase3-review.md`, A.2). To see what the
-deductions are worth for us, switch them off in the variant only:
+includes it. Phase 3 added NY's own itemized deduction (IT-196: property tax uncapped, mortgage
+interest, charity, medical above 10% of AGI) under `withItemized` (default `"loop"`), with the
+federal itemized deduction. On the synthetic couple NY itemizing was worth $27-39k of bequest exact
+and $6-11k under local search at $20-25k of property tax (`fork-notes/phase3-review.md`, A.2). To
+see what the deductions are worth for us, switch them off in the variant only:
 
 ```bash
 owlcli compare otherFiles/Case_us.toml --set solver_options.withItemized=none
@@ -95,9 +90,7 @@ For a decision near the Enhanced limit, `withSTAR = "optimize"` (or local search
 keep its income under it; the loop does not try. `previousSTARIncomes` (in `units`) gives the
 income of the two years before the plan; without it the two `previousMAGIs` are used.
 
-Not modeled: NYC household and school-tax credits, part-year residency, the $50 NJ property tax
-credit, and NJ ANCHOR/Senior Freeze/Stay NJ (enter those as big-ticket items or net them off the
-budget's property tax line; data and rules in `fork-notes/star/README.md`).
+Not modeled: NYC household and school-tax credits, part-year residency.
 
 Differences under about 1% between residency variants can be loop noise rather than a real
 difference, with either sign (see `PROGRESS.md`, NJ stakes). Keep the solver options identical
@@ -105,10 +98,10 @@ across variants, and for decisions run each variant with local search and with t
 
 ```bash
 # local search on both runs (--solver-opt applies to both; --set to the variant only)
-owlcli compare otherFiles/Case_us.toml --set basic_info.state=NJ \
+owlcli compare otherFiles/Case_us.toml --set basic_info.locality=Yonkers \
     --solver-opt breakpointMethod=local-search
 # exact LP on both runs
-owlcli compare otherFiles/Case_us.toml --set basic_info.state=NJ \
+owlcli compare otherFiles/Case_us.toml --set basic_info.locality=Yonkers \
     --solver-opt withMedicare=None --solver-opt withSSTaxability=0.85
 ```
 

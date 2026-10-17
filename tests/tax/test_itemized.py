@@ -470,17 +470,16 @@ def test_optimized_medicare_with_a_known_medical_line_stays_feasible():
 
 def test_itemized_row_families_are_registered_for_explain():
     """CONSTRAINT_FAMILIES is the explain contract: an unregistered family surfaces as a policy
-    constraint. Federal and NY itemizing, NJ line 31."""
+    constraint. Federal and NY itemizing."""
     from owlplanner.assistant.explain import CONSTRAINT_FAMILIES
 
     plans = [
         _solve(_plan(state="NY", mortgage=(600_000.0, 6.5, 30), charity=3000.0, medical=4000.0),
                objective="maxSpending", bequest=0),
-        _solve(_plan(state="NJ", medical=6000.0)),
     ]
     fams = {t[0] for p in plans for t in p.A.tags if t}
-    phase3 = {f for f in fams if f.startswith(("item_", "state_item_", "state_medical"))}
-    assert {"item_deduction", "state_item_deduction", "state_medical_deduction"} <= phase3
+    phase3 = {f for f in fams if f.startswith(("item_", "state_item_"))}
+    assert {"item_deduction", "state_item_deduction"} <= phase3
     assert phase3 <= set(CONSTRAINT_FAMILIES), sorted(phase3 - set(CONSTRAINT_FAMILIES))
 
 

@@ -54,19 +54,16 @@ import time
 import numpy as np
 
 # Binary families the search moves, and the fixed-point residual family that measures each.
-# Fork: "zx", the tier binaries of a state's income-tiered retirement exclusion (NJ), is a family
-# too. Left out, the LP start relaxed it to fractional tiers, and no later step could match that
-# start, so the search returned a plan claiming part of a tier above its ceiling. It has no
-# fixed-point residual: the exclusion is exact within each solve.
-# "zst", the NY Enhanced STAR credit (one per year), is a fork family for the same reason; its
-# residual ("STAR") is the loop's, not a binary family's, so step (c) does not use it.
-FAMILIES = ("zm", "zs", "za", "zl", "zj", "zx", "zst")
+# Fork: "zst", the NY Enhanced STAR credit (one per year), is a family too. A binary block left out
+# is relaxed by the LP start to fractional values, which no later step can match, so the search
+# returns that fractional plan. Its residual ("STAR") is the loop's, not a binary family's, so
+# step (c) does not use it.
+FAMILIES = ("zm", "zs", "za", "zl", "zj", "zst")
 # Binaries the search never pins: the senior-bonus phase-out has one per bonus year, two or three
 # in all, so every restricted problem keeps them free. Only an LP solve, which relaxes them, pins them.
 ALWAYS_FREE = ("zsb",)
 RESIDUAL_FAMILY = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zj": "NIIT", "zl": "LTCG"}
-FAMILY_LABEL = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zx": "state exclusion",
-                "zst": "STAR"}
+FAMILY_LABEL = {"zs": "SS", "zm": "IRMAA", "za": "ACA", "zl": "LTCG", "zj": "NIIT", "zst": "STAR"}
 
 STEP_TIME = 60.0  # seconds per restricted solve: a backstop; the node limit below is the real cap
 # Branch-and-bound nodes per restricted solve. A node limit, unlike a time limit, gives the same

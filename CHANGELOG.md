@@ -1,5 +1,17 @@
 ### Unreleased
 
+#### Removed: the fork's New Jersey rules (back to upstream's New Jersey)
+
+The household dropped New Jersey as a place to live (2026-10-17), and the fork's three NJ-only
+rules were used by no other state: the income-tiered retirement exclusion (NJ-1040 lines 28a-28c, a
+MILP with tier binaries, its node cap and the tiers kept after a capped solve), the property tax
+deduction (line 41) and the medical deduction (line 31). An NJ case now runs on upstream's NJ:
+brackets and the \$1,000 personal and 65+ exemptions, with no retirement exclusion, so it overstates
+NJ tax for retirees aged 62+ with NJ income up to \$150,000. With the exclusion's node cap gone,
+HiGHS uses upstream's node limit and the Summary's *MIP node limit* row is upstream's; the fork's
+log warnings for a MILP stopped at its time or node limit went with it. Plans in other states are
+unchanged.
+
 #### New: NY STAR credit (`withSTAR`, `school_district`) (fork)
 
 The School Tax Relief credit (Tax Law sec. 606(eee)) for a NY owner: `basic_info.school_district`
@@ -44,9 +56,7 @@ New York's own itemized deduction (IT-196, 2025): property tax without a cap, ch
 above 10% of federal AGI, mortgage interest under the \$1M limit, state and local income taxes left
 out, and the line 46 cut (up to 25% of the deduction between NYAGI \$200,000 and \$250,000 MFJ;
 \$100,000-\$150,000 single). New York lets a filer itemize whether or not the federal return
-itemizes. New Jersey deducts medical expenses above 2% of NJ gross income (line 31, Worksheet F;
-Medicare premiums included, HSA distributions not subtracted). Data: `itemized` and
-`medical_deduction` entries in `taxes_state.toml`.
+itemizes. Data: `itemized` entries in `taxes_state.toml`.
 
 `withItemized = "loop"` (default) or `"none"` (the standard deduction everywhere, federal and
 state, as before). The branch (itemize or not) and which side of each floor an amount is on come
@@ -64,13 +74,6 @@ NY's rules above \$525,000. Results: Taxes sheet columns and Summary lines when 
 Two Budget line types for the deductions above. `care` stays non-deductible (assisted-living room
 and board is not a medical expense unless care is the main reason): use `medical` for deductible
 care. `Budget.by_type(..., essential=)` filters by tier.
-
-#### Fixed: the New Jersey property tax deduction under essential budget lines
-
-The line 41 deduction was bounded by the lines' share of net spending, which is wrong once some
-lines are essential and the rest scale by k: it claimed \$12,625 against \$12,000 paid at k = 1.137,
-and \$9,600 at k = 0.474. Each deductible amount is now the essential part at its amount plus a
-share of the discretionary part (`Plan._budget_amount_terms`).
 
 #### New: budget lines can follow an age clock; a JSON budget file
 
@@ -133,15 +136,7 @@ remains above the core. In the LP the profile rows become affine, with `spending
 discretionary part only; no binaries, and a budget without essential lines gives the plan it gave
 before. Upstream's cost-function point on #175 (core versus discretionary spending).
 
-#### Fixed: a New Jersey exclusion claimed short of the statute
-
-The LP bounds the income-tiered exclusion from above only, so in years whose cash has no price a
-smaller claim ties with the full one, and the plan then reported New Jersey tax it does not owe.
-Upstream's MIP money scaling (#178) surfaced it under local search (up to \$2,000 a year above the
-statute). The bracket-order check now counts such a shortfall as tax not owed, which turns tax
-pricing on in the loop and in the post-solve repair, as for brackets filled out of order.
-
-#### New: a budget spending profile, and the New Jersey property tax deduction
+#### New: a budget spending profile
 
 `spending_profile = "budget"` builds the spending profile from the lines of an optional *Budget*
 sheet in the HFP workbook: core spending, rent, property tax, insurance, maintenance, a car, travel,
@@ -155,46 +150,6 @@ Renting and buying are compared with one budget per variant at a fixed spending 
 workbook has a *Budget* sheet that splits net spending along the lines. A *Housing* sheet (this
 fork's first, ledger form, whose costs were paid outside net spending) is read as budget lines; at a
 fixed spending level the two give the same plan.
-
-New Jersey's property tax deduction (NJ-1040 line 41: property taxes on the main home, or 18% of
-rent, up to \$15,000, not indexed) reads the budget's property tax and rent lines. It is a bounded LP
-variable after the retirement exclusion, which it does not move, and at most the lines' share of the
-year's net spending, so it follows spending under `maxSpending`. The \$50 credit that is its
-alternative is not modeled. `Plan.st_pt_n` gives the deduction by year; it appears in the Taxes sheet
-and the explanation.
-
-#### New: New Jersey retirement income exclusion
-
-New Jersey excludes pensions, annuities, IRA withdrawals and Roth conversions from income for filers
-aged 62 or more, in steps of total income (NJ-1040 lines 28a-28c): a married couple with income up
-to \$100,000 excludes all of it up to \$100,000, from \$100,001 half, from \$125,001 a quarter, and
-above \$150,000 nothing (Single: \$75,000 cap, 37.5%, 18.75%). With wages of at most \$3,000 the
-unused part covers other income too (Worksheet D). It was missing, so Owl overstated New Jersey tax
-for retirees below \$150,000. The amounts are the 2025 instructions' (the same in 2021, 2023 and
-2024) and are not indexed.
-
-The steps are cliffs: one dollar above \$100,000 loses \$50,000 of exclusion. They are modeled
-exactly, with one binary per tier in each year a filer is 62 or older, in the disaggregated form of
-the disjunction (about one second per iteration on a 32-year couple with \$1.5M tax-deferred, against
-4-6 seconds with a big-M on income). The optimizer can see the cliff and hold income at a ceiling,
-which it does when conversions or withdrawals would otherwise cross it.
-
-Two limits keep the solve bounded. First, the tier binaries are free only in years whose state
-income, in the previous iteration, was at most 1.5 times the top ceiling (\$225,000); the first
-iteration is solved without the exclusion, and the set only grows, so at convergence every year left
-out is far above the ceilings, where the statute excludes nothing anyway. Second, without a `maxTime`
-a HiGHS MILP carrying these binaries stops after 20,000 branch-and-bound nodes (MOSEK: 60 seconds):
-Owl warns with the gap, keeps that MILP's tiers for the remaining iterations, and reports its gap as
-the plan's. A \$2.5M couple, which did not prove optimal in ten minutes, now returns in about a
-minute with a 0.2% gap; give it a `maxTime` to search longer. The cap was 60 seconds until
-2026-10-06; a node cap gives the same plan on any machine, as upstream's local search does. A
-self-consistent-loop version was tried first and rejected: on the same couple it settled into a
-2-cycle and returned a plan whose own income implied \$13,900 more lifetime New Jersey tax than it
-charged. The data fields (`retirement_exclusion_tiers`, `_cap`, `_age`, `_earned_limit`) are
-documented in `taxes_state.toml`. `Plan.st_rx_n` gives the exclusion by year, and the explanation
-(`explain_results`) reports it with the ceiling a year is held at. Not modeled: the Special
-Exclusion, disability before 62, and the case of one spouse 62+ and the other younger, where only
-line 28a is taken.
 
 #### New: New York benefit recapture
 
@@ -224,16 +179,6 @@ two brackets. Wage-only local taxes do not belong there. The NYC rates and thres
 rate were checked against the 2025 IT-201-I (2026 not yet published; the Yonkers rate is unchanged in
 the 2026 withholding tables).
 
-#### Fixed: local search with the New Jersey exclusion
-
-Upstream's `breakpointMethod = "local-search"` (2026.10.6) pins and searches its own binary families
-only. The exclusion's tier binaries were not among them, so its starting LP relaxed them, no later
-step could match that relaxed start, and the plan it returned held fractional tiers (up to 0.08)
-and a New Jersey tax that differed from the statute's (in the new test's couple, \$1,645 charged in a
-year that owes \$7,290). They are now a family of their own: pinned with the others, freed in their
-own step. On the \$1.5M couple of `nj_stakes.py`, local search now returns 123,636 a year with integral
-tiers in 186 s, against 124,702 with fractional tiers in 431 s before.
-
 #### Changed: several moves and a locality on top of upstream's change of state (#159)
 
 Upstream 2026.10.6 models one change of state (`basic_info.moves`, `Plan.setStateTax(state, moves)`,
@@ -252,7 +197,7 @@ when there are more, all of them in `moves`.
 The fork's single `indexed` flag and its New Jersey exemption data are replaced by upstream's
 2026.10.3 fields (`brackets_indexed`, `deduction_indexed`, `exemptions_indexed`, and the per-filer
 exemptions and credits below). Fork-only amounts follow the matching flag: New York's recapture
-thresholds index with the brackets, New Jersey's exclusion ceilings and cap with the exemptions.
+thresholds index with the brackets.
 A personal credit offsets the state tax including recapture, and a local surcharge applies to the
 tax after the credit. The `StateTaxParams` dataclass carries the credits as `credit_n`, so a move
 takes the new state's credits from its year.

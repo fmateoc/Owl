@@ -438,12 +438,7 @@ def _mip_node_limit(plan):
     engine = "MOSEK" if mosek else "HiGHS"
     if limit < 0:
         return f"unlimited ({engine})"
-    text = f"{limit:,} {'branches' if mosek else 'nodes'} ({engine})"
-    rx = getattr(plan, "_rxNodeLimitUsed", 0)
-    if rx and not mosek:
-        # Fork: a MILP with free NJ exclusion tiers is capped lower (plan.RX_NODE_LIMIT).
-        text += f"; {rx:,} on the exclusion-tier MILP"
-    return text
+    return f"{limit:,} {'branches' if mosek else 'nodes'} ({engine})"
 
 
 def _node_limit_hits(plan):
@@ -1312,10 +1307,6 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
             TxDic["of which local"] = plan.lt_T_n
     if np.any(getattr(plan, "st_star_n", 0) > 0):
         TxDic["STAR credit"] = plan.st_star_n  # fork: the state tax above is net of it
-    if np.any(plan.st_pt_n > 0):
-        TxDic["property tax deduction"] = plan.st_pt_n
-    if np.any(plan.st_med_n > 0):
-        TxDic["medical deduction"] = plan.st_med_n
     if np.any(getattr(plan, "st_item_n", 0) > 0):
         TxDic["state itemized deduction"] = plan.st_item_n
         TxDic["state itemizing"] = plan.st_itemizing_n.astype(float)

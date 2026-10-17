@@ -157,17 +157,6 @@ RESIDUAL_TOL = 50.0
 # charged the higher bracket. More than the residual's $1 of slack at a threshold.
 BRACKET_MARGIN = 2.0
 TIME_LIMIT = 900
-# The NJ exclusion's tier binaries are free only in years whose state income, in the previous
-# iterate, was at most this multiple of the top tier ceiling; elsewhere the exclusion is off.
-RX_WINDOW = 1.5
-# Default cap, in branch-and-bound nodes, on a HiGHS MILP that carries free exclusion tier binaries,
-# when neither maxTime nor mipMaxNodes is given: large-balance cases can take far longer to prove
-# optimal, so the plan is returned with its gap. A node cap, like upstream's local search steps,
-# gives the same plan on any machine; it replaced a 60 s time cap (2026-10-06), which the $1.5M+$1.0M
-# couple reached at 20,809 nodes on the 4-core container. TIME_LIMIT stays the backstop.
-RX_NODE_LIMIT = 20_000
-# MOSEK counts nodes differently and was not recalibrated: it keeps the former 60 s time cap.
-RX_MOSEK_TIME_LIMIT = 60
 # Default branch-and-bound cap of a HiGHS solve, in nodes. MOSEK has none by default. The solver
 # option mipMaxNodes sets the cap for either engine, but the engines cap different things: HiGHS
 # counts nodes (mip_max_nodes), MOSEK branchings (mio_max_num_branches), which it has no node limit
@@ -447,8 +436,8 @@ class Plan:
     # Adding a new loop-fed cost means adding its attribute name here;
     # snapshot/restore/blend and the iteration trace pick it up automatically.
     _SC_PARAMS = (
-        "M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "RXF_n", "NYIR_n", "STMF_n", "FEDMF_n", "FEDCF_n", "FEDSC_n",
-        "NJMF_n", "_nj_medl_n", "_item_zi_n", "_item_chl_n", "_item_medl_n", "_st_zi_n", "_st_medl_n", "STAR_n",
+        "M_n", "ACA_n", "J_n", "Psi_n", "STR_n", "NYIR_n", "STMF_n", "FEDMF_n", "FEDCF_n", "FEDSC_n",
+        "_item_zi_n", "_item_chl_n", "_item_medl_n", "_st_zi_n", "_st_medl_n", "STAR_n",
     )
 
     def _snapshot_sc(self):
@@ -610,14 +599,6 @@ class Plan:
         self.STR_n = np.zeros(self.N_n)  # State benefit recapture per year (SC-loop parameter; in st_T_n)
         self.st_recap_n = np.zeros(self.N_n)  # Recapture charged in the solved plan (part of st_T_n)
         self._str_active = False  # True when the state recaptures the benefit of its lower brackets
-        self.st_rx_n = np.zeros(self.N_n)  # Income-tiered retirement exclusion claimed (NJ line 28c)
-        self.st_ptd_cap_n = np.zeros(self.N_n)  # Property tax deduction cap per year (0 = none); set by solve()
-        self.st_ptd_rent_share_n = np.zeros(self.N_n)  # Percent of rent counted toward it
-        self.st_ptd_n = np.zeros(self.N_n)  # NJ property tax deduction cap where the budget has housing (line 41)
-        self.st_ptd_share_n = np.zeros(self.N_n)  # Deductible share of net spending (property tax + rent share)
-        self.st_ptd_const_n = np.zeros(self.N_n)  # Constant part of the deductible amount (nominal $)
-        self.st_ptd_coef_n = np.zeros(self.N_n)  # Its coefficient on g_n
-        self.st_pt_n = np.zeros(self.N_n)  # NJ property tax deduction claimed (LP variable)
         # NY STAR credit (fork; star.py): a refundable state income tax credit, in st_T_n.
         self._star = star.empty_schedule(self.N_n)  # Per-year amounts; set by solve()
         self._star_on = False  # True when some year receives the credit
@@ -625,9 +606,6 @@ class Plan:
         self.STAR_n = np.zeros(self.N_n)  # Credit the previous iterate's income implies (SC-loop parameter)
         self.st_star_n = np.zeros(self.N_n)  # Credit received in the solved plan (nominal $; st_T_n is net of it)
         self.prevSTAR = np.zeros(2)  # STAR income of the two years before the plan
-        self.st_medd_floor_pct_n = np.zeros(self.N_n)  # NJ line 31 floor as percent of gross income (0 = none)
-        self.st_med_n = np.zeros(self.N_n)  # NJ medical deduction claimed (LP variable, line 31)
-        self._st_med_lp = False  # True when the NJ medical deduction columns exist
         self._ceiling_n = None  # Per-year income ceiling (_incomeCeiling), set by _buildConstraints
         self.mortgage_interest_n = np.zeros(self.N_n)  # Mortgage interest paid per calendar year
         self.mortgage_balance_cn = np.zeros((len(debts.MORTGAGE_CATEGORIES), self.N_n))  # Pub. 936 categories
@@ -660,8 +638,6 @@ class Plan:
         self.FEDMF_n = np.zeros(self.N_n)  # Federal medical floor, $ (SC-loop parameter)
         self.FEDCF_n = np.zeros(self.N_n)  # Federal charity floor, $ (SC-loop parameter)
         self.FEDSC_n = np.full(self.N_n, _SALT_NO_CAP)  # SALT cap after its MAGI phase-down (SC-loop parameter)
-        self.NJMF_n = np.zeros(self.N_n)  # NJ line 31 medical floor, $ (SC-loop parameter)
-        self._nj_medl_n = np.zeros(self.N_n)  # NJ: medical paid above its floor (1/0) (SC-loop parameter)
         self._item_years = []  # Plan years with federal itemized columns
         self._item_nch_years = []  # Years with a non-itemizer charity column (nch)
         self._item_zi_n = np.zeros(self.N_n)  # Itemize/standard choice (1/0) (SC-loop parameter)
@@ -670,8 +646,6 @@ class Plan:
         self._item_ded_rows = set()  # Years whose deduction rows _add_federal_itemized writes
         self._item_obbba_n = np.ones(self.N_n, dtype=bool)  # Years before a pre-TCJA reversion
         self._medicare_premium_ub_n = np.zeros(self.N_n)  # Upper bound on the m variable's premium
-        self.RXF_n = np.zeros(self.N_n)  # 1 where the exclusion's tier binaries are free (SC-loop parameter)
-        self._rx_active = False  # True when a state in the plan has an income-tiered retirement exclusion
         self.st_T_n = np.zeros(self.N_n)  # State income tax per year (N_n,)
         self.st_credit_n = np.zeros(self.N_n)  # State personal credit available per year (N_n,)
         self.st_c_n = np.zeros(self.N_n)  # State personal credit used per year (N_n,)
@@ -825,7 +799,6 @@ class Plan:
         # steps at the limit, local-search steps), None when no mixed-integer program was solved.
         self.solverNodeLimitHits = None
         self._mipCapTally = (0, 0, 0)  # (main runs at the limit, steps, steps at the limit)
-        self._rxNodeLimitUsed = 0  # fork: RX_NODE_LIMIT when it was the cap of a solve in the last solve()
         # Relative amplitude (max-min)/max of the SC-loop oscillation cycle; 0 when
         # the loop converged monotonically (no fixed-point ambiguity)
         self.oscillationRel = 0.0
@@ -2501,26 +2474,6 @@ class Plan:
 
         gamma_n = getattr(self, "gamma_n", None)
 
-        # NJ property tax deduction (line 41): property taxes + 18% of rent, up to the cap. The budget
-        # is inside net spending, so the amount paid is an affine function of g_n
-        # (_budget_amount_terms / _add_property_tax_deduction). st_ptd_share_n stays as the
-        # "any deductible line" flag and the no-essentials share.
-        self.st_ptd_share_n = np.zeros(self.N_n)
-        self.st_ptd_const_n = np.zeros(self.N_n)
-        self.st_ptd_coef_n = np.zeros(self.N_n)
-        if self.budget is not None:
-            deductible = self.budget.by_type(budgeting.PROPERTY_TAX) + self.st_ptd_rent_share_n / 100.0 * (
-                self.budget.by_type(budgeting.RENT)
-            )
-            total = self.budget.total_n
-            self.st_ptd_share_n = np.divide(deductible, total, out=np.zeros(self.N_n), where=total > 0)
-            const_pt, coef_pt = self._budget_amount_terms(budgeting.PROPERTY_TAX)
-            const_r, coef_r = self._budget_amount_terms(budgeting.RENT)
-            rent_share = self.st_ptd_rent_share_n / 100.0
-            self.st_ptd_const_n = const_pt + rent_share * const_r
-            self.st_ptd_coef_n = coef_pt + rent_share * coef_r
-        self.st_ptd_n = np.where(self.st_ptd_share_n > 0, self.st_ptd_cap_n, 0.0)
-
         # Process fixed assets
         if "Fixed Assets" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Fixed Assets"]):
             filing_status = "married" if self.N_i == 2 else "single"
@@ -2903,7 +2856,7 @@ class Plan:
         """Candidate years and a priori bounds for the itemized deductions.
 
         Called from _buildOffsetMap. withItemized: "none" (the standard deduction, federal and
-        state; no NJ line 31) or "loop" (default). The federal and state branches (itemize or
+        state) or "loop" (default). The federal and state branches (itemize or
         not) and the sides of the medical and charity floors come from the previous iterate
         (loop parameters _item_zi_n, _st_zi_n, _item_chl_n, _item_medl_n, _st_medl_n, set in
         _computeNLstuff with the floors and the SALT cap), so itemizing adds rows, never a column
@@ -3261,27 +3214,9 @@ class Plan:
         vm.add_if(st_lp, "st_f", self.N_st, self.N_n)  # state bracket allocations
         vm.add_if(st_lp, "st_e", self.N_n)  # state standard deduction headroom
         vm.add_if(st_re_lp, "st_re", self.N_i, self.N_n)  # retirement income exemption (per person)
-        st_pt_lp = st_lp and bool(np.any(self.st_ptd_n > 0))
-        vm.add_if(st_pt_lp, "st_pt", self.N_n)  # property tax deduction (NJ line 41)
-        # NJ line 31 medical (Worksheet F): one continuous variable per year, beside st_pt.
-        # Created only where the state has the deduction and something is medically deductible
-        # (a `medical` budget line, or Owl's premiums when Medicare/ACA is on); elsewhere the
-        # claim is zero and no column is added (a pinned zero column can move a non-converging
-        # loop). mediVals always builds Cbar, so it cannot be the flag.
-        with_medi = str(options.get("withMedicare", "loop")).lower() != "none"
-        has_med_expense = (
-            self._budget_has_medical()
-            or self.other_medical_k > 0
-            or with_medi
-            or bool(self.slcsp_annual > 0)
-        )
-        # Itemized deductions (federal Schedule A, the state's itemized schedule, NJ line 31) are
-        # rows on existing columns, all under withItemized (_setup_itemized).
+        # Itemized deductions (federal Schedule A, the state's itemized schedule) are rows on
+        # existing columns, all under withItemized (_setup_itemized).
         self._setup_itemized(objective, options)
-        self._st_med_lp = (
-            self._item_lp and st_lp and bool(np.any(self.st_medd_floor_pct_n > 0)) and has_med_expense
-        )
-        vm.add_if(self._st_med_lp, "st_med", self.N_n)  # NJ medical deduction (line 31)
         # State itemized deduction (NY IT-196): a year with no deductible budget line and no
         # mortgage interest always takes the standard and gets no row.
         self._st_item_years = self._st_item_candidate_years() if (st_lp and self._item_lp) else []
@@ -3293,11 +3228,6 @@ class Plan:
         if medi and getattr(self, "Cbar_nq", None) is not None and self.Cbar_nq.size:
             top = np.max(self.Cbar_nq, axis=1)
             self._medicare_premium_ub_n[self.nm : self.nm + len(top)] = top
-        rx_lp = st_lp and self._rx_active
-        N_rx = self.st_rx_limit_kn.shape[0] + 1 if rx_lp else 0  # tiers plus "above the last ceiling"
-        vm.add_if(rx_lp, "st_rx", self.N_n)  # income-tiered retirement exclusion
-        vm.add_if(rx_lp, "rxl", self.N_n, N_rx)  # state total income, split by tier (zero outside it)
-        vm.add_if(rx_lp, "rxb", self.N_n, N_rx)  # eligible income, split the same way
         lt_lp = st_lp and self.N_lt > 0 and bool(np.any(self.lt_theta_tn > 0))
         vm.add_if(lt_lp, "lt_f", self.N_lt, self.N_n)  # local bracket allocations
         st_c_lp = st_lp and bool(np.any(self.st_credit_n > 0))
@@ -3310,7 +3240,6 @@ class Plan:
         vm.add_if(niit_lp, "zj", self.N_n)  # N_n NIIT threshold binaries
         vm.add_if(ssa_lp, "zssa", self.N_i, self._ssa_N_K)  # claiming-month selectors (SS age)
         vm.add_if(ordering, "zo", 2, self.N_n)  # withdrawal-ordering gates (taxable_first)
-        vm.add_if(rx_lp, "zx", self.N_n, N_rx)  # exclusion tier selectors
         vm.add_if(sb_lp, "zsb", len(self._sb_years))  # senior bonus fully phased out, bonus years
         vm.add_if(self._star_lp, "zst", self.N_n)  # NY Enhanced STAR credit received (fork)
         self.vm = vm
@@ -3363,8 +3292,6 @@ class Plan:
         if self._st_lp:
             self._add_state_taxable_income()
             self._add_local_taxable_income()
-            self._add_property_tax_deduction()
-            self._add_nj_medical_deduction()
         self._configure_ss_taxability_lp(options)
         self._configure_ss_taxability_convex()
         self._configure_ss_age_variables()
@@ -3436,9 +3363,6 @@ class Plan:
                 self.B.setRange(vm["st_f"].idx(t, n), 0, self.st_DeltaBar_tn[t, n])
         for n in range(self.N_n):
             self.B.setRange(vm["st_e"].idx(n), 0, self.st_sigmaBar_n[n])
-        if "st_pt" in vm:
-            for n in range(self.N_n):
-                self.B.setRange(vm["st_pt"].idx(n), 0, self.st_ptd_n[n])
         if "st_c" in vm:
             for n in range(self.N_n):
                 self.B.setRange(vm["st_c"].idx(n), 0, self.st_credit_n[n])
@@ -3447,23 +3371,6 @@ class Plan:
                 for n in range(self.N_n):
                     cap = self.st_re_cap_in[i, n]
                     self.B.setRange(vm["st_re"].idx(i, n), 0, cap if np.isfinite(cap) else 1e9)
-        if "st_rx" in vm:
-            # Years without an eligible filer, or outside the free set (RXF_n), keep every tier variable
-            # at zero and claim nothing; their rows are skipped, so income there is unconstrained.
-            N_rx = self.st_rx_limit_kn.shape[0] + 1
-            for n in range(self.N_n):
-                claimable = bool(self.st_rx_elig_in[:, n].any()) and self.RXF_n[n] >= 0.5
-                self.B.setRange(vm["st_rx"].idx(n), 0, self.st_rx_cap_n[n] if claimable else 0)
-                fixed = self._rx_fixed is not None and self._rx_fixed[1][n]
-                for k in range(N_rx):
-                    live = claimable and (k == N_rx - 1 or np.isfinite(self.st_rx_limit_kn[k, n]))
-                    if live and fixed:
-                        z = float(self._rx_fixed[0][n, k])
-                        self.B.setRange(vm["zx"].idx(n, k), z, z)
-                    else:
-                        self.B.setRange(vm["zx"].idx(n, k), 0, 1 if live else 0)
-                    self.B.setRange(vm["rxl"].idx(n, k), 0, np.inf if live else 0)
-                    self.B.setRange(vm["rxb"].idx(n, k), 0, np.inf if live else 0)
 
     def _budget_amount_terms(self, *types):
         """(const_n, coef_n) so the types' amount in year n is const_n[n] + coef_n[n] * g_n, nominal $.
@@ -3516,7 +3423,7 @@ class Plan:
         "True when an HSA has a balance or contributions (the HSA cap rows exist)."
         return bool(np.any(self.beta_ij[:, 3] > 0) or np.any(self.kappa_ijn[:, 3, :] > 0))
 
-    def _medical_premium_terms(self, n, hsa=True):
+    def _medical_premium_terms(self, n):
         """Owl's health premiums counted as medical expense in year n: (fixed, lp_coeffs).
 
         fixed is M_n + ACA_n (loop-mode Medicare Part B/D + IRMAA and the ACA net premium).
@@ -3524,14 +3431,13 @@ class Plan:
         (withMedicare="optimize" / withACA="optimize"). Budget `medical` lines are separate
         (_budget_amount_terms); `care` lines are not medical.
 
-        With hsa=True the HSA distributions of the year are subtracted (coefficient -1 on
+        The HSA distributions of the year are subtracted (coefficient -1 on
         w[i,3,n]): Pub. 502 (2025), "You can't include expenses you pay for with a tax-free
         distribution from your health savings account. You also can't use other funds equal to
         the amount of the distribution and include the expenses." All of the year's HSA
         distributions are subtracted; setMedicalExpenses' amount, which they may also pay, is in
         the claim when the budget has no `medical` line (_medical_amount_terms). Federal and NY
-        (Schedule A based) only; NJ does not follow federal HSA treatment (not modeled), so its
-        line 31 passes hsa=False.
+        (Schedule A based).
         """
         fixed = float(self.M_n[n] + self.ACA_n[n])
         coeffs = {}
@@ -3539,7 +3445,7 @@ class Plan:
             coeffs[self.vm["m"].idx(n)] = 1.0
         if "maca" in self.vm:
             coeffs[self.vm["maca"].idx(n)] = 1.0
-        if hsa and self._has_hsa():
+        if self._has_hsa():
             for i in range(self.N_i):
                 coeffs[self.vm["w"].idx(i, 3, n)] = -1.0
         return fixed, coeffs
@@ -3553,7 +3459,7 @@ class Plan:
             ub += float(self.slcsp_aca_n[n])
         return ub
 
-    def _medical_premium_lo(self, n, hsa=True):
+    def _medical_premium_lo(self, n):
         """Lower bound on what _medical_premium_terms can carry in year n ($).
 
         Without an HSA it is the loop constant (the m / maca columns are >= 0). With one, the HSA
@@ -3562,11 +3468,11 @@ class Plan:
         only the ACA premium less that amount is certain.
         """
         fixed = float(self.M_n[n] + self.ACA_n[n])
-        if not (hsa and self._has_hsa()):
+        if not self._has_hsa():
             return fixed
         return float(self.ACA_n[n]) - float(self.other_medical_k * self._medical_n(self.gamma_n)[n])
 
-    def _medical_premium_values(self, x=None, hsa=True):
+    def _medical_premium_values(self, x=None):
         """Per-year amount _medical_premium_terms carries at a solution ($, nominal).
 
         From the solution vector x when given, else from the aggregated results (the last
@@ -3580,14 +3486,14 @@ class Plan:
                 out = out + vm["m"].extract(x)
             if "maca" in vm:
                 out = out + vm["maca"].extract(x)
-            if hsa and self._has_hsa():
+            if self._has_hsa():
                 out = out - np.sum(vm["w"].extract(x)[:, 3, :], axis=0)
         else:
             out = out + getattr(self, "m_n", np.zeros(Nn))
             if getattr(self, "_aca_lp", False):
                 out = out + getattr(self, "maca_n", np.zeros(Nn))
             w = getattr(self, "w_ijn", None)
-            if hsa and w is not None and self._has_hsa():
+            if w is not None and self._has_hsa():
                 out = out - np.sum(w[:, 3, :Nn], axis=0)
         return out
 
@@ -3609,102 +3515,6 @@ class Plan:
         if self.slcsp_annual > 0 and getattr(self, "n_aca", 0) > 0:
             ub[: self.n_aca] += self.slcsp_aca_n[: self.n_aca]
         return ub
-
-    def _add_property_tax_deduction(self):
-        """The property tax deduction is at most what the budget pays (NJ line 41).
-
-        The budget's property tax and rent are inside g_n, which scales with the objective, so
-        the amount paid is const + coef * g_n (_budget_amount_terms) and bounds the claim as
-        well as the cap.
-        """
-        vm = self.vm
-        if "st_pt" not in vm:
-            return
-        for n in range(self.N_n):
-            if self.st_ptd_share_n[n] > 0 or self.st_ptd_coef_n[n] > 0 or self.st_ptd_const_n[n] > 0:
-                row = self.A.newRow({vm["st_pt"].idx(n): 1, vm["g"].idx(n): -self.st_ptd_coef_n[n]})
-                self.A.addRow(row, -np.inf, self.st_ptd_const_n[n], tag=("state_property_tax_deduction", n))
-
-    def _nj_medical_paid(self, n, g=None):
-        """Medical paid in year n for the NJ line 31 claim: _medical_amount_terms + premiums.
-
-        At net spending g when given; else an upper bound (net spending at the income ceiling,
-        premiums at their column bounds). HSA distributions are not subtracted (hsa=False in
-        _medical_premium_terms: NJ does not follow federal HSA treatment).
-        """
-        const_med, coef_med = self._medical_amount_terms()
-        prem_fixed, _ = self._medical_premium_terms(n, hsa=False)
-        paid = float(const_med[n] + prem_fixed)
-        if g is not None:
-            paid += float(coef_med[n]) * float(g[n])
-        else:
-            ceiling = self._ceiling_n if self._ceiling_n is not None else self._incomeCeiling()
-            paid += float(coef_med[n]) * float(ceiling[n])
-            paid += self._medical_premium_ub(n) - prem_fixed
-        return paid
-
-    def _nj_medical_floor_flags(self, g_n=None):
-        """Whether each year's medical paid clears the NJ line 31 floor (1/0).
-
-        A priori where the amount is known to clear or not; otherwise at the last solution's
-        net spending and premiums (the m / maca columns included). The claim row is written only
-        where the flag is 1, so no max(0,.) switch is needed and a year below the floor claims
-        nothing.
-        """
-        flags = np.zeros(self.N_n)
-        if not getattr(self, "_st_med_lp", False):
-            return flags
-        const_med, coef_med = self._medical_amount_terms()
-        prem_n = self._medical_premium_values(hsa=False) if g_n is not None else None
-        for n in range(self.N_n):
-            if self.st_medd_floor_pct_n[n] <= 0:
-                continue
-            paid_lo = float(const_med[n]) + self._medical_premium_lo(n, hsa=False)
-            paid_hi = self._nj_medical_paid(n)
-            F = float(self.NJMF_n[n])
-            if paid_lo > F:
-                flags[n] = 1.0
-            elif paid_hi <= F:
-                flags[n] = 0.0
-            elif g_n is not None:
-                flags[n] = 1.0 if float(const_med[n] + coef_med[n] * g_n[n]) + float(prem_n[n]) > F else 0.0
-        return flags
-
-    def _add_nj_medical_deduction(self):
-        """NJ line 31 (Worksheet F): unreimbursed medical above 2% of NJ gross income.
-
-        NJ gross income is line 29 (total income less the retirement exclusion); the floor is
-        NJMF_n, 2% of the previous iterate's line 29. st_med is a bounded variable beside st_pt
-        (no binary): the claim is at most what was paid minus the floor, and a year whose paid
-        amount does not clear the floor claims nothing (_nj_medl_n, as the federal loop's
-        _item_medl_n). Medical paid is _medical_amount_terms plus Owl's premiums
-        (Medicare Part B/D + IRMAA and the ACA net premium; the NJ-1040 instructions name
-        Part B).
-
-        In a year flagged from the previous iterate, paid can fall below the floor in this LP.
-        A lower bound of zero would then bound spending or the m / maca columns from below; the
-        claim may go negative instead, down to the smallest paid - F, which
-        overstates the year's tax by the lag, as the federal loop's rows do.
-        """
-        vm = self.vm
-        if not getattr(self, "_st_med_lp", False) or "st_med" not in vm:
-            return
-        const_med, coef_med = self._medical_amount_terms()
-        for n in range(self.N_n):
-            if self.st_medd_floor_pct_n[n] <= 0 or self._nj_medl_n[n] < 0.5:
-                self.B.setRange(vm["st_med"].idx(n), 0, 0)
-                continue
-            prem_fixed, prem_lp = self._medical_premium_terms(n, hsa=False)
-            F = float(self.NJMF_n[n])
-            ub = max(0.0, self._nj_medical_paid(n) - F)
-            # Amounts paid are >= 0, so paid >= max(0, const) + the premiums' lower bound.
-            lb = min(0.0, max(0.0, float(const_med[n])) + self._medical_premium_lo(n, hsa=False) - F)
-            self.B.setRange(vm["st_med"].idx(n), lb, ub)
-            row = self.A.newRow({vm["st_med"].idx(n): 1, vm["g"].idx(n): -float(coef_med[n])})
-            for idx, coef in prem_lp.items():
-                row.addElem(idx, -coef)
-            self.A.addRow(row, -np.inf, float(const_med[n]) + prem_fixed - F,
-                          tag=("state_medical_deduction", n))
 
     def _st_item_candidate_years(self):
         """Plan years that might itemize: the state allows it and something is deductible.
@@ -4403,12 +4213,6 @@ class Plan:
             if "st_re" in vm:
                 for i in range(self.N_i):
                     row.addElem(vm["st_re"].idx(i, n), 1)  # retirement income exemption
-            if "st_rx" in vm:
-                row.addElem(vm["st_rx"].idx(n), 1)  # income-tiered retirement exclusion
-            if "st_pt" in vm:
-                row.addElem(vm["st_pt"].idx(n), 1)  # property tax deduction (NJ line 41)
-            if "st_med" in vm:
-                row.addElem(vm["st_med"].idx(n), 1)  # medical deduction (NJ line 31)
             for t in range(self.N_t):
                 row.addElem(vm["f"].idx(t, n), -1)  # subtract G_n (federal taxable ordinary income)
             row.addElem(vm["e"].idx(n), -1)  # add back the federal standard deduction
@@ -4442,106 +4246,6 @@ class Plan:
                     rhs = self.piBar_in[i, n] if self.st_pension_eligible_n[n] else 0
                     self.A.addRow(row, -np.inf, rhs, tag=("state_ret_exempt_cap", i, n))
 
-        if "st_rx" in vm:
-            self._add_state_tiered_exclusion()
-
-    def _add_state_tiered_exclusion(self):
-        """Income-tiered retirement exclusion (NJ-1040 lines 28a-28c), exact, one binary per tier.
-
-        Total income (line 27) is the state taxable income plus its deductions and exclusions, so the
-        rows stay in state terms: L = sum(st_f) + st_e + sum(st_re) + st_rx. The base is what the
-        share applies to:
-
-        - tax-deferred withdrawals + Roth conversions + pensions + annuities of the filers old enough
-          (line 28a); or
-        - L itself, when wages are within the earned-income limit and every filer is old enough: the
-          unused cap then covers other income too (line 28b, Worksheet D).
-
-        The tier is a disjunction, written in its disaggregated (convex-hull) form rather than with a
-        big-M on L: L and the base are split into per-tier copies rxl[k] and rxb[k], each zero unless
-        zx[k] = 1, with lim[k-1] zx[k] <= rxl[k] <= lim[k] zx[k] and rxb[k] <= rxl[k]. Then
-        st_rx <= sum_k share[k] rxb[k], and in the first (100%) tier also st_rx <= cap. The last copy
-        is income above the last ceiling, where nothing is excluded; only it needs a bound from the
-        income ceiling. Inside the ceilings the relaxation is the concave envelope of the staircase,
-        which a big-M on L would give up.
-
-        The rows exist only in the free years (RXF_n, see _tiered_exclusion_free); elsewhere the
-        exclusion is off. Above the top ceiling the relaxation can still claim nearly the whole cap,
-        which left a $2.5M case unproven after ten minutes, so years far above it are left out.
-        """
-        vm = self.vm
-        K = self.st_rx_limit_kn.shape[0]  # tiers with a ceiling; copy K is above the last one
-
-        for n in range(self.N_n):
-            elig = np.flatnonzero(self.st_rx_elig_in[:, n])
-            cap = float(self.st_rx_cap_n[n])
-            if elig.size == 0 or cap <= 0 or self.RXF_n[n] < 0.5:
-                continue
-            limits = self.st_rx_limit_kn[:, n]
-            shares = self.st_rx_share_kn[:, n]
-            tiers = [k for k in range(K) if np.isfinite(limits[k])]
-            last = float(limits[tiers[-1]])
-            top = max(float(self._ceiling_n[n]), 2 * last)
-            zx, rxl, rxb = vm["zx"], vm["rxl"], vm["rxb"]
-
-            # Exactly one tier.
-            self.A.addNewRow({zx.idx(n, k): 1 for k in tiers + [K]}, 1, 1, tag=("state_exclusion_one", n))
-
-            # L = sum of its copies. st_pt is included so L stays at line 27: the property tax
-            # deduction (line 41) comes after line 39 and does not change the exclusion tiers.
-            row = self.A.newRow()
-            for t in range(self.N_st):
-                row.addElem(vm["st_f"].idx(t, n), 1)
-            row.addElem(vm["st_e"].idx(n), 1)
-            if "st_re" in vm:
-                for i in range(self.N_i):
-                    row.addElem(vm["st_re"].idx(i, n), 1)
-            row.addElem(vm["st_rx"].idx(n), 1)
-            if "st_pt" in vm:
-                row.addElem(vm["st_pt"].idx(n), 1)
-            if "st_med" in vm:
-                row.addElem(vm["st_med"].idx(n), 1)  # line 31 is before line 39, inside line 27
-            for k in tiers + [K]:
-                row.addElem(rxl.idx(n, k), -1)
-            self.A.addRow(row, 0, 0, tag=("state_exclusion_income", n))
-
-            # Each copy lies in its tier's range when selected, and is zero otherwise.
-            lower = 0.0
-            for k in tiers + [K]:
-                upper = float(limits[k]) if k < K else top
-                self.A.addNewRow({rxl.idx(n, k): 1, zx.idx(n, k): -upper}, -np.inf, 0, tag=("state_excl_hi", n, k))
-                if lower > 0:
-                    self.A.addNewRow({rxl.idx(n, k): 1, zx.idx(n, k): -lower}, 0, np.inf, tag=("state_excl_lo", n, k))
-                lower = upper
-                self.A.addNewRow({rxb.idx(n, k): 1, rxl.idx(n, k): -1}, -np.inf, 0, tag=("state_exclusion_base", n, k))
-
-            # The copies of the base add up to no more than the base (line 20a); with the other-income
-            # extension the base is L, which rxb[k] <= rxl[k] already says. An inequality, so a year
-            # whose eligible income exceeds L (a capital loss) stays feasible: the base is then L.
-            if not self.st_rx_other_n[n]:
-                row = self.A.newRow({rxb.idx(n, k): 1 for k in tiers + [K]})
-                for i in elig:
-                    row.addElem(vm["w"].idx(i, 1, n), -1)
-                    row.addElem(vm["x"].idx(i, n), -1)
-                fixed = float(np.sum(self.piBar_in[elig, n] + self.spiaBar_in[elig, n]))
-                self.A.addRow(row, -np.inf, fixed, tag=("state_exclusion_split", n))
-
-            # st_rx <= sum_k share[k] rxb[k]; in a tier excluding 100%, also no more than the cap.
-            row = self.A.newRow({vm["st_rx"].idx(n): 1})
-            for k in tiers:
-                row.addElem(rxb.idx(n, k), -float(shares[k]))
-            self.A.addRow(row, -np.inf, 0, tag=("state_exclusion_share", n))
-            full = [k for k in tiers if shares[k] >= 1 and cap < limits[k]]
-            if full:
-                row = self.A.newRow({vm["st_rx"].idx(n): 1})
-                for k in tiers:
-                    if k in full:
-                        row.addElem(zx.idx(n, k), -cap)
-                    else:
-                        row.addElem(rxb.idx(n, k), -float(shares[k]))
-                self.A.addRow(row, -np.inf, 0, tag=("state_exclusion_cap", n))
-
-    @_fixedAcrossIterations
     def _add_defunct_constraints(self):
         if self.N_i == 2:
             for n in range(self.n_d, self.N_n):
@@ -6456,8 +6160,8 @@ class Plan:
 
         years = []
         excess = 0.0
-        # Fork: an income-tiered exclusion claimed below what the income allows is tax not owed too.
-        short_n = self._exclusion_shortfall(x) + self._itemized_shortfall(x) + self._nj_medical_shortfall(x)
+        # Fork: a state deduction claimed below what the plan's own branch allows is tax not owed too.
+        short_n = self._itemized_shortfall(x)
         # Federal: an itemized year that claims less than it could, or a standard year whose
         # itemized total would have been larger, leaves taxable income above what is owed.
         fed_short_n = self._federal_itemized_shortfall(x)
@@ -6477,71 +6181,15 @@ class Plan:
                 excess += over / self.gamma_n[n]
         return years, excess
 
-    def _nj_medical_shortfall(self, x=None):
-        """NJ line 31 medical the solution could claim but does not, per year ($).
-
-        The LP bounds the claim from above only, so where a year's cash has no price a smaller
-        deduction is as good and the plan reports state tax it does not owe. Used like
-        _exclusion_shortfall: subtracted from the year's taxable income when measuring brackets
-        filled out of order, which turns tax pricing on for the repair.
-        """
-        Nn = self.N_n
-        if not getattr(self, "_st_med_lp", False) or "st_med" not in self.vm:
-            return np.zeros(Nn)
-        if x is None:
-            claimed = self.st_med_n
-            g_n = self.g_n
-        else:
-            claimed = self.vm["st_med"].extract(x)
-            g_n = self.vm["g"].extract(x)
-        const_med, coef_med = self._medical_amount_terms()
-        prem = self._medical_premium_values(x, hsa=False)
-        paid = np.maximum(0.0, const_med + coef_med * g_n + prem)
-        # A flagged year's row allows paid - F, negative while the loop lags (see
-        # _add_nj_medical_deduction): that is not a tie the repair can remove.
-        best = np.where(self._nj_medl_n >= 0.5, paid - self.NJMF_n, np.maximum(0.0, paid - self.NJMF_n))
-        return np.where(self.st_medd_floor_pct_n > 0, np.maximum(0.0, best - claimed), 0.0)
-
-    def _exclusion_shortfall(self, x=None):
-        """Income-tiered exclusion the solution could claim on its own income but does not, per year ($).
-
-        The LP bounds the claim from above only (st_rx <= share x base), so where a year's cash has no
-        price a smaller claim is as good, and the plan reports state tax it does not owe. Read from x
-        (the tier copies rxl add up to line 27 in the years with rows), or from the aggregated results.
-        """
-        Nn = self.N_n
-        if not getattr(self, "_rx_active", False) or "st_rx" not in self.vm:
-            return np.zeros(Nn)
-        if x is None:
-            return np.maximum(0.0, self._tiered_exclusion_implied()[1] - self.st_rx_n)
-        vm = self.vm
-        rx = vm["st_rx"].extract(x)
-        rxl = vm["rxl"].extract(x)
-        w = vm["w"].extract(x)
-        conv = vm["x"].extract(x)
-        short = np.zeros(Nn)
-        for n in range(Nn):
-            elig = self.st_rx_elig_in[:, n]
-            if not elig.any() or self.st_rx_cap_n[n] <= 0 or self.RXF_n[n] < 0.5:
-                continue
-            total = float(np.round(np.sum(rxl[n])))
-            share = tax_state.exclusion_share(total, self.st_rx_limit_kn[:, n], self.st_rx_share_kn[:, n])
-            if self.st_rx_other_n[n]:
-                base = total
-            else:
-                base = float(np.sum((w[:, 1, n] + conv[:, n] + self.piBar_in[:, n] + self.spiaBar_in[:, n])[elig]))
-            short[n] = max(0.0, min(self.st_rx_cap_n[n], share * base, max(0.0, total)) - rx[n])
-        return short
-
     def _itemized_shortfall(self, x=None):
         """State deduction the solution's own branch allows but does not take, per year ($).
 
         The itemized total after the line 46 cut in an itemizing year, the standard elsewhere,
         less the deduction taken. The LP bounds st_e from above only, so where a year's cash has
         no price a smaller deduction is as good and the plan reports state tax it does not owe.
-        Used like _exclusion_shortfall: it is subtracted from the year's taxable income when
-        measuring brackets filled out of order, which turns tax pricing on for the repair. Only
-        years the state lets itemize count: a NJ year after a NY move must not invent one.
+        It is subtracted from the year's taxable income when measuring brackets filled out of
+        order, which turns tax pricing on for the repair. Only years the state lets itemize count:
+        a year in a state without an itemized deduction, after a move, must not invent one.
         """
         Nn = self.N_n
         if not getattr(self, "_st_item_lp", False):
@@ -6556,8 +6204,8 @@ class Plan:
 
         Within the branch the solution took: the standard (S_n) or the itemized total its own
         income allows, plus the bonus, less e_n. Where a year's cash has no price a smaller
-        deduction is as good and the plan reports federal tax it does not owe. Used like
-        _exclusion_shortfall: it is subtracted from the year's taxable income when measuring
+        deduction is as good and the plan reports federal tax it does not owe. Like
+        _itemized_shortfall, it is subtracted from the year's taxable income when measuring
         brackets filled out of order, which turns tax pricing on for the repair. A branch that is
         itself the smaller one is not a tie (the loop's lag) and the repair cannot change it:
         _item_dominated_n and _check_itemizing report it.
@@ -6907,7 +6555,6 @@ class Plan:
             self._mipNodeCount = 0
             self._mipRunCount = 0
             self._mipCapTally = (0, 0, 0)
-            self._rxNodeLimitUsed = 0
         self.oscillationRel = 0.0
         self.oscillationAbs = 0.0
 
@@ -7069,8 +6716,6 @@ class Plan:
         self._st_lp = False  # Will be set to True in _buildOffsetMap when state is set
         self._adjustedParameters = False  # Force fresh parameter setup for each solve()
         self._highs_warm_start = None  # MIP warm-start hint; reset each solve(), updated each SC iter
-        self._rx_fixed = None  # (tiers zx, free set) kept from a MILP that hit its time limit; see _run_highs
-        self._rx_refixed_n = np.zeros(self.N_n, dtype=bool)  # kept tiers moved this iterate
         self._fixedRows = {}  # Rows of the loop-invariant builders, built on the first iteration
         self._dual_data = None  # Shadow prices from binaries-fixed LP re-solve; set when withDuals=True
 
@@ -7085,10 +6730,6 @@ class Plan:
         self.st_credit_n = np.zeros(self.N_n)
         self.st_recap = None
         self._str_active = False
-        self._rx_active = False
-        self.st_ptd_cap_n = np.zeros(self.N_n)
-        self.st_ptd_rent_share_n = np.zeros(self.N_n)
-        self.st_medd_floor_pct_n = np.zeros(self.N_n)
         self.st_item_ok_n = np.zeros(self.N_n, dtype=bool)
         self._itemized = tax_state.StateItemizedParams.empty(self.N_n)
         if any(self._states_n()):
@@ -7117,12 +6758,8 @@ class Plan:
             self.st_pension_eligible_n = sp.pension_eligible_n
             self.st_recap = (sp.recap_start_n, sp.recap_width_n, sp.recap_until_n)
             self._str_active = bool(np.any(np.isfinite(sp.recap_start_n)))
-            self.st_ptd_cap_n = sp.ptd_cap_n
-            self.st_ptd_rent_share_n = sp.ptd_rent_share_n
-            self.st_medd_floor_pct_n = sp.med_floor_pct_n
             self._itemized = sp.itemized
             self.st_item_ok_n = sp.itemized.allowed_n.copy()
-            self._set_tiered_exclusion(sp)
 
         self._setup_star(myoptions)
 
@@ -7132,8 +6769,8 @@ class Plan:
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
-        # The property tax deduction's caps are LP parameters: process them before the
-        # variable map is built, so st_ptd_n is known when st_pt is created.
+        # Fork: mortgage interest and the budget feed the itemized deduction's columns, so debts and
+        # fixed assets are processed before the variable map is built (upstream: after).
         self.processDebtsAndFixedAssets()
         self._buildOffsetMap(myoptions, objective)
 
@@ -7299,9 +6936,8 @@ class Plan:
         skip = ("mylog", "_lp_basis")
         warm_keys = ("M_n", "ACA_n", "J_n", "I_n", "G_n", "Q_n", "U_n", "MAGI_n", "MAGI_aca_n", "gain_fraction_in",
                      "_tax_tiebreak_on")
-        # Fork: the fork's own loop parameters too (NJ exclusion free set, NY recapture, itemizing
-        # branches and floors). Cold, each NJ probe re-solved its first iterate without the exclusion
-        # and re-grew the free set through extra MILPs. Psi_n stays out: "convex" sets SS by region.
+        # Fork: the fork's own loop parameters too (NY recapture, itemizing branches and floors,
+        # STAR), so each probe starts from the best plan's. Psi_n stays out: "convex" sets SS by region.
         warm_keys += tuple(k for k in self._SC_PARAMS if k not in warm_keys and k != "Psi_n")
         if not run(None) or not self._ss_cvx:
             return None
@@ -7499,7 +7135,7 @@ class Plan:
 
         Each is how far this iterate's own income moves a quantity its LP was built with: the
         branches (federal, state), the floors and which side of them each amount is on (federal
-        charity and medical, state medical, NJ line 31), the SALT cap, and the NY line 46 rate.
+        charity and medical, state medical), the SALT cap, and the NY line 46 rate.
         """
         moves = []
 
@@ -7530,12 +7166,6 @@ class Plan:
             floor(med_paid, "STMF_n", st_n)
             flip("_st_medl_n", med_paid - self.STMF_n, st_n)
             flip("_st_zi_n", np.maximum(self.st_sigmaBar_n, (1.0 - self.NYIR_n) * pot), st_n)
-        if self._st_med_lp:
-            # NJ line 31 counts premiums without subtracting HSA distributions.
-            nj_paid = c_med + k_med * self.g_n + self._medical_premium_values(hsa=False)
-            on = self.st_medd_floor_pct_n > 0
-            floor(nj_paid, "NJMF_n", on)
-            flip("_nj_medl_n", nj_paid - self.NJMF_n, on)
         if self._item_lp and self._item_years:
             fed_n = np.zeros(self.N_n, dtype=bool)
             fed_n[self._item_years] = True
@@ -7951,14 +7581,6 @@ class Plan:
             # LTCG bracket room is set from the previous iterate's ordinary income, so the LP's
             # gains tax can disagree with the tax this iterate's own income implies.
             moves.append(np.sum(np.abs(self.U_n - self._ltcg_tax_implied()) / g_today))
-            # Years newly admitted to the exclusion's free set: the next LP can claim up to the cap there.
-            if self._rx_active:
-                added = (self.RXF_n >= 0.5) & (sc_lp["RXF_n"] < 0.5)
-                moves.append(np.sum(self.st_rx_cap_n[added] / g_today[added]))
-                # Years whose kept tier moved down to the statute's (_refix_boundary_tiers): the next LP
-                # can claim more there, so this iterate is not a fixed point.
-                refixed = self._rx_refixed_n
-                moves.append(np.sum(self.st_rx_cap_n[refixed] / g_today[refixed]))
             scResidual = float(max(moves))
 
             has_prev_obj = len(trace["scaledObjectives"]) > 1
@@ -8057,18 +7679,12 @@ class Plan:
             self.mylog.print(f"Self-consistent loop returned after {it + 1} iterations.")
             if solverMsg:
                 self.mylog.print(solverMsg)
-            # The free set the accepted iterate was built with, before anything rebuilds the LP.
-            self.RXF_n = sc_lp["RXF_n"]
-            if self._rx_fixed is not None:
-                # The tiers came from a MILP stopped at its node or time limit; later solves only kept them, so
-                # that MILP's gap is the one that says how far the plan may be from optimal.
-                self.solverGap = max(self.solverGap, self._rx_fixed[2])
             # The fork's loop parameters the accepted LP was built with: the bracket-order repair's
             # tie checks read them (federal branch, floors and cap; the NY line 46 rate and medical
-            # floor; the NJ line 31 floor and flag), so restore them first.
+            # floor), so restore them first.
             for name in (
                 "FEDMF_n", "FEDCF_n", "FEDSC_n", "_item_zi_n", "_item_chl_n", "_item_medl_n",
-                "NYIR_n", "STMF_n", "_st_zi_n", "_st_medl_n", "NJMF_n", "_nj_medl_n", "STAR_n",
+                "NYIR_n", "STMF_n", "_st_zi_n", "_st_medl_n", "STAR_n",
             ):
                 setattr(self, name, sc_lp[name])
             # The medical shortfalls also read the loop premiums M_n / ACA_n, which are restored
@@ -8091,7 +7707,7 @@ class Plan:
             # The state itemized deduction's line 46 rate and medical floor are restored before
             # aggregation too: st_item_n is computed there with them, and the accepted iterate
             # can be an earlier one than the last LP built (best of a cycle).
-            # (NYIR_n, STMF_n, NJMF_n and _nj_medl_n were restored before the repair.)
+            # (NYIR_n and STMF_n were restored before the repair.)
             self._aggregateResults(xx)
             # Restore the NL parameters to what was actually embedded in the final LP
             # constraints. _computeNLstuff runs after every LP solve (for convergence
@@ -8130,8 +7746,7 @@ class Plan:
         """State AGI and taxable income of the current solution, per year.
 
         AGI is federal AGI less the Social Security the state exempts, the pension exemption
-        and the retirement exclusion claimed: the same terms the state_taxable_income row uses.
-        The income-tiered exclusion (st_rx) is not subtracted: its tiers are set on this amount.
+        and the retirement income exemption claimed: the same terms the state_taxable_income row uses.
         """
         if self.N_st == 0:
             return np.zeros(self.N_n), np.zeros(self.N_n)
@@ -8140,98 +7755,6 @@ class Plan:
         pe_adj = np.sum(np.minimum(self.piBar_in, self.st_pe_cap_in), axis=0)
         agi = self.G_n + self.e_n + self.Q_n - ss_excl - pe_adj - np.sum(self.st_re_in, axis=0)
         return agi, ti
-
-    def _set_tiered_exclusion(self, sp):
-        """Per-year eligibility for the income-tiered retirement exclusion (NJ-1040 line 28).
-
-        A filer's income is eligible from the year they reach the age by December 31, while alive.
-        The other-income extension needs every living filer eligible and wages within the limit;
-        with one spouse too young only line 28a is taken, which understates the exclusion.
-        """
-        Ni, Nn = self.N_i, self.N_n
-        self.st_rx_limit_kn = sp.rx_limit_kn
-        self.st_rx_share_kn = sp.rx_share_kn
-        self.st_rx_cap_n = sp.rx_cap_n
-        self._rx_active = bool(np.any(sp.rx_cap_n > 0))
-        alive_in = np.array([[n < self.horizons[i] for n in range(Nn)] for i in range(Ni)])
-        age_in = self.year_n[np.newaxis, :] - np.asarray(self.yobs)[:, np.newaxis]
-        self.st_rx_elig_in = alive_in & (age_in >= sp.rx_age_n[np.newaxis, :]) & (sp.rx_cap_n > 0)
-        wages_n = np.sum(self.omega_in, axis=0)
-        all_elig_n = np.all(self.st_rx_elig_in | ~alive_in, axis=0) & self.st_rx_elig_in.any(axis=0)
-        self.st_rx_other_n = all_elig_n & (sp.rx_earned_n >= 0) & (wages_n <= sp.rx_earned_n)
-
-    def _tiered_exclusion_free(self):
-        """Free set for the next iterate: the current one plus the eligible years whose state income is
-        at most RX_WINDOW times the top tier ceiling. It only grows, so the previous iterate stays
-        feasible; the loop does not converge while it changes (see _scSolve), so at convergence every
-        year left out has income far above the last ceiling, where the statute excludes nothing.
-        """
-        if not self._rx_active:
-            return self.RXF_n
-        top_n = np.max(np.where(np.isfinite(self.st_rx_limit_kn), self.st_rx_limit_kn, 0.0), axis=0)
-        near = self.st_rx_elig_in.any(axis=0) & (self.st_agi_n <= RX_WINDOW * top_n) & (top_n > 0)
-        return np.where(near, 1.0, np.where(self.RXF_n >= 0.5, 1.0, 0.0))
-
-    def _refix_boundary_tiers(self):
-        """Move a kept exclusion tier down to the statute's tier when income sits on its floor.
-
-        Tiers kept from a MILP stopped at its time limit (_rx_fixed) pin the tier binaries, and a pinned
-        tier bounds income from below as well as above. A later iterate that wants less income stops on
-        the floor of its tier, which is the ceiling of the tier below, and the statute ("income of the
-        ceiling or less") puts exactly that income in the tier below, with the larger share. Left alone,
-        the plan claims the smaller share there and is held at that income for it.
-
-        Only downward moves at the same income are made: the iterate stays feasible, a larger share can
-        only lower tax, and a tier never moves back up, so this cannot cycle. Returns the years moved.
-        """
-        moved = np.zeros(self.N_n, dtype=bool)
-        if self._rx_fixed is None or not self._rx_active:
-            return moved
-        zx_kept, kept_n = self._rx_fixed[0], self._rx_fixed[1]
-        K = self.st_rx_limit_kn.shape[0]
-        total_n = np.round(self.st_agi_n)  # line 27, in the whole dollars of the return
-        for n in range(self.N_n):
-            if not kept_n[n] or not zx_kept[n].any():
-                continue
-            k_kept = int(np.argmax(zx_kept[n]))
-            k_statute = K
-            for k in range(K):
-                if np.isfinite(self.st_rx_limit_kn[k, n]) and total_n[n] <= self.st_rx_limit_kn[k, n]:
-                    k_statute = k
-                    break
-            if k_statute < k_kept:
-                zx_kept[n, :] = 0.0
-                zx_kept[n, k_statute] = 1.0
-                moved[n] = True
-        if moved.any():
-            years = ", ".join(str(int(y)) for y in self.year_n[moved])
-            self.mylog.vprint(f"Kept exclusion tier moved down to the statute's for income on its floor: {years}.")
-        return moved
-
-    def _tiered_exclusion_implied(self):
-        """Share and amount of the tiered exclusion that the solution's own income implies (a check).
-
-        Returns (share_n, amount_n). The amount is what the return would claim: the share of eligible
-        income (or of total income, with the other-income extension), up to the cap and the income.
-        """
-        Nn = self.N_n
-        share = np.zeros(Nn)
-        amount = np.zeros(Nn)
-        if not self._rx_active:
-            return share, amount
-        total_n = np.round(self.st_agi_n)  # line 27, in the whole dollars of the return
-        for n in range(Nn):
-            if self.st_rx_cap_n[n] <= 0:
-                continue
-            share[n] = tax_state.exclusion_share(total_n[n], self.st_rx_limit_kn[:, n], self.st_rx_share_kn[:, n])
-            elig = self.st_rx_elig_in[:, n]
-            if self.st_rx_other_n[n]:
-                base = total_n[n]
-            else:
-                base = float(np.sum((self.w_ijn[:, 1, n] + self.x_in[:, n] + self.piBar_in[:, n]
-                                     + self.spiaBar_in[:, n])[elig]))
-            amount[n] = min(self.st_rx_cap_n[n], share[n] * base, max(0.0, total_n[n]))
-        return share, amount
 
     def _state_recapture_implied(self):
         "Benefit recapture the current solution's own state AGI and taxable income imply."
@@ -8326,14 +7849,6 @@ class Plan:
             cols_n = np.zeros(Nn, dtype=bool)
             cols_n[self._st_item_years] = True
             res["state itemized"] = np.where(cols_n & (self.st_ti_n > 1.0), self.st_e_n - implied, 0.0) / g
-        if self._st_med_lp:
-            # NJ line 31 claimed less the claim the plan's own line 29 allows (the floor and the
-            # flag are the previous iterate's), where state taxable income is positive.
-            const_med, coef_med = self._medical_amount_terms()
-            paid = const_med + coef_med * self.g_n + self._medical_premium_values(hsa=False)
-            F_true = self.st_medd_floor_pct_n / 100.0 * np.maximum(0.0, self.st_agi_n - self.st_rx_n)
-            implied = np.where(self.st_medd_floor_pct_n > 0, np.maximum(0.0, paid - F_true), 0.0)
-            res["state medical"] = np.where(self.st_ti_n > 1.0, self.st_med_n - implied, 0.0) / g
         if self._item_lp and self._item_years:
             # Federal deduction taken less max(standard, itemized) at the plan's own AGI (floors,
             # SALT cap) and branch, where taxable income is positive; the bonus as the plan has it.
@@ -8546,9 +8061,8 @@ class Plan:
         if not is_mip:
             return self._countMipNodes(None)
         nodes = h.getInfoValue("mip_node_count")[1]
-        # Fork: _node_limit, so a MILP stopped at RX_NODE_LIMIT counts as stopped at the limit.
         at_limit = (h.getModelStatus() == highspy.HighsModelStatus.kSolutionLimit
-                    and nodes >= self._node_limit(options))
+                    and nodes >= self._mipNodeLimit(options, mosek=False))
         return self._countMipNodes(nodes, at_limit)
 
     def _countMosekNodes(self, task, trmcode):
@@ -8576,7 +8090,7 @@ class Plan:
         """
         import highspy
 
-        time_limit = self._time_limit(options)
+        time_limit = u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
 
@@ -8584,13 +8098,9 @@ class Plan:
         h.setOptionValue("output_flag", bool(verbose))
         h.setOptionValue("mip_rel_gap", float(mygap))
         h.setOptionValue("time_limit", float(time_limit))
-        # mipMaxNodes caps every solve (upstream 2026.10.10; local search sets it on each restricted
-        # solve). Fork: without mipMaxNodes or maxTime, a MILP with free NJ exclusion tiers is capped
-        # at RX_NODE_LIMIT. Capping by nodes, not time, keeps the answer independent of machine speed.
-        node_limit = self._node_limit(options)
-        h.setOptionValue("mip_max_nodes", node_limit)
-        if node_limit == RX_NODE_LIMIT and "mipMaxNodes" not in options:
-            self._rxNodeLimitUsed = RX_NODE_LIMIT  # the Summary's node-limit row says so
+        # Local search sets mipMaxNodes on each restricted solve: capping by nodes, not time, keeps
+        # its answer independent of machine speed and load.
+        h.setOptionValue("mip_max_nodes", self._mipNodeLimit(options, mosek=False))
         h.setOptionValue("presolve", "on")
 
         # A MIP is solved in hundreds of dollars (see MIP_SCALE_ORDER); an LP is passed as is.
@@ -8667,34 +8177,12 @@ class Plan:
         # postsolve breakdown, an error, a limit) is the solver giving up on a model that
         # may well be solvable, and must not be reported as an impossible plan.
         self._infeasible = ms == highspy.HighsModelStatus.kInfeasible
-        timed_out = success and ms == highspy.HighsModelStatus.kTimeLimit
-        # The last run's own status and count (_lastMipNodes also sums HiGHS's infeasibility retries).
-        node_capped = (
-            success
-            and integrality.any()
-            and ms == highspy.HighsModelStatus.kSolutionLimit
-            and h.getInfoValue("mip_node_count")[1] >= node_limit
-        )
-        if timed_out:
-            self._warn_time_limit(time_limit, h.getInfoValue("mip_gap")[1], mygap)
-        elif node_capped and not getattr(self, "_localSearchStep", False):
-            # A local-search step is capped by design (upstream counts those apart); a main solve
-            # cut short by RX_NODE_LIMIT or a user's mipMaxNodes says so.
-            hint = "Raise mipMaxNodes" if "mipMaxNodes" in options else "Set maxTime"
-            self._warn_node_limit(node_limit, h.getInfoValue("mip_gap")[1], mygap, hint)
 
         if success:
             sol = h.getSolution()
             xx = np.array(sol.col_value, dtype=np.float64)
             xx = scaling.solution(xx)
             obj_val = scaling.objective_value(float(h.getObjectiveValue()))
-            if (timed_out or node_capped) and "zx" in self.vm and self._rx_fixed is None and not self._localSearch:
-                # Later iterations keep these exclusion tiers instead of paying the limit again: the loop
-                # then re-solves only the continuous part, and the tax stays statutory for the tiers.
-                # Not inside local search, whose steps are capped by design and pin or search the tiers.
-                gap_capped = float(h.getInfoValue("mip_gap")[1])
-                self._rx_fixed = (np.round(self.vm["zx"].extract(xx)), self.RXF_n >= 0.5, gap_capped)
-                self.mylog.vprint("Keeping the exclusion tiers of this MILP for the remaining iterations.")
             # mip_gap is meaningless on a pure LP; -1 is the convention for those solves.
             gap = h.getInfoValue("mip_gap")[1] if integrality.any() else -1.0
         else:
@@ -9035,43 +8523,6 @@ class Plan:
             self._highs_warm_start = result[1].copy()
         return result
 
-    def _time_limit(self, options):
-        """Solver time limit: maxTime when given, else TIME_LIMIT."""
-        return u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
-
-    def _node_limit(self, options):
-        """HiGHS node limit: RX_NODE_LIMIT when the MILP carries free tier binaries of the
-        income-tiered exclusion and neither mipMaxNodes nor maxTime is given (see RX_NODE_LIMIT);
-        otherwise upstream's (mipMaxNodes, else HIGHS_MAX_NODES)."""
-        if (
-            "mipMaxNodes" not in options
-            and "maxTime" not in options
-            and "zx" in self.vm
-            and np.any(self.RXF_n >= 0.5)
-        ):
-            return RX_NODE_LIMIT
-        return self._mipNodeLimit(options, mosek=False)
-
-    def _warn_node_limit(self, node_limit, gap, target, hint="Set maxTime"):
-        """Say that a MILP stopped at its node limit and how far its plan may be from optimal."""
-        if gap > target:
-            self.mylog.print(
-                f"MILP stopped at its {node_limit:,} node limit with a gap of {100 * gap:.2f}% "
-                f"(target {100 * target:.2g}%): the plan is feasible but may not be optimal. "
-                f"{hint} to search longer.",
-                tag="WARNING",
-            )
-
-    def _warn_time_limit(self, time_limit, gap, target):
-        """Say that a MILP stopped on its time limit and how far its plan may be from optimal."""
-        if gap > target:
-            self.mylog.print(
-                f"MILP stopped at its {time_limit:.0f} s time limit with a gap of {100 * gap:.2f}% "
-                f"(target {100 * target:.2g}%): the plan is feasible but may not be optimal. "
-                "Set maxTime to allow more time.",
-                tag="WARNING",
-            )
-
     def _milpSolve(self, objective, options):
         """
         Solve using HiGHS directly via highspy, with MIP warm-start between SC iterations.
@@ -9101,9 +8552,7 @@ class Plan:
         import mosek
 
         self._buildConstraints(objective, options)
-        time_limit = self._time_limit(options)
-        if "maxTime" not in options and "zx" in self.vm and np.any(self.RXF_n >= 0.5):
-            time_limit = RX_MOSEK_TIME_LIMIT
+        time_limit = u.get_numeric_option(options, "maxTime", TIME_LIMIT, min_value=0)
         mygap = u.get_numeric_option(options, "gap", GAP, min_value=0)
         verbose = options.get("verbose", False)
         int_vars = self.B.integralityList()
@@ -9201,14 +8650,11 @@ class Plan:
             self.STAR_n = np.zeros(self.N_n)
             if self._star_on:
                 self.STAR_n = self._star.implied_credit(np.zeros(self.N_n), self.prevSTAR)
-            self.RXF_n = np.zeros(self.N_n)  # the first iterate is solved without the exclusion
             self.NYIR_n = np.zeros(self.N_n)  # no NYAGI adjustment until an iterate reports AGI
             self.STMF_n = np.zeros(self.N_n)  # nor a medical floor
             self.FEDMF_n = np.zeros(self.N_n)  # nor the federal medical/charity floors
             self.FEDCF_n = np.zeros(self.N_n)
             self.FEDSC_n = self._salt_cap_n(np.zeros(self.N_n))  # nor the SALT cap's MAGI phase-down
-            self.NJMF_n = np.zeros(self.N_n)  # nor the NJ line 31 floor
-            self._nj_medl_n = self._nj_medical_floor_flags()
             self._item_zi_n = self._item_loop_choice()  # standard, unless itemizing is certain
             self._item_chl_n, self._item_medl_n = self._floor_flags("fed")
             self._st_zi_n = self._st_item_loop_choice()
@@ -9225,16 +8671,11 @@ class Plan:
         self.STR_n = self._state_recapture_implied()
         if self._star_on:
             self.STAR_n = self._star_implied_n()
-        self.RXF_n = self._tiered_exclusion_free()
         self.NYIR_n = self._state_itemized_adjustment()
         self.STMF_n = self._itemized.medical_floor_n / 100.0 * self.MAGI_n
         self.FEDMF_n = tx.MEDICAL_FLOOR * self.MAGI_n
         # The 0.5% charity floor is an OBBBA rule: none after a pre-TCJA reversion.
         self.FEDCF_n = np.where(self._item_obbba_n, tx.CHARITY_FLOOR * self.MAGI_n, 0.0)
-        # NJ line 31: 2% of NJ gross income (line 29 = state AGI less the retirement exclusion).
-        nj_gross = np.maximum(0.0, self.st_agi_n - self.st_rx_n)
-        self.NJMF_n = self.st_medd_floor_pct_n / 100.0 * nj_gross
-        self._nj_medl_n = self._nj_medical_floor_flags(self.g_n)
         # The SALT cap's MAGI phase-down (above $505,000 in 2026) from this iterate's AGI. It
         # changes the problem only above the threshold, so below it local search still sees an
         # unchanged problem. It cannot be computed once at solve entry: solve() zeroes MAGI_n.
@@ -9247,7 +8688,6 @@ class Plan:
         if self._st_item_lp:
             self._st_zi_n = self._st_item_loop_choice(self._item_potential_n(x, "st"))
             self._st_medl_n = self._floor_flags("st", self.g_n)[1]
-        self._rx_refixed_n = self._refix_boundary_tiers()
         # Psi_n is derived directly from the tss_n LP variable in _aggregateResults
         # when withSSTaxability=="optimize"; skip the SC-loop update in that case.
         # Also skip when fixedPsi is set (numeric withSSTaxability).
@@ -9452,9 +8892,6 @@ class Plan:
         # State taxable income and AGI, which the benefit recapture is a function of.
         self.st_f_tn = vm["st_f"].extract(x) if "st_f" in vm else np.zeros((self.N_st, Nn))
         self.st_re_in = vm["st_re"].extract(x) if "st_re" in vm else np.zeros((Ni, Nn))
-        self.st_rx_n = vm["st_rx"].extract(x) if "st_rx" in vm else np.zeros(Nn)
-        self.st_pt_n = vm["st_pt"].extract(x) if "st_pt" in vm else np.zeros(Nn)
-        self.st_med_n = vm["st_med"].extract(x) if "st_med" in vm else np.zeros(Nn)
         self.st_e_n = vm["st_e"].extract(x) if "st_e" in vm else np.zeros(Nn)
         self.zst_n = vm["zst"].extract(x) if "zst" in vm else np.zeros(Nn)
         # State itemized deduction: the amounts the rows allow, in the years the loop itemized.

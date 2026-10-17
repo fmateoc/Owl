@@ -692,10 +692,8 @@ year by year, and the optimizer then works with that shape as it does with *flat
 where:
 - *active* and *name* are as for *Debts*.
 - *type* is one of *core*, *rent*, *property tax*, *insurance*, *maintenance*, *car*, *travel*, *care*,
-  *medical*, *charity*, *other*. Lines of another type are left out, with a warning. *rent* and
-  *property tax* also feed a state's property tax deduction where the state has one (New Jersey,
-  NJ-1040 line 41: property taxes on the main home, or 18% of rent, up to \\$15,000). *medical* and
-  *charity* are the deductible care and giving lines (itemized deductions, below). *care* is not
+  *medical*, *charity*, *other*. Lines of another type are left out, with a warning. *property tax*,
+  *medical* and *charity* are the deductible lines (itemized deductions, below). *care* is not
   deductible by default: assisted-living room and board is not medical expense unless care is the
   main reason — use *medical* for deductible care.
 - *year* is the first calendar year of the line. A year before the plan start is read as the plan start.
@@ -756,7 +754,7 @@ withdrawals, above 7.5% of AGI. Itemizers keep the \\$6,000 senior deduction and
 deduction for age 65; those who do not itemize also deduct up to \\$1,000 (\\$2,000 for a couple) of
 charity. New York has its own itemized deduction, taken whether or not the federal return itemizes:
 property tax without a cap, charity, medical above 10% of AGI and mortgage interest, reduced by up to
-25% above \\$200,000 of NY income for a couple. New Jersey deducts medical above 2% of its gross income.
+25% above \\$200,000 of NY income for a couple.
 Whether a year itemizes, and the income-based floors, follow the previous step of the self-consistent
 loop. The solver option *withItemized* = "none" turns all of this off (the standard deduction
 everywhere). Not modeled: the alternative minimum tax, the limit on itemized deductions in the 37%

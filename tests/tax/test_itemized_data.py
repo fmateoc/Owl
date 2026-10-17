@@ -327,8 +327,6 @@ class TestBudgetAmountTerms:
         const, coef = p._budget_amount_terms("property tax")
         assert np.all(const == 0)
         assert coef[0] == pytest.approx(12000.0 / 62000.0)
-        assert p.st_ptd_const_n[0] == pytest.approx(0.0)
-        assert p.st_ptd_coef_n[0] == pytest.approx(12000.0 / 62000.0)
 
     def test_with_essentials_fixed_part_is_constant(self):
         """Essential property tax is paid at its amount whatever the discretionary scale."""
@@ -343,8 +341,6 @@ class TestBudgetAmountTerms:
         # amount = gamma * 12000 + 0 * g: the property tax line is essential.
         assert coef[0] == pytest.approx(0.0)
         assert const[0] == pytest.approx(12000.0 * p.gamma_n[0])
-        assert p.st_ptd_coef_n[0] == pytest.approx(0.0)
-        assert p.st_ptd_const_n[0] == pytest.approx(12000.0)
 
     def test_mixed_tiers_split_const_and_coef(self):
         lines = [
@@ -364,28 +360,6 @@ class TestBudgetAmountTerms:
         # At k = 1 (g = gamma * 100000) the amount is 12000 * gamma.
         g = 100000.0 * p.gamma_n[0]
         assert const[0] + coef[0] * g == pytest.approx(12000.0 * p.gamma_n[0])
-
-    def test_essential_rent_share_in_the_bound(self):
-        """NJ line 41: property tax + 18% of rent, each tiered, combined into one affine bound."""
-        lines = [
-            _line(name="core", type="core", amount=40000.0) | {"essential": True},
-            _line(name="pt", type="property tax", amount=8000.0) | {"essential": True},
-            _line(name="pt2", type="property tax", amount=4000.0),
-            _line(name="rent", type="rent", amount=12000.0) | {"essential": True},
-            _line(name="travel", type="travel", amount=20000.0),
-        ]
-        p = self._plan_with(lines, essentials=True)
-        # solve() sets the NJ rent share before processDebts; do the same here.
-        p.st_ptd_rent_share_n[:] = 18.0
-        p.processDebtsAndFixedAssets()
-        # E = 40k+8k+12k = 60k, D = 4k+20k = 24k, disc_pt = 4k, ess_pt+0.18*ess_rent = 8k+2160
-        d = 4000.0 / 24000.0
-        assert p.st_ptd_coef_n[0] == pytest.approx(d)
-        assert p.st_ptd_const_n[0] == pytest.approx(p.gamma_n[0] * (8000.0 + 0.18 * 12000.0 - d * 60000.0))
-        for k in (0.0, 0.4, 1.0, 2.5):
-            g = p.gamma_n[0] * (60000.0 + k * 24000.0)
-            amount = p.st_ptd_const_n[0] + p.st_ptd_coef_n[0] * g
-            assert amount == pytest.approx(p.gamma_n[0] * (8000.0 + 0.18 * 12000.0 + k * 4000.0))
 
     def test_no_budget_is_zero(self):
         p = self._plan_with([])

@@ -96,11 +96,6 @@ CONSTRAINT_FAMILIES = {
         "label": "state deduction is the standard or the itemized total",
         "indices": ("year",),
     },
-    "state_medical_deduction": {
-        "class": "policy",
-        "label": "state medical deduction limited to expenses above the income floor",
-        "indices": ("year",),
-    },
     "item_nch_paid": {
         "class": "policy",
         "label": "non-itemizer charity limited to the amount given",
@@ -409,35 +404,6 @@ def _state_tax_parts(plan, n):
     return out
 
 
-def _state_exclusion(plan, n):
-    """Income-tiered retirement exclusion claimed in year n (NJ line 28c), and the tier ceiling the
-    year's state income is held at when it sits within a dollar of one; only where claimed."""
-    rx = getattr(plan, "st_rx_n", None)
-    if rx is None or rx[n] <= 0:
-        return {}
-    out = {"retirement_exclusion": _round(float(rx[n]) / plan.gamma_n[n])}
-    limits = plan.st_rx_limit_kn[:, n]
-    held = [lim for lim in limits if np.isfinite(lim) and abs(plan.st_agi_n[n] - lim) <= 1.0]
-    if held:
-        out["exclusion_ceiling"] = _round(float(held[0]) / plan.gamma_n[n])
-    return out
-
-
-def _state_property_tax_deduction(plan, n):
-    """State deductions claimed in year n, today's $; only where claimed.
-
-    property_tax_deduction (NJ line 41) and medical_deduction (NJ line 31).
-    """
-    pt = getattr(plan, "st_pt_n", None)
-    out = {}
-    if pt is not None and pt[n] > 0.5:
-        out["property_tax_deduction"] = _round(float(pt[n]) / plan.gamma_n[n])
-    med = getattr(plan, "st_med_n", None)
-    if med is not None and med[n] > 0.5:
-        out["medical_deduction"] = _round(float(med[n]) / plan.gamma_n[n])
-    return out
-
-
 def _loc(locality):
     """{"locality": locality} when there is one, else nothing."""
     return {"locality": locality} if locality else {}
@@ -456,8 +422,6 @@ def _year0_state_tax(plan):
     if locality:
         out["locality"] = locality
     out.update(_state_tax_parts(plan, 0))
-    out.update(_state_exclusion(plan, 0))
-    out.update(_state_property_tax_deduction(plan, 0))
     bracket = _state_bracket(plan, 0)
     if bracket:
         out["top_bracket_rate_pct"] = bracket["top_bracket_rate_pct"]
@@ -946,11 +910,8 @@ def _state_bracket_analysis(plan):
     rows = []
     for n in range(plan.N_n):
         bracket = _state_bracket(plan, n)
-        excl = _state_exclusion(plan, n)
-        if not bracket and not excl:
+        if not bracket:
             continue
-        # A year the exclusion takes to zero tax is shown too: it is where the exclusion matters most.
-        bracket = bracket or {"top_bracket_rate_pct": 0.0, "headroom": None, "filled_to_boundary": False}
         state, locality = _residence(plan, n)
         row = {"year": int(plan.year_n[n]), "state": state, **_loc(locality)}
         row.update(
@@ -962,8 +923,6 @@ def _state_bracket_analysis(plan):
             }
         )
         row.update({f"{k}_today": v for k, v in _state_tax_parts(plan, n).items()})
-        row.update({f"{k}_today": v for k, v in excl.items()})
-        row.update({f"{k}_today": v for k, v in _state_property_tax_deduction(plan, n).items()})
         rows.append(row)
     out = {
         "state": plan.state,
@@ -977,15 +936,7 @@ def _state_bracket_analysis(plan):
         "allows them). Headroom is absent in the open-ended top bracket. In a year filled to the "
         "boundary, the next dollar of income, such as a Roth conversion, is taxed at a higher "
         "state rate. state_tax includes any benefit recapture and local (city) tax, also shown "
-        "separately; inside a recapture phase-in the marginal state rate is above the bracket rate. "
-        "retirement_exclusion is an exclusion of retirement income that steps down with total income "
-        "(New Jersey's pension and other retirement income exclusion); exclusion_ceiling marks a year "
-        "held at one of its income ceilings, where the next dollar would lose part of the exclusion. "
-        "property_tax_deduction is the state's deduction for property taxes or a share of rent "
-        "(New Jersey line 41, from the budget's property tax and rent lines), taken after the exclusion. "
-        "medical_deduction is the state's deduction for medical expenses above a share of gross income "
-        "(New Jersey line 31: above 2% of NJ gross income, from the budget's medical lines and the "
-        "Medicare and ACA premiums).",
+        "separately; inside a recapture phase-in the marginal state rate is above the bracket rate.",
     }
     if getattr(plan, "locality", ""):
         out["locality"] = plan.locality

@@ -30,7 +30,6 @@ import toml
 from dataclasses import dataclass, fields
 from datetime import date
 from functools import lru_cache
-from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -109,17 +108,6 @@ class StateTaxParams:
     recap_start_n  -- shape (N_n,) state AGI where benefit recapture begins (np.inf = none)
     recap_width_n  -- shape (N_n,) width of each phase-in, in AGI dollars
     recap_until_n  -- shape (N_n,) highest bracket threshold that starts a recapture tier
-    rx_limit_kn    -- shape (N_rx, N_n) income ceilings of the income-tiered retirement exclusion
-                      (NJ line 28a), lowest first; padding tiers have -inf
-    rx_share_kn    -- shape (N_rx, N_n) share of eligible income excluded in each tier
-    rx_cap_n       -- shape (N_n,) dollar cap on that exclusion (0 = the state has none)
-    rx_age_n       -- shape (N_n,) age by December 31 at which a filer's income becomes eligible
-    rx_earned_n    -- shape (N_n,) earned income at or below which the unused exclusion also covers
-                      other income (NJ line 28b); -1 = no such extension
-    ptd_cap_n      -- shape (N_n,) property tax deduction cap (NJ line 41; 0 = the state has none)
-    ptd_rent_share_n -- shape (N_n,) percent of rent that counts as property tax for that deduction
-    med_floor_pct_n -- shape (N_n,) percent of NJ gross income (line 29) medical expenses must
-                       exceed (NJ Worksheet F line 2: 2); 0 = the state has no medical deduction
     itemized       -- per-year itemized-deduction settings (StateItemizedParams)
 
     The flag arrays are per year because the state can change during the plan.
@@ -141,14 +129,6 @@ class StateTaxParams:
     recap_start_n: np.ndarray
     recap_width_n: np.ndarray
     recap_until_n: np.ndarray
-    rx_limit_kn: np.ndarray
-    rx_share_kn: np.ndarray
-    rx_cap_n: np.ndarray
-    rx_age_n: np.ndarray
-    rx_earned_n: np.ndarray
-    ptd_cap_n: np.ndarray
-    ptd_rent_share_n: np.ndarray
-    med_floor_pct_n: np.ndarray
     itemized: StateItemizedParams
 
 
@@ -288,15 +268,6 @@ def st_credits(
     return credit_n
 
 
-def _read_exclusion_tiers(entry: dict) -> list:
-    """Read retirement_exclusion_tiers as [(income ceiling, share as a decimal), ...], lowest first."""
-    tiers = entry.get("retirement_exclusion_tiers", [])
-    out = [(float(lim), float(pct) / 100.0) for lim, pct in tiers]
-    if any(b[0] <= a[0] for a, b in pairwise(out)):
-        raise ValueError(f"retirement_exclusion_tiers must have increasing income ceilings: {tiers}.")
-    return out
-
-
 def _read_itemized(entry: dict, state: str, N_n: int) -> StateItemizedParams:
     """Read one entry's optional `itemized` table into a length-N_n StateItemizedParams.
 
@@ -402,14 +373,6 @@ def st_taxParams(
     DeltaBar_tn = np.zeros((N_st, N_n))
     sigmaBar_n = np.zeros(N_n)
     recap = np.tile(np.array([[np.inf], [1.0], [0.0]]), (1, N_n))  # start, width, until
-    tiers_s, tiers_m = _read_exclusion_tiers(entry_single), _read_exclusion_tiers(entry_mfj)
-    N_rx = max(len(tiers_s), len(tiers_m), 1)
-    rx_limit_kn = np.full((N_rx, N_n), -np.inf)
-    rx_share_kn = np.zeros((N_rx, N_n))
-    rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))  # cap, age, earned-income limit
-    ptd_cap_n = np.zeros(N_n)
-    ptd_rent_share_n = np.zeros(N_n)
-    med_floor_pct_n = np.zeros(N_n)
     item_s = _read_itemized(entry_single, state, N_n)
     item_m = _read_itemized(entry_mfj, state, N_n)
     itemized = StateItemizedParams.empty(N_n)
@@ -430,27 +393,6 @@ def st_taxParams(
                 entry.get("recapture_width", 50000.0) * gb,
                 entry["recapture_until"] * gb,
             ]
-        tiers = tiers_m if filing_status_n[n] == 1 else tiers_s
-        if tiers:
-            # The exclusion's ceilings and cap are exemption amounts.
-            ge = g_exemptions[n]
-            for k, (lim, share) in enumerate(tiers):
-                rx_limit_kn[k, n] = lim * ge
-                rx_share_kn[k, n] = share
-            earned = entry.get("retirement_exclusion_earned_limit", -1)
-            rx[:, n] = [
-                entry["retirement_exclusion_cap"] * ge,
-                entry.get("retirement_exclusion_age", 0),
-                earned * ge if earned >= 0 else -1.0,
-            ]
-        ptd = entry.get("property_tax_deduction")
-        if ptd is not None:
-            gp = np.asarray(gamma_n, dtype=float) if ptd.get("indexed", False) else np.ones(len(gamma_n))
-            ptd_cap_n[n] = float(ptd["cap"]) * gp[n]
-            ptd_rent_share_n[n] = float(ptd["rent_share"])
-        mded = entry.get("medical_deduction")
-        if mded is not None:
-            med_floor_pct_n[n] = float(mded["floor_pct"])
         _copy_year(itemized, item_m if filing_status_n[n] == 1 else item_s, n)
 
     # --- Per-filer exemptions, added to the state deduction for each living filer ---
@@ -525,14 +467,6 @@ def st_taxParams(
         recap_start_n=recap[0],
         recap_width_n=recap[1],
         recap_until_n=recap[2],
-        rx_limit_kn=rx_limit_kn,
-        rx_share_kn=rx_share_kn,
-        rx_cap_n=rx[0],
-        rx_age_n=rx[1],
-        rx_earned_n=rx[2],
-        ptd_cap_n=ptd_cap_n,
-        ptd_rent_share_n=ptd_rent_share_n,
-        med_floor_pct_n=med_floor_pct_n,
         itemized=itemized,
     )
 
@@ -565,13 +499,6 @@ def st_schedule(
     flags = {name: np.zeros(N_n, dtype=bool) for name in flag_names}
     credit_n = np.zeros(N_n)
     recap = np.tile(np.array([[np.inf], [1.0], [0.0]]), (1, N_n))
-    N_rx = max((p.rx_limit_kn.shape[0] for p in per_state.values()), default=1)
-    rx_limit_kn = np.full((N_rx, N_n), -np.inf)
-    rx_share_kn = np.zeros((N_rx, N_n))
-    rx = np.tile(np.array([[0.0], [0.0], [-1.0]]), (1, N_n))
-    ptd_cap_n = np.zeros(N_n)
-    ptd_rent_share_n = np.zeros(N_n)
-    med_floor_pct_n = np.zeros(N_n)
     itemized = StateItemizedParams.empty(N_n)
 
     for n, s in enumerate(states_n):
@@ -590,13 +517,6 @@ def st_schedule(
         for name, arr in flags.items():
             arr[n] = getattr(p, name)[n]
         recap[:, n] = [p.recap_start_n[n], p.recap_width_n[n], p.recap_until_n[n]]
-        k = p.rx_limit_kn.shape[0]
-        rx_limit_kn[:k, n] = p.rx_limit_kn[:, n]
-        rx_share_kn[:k, n] = p.rx_share_kn[:, n]
-        rx[:, n] = [p.rx_cap_n[n], p.rx_age_n[n], p.rx_earned_n[n]]
-        ptd_cap_n[n] = p.ptd_cap_n[n]
-        ptd_rent_share_n[n] = p.ptd_rent_share_n[n]
-        med_floor_pct_n[n] = p.med_floor_pct_n[n]
         _copy_year(itemized, p.itemized, n)
 
     return StateTaxParams(
@@ -610,14 +530,6 @@ def st_schedule(
         recap_start_n=recap[0],
         recap_width_n=recap[1],
         recap_until_n=recap[2],
-        rx_limit_kn=rx_limit_kn,
-        rx_share_kn=rx_share_kn,
-        rx_cap_n=rx[0],
-        rx_age_n=rx[1],
-        rx_earned_n=rx[2],
-        ptd_cap_n=ptd_cap_n,
-        ptd_rent_share_n=ptd_rent_share_n,
-        med_floor_pct_n=med_floor_pct_n,
         credit_n=credit_n,
         itemized=itemized,
         **flags,
@@ -667,19 +579,6 @@ def state_recapture(
     k = reached[-1]
     base = theta[k - 1] * lower[k] - bracket_tax(lower[k], theta, Delta)
     return base + (theta[k] - theta[k - 1]) * lower[k] * phase(agi - lower[k])
-
-
-def exclusion_share(income: float, limits: np.ndarray, shares: np.ndarray) -> float:
-    """Share of eligible income an income-tiered retirement exclusion allows (NJ-1040 line 28a).
-
-    The tier is the first whose ceiling *income* does not exceed; above the last ceiling nothing is
-    excluded. The cliffs are the statute's: NJ's married filers with income of 100,000 exclude all of
-    their eligible income up to the cap, and with 100,001 only half of it.
-    """
-    for lim, share in zip(limits, shares, strict=True):
-        if income <= lim:
-            return float(share)
-    return 0.0
 
 
 def valid_states() -> list:

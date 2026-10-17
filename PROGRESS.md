@@ -149,7 +149,7 @@ Upstream: the pinned loop was filed as #171 and **declined** (2026-10-05/06): a 
 
 ## Later phases (from requirements.md)
 
-2 housing ledger (rent vs buy, property tax) · 3 itemized deductions · 4 healthcare cost model · 5 part-time work and SS earnings test · 6 scenario sweep and report · 7 NJ specifics (exclusion done; 65+ exemption done upstream in 2026.10.3; property tax deduction done with Phase 2; left: the $50 credit is out by decision)
+2 housing ledger (rent vs buy, property tax) · 3 itemized deductions · 4 healthcare cost model · 5 part-time work and SS earnings test · 6 scenario sweep and report · 7 NJ specifics (**dropped 2026-10-17 with NJ itself**; exclusion done; 65+ exemption done upstream in 2026.10.3; property tax deduction done with Phase 2; left: the $50 credit is out by decision)
 
 ## Phase 2 — housing ledger and property tax (2026-10-07; the ledger was replaced by Phase 2b)
 
@@ -1356,6 +1356,42 @@ until `issue-ls-ltcg.md` is fixed upstream). The user decides. Fork impact eithe
 upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fork edit in
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
+
+## NJ dropped from the investigation (2026-10-17, on `claude/friendly-mccarthy-585okd`)
+
+User's decision: NJ is unlikely as a place to live, and with moves it complicates things for no
+discernible benefit. Upstream's NJ (brackets, one move) stays. Measured on the fork at `da320bc`:
+
+- **Fork NJ code**: about 250 added lines in `plan.py` (fork-only functions: the tiered exclusion,
+  `_add_state_tiered_exclusion` 95 lines, `_exclusion_shortfall`, `_set_tiered_exclusion`,
+  `_tiered_exclusion_free`, `_refix_boundary_tiers`, `_tiered_exclusion_implied`; line 41
+  `_add_property_tax_deduction`; line 31 `_add_nj_medical_deduction`, `_nj_medical_paid`,
+  `_nj_medical_floor_flags`, `_nj_medical_shortfall`), plus `tax_state.py` exclusion tiers, the
+  `zx` local-search family, the `RX_NODE_LIMIT` / `_rx_fixed` handling in the loop, explain entries
+  and data. NJ also appears in shared code: the itemizing and medical-premium functions (NJ line 31),
+  `_ssCapProbe`, `_node_limit`.
+- **Tests**: `test_state_tiered_exclusion.py` (19), `test_nj_medical.py` (12), the NJ cases in
+  `test_budget.py`, `test_state_residency.py`, `test_state_itemized.py`: about 255 s of CPU,
+  roughly 14% of the suite's CPU (one minute of its eight on 4 cores).
+- **Runs**: NJ variants were the slow and unstable ones. "Convex" 4-7 min in NJ vs seconds in NY;
+  local search 98-227 s vs 54-184 s on the probe couple; NJ `maxBequest` runs stopping at the
+  exclusion node cap moved $2.2k in one day.
+- **Merges**: of the recorded upstream merges, one (2026-10-10, node caps) needed NJ-specific work
+  (`RX_NODE_LIMIT` routed through `Plan._node_limit`); the others' conflicts were docs, tests and the
+  loop region.
+- **Work avoided**: Stay NJ / ANCHOR / Senior Freeze, the next item planned, comparable in size to
+  STAR (data check plus about 1,800 changed lines). Without it, every NY-vs-NJ owner comparison was
+  biased toward NY, so NJ could not be compared fairly without doing it.
+
+Decision taken: **drop NJ from the investigation, keep its code.** No new NJ work and no NJ variants
+in decision runs; `CLAUDE.md`, `phase1-revised.md` and `phase0-scenarios.md` (section 3: the NJ
+commands replaced by a move within NY) updated. Moves within NY (locality, STAR school district)
+stay; they need the fork's multi-move `Residence`.
+
+Not done: removing the NJ code. It would save the test minute and some merge exposure. It costs a
+session of edits in shared itemizing, medical-premium and loop code, which have tests that pass now.
+After it, Owl would still run an NJ case, but on upstream's NJ, with no exclusion (wrong for
+retirees). Worth doing only if the NJ code starts getting in the way.
 
 ## STAR branch merged (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 

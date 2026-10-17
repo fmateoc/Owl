@@ -58,10 +58,14 @@ done
 ```bash
 owlcli compare otherFiles/Case_us.toml --set basic_info.locality=Yonkers
 owlcli compare otherFiles/Case_us.toml --set basic_info.locality=NYC
-owlcli compare otherFiles/Case_us.toml --set basic_info.state=NJ
-# A later move, e.g. to NJ in 2032:
-owlcli compare otherFiles/Case_us.toml --set 'basic_info.moves=[{"year": 2032, "state": "NJ"}]'
+# A later move within NY, e.g. from Yonkers to another Westchester district in 2032:
+owlcli compare otherFiles/Case_us.toml --set 'basic_info.moves=[{"year": 2032, "state": "NY", "locality": "", "school_district": "City of Rye / Rye"}]'
 ```
+
+**NJ is out of the investigation (2026-10-17).** The household does not expect to live there. The
+NJ rules the fork models still work (exclusion, line 41, line 31), but Stay NJ / ANCHOR / Senior
+Freeze are not modeled, so an NJ owner comparison would lean NY, and NJ variants are no longer run.
+The NJ notes below are kept for the record.
 
 NY benefit recapture (above $107,650 of NY AGI) applies automatically, and the Yonkers surcharge
 includes it. NJ's retirement-income exclusion (lines 28a-28c) is modeled exactly (a MILP; see

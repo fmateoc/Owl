@@ -122,3 +122,10 @@ Evidence that the NY amounts are statutory dollars: the 2025 IT-201-I rate sched
 - Keep `_SC_PARAMS`, the residency schedule and the local layer as they are.
 - Generalise the recapture plumbing into "AGI-gated state amounts" when the NJ exclusion lands (one loop quantity per state rule, both computed from `st_agi_n`/`st_ti_n`), rather than adding NJ-specific code paths.
 - Residency and locality comparisons: decide on differences above ~1%, or rerun with Medicare and SS taxability exact, as the loop-noise section says.
+
+**2026-10-17: NJ dropped from the investigation** (user). The household does not expect to live in NJ,
+so NJ variants and moves between states are no longer part of the decision. The NJ code already
+built (items 4 and 5 above: the exclusion and the property tax deduction, plus Phase 3's line 31)
+stays and keeps passing its tests, but is not extended: Stay NJ / ANCHOR / Senior Freeze are not
+modeled. Next is Phase 5 (part-time work / SS earnings test). PROGRESS.md "NJ dropped from the
+investigation" gives the measured costs behind the decision.

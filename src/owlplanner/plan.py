@@ -7063,6 +7063,10 @@ class Plan:
         skip = ("mylog", "_lp_basis")
         warm_keys = ("M_n", "ACA_n", "J_n", "I_n", "G_n", "Q_n", "U_n", "MAGI_n", "MAGI_aca_n", "gain_fraction_in",
                      "_tax_tiebreak_on")
+        # Fork: the fork's own loop parameters too (NJ exclusion free set, NY recapture, itemizing
+        # branches and floors). Cold, each NJ probe re-solved its first iterate without the exclusion
+        # and re-grew the free set through extra MILPs. Psi_n stays out: "convex" sets SS by region.
+        warm_keys += tuple(k for k in self._SC_PARAMS if k not in warm_keys and k != "Psi_n")
         if not run(None) or not self._ss_cvx:
             return None
         if self.convergenceType == "unsolvable iterate":

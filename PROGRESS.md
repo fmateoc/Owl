@@ -1178,6 +1178,33 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## "Convex" cap probe: the fork's loop parameters warm-started (2026-10-17, on `claude/eager-cray-s0fvks`)
+
+The SS cap probe (upstream `ss-convex`, `_ssCapProbe`) re-solves the plan once per year it tries,
+warm-started from the best plan's loop quantities; upstream's `warm_keys` covered its own only, so
+the fork's `_SC_PARAMS` (NJ exclusion free set `RXF_n`, NY recapture `STR_n`, NYIR, the itemizing
+branches and floors, NJ line 31) restarted cold in every probe: an NJ probe re-solved its first
+iterate without the exclusion and re-grew the free set through extra MILPs. Fix (`plan.py`, 4 lines
+in `_ssCapProbe`, marked "Fork"): `warm_keys` += every `_SC_PARAMS` entry except `Psi_n` ("convex"
+sets SS by region). `_rx_fixed` (tiers kept after a node-capped MILP) is not carried, so a probe
+can still change tiers.
+
+Measured (`convex_fork.py convex`, `model-review/ss-loop/convex_fork_warm_2026-10-17.txt` against
+`convex_fork_c22_2026-10-16.txt`; date frozen at 2026-10-15): NJ 2032 376 -> 271 s, NJ+mortgage 2032
+542 -> 407 s, NJ 2099 321 -> 220 s, NJ+mortgage 2099 522 -> 329 s (-25% to -37%); bequests the same
+except NJ+mortgage 2032 705,665 -> 705,656 (-$9); NY unchanged (1.7-3.1 s, same bequests; NY 2032's
+residual $171 -> $0). Where the rest goes (`probe_trace.py`, NJ 2099): 27 probes (23 + 4 in a second
+pass, 3 kept) take 205 of 217 s, 3-12 s each, no node cap hit: each probe is a full NJ loop solve
+whose iterations are MILPs (tier binaries free). Local search on the same cases: 81-176 s.
+
+Not done (a design choice, not just speed): pin the best plan's NJ tiers during probes (`_rx_fixed`
+from its `zx`), making probes LPs, then re-solve the winning regions with free tiers. Probes would
+then judge each SS move at fixed tiers.
+
+Test: `tests/plan/test_ss_convex_fork.py` (the probe's warm start carries every fork `_SC_PARAMS`
+key and not `Psi_n`; fails without the fix, listing the missing keys). Full suite with the fix
+**3228 passed, 1 skipped** (7:46) before the new test; the new test passes (3.5 s).
+
 ## #193: upstream experiment branch `ss-binaries` measured, not merged; deleted upstream (2026-10-16)
 
 The user posted `issue-193-reply-2.md`. The maintainer then opened `ss-binaries` (`abd39b4`,
@@ -1544,6 +1571,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-17, fork `_SC_PARAMS` warm-started in the "convex" cap probe: full suite **3228 passed, 1 skipped** (7:46) with the fix, then `test_ss_convex_fork.py` added (1 passed): 3229 expected.
 
 2026-10-16, after merging upstream `ss-convex` `c22f46d`: **3228 passed, 1 skipped** (7:30).
 

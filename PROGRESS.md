@@ -1366,10 +1366,28 @@ sections kept, STAR first) and CLAUDE.md's test-count line; `localsearch.py` aut
 duplicate definitions (AST scan of the 27 changed Python files). Full suite **3250 passed, 1 skipped**
 (8:23; = 3234 + STAR's 16). flake8/ruff: only upstream's known lines.
 
-Open, not measured: step (b) still pins `zst` while SS moves. STAR's Enhanced test reads the income
-of two years earlier, so an SS move that needs a STAR flip is blocked the same way #197's needed a
-`zl` flip. Check on a NY owner turning 65 near the Enhanced standard before relying on local search
-for STAR decisions.
+Checked the same day: does step (b) pinning `zst` block STAR moves? (`fork-notes/star/zst_step_b.py`,
+output `zst_step_b_2026-10-17.txt`; NY Yonkers owner couple of `tests/tax/test_star.py`, budget $80k
+core + $25k property tax, SS $4,200/$3,600 at 67, $900k/$600k tax-deferred, taxable $900k/$1.1M/$1.3M
+each, born 1960/61 (65+ now) or 1962/63 (65 in 2027/28), `maxBequest`, statutory law.) Mechanism: a
+pinned `zst = 1` caps the year-(n-2) STAR income, which includes taxable SS, at the standard, so an
+SS move raising it is blocked; a pinned 0 cannot collect the credit.
+
+| taxable | born | LS as is | LS, `zst` free in (b) | Enhanced yrs |
+|---|---|---:|---:|---|
+| $900k | 1960/61 | 4,454,138 | 4,454,138 | 28/28 both |
+| $900k | 1962/63 | 4,425,039 | 4,425,724 (residual $0 -> $2,230) | 29/29 both |
+| $1.1M | 1960/61 | 5,006,003 | 5,006,003 | 7/28 both |
+| $1.1M | 1962/63 | 5,017,885 | 5,006,116 (-$11,769) | 24 -> 20 of 29 |
+| $1.3M | 1960/61 | 5,580,488 | 5,581,689 (residual $1 -> $4,718) | 7/28 both |
+| $1.3M | 1962/63 | 5,591,242 | 5,591,242 (residual $9,714 both) | 8/29 both |
+
+No systematic loss from pinning `zst`: freeing it changed nothing in 3 cases, gained only with an
+inconsistent plan in 2, and lost $11.8k in 1. **Not changed.** Not established: how far local search
+is from the optimum on these cases. The branch-and-bound preset (`maxTime` 600) ran > 80 min per case;
+the 2-hour background limit stopped the batch with one result, $900k / 1962-63: 4,421,378 at a 1.5%
+gap with $12,802 of SS residual, below local search's 4,425,039, so not a usable reference. Also not
+traced: the $9,714 residual in the $1.3M / 1962-63 case (both variants).
 
 ## Upstream dev 7abed19 merged; main fast-forwarded (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 

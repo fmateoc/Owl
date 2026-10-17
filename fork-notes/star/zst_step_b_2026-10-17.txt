@@ -1,0 +1,17 @@
+# zst_step_b.py on the fork at ce8a9d4 (#197 fix + STAR), run 2026-10-17, date frozen at 2026-10-15; 4 runs at a time on 4 cores.
+# ls = local-search preset as is; ls-zst = step (b) also leaves zst free; bb = branch-and-bound preset, maxTime 600.
+## local search (first batch, residual total only)
+ls      taxable   900 dob 1960/1961 ss 4200/3600 | bequest   4,454,138 | Enhanced 28/28 yrs | STAR  63,222 |  320.9 s | res 0 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable   900 dob 1960/1961 ss 4200/3600 | bequest   4,454,138 | Enhanced 28/28 yrs | STAR  63,222 |  319.7 s | res 0 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls      taxable   900 dob 1962/1963 ss 4200/3600 | bequest   4,425,039 | Enhanced 29/29 yrs | STAR  65,623 |  351.3 s | res 0 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable   900 dob 1962/1963 ss 4200/3600 | bequest   4,425,724 | Enhanced 29/29 yrs | STAR  65,623 |  302.9 s | res 2,230 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls      taxable  1100 dob 1960/1961 ss 4200/3600 | bequest   5,006,003 | Enhanced  7/28 yrs | STAR  33,164 |  318.5 s | res 1 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable  1100 dob 1960/1961 ss 4200/3600 | bequest   5,006,003 | Enhanced  7/28 yrs | STAR  33,164 |  319.4 s | res 1 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls      taxable  1100 dob 1962/1963 ss 4200/3600 | bequest   5,017,885 | Enhanced 24/29 yrs | STAR  58,302 |  351.6 s | res 1 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable  1100 dob 1962/1963 ss 4200/3600 | bequest   5,006,116 | Enhanced 20/29 yrs | STAR  52,737 |  397.0 s | res 0 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls      taxable  1300 dob 1960/1961 ss 4200/3600 | bequest   5,580,488 | Enhanced  7/28 yrs | STAR  33,164 |  329.1 s | res 1 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable  1300 dob 1960/1961 ss 4200/3600 | bequest   5,581,689 | Enhanced  7/28 yrs | STAR  33,164 |  331.4 s | res 4,718 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls      taxable  1300 dob 1962/1963 ss 4200/3600 | bequest   5,591,242 | Enhanced  8/29 yrs | STAR  36,031 |  319.8 s | res 9,714 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+ls-zst  taxable  1300 dob 1962/1963 ss 4200/3600 | bequest   5,591,242 | Enhanced  8/29 yrs | STAR  36,031 |  325.8 s | res 9,714 | gap -1.0e+00 | local search (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)
+## branch-and-bound (second batch; stopped by the 2-hour background limit, only this run finished)
+bb      taxable   900 dob 1962/1963 ss 4200/3600 | bequest   4,421,378 | Enhanced 29/29 yrs | STAR  65,623 | 4800.7 s | res 12,802 [SS=12,802] | gap 1.5e-02 | branch-and-bound (SS, IRMAA, LTCG, NIIT, senior bonus, STAR)

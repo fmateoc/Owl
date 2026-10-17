@@ -1199,8 +1199,9 @@ only): `upstream/ss-convex` + `upstream/dev` merged (clean, `7d1169c`) + `fb8b10
 1 skipped; the two new tests fail without the change. Found while testing: under the tests' frozen
 date the #193 couple at $105k leaves only $1,167 of SS residual (bar $1,550) although the loop is
 >$10k short, so a residual warning catches non-settling, not settled-short; stated in the PR.
-PR text `fork-notes/pr-193-body.md`. Not pushed: waiting for the user's go (push the branch to the
-fork and open the PR against `mdlacasse/Owl` `dev`).
+PR text `fork-notes/pr-193-body.md`. On the user's go, branch pushed to the fork as `ss-convex-pr`;
+the session could not open the PR on `mdlacasse/Owl` (access scoped to the fork; a second repo named
+`owl` cannot be attached), so the user opens it from the compare link in `pr-193-body.md`.
 
 ## "Convex" cap probe: the fork's loop parameters warm-started (2026-10-17, on `claude/eager-cray-s0fvks`)
 

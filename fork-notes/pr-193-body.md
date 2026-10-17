@@ -1,6 +1,6 @@
 # PR for #193: "convex" + the two points from the thread, for the user to open
 
-Status: branch ready 2026-10-17, not pushed. The maintainer on #193 (2026-10-17, read from the issue
+Status: branch **pushed** to the fork as `ss-convex-pr` (2026-10-17, `fb8b10e`); the PR could not be opened from the session (its GitHub access covers `fmateoc/owl` only, and `mdlacasse/owl` cannot be attached alongside a repo of the same name), so the user opens it: https://github.com/mdlacasse/Owl/compare/dev...fmateoc:Owl:ss-convex-pr?expand=1 with the title and text below. The maintainer on #193 (2026-10-17, read from the issue
 page): "Can you bundle both points above in a single PR and I'll test and push." Read as the two
 points in our two comments above his: (1) when the loop ends at the cap or in a cycle with a large SS
 residual, point to an exact method (first reply); (2) the Summary labels a "convex" solve "loop"

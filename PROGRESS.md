@@ -1204,6 +1204,8 @@ PR text `fork-notes/pr-193-body.md`. On the user's go, branch pushed to the fork
 the session could not open the PR on `mdlacasse/Owl` (access scoped to the fork; a second repo named
 `owl` cannot be attached), so the user opened it: **PR #196** (2026-10-17). Awaiting the maintainer's test and merge.
 
+2026-10-17: `main` fast-forwarded to `claude/eager-cray-s0fvks` (`066b8d6` -> `c5a419e`, 89 commits, no force; then this note).
+
 ## "Convex" cap probe: the fork's loop parameters warm-started (2026-10-17, on `claude/eager-cray-s0fvks`)
 
 The SS cap probe (upstream `ss-convex`, `_ssCapProbe`) re-solves the plan once per year it tries,

@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-15)
+# Owl fork — progress (as of 2026-10-17)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -31,7 +31,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16) |
-| PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync |
+| PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md` (version A keep, B drop), user's call |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
@@ -1232,6 +1232,45 @@ then judge each SS move at fixed tiers.
 Test: `tests/plan/test_ss_convex_fork.py` (the probe's warm start carries every fork `_SC_PARAMS`
 key and not `Psi_n`; fails without the fix, listing the missing keys). Full suite with the fix
 **3228 passed, 1 skipped** (7:46) before the new test; the new test passes (3.5 s).
+
+## PR #196: is "convex" worth keeping? (2026-10-17, on `claude/friendly-mccarthy-585okd`)
+
+Maintainer on PR #196 (relayed): "Are you sure you want to keep the ss-convex implementation? My
+tests were mixed. I am not sure this adds much. Your call." Measured on stock `fb8b10e` (the PR
+head) in a scratch worktree, date frozen at 2026-10-15; output
+`fork-notes/model-review/ss-loop/pr196_check_2026-10-17.txt`, scripts `pr196_*.py` beside it. Times
+are from up to 11 concurrent runs on 4 cores (relative only), except the uncontended john+sally
+rerun (same objectives: the runs are deterministic).
+
+- **Paired, every other family exact** (IRMAA, LTCG, NIIT, senior bonus, ACA where set, on
+  "optimize", branch-and-bound, `maxTime=900`), only SS changed, "convex" / "optimize":
+  john+sally 31,693 / 31,693; helen+ruth 195,201 / 195,246; joe 93,109 / 93,057; morgan 44,212 /
+  44,201; kim+sam-bequest 1,961,483 / 1,961,326 (the "optimize" run stopped by hand at its second
+  iterate, each MILP at `maxTime`). All within the reported gaps (0.2-0.5%). The branch-and-bound
+  preset on john+sally: 31,778 (gap 0.19%).
+- **Other families on the loop (the default)**: "convex" vs SS "optimize" differ in both
+  directions (john+sally 28,898 / 18,481; morgan 41,747 / 40,601; kim+sam 1,958,030 / 1,953,516;
+  jordan+taylor-qcd 2,263,567 / 2,260,012; joe 92,692 / 92,869; jack+jill 102,759 / 102,884;
+  helen+ruth 194,421 / 194,151; alex+jamie equal). "Optimize" left residuals of $15.5-20.8k
+  (mostly LTCG) in helen+ruth, joe and jack+jill; "convex" $0 in all eight. On john+sally, both with
+  $0 residual, taxable SS equals the IRS formula in every year of both plans (`pr196_john_sally.py`);
+  the gap is the IRMAA loop's fixed point ("convex" converts less in 2026-27, no IRMAA tier in
+  2028-30, Medicare $136.3k vs $143.2k lifetime). This is the likely source of "mixed".
+- **Speed:** with the rest on the loop "convex" is fast (john+sally 1.8 s vs 14.7 s uncontended);
+  with the rest on "optimize" it is 2.3-4.9x slower than SS "optimize" (helen+ruth 867 / 252 s,
+  joe 584 / 251, morgan 1,208 / 249; contended): the cap probe re-solves a MILP per year. The
+  presets set SS to "optimize" (`_applyBreakpointOptions`), so "convex" is a loop-mode tool only.
+- **Side finding (not filed):** the local-search preset returns 20,004 on john+sally, far below the
+  branch-and-bound preset (31,778) and "convex" alone (28,898). Same value uncontended (20.1 s).
+  Not yet traced. The fork's rule "local search is never worse than the loop" still holds here (loop
+  16,803), but local search can sit far below the global optimum.
+
+Reply draft `fork-notes/pr-196-reply.md`: version A (keep, opt-in for loop users, with the evidence)
+and version B (drop; the PR cut to the warning, pointing to "optimize" / local search). The user
+decides. Fork impact either way: the decision recipe is local search, which does not use "convex"; if
+upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fork edit in
+`_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
+follow-ups: a past SS claiming age).
 
 ## #193: upstream experiment branch `ss-binaries` measured, not merged; deleted upstream (2026-10-16)
 

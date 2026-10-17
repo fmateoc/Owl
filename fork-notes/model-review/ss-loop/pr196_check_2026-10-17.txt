@@ -1,0 +1,111 @@
+# PR #196 check, stock fb8b10e (fmateoc:ss-convex-pr = upstream ss-convex c22f46d + dev 2b34633 + label/warning), run 2026-10-17, date frozen at 2026-10-15.
+# Times: up to 11 runs concurrently on 4 cores, so only relative; uncontended john+sally at the end.
+## pr196_cmp.py: SS loop / convex / optimize (other families on the loop) / local-search preset / LS preset with convex
+Case_alex+jamie        loop                    228,369     0.6s loop                               res      802 [SS=802] gap -1.0
+Case_alex+jamie        convex                  228,357     3.3s loop; SS: convex                   res        0 [] gap -1.0
+Case_alex+jamie        SS optimize             228,357    41.4s branch-and-bound (SS)              res        0 [] gap 9.316711643664004e-05
+Case_alex+jamie        LS preset               229,688   102.6s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_alex+jamie        LS preset+convex        229,688    89.1s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_helen+ruth        loop                    194,069     0.5s loop                               res      612 [SS=612] gap -1.0
+Case_helen+ruth        convex                  194,421     3.3s loop; SS: convex                   res        0 [] gap -1.0
+Case_helen+ruth        SS optimize             194,151    55.9s branch-and-bound (SS)              res   20,820 [IRMAA=5,741 NIIT=1,846 LTCG=13,233] gap 4.6422199830686175e-05
+Case_helen+ruth        LS preset               195,210   119.9s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_helen+ruth        LS preset+convex        195,210    98.8s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_jack+jill         loop                    102,535     3.6s branch-and-bound (IRMAA)           res    3,766 [SS=1,382 NIIT=302 LTCG=2,082] gap 0.0
+Case_jack+jill         convex                  102,759    89.2s branch-and-bound (IRMAA); SS: conv res        0 [] gap 0.0
+Case_jack+jill         SS optimize             102,884   274.7s branch-and-bound (SS, IRMAA)       res   15,506 [SS=55 NIIT=2,176 deduction=19 LTCG=13,255] gap 0.0029770271570331353
+Case_jack+jill         LS preset               103,304   120.7s local search (SS, IRMAA, LTCG, NII res        2 [LTCG=2] gap -1.0
+Case_jack+jill         LS preset+convex        103,304    97.4s local search (SS, IRMAA, LTCG, NII res        2 [LTCG=2] gap -1.0
+Case_joe               loop                     92,575     0.3s loop                               res        3 [LTCG=3] gap -1.0
+Case_joe               convex                   92,692     4.5s loop; SS: convex                   res        0 [] gap -1.0
+Case_joe               SS optimize              92,869    86.3s branch-and-bound (SS)              res   20,780 [IRMAA=1,148 NIIT=359 LTCG=19,273] gap 8.189380936574467e-05
+Case_joe               LS preset                93,108   129.5s local search (SS, IRMAA, LTCG, NII res        7 [LTCG=7] gap -1.0
+Case_joe               LS preset+convex         93,108   101.2s local search (SS, IRMAA, LTCG, NII res        7 [LTCG=7] gap -1.0
+Case_john+sally        loop                     16,803     0.5s loop                               res        0 [] gap -1.0
+Case_john+sally        convex                   28,898     4.0s loop; SS: convex                   res        0 [] gap -1.0
+Case_john+sally        SS optimize              18,481    37.5s branch-and-bound (SS)              res        0 [] gap 0.0
+Case_john+sally        LS preset                20,004    47.1s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_john+sally        LS preset+convex         20,004    47.9s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_jordan+taylor-qcd loop                  2,258,944     0.5s loop                               res        0 [] gap -1.0
+Case_jordan+taylor-qcd convex                2,263,567     3.7s loop; SS: convex                   res        0 [] gap -1.0
+Case_jordan+taylor-qcd SS optimize           2,260,012   202.2s branch-and-bound (SS)              res        0 [] gap 0.002995226523300036
+Case_jordan+taylor-qcd LS preset             2,278,835   108.7s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_jordan+taylor-qcd LS preset+convex      2,278,835    84.8s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_kim+sam-bequest   loop                  1,944,071     1.4s loop                               res      814 [SS=814] gap -1.0
+Case_kim+sam-bequest   convex                1,958,030     7.0s loop; SS: convex                   res        0 [] gap -1.0
+Case_kim+sam-bequest   SS optimize           1,953,516   874.0s branch-and-bound (SS)              res        0 [] gap 9.99513825138792e-05
+Case_kim+sam-bequest   LS preset             1,958,801   128.6s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_morgan            loop                     40,889     1.1s loop                               res    1,795 [SS=1,792 ACA=3] gap -1.0
+Case_morgan            convex                   41,747     9.3s loop; SS: convex                   res        0 [] gap -1.0
+Case_morgan            SS optimize              40,601    31.3s branch-and-bound (SS)              res       19 [ACA=19] gap 9.730095285163193e-05
+Case_morgan            LS preset                44,200   236.2s local search (SS, IRMAA, ACA, LTCG res        1 [] gap -1.0
+Case_morgan            LS preset+convex         44,209   167.1s local search (SS, IRMAA, ACA, LTCG res        1 [] gap -1.0
+## pr196_john_sally_exact.py: john+sally, exact Medicare
+BB preset solved 31,778 21.1s branch-and-bound (SS, IRMAA, LTCG, NIIT, senior bonus) res 0 gap 0.0018975531768493535
+conv+medopt solved 31,693 30.7s branch-and-bound (IRMAA); SS: convex res 0 gap 0.0
+ssopt+medopt solved 31,693 29.6s branch-and-bound (SS, IRMAA) res 0 gap 0.00197796754190238
+## pr196_pair.py: every family exact (branch-and-bound, maxTime=900) except SS; SS convex vs optimize
+Case_helen+ruth        SS convex   solved       195,201  867.2s branch-and-bound (IRMAA, LTCG, NIIT, senior bonus); SS: convex res 0 gap 2.95e-03
+Case_helen+ruth        SS optimize solved       195,246  252.4s branch-and-bound (SS, IRMAA, LTCG, NIIT, senior bonus) res 0 gap 3.00e-03
+Case_joe               SS convex   solved        93,109  584.1s branch-and-bound (IRMAA, LTCG, NIIT); SS: convex res 0 gap 2.93e-03
+Case_joe               SS optimize solved        93,057  251.2s branch-and-bound (SS, IRMAA, LTCG, NIIT) res 5 gap 3.00e-03
+Case_kim+sam-bequest   SS convex   solved     1,961,483  906.1s branch-and-bound (IRMAA, LTCG, NIIT); SS: convex res 0 gap 2.74e-03
+Case_morgan            SS convex   solved        44,212 1207.9s branch-and-bound (IRMAA, ACA, LTCG, NIIT); SS: convex res 1 gap 2.98e-03
+Case_morgan            SS optimize solved        44,201  248.6s branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT) res 1 gap 2.96e-03
+Case_kim+sam-bequest   SS optimize stopped by hand after 2 iterations (each at maxTime=900 s): Iter 01 f $1,961,326, gap 5.2e-03, residual $16,082 (not final)
+## uncontended, john+sally
+Case_john+sally        loop                     16,803     0.1s loop                               res        0 [] gap -1.0
+Case_john+sally        convex                   28,898     1.8s loop; SS: convex                   res        0 [] gap -1.0
+Case_john+sally        SS optimize              18,481    14.7s branch-and-bound (SS)              res        0 [] gap 0.0
+Case_john+sally        LS preset                20,004    20.1s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+Case_john+sally        LS preset+convex         20,004    21.2s local search (SS, IRMAA, LTCG, NII res        0 [] gap -1.0
+## pr196_john_sally.py: john+sally, convex vs SS optimize (other families on the loop), totals in today's $
+convex bequest 28,898 status solved n_d 30 method loop; SS: convex
+   total T          479,813
+   total st         190,967
+   total U            2,266
+   total J                0
+   total M          136,349
+   total x          595,495
+   total tss      1,170,808
+   total form     1,170,808
+optimize bequest 18,481 status solved n_d 30 method branch-and-bound (SS)
+   total T          475,719
+   total st         188,046
+   total U            2,226
+   total J              302
+   total M          143,239
+   total x          637,448
+   total tss      1,125,850
+   total form     1,125,850
+year  ss | conv: tss formula x  T  M | opt: tss formula x T M
+2026       0 |       0       0  113,502  30,406      0 |       0       0  138,740  35,932      0
+2027       0 |       0       0  215,844  30,283      0 |       0       0  241,771  35,932      0
+2028       0 |       0       0  161,010  29,845  4,870 |       0       0  152,426  33,307  7,166
+2029       0 |       0       0   30,848  30,912  4,870 |       0       0   28,552  30,912  7,166
+2030  52,800 |  44,880  44,880   38,768  30,912  4,870 |  44,880  44,880   36,472  30,912  7,166
+2031  57,600 |  48,960  48,960   35,523  29,686  4,870 |  48,960  48,960   39,488  30,912  4,870
+2032  57,600 |  23,375  23,375        0   3,677  4,870 |  23,375  23,375        0   3,677  4,870
+2033  57,600 |  24,099  24,099        0   3,786  4,870 |  24,099  24,099        0   3,786  4,870
+2034  57,600 |  24,804  24,804        0   3,892  4,870 |  24,804  24,804        0   3,892  4,870
+2035  57,600 |  25,490  25,490        0   3,994  4,870 |  25,490  25,490        0   3,994  4,870
+2036  57,600 |  48,960  48,960        0  14,121  4,870 |  26,157  26,157        0   4,095  4,870
+2037  57,600 |  48,960  48,960        0  14,121  4,870 |  26,806  26,806        0   4,192  4,870
+2038  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2039  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2040  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2041  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2042  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2043  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2044  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2045  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2046  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2047  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2048  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2049  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2050  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2051  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2052  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2053  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2054  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870
+2055  57,600 |  48,960  48,960        0  14,121  4,870 |  48,960  48,960        0  14,121  4,870

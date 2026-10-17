@@ -12,7 +12,7 @@ Patch `fork-notes/issue-ls-ltcg.patch` (3 code lines plus comments, `localsearch
 suite on `7abed19` with it: 2866 passed, 1 skipped; flake8 only upstream's own E501 at
 `localsearch.py:31`.
 
-The fork runs the same `localsearch.py` and gives the same 20,004 (seen on fork code by mistake, a
+**Applied in the fork on 2026-10-17** (PROGRESS.md "Local search and the LTCG family": household stand-ins rerun; one fork case moved down $708, which is why the issue no longer says "never lower" without qualification). The fork ran the same `localsearch.py` and gave the same 20,004 (seen on fork code by mistake, a
 `python -I` run that ignored `PYTHONPATH`). Our decision runs use the local-search preset, so the fork
 needs the fix whatever upstream does (PROGRESS.md).
 
@@ -101,7 +101,7 @@ on 4 cores):
 | morgan | maxSpending | 44,209 | 44,216 | +7 | 151 / 168 s |
 | robin | maxSpending | 44,159 | 44,159 | 0 | 17 / 15 s |
 
-The patch is never lower, and it gains in 8 of 18. The cost is time: 1,257 s to 1,919 s in total
+The patch is never lower here, and it gains in 8 of 18. That is not guaranteed in general: each restricted solve contains the current plan, so within one loop iteration the search cannot do worse, but a different plan feeds the next iteration's loop quantities, so the final plan can move either way. The cost is time: 1,257 s to 1,919 s in total
 (1.53x), up to 2.6x on one example (joe, for no gain), because step (b) now branches on the LTCG
 binaries too. One side effect: avery+quinn's residual moves from $1,405 to $1,665 at the same
 objective. Upstream's suite on `7abed19` with the patch: 2866 passed, 1 skipped.

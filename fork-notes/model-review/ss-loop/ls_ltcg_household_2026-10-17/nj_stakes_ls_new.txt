@@ -1,0 +1,7 @@
+# nj_stakes.py ls on new (8330fa3 + issue-ls-ltcg.patch), started 2026-10-17T14:57:21Z
+# owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+| $1.5M | FL | 125,188 | 0 | 15.9 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NY | 123,239 | 45,581 | 62.2 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NJ, no exclusion | 122,986 | 52,189 | 60.0 s | LP | 5 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NJ, exclusion | 123,789 | 21,200 | 122.0 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+# finished 2026-10-17T15:01:47Z

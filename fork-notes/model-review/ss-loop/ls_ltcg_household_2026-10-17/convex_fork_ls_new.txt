@@ -1,0 +1,11 @@
+# ss-loop/convex_fork.py ls on new (8330fa3 + issue-ls-ltcg.patch), started 2026-10-17T15:02:47Z
+# owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+NY 2032        ls      bequest    818,390   270.1 s  it=21 oscillatory                      residual        7 worst ['itemized', 7.0]
+NYmort 2032    ls      bequest    710,328    95.6 s  it=33 monotonic                        residual       25 worst ['itemized', 24.0]
+NJ 2032        ls      bequest    852,863   176.9 s  it=26 oscillatory                      residual       13 worst ['itemized', 13.0]
+NJmort 2032    ls      bequest    707,057   215.3 s  it=24 oscillatory                      residual        7 worst ['itemized', 7.0]
+NY 2099        ls      bequest    876,248    50.2 s  it=18 monotonic                        residual        0 worst ['SS', 0.0]
+NYmort 2099    ls      bequest    688,814    61.7 s  it=33 monotonic                        residual        0 worst ['SS', 0.0]
+NJ 2099        ls      bequest    912,273   134.6 s  it=22 oscillatory                      residual        0 worst ['SS', 0.0]
+NJmort 2099    ls      bequest    685,119   147.1 s  it=16 oscillatory                      residual        0 worst ['SS', 0.0]
+# finished 2026-10-17T15:22:03Z

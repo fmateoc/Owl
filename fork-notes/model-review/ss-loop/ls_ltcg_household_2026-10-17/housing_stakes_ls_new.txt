@@ -1,0 +1,7 @@
+# housing_stakes.py ls on new (8330fa3 + issue-ls-ltcg.patch), started 2026-10-17T14:57:21Z
+# owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+| $1.5M | NJ pt $20k bigticket | bequest 1,100,664 | state tax 13,741 | ptd 0 | 376.0 s |
+| $1.5M | NJ pt $20k budget | bequest 1,115,446 | state tax 13,396 | ptd 234,475 | 381.0 s |
+| $1.5M | NJ rent $30k budget | bequest 689,573 | state tax 11,737 | ptd 86,400 | 261.6 s |
+| $1.5M | NY pt $20k budget | bequest 1,088,535 | state tax 34,530 | ptd 0 | 259.1 s |
+# finished 2026-10-17T15:18:45Z

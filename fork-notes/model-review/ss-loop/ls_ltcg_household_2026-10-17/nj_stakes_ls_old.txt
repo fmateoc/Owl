@@ -1,0 +1,7 @@
+# nj_stakes.py ls on old (8330fa3), started 2026-10-17T14:57:21Z
+# owlplanner from <scratch>/fork_old/src/owlplanner/__init__.py
+| $1.5M | FL | 125,188 | 0 | 20.9 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NY | 123,239 | 45,581 | 56.8 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NJ, no exclusion | 122,986 | 52,189 | 41.7 s | LP | 5 | local search (SS, IRMAA, LTCG, NIIT) |
+| $1.5M | NJ, exclusion | 123,780 | 23,468 | 92.9 s | LP | 0 | local search (SS, IRMAA, LTCG, NIIT) |
+# finished 2026-10-17T15:00:59Z

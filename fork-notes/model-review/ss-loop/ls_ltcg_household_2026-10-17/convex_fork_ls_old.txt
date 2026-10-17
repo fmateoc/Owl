@@ -1,0 +1,11 @@
+# ss-loop/convex_fork.py ls on old (8330fa3), started 2026-10-17T15:01:54Z
+# owlplanner from <scratch>/fork_old/src/owlplanner/__init__.py
+NY 2032        ls      bequest    819,098   183.6 s  it=21 oscillatory                      residual        7 worst ['itemized', 7.0]
+NYmort 2032    ls      bequest    710,328    63.8 s  it=33 monotonic                        residual       25 worst ['itemized', 24.0]
+NJ 2032        ls      bequest    852,863   162.7 s  it=26 oscillatory                      residual       13 worst ['itemized', 13.0]
+NJmort 2032    ls      bequest    707,057   226.9 s  it=24 oscillatory                      residual        7 worst ['itemized', 7.0]
+NY 2099        ls      bequest    876,248    54.1 s  it=18 monotonic                        residual        0 worst ['SS', 0.0]
+NYmort 2099    ls      bequest    686,772    79.4 s  it=33 monotonic                        residual        0 worst ['SS', 0.0]
+NJ 2099        ls      bequest    912,040    98.3 s  it=22 oscillatory                      residual        0 worst ['SS', 0.0]
+NJmort 2099    ls      bequest    684,894   139.0 s  it=15 oscillatory                      residual        0 worst ['SS', 0.0]
+# finished 2026-10-17T15:18:47Z

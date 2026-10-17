@@ -1,5 +1,13 @@
 ### Unreleased
 
+#### Fixed: local search kept LTCG pinned while it moved Social Security taxability
+
+The local search's Social Security step (b) pinned the LTCG regime binaries, which hold ordinary
+taxable income on one side of each LTCG threshold, so a plan that has to move income across a
+threshold and change Social Security taxability in the same years was out of its reach. That step
+now leaves the LTCG binaries free. On `Case_john+sally` the local-search preset went from \$20,004
+to \$31,778 of bequest, the branch-and-bound preset's plan; the search takes about 1.5x as long.
+
 #### New: itemized deductions, federal and state (`withItemized`)
 
 Each year deducts the larger of the standard deduction and the itemized total, built from the

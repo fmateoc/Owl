@@ -1,0 +1,8 @@
+# phase3_step6_measure.py probe-ls on new (8330fa3 + issue-ls-ltcg.patch), started 2026-10-17T15:01:48Z
+# owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+=== Phase 3 step 6 measure, yOBBBA=2099, plan starts 2026, run 2026-10-17 15:01:51.924078 ===
+
+## probe-ls yOBBBA=2099 (2026-10-17 15:01:51.924160)  couple: $150k/$150k taxable, $900k/$600k deferred, core $80k + PT $25k
+| case | withItemized | method | bequest | state tax | fed item yrs/tot | st item yrs/tot | time | binaries | nodes |
+| ny NY Yonkers owner $25k | none | LS | bequest 864,234 | 42,690 | 0 / 0 | 0 / 0 | 55.2s | bins {'zm': np.int32(168), 'zs': np.int32(62), 'zl': np.int32(62), 'zj': np.int32(31)} | nodes 404; node-limit 0/0 (LS 0/18) |
+# finished 2026-10-17T15:02:47Z

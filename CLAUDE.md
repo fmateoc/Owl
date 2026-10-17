@@ -61,6 +61,8 @@ uv pip install --python .venv/bin/python pypdf   # only for reading tax PDFs
 - **Degenerate tests:** in a fixed-income `maxSpending` test plan, first-year income can cap spending, and later taxes then cost nothing. Use `maxBequest` with `netSpending` instead.
 - **Earnings test:** not modeled. In scenarios where one spouse works, optimize SS ages only for the one who stops (`withSSAges=["Name"]`).
 - **`pkill -f <pattern>`** can kill the shell running it. Kill by PID instead.
+- **`python -I` ignores `PYTHONPATH`:** in a scratch worktree it imports the main checkout's code through the `.venv`'s editable install (2026-10-17: a "patched" repro ran fork code). Run your own scripts without `-I`, and print `owlplanner.__file__` when it matters. A wait loop on `pgrep -f name.py` matches its own command line and never ends; wait on an output file instead.
+- **Local search and LTCG:** step (b) pins the LTCG regime binaries `zl`, which hold ordinary income on one side of T15/T20, so moves that need SS and LTCG together are blocked (john+sally: preset 20,004 vs branch-and-bound 31,778). Draft issue and patch `fork-notes/issue-ls-ltcg.*`; not yet applied in the fork, so the local-search recipe can sit short where income crosses T15 and the SS phase-in together.
 - **TOML arrays must be homogeneous** for the `toml` package: write `[[100000.0, 100.0], [125000.0, 37.5]]`, not mixed ints and floats.
 - **Owl units:** `setAccountBalances` takes thousands of dollars; `setPension`/`setSocialSecurity` take monthly amounts. Test plans with balances entered in dollars (1000x too large) came back "infeasible" with no other hint.
 - **TOML encoding:** files must be UTF-8. A Windows-1252 em dash stops `owlcli` with a `UnicodeDecodeError`.

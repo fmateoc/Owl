@@ -32,6 +32,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16) |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md` (version A keep, B drop), user's call |
+| Local search pins the LTCG regime binaries in step (b) (`fork-notes/issue-ls-ltcg.md`) | **Draft, not filed** (2026-10-17). Stock repro on `dev` `7abed19`: john+sally local-search preset 20,004 vs branch-and-bound 31,778; patch (step (b) leaves `zl` free) gives 31,778, never lower on the 18 examples, 1.53x the time. Section "Local search and the LTCG family" |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
@@ -1260,18 +1261,11 @@ rerun (same objectives: the runs are deterministic).
   with the rest on "optimize" it is 2.3-4.9x slower than SS "optimize" (helen+ruth 867 / 252 s,
   joe 584 / 251, morgan 1,208 / 249; contended): the cap probe re-solves a MILP per year. The
   presets set SS to "optimize" (`_applyBreakpointOptions`), so "convex" is a loop-mode tool only.
-- **Side finding (not filed), traced the same day, not SS:** the local-search preset returns 20,004
-  on john+sally, far below the branch-and-bound preset (31,778) and "convex" alone (28,898).
-  Families one at a time (`pr196_ls_trace_2026-10-17.txt`, uncontended): local search on SS +
-  IRMAA 31,693 (= branch-and-bound), + NIIT 31,693, + senior bonus 31,778; **+ LTCG: 16,803, the
-  plain loop's plan** ("local search -> loop"). Branch-and-bound on SS + IRMAA + LTCG gives 31,693,
-  so the loss comes from the LTCG family inside local search. In that run the search's own steps
-  report objectives of 38,268-46,090, yet the plan the loop accepts is worth $16,712, so
-  `_localSearchSolve` keeps the loop's plan. Not yet traced: why the search's objective and the
-  accepted plan disagree by $20-30k with LTCG free. The reply to PR #196 only mentions it in one
-  line; a separate issue with a stock repro is next. For the fork: decision runs use the
-  local-search preset, which includes LTCG, so this can bias our comparisons too; check how often
-  "local search -> loop" or a large preset-vs-branch-and-bound gap shows up on our cases.
+- **Side finding, traced the same day: not SS** (section "Local search and the LTCG family" below).
+  The local-search preset returns 20,004 on john+sally against 31,778 for the branch-and-bound
+  preset; local search on SS + IRMAA reaches 31,693, and adding the LTCG family makes it keep the
+  loop's plan (16,803). (A note here at first called the search's step objectives, $38-46k, a
+  mismatch with the $16.7k plan: wrong, the steps log nominal dollars; 38,268 / 2.2898 = $16,712.)
 
 Reply draft `fork-notes/pr-196-reply.md`: version A (keep, opt-in for loop users, with the evidence)
 and version B (drop; the PR cut to the warning, pointing to "optimize" / local search). The user
@@ -1279,6 +1273,31 @@ decides. Fork impact either way: the decision recipe is local search, which does
 upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fork edit in
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
+
+## Local search and the LTCG family: step (b) pins `zl` (2026-10-17, on `claude/friendly-mccarthy-585okd`)
+
+Traced on stock upstream `dev` `7abed19` (scratch worktrees, date frozen at 2026-10-15). Issue draft
+`fork-notes/issue-ls-ltcg.md` (not filed), repro `issue-ls-ltcg-repro.py` + output, patch
+`issue-ls-ltcg.patch`; sweeps and scripts `model-review/ss-loop/ls_ltcg_*`.
+
+- **No objective mismatch:** the local-search step log prints `-res[0]`, the MILP objective, in
+  nominal dollars; the loop prints today's. 38,268 / gamma_N (2.2898) = $16,712, the accepted plan.
+- **Cause:** `zl` are regime binaries on ordinary taxable income (`ltcg_zl15_link`: `zl15 = 1`
+  holds G_n <= T15, `zl15 = 0` holds G_n >= T15; T20 likewise), not on the gains alone. The better
+  plan (branch-and-bound) moves G_n across T15 in 2028 and 2032-37 and SS taxability in 2032-37
+  together (more conversions early; 2032-37 income $33-36k instead of $102,540, SS in the phase-in,
+  federal tax $3.7-4.2k instead of $14.1k a year). Step (a) frees LTCG with SS pinned, (b) SS with
+  LTCG pinned, (a') the non-SS families with SS pinned; (c) has no residual year. `localSearchRadius=200`:
+  still 20,004.
+- **Patch:** step (b) leaves `zl` free (`pinned = [f for f in others if f != "zl"]`). john+sally
+  preset 20,004 -> 31,778, the branch-and-bound plan year by year. 18 examples: never lower, 8
+  gain (+$7 to +$369, john+sally +$11,774), total time 1.53x (up to 2.6x, joe, no gain); avery+quinn
+  residual $1,405 -> $1,665 at the same objective. Variant with a separate step (b') once nothing
+  moved: same gains, 1.87x, dropped. Upstream suite with the patch: 2866 passed, 1 skipped.
+- **Fork:** runs the same `localsearch.py` (20,004 on fork code too, from a `python -I` run that
+  ignored `PYTHONPATH` and imported the main checkout). Our decision recipe is the local-search
+  preset, so the household comparisons may carry the same bias. Not done: apply the patch in the
+  fork and rerun the household scenarios with it.
 
 ## #193: upstream experiment branch `ss-binaries` measured, not merged; deleted upstream (2026-10-16)
 

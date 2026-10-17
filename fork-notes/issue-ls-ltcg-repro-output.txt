@@ -1,0 +1,57 @@
+# fork-notes/issue-ls-ltcg-repro.py on stock upstream dev 7abed19, then the same with fork-notes/issue-ls-ltcg.patch applied; run 2026-10-17 (date frozen at 2026-10-15 inside the script), one run at a time.
+===== dev (7abed19)
+owlplanner from <scratch>/dev/src/owlplanner/__init__.py
+Owl 2026.10.17; examples/Case_john+sally.toml; bequest in today's $
+1. Presets
+  breakpointMethod="local-search"                 20,004   17.3 s  local search (SS, IRMAA, LTCG, NIIT, senior bonus)
+  breakpointMethod="branch-and-bound"             31,778   10.5 s  branch-and-bound (SS, IRMAA, LTCG, NIIT, senior bonus)
+2. Local search on some families only ("optimize"; the rest on the loop)
+  SS + IRMAA                                      31,693   26.2 s  local search (SS, IRMAA)
+  SS + IRMAA + NIIT                               31,693   25.3 s  local search (SS, IRMAA, NIIT)
+  SS + IRMAA + senior bonus                       31,778   20.2 s  local search (SS, IRMAA, senior bonus)
+  SS + IRMAA + LTCG                               16,803   21.6 s  local search -> loop
+  SS + IRMAA + LTCG, branch-and-bound             31,693   47.9 s  branch-and-bound (SS, IRMAA, LTCG)
+3. Ordinary taxable income G_n against the LTCG 0% threshold T15 (today's $), and taxable SS
+   year |   local search: G_n    taxable SS |  branch-and-bound: G_n  taxable SS
+   2026 |    186,283 above         0 |    192,555 above         0   (T15 98,900)
+   2027 |    185,723 above         0 |    192,015 above         0   (T15 98,900)
+   2028 |     95,550 below         0 |    183,829 above         0   (T15 98,900)
+   2029 |    188,580 above         0 |    194,879 above         0   (T15 98,900)
+   2030 |    157,241 above    44,880 |    194,879 above    44,880   (T15 98,900)
+   2031 |    133,119 above    48,960 |    194,879 above    48,960   (T15 98,900)
+   2032 |    102,540 above    48,960 |     32,915 below    23,375   (T15 98,900)
+   2033 |    102,540 above    48,960 |     33,639 below    24,099   (T15 98,900)
+   2034 |    102,540 above    48,960 |     34,344 below    24,804   (T15 98,900)
+   2035 |    102,540 above    48,960 |     35,030 below    25,490   (T15 98,900)
+   2036 |    102,540 above    48,960 |     35,697 below    26,157   (T15 98,900)
+   2037 |    102,540 above    48,960 |     36,346 below    26,806   (T15 98,900)
+   2038 |    102,540 above    48,960 |    102,540 above    48,960   (T15 98,900)
+   2039 |    102,540 above    48,960 |    102,540 above    48,960   (T15 98,900)
+===== devp (7abed19 + issue-ls-ltcg.patch)
+owlplanner from <scratch>/devp/src/owlplanner/__init__.py
+Owl 2026.10.17; examples/Case_john+sally.toml; bequest in today's $
+1. Presets
+  breakpointMethod="local-search"                 31,778   32.3 s  local search (SS, IRMAA, LTCG, NIIT, senior bonus)
+  breakpointMethod="branch-and-bound"             31,778   10.5 s  branch-and-bound (SS, IRMAA, LTCG, NIIT, senior bonus)
+2. Local search on some families only ("optimize"; the rest on the loop)
+  SS + IRMAA                                      31,693   26.9 s  local search (SS, IRMAA)
+  SS + IRMAA + NIIT                               31,693   25.4 s  local search (SS, IRMAA, NIIT)
+  SS + IRMAA + senior bonus                       31,778   18.6 s  local search (SS, IRMAA, senior bonus)
+  SS + IRMAA + LTCG                               31,693   55.7 s  local search (SS, IRMAA, LTCG)
+  SS + IRMAA + LTCG, branch-and-bound             31,693   48.4 s  branch-and-bound (SS, IRMAA, LTCG)
+3. Ordinary taxable income G_n against the LTCG 0% threshold T15 (today's $), and taxable SS
+   year |   local search: G_n    taxable SS |  branch-and-bound: G_n  taxable SS
+   2026 |    192,555 above         0 |    192,555 above         0   (T15 98,900)
+   2027 |    192,015 above         0 |    192,015 above         0   (T15 98,900)
+   2028 |    183,829 above         0 |    183,829 above         0   (T15 98,900)
+   2029 |    194,879 above         0 |    194,879 above         0   (T15 98,900)
+   2030 |    194,879 above    44,880 |    194,879 above    44,880   (T15 98,900)
+   2031 |    194,879 above    48,960 |    194,879 above    48,960   (T15 98,900)
+   2032 |     32,915 below    23,375 |     32,915 below    23,375   (T15 98,900)
+   2033 |     33,639 below    24,099 |     33,639 below    24,099   (T15 98,900)
+   2034 |     34,344 below    24,804 |     34,344 below    24,804   (T15 98,900)
+   2035 |     35,030 below    25,490 |     35,030 below    25,490   (T15 98,900)
+   2036 |     35,697 below    26,157 |     35,697 below    26,157   (T15 98,900)
+   2037 |     36,346 below    26,806 |     36,346 below    26,806   (T15 98,900)
+   2038 |    102,540 above    48,960 |    102,540 above    48,960   (T15 98,900)
+   2039 |    102,540 above    48,960 |    102,540 above    48,960   (T15 98,900)

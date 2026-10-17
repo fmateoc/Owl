@@ -1357,6 +1357,30 @@ upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fo
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
 
+## Phase 5 planned: work, part time, SS earnings test (2026-10-17, on `claude/lucid-noether-20vnnv`)
+
+Plan: `fork-notes/phase5-plan.md` (no code changed). Rules verified this session in the POMS
+(`secure.ssa.gov`; `www.ssa.gov`, eCFR and the Federal Register were not reachable): 2026 exempt
+amounts $24,480 / $65,160 (RS 02501.025 D), what counts and the FRA-year cut (RS 02501.021,
+.080), family charging with no carry-over (RS 02501.095), partial months (RS 02501.110), grace
+year and non-service months (RS 02501.030), ARF crediting months incl. partial deductions
+(RS 00615.480/.482), 401(k) deferrals count and §125 amounts and the employer match do not
+(RS 02505.005, .045, RS 01402.010, .036). Payroll-tax figures and the SSA Statement's
+continued-work assumption are recalled, to check in step 0.
+
+Measured (`fork-notes/phase5/et_examples.py`, output `et_examples_2026-10-17.txt`): 3 of the 18
+upstream examples pay SS before FRA in a year with wages above the exempt amount (alex+jamie
+2026-27, chris+pat 2028, jack+jill 2028; $80-85k wages against $9.9-11.6k of benefits, so the
+annual test would withhold the whole year). Pat's and Jill's 2028 is their last work year, so
+the answer turns on the month they stop, which annual wages do not carry.
+
+Design: earnings are inputs, so the test is a deterministic function of the claiming month and
+goes into the SS streams and the `withSSAges` tables (no new LP variables, rows, binaries or
+loop parameters). Inputs: optional HFP columns for gross earnings and months worked. Steps 0-10
+and decisions D1-D8 in the plan; D1, D2 and D6 are needed before code.
+
+Next: the user's answers to D1-D8, then step 0.
+
 ## Discussion #177 after the NJ removal (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 Question: does dropping NJ affect the housing / budget proposal (#175, now Discussion #177)? No,

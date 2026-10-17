@@ -1,0 +1,22 @@
+Case_alex+jamie.toml: Jamie born 1961-01, claims at 62.08, FRA 67.00
+    2026  wages    80,000  SS paid by Owl   10,140  (wages - 24,480)/2   27,760
+    2027  wages    80,000  SS paid by Owl   10,140  (wages - 24,480)/2   27,760
+Case_avery+quinn.toml: none
+Case_bill.toml: none
+Case_cameron.toml: none
+Case_chris+pat.toml: Pat born 1966-01, claims at 62.08, FRA 67.00
+    2028  wages    85,000  SS paid by Owl    9,858  (wages - 24,480)/2   30,260
+Case_dana.toml: none
+Case_devon.toml: none
+Case_helen+ruth.toml: none
+Case_jack+jill.toml: Jill born 1966-01, claims at 62.08, FRA 67.00
+    2028  wages    85,000  SS paid by Owl   11,562  (wages - 24,480)/2   30,260
+Case_joe.toml: none
+Case_john+sally.toml: none
+Case_jon+jane.toml: none
+Case_jordan+taylor-qcd.toml: none
+Case_jordan+taylor.toml: none
+Case_kim+sam-bequest.toml: none
+Case_kim+sam-spending.toml: none
+Case_morgan.toml: none
+Case_robin.toml: none

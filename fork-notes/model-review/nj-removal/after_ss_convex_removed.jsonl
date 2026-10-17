@@ -1,0 +1,40 @@
+{"case": "ex:Case_bill", "status": "solved", "time": 0.4, "obj": 36665.93, "fed": 0.0, "state": 0.0, "resid": 0.0, "method": "loop"}
+{"case": "ex:Case_cameron", "status": "solved", "time": 0.5, "obj": 18996.31, "fed": 0.0, "state": 0.0, "resid": 29429.27, "method": "loop"}
+{"case": "ex:Case_alex+jamie", "status": "solved", "time": 0.5, "obj": 228368.52, "fed": 558384.42, "state": 79778.63, "resid": 802.21, "method": "loop"}
+{"case": "ex:Case_avery+quinn", "status": "solved", "time": 0.8, "obj": 3244980.08, "fed": 1635795.29, "state": 45985.93, "resid": 962.34, "method": "loop"}
+{"case": "ex:Case_dana", "status": "solved", "time": 0.2, "obj": 81228.4, "fed": 248704.89, "state": 29919.55, "resid": 2.87, "method": "loop"}
+{"case": "ex:Case_devon", "status": "solved", "time": 0.4, "obj": 249505.32, "fed": 1571501.49, "state": 438250.15, "resid": 0.07, "method": "loop"}
+{"case": "ex:Case_helen+ruth", "status": "solved", "time": 0.3, "obj": 194069.03, "fed": 567049.33, "state": 57690.41, "resid": 611.93, "method": "loop"}
+{"case": "ex:Case_chris+pat", "status": "solved", "time": 1.3, "obj": 117046.79, "fed": 375951.02, "state": 0.0, "resid": 14722.34, "method": "loop"}
+{"case": "ex:Case_joe", "status": "solved", "time": 0.2, "obj": 92574.8, "fed": 254097.7, "state": 0.0, "resid": 3.52, "method": "loop"}
+{"case": "ex:Case_john+sally", "status": "solved", "time": 0.4, "obj": 16802.68, "fed": 484930.56, "state": 197157.78, "resid": 0.04, "method": "loop"}
+{"case": "ex:Case_jon+jane", "status": "solved", "time": 0.3, "obj": 160677.41, "fed": 955381.5, "state": 54922.27, "resid": 0.05, "method": "loop"}
+{"case": "ex:Case_jack+jill", "status": "solved", "time": 1.5, "obj": 103499.11, "fed": 207534.29, "state": 0.0, "resid": 1212.01, "method": "branch-and-bound (IRMAA)"}
+{"case": "ex:Case_jordan+taylor-qcd", "status": "solved", "time": 0.3, "obj": 2302301.43, "fed": 1176094.06, "state": 403730.67, "resid": 0.19, "method": "loop"}
+{"case": "ex:Case_jordan+taylor", "status": "solved", "time": 0.4, "obj": 2651846.4, "fed": 1371562.91, "state": 475516.31, "resid": 0.05, "method": "loop"}
+{"case": "ex:Case_kim+sam-bequest", "status": "solved", "time": 0.7, "obj": 1944071.2, "fed": 512649.12, "state": 48558.42, "resid": 814.25, "method": "loop"}
+{"case": "ex:Case_kim+sam-spending", "status": "solved", "time": 0.6, "obj": 185949.05, "fed": 505905.6, "state": 46654.78, "resid": 1355.13, "method": "loop"}
+{"case": "ex:Case_morgan", "status": "solved", "time": 0.5, "obj": 42245.26, "fed": 107804.45, "state": 50310.88, "resid": 1796.41, "method": "loop"}
+{"case": "ex:Case_robin", "status": "solved", "time": 0.4, "obj": 44013.13, "fed": 25199.64, "state": 5769.09, "resid": 1039.65, "method": "loop"}
+{"case": "ex:Case_cameron:ls", "status": "solved", "time": 1.1, "obj": 18996.31, "fed": 0.0, "state": 0.0, "resid": 0.05, "method": "local search (SS, IRMAA, LTCG, NIIT, senior bonus)"}
+{"case": "ex:Case_robin:ls", "status": "solved", "time": 10.3, "obj": 44159.28, "fed": 20803.94, "state": 6083.78, "resid": 0.11, "method": "local search (SS, IRMAA, LTCG, NIIT, senior bonus)"}
+{"case": "ex:Case_bill:ls", "status": "solved", "time": 0.5, "obj": 36665.93, "fed": 0.0, "state": 0.0, "resid": 0.0, "method": "local search -> loop"}
+{"case": "ny:Yonkers:0:2032:loop", "status": "solved", "time": 1.0, "obj": 848046.46, "fed": 293107.07, "state": -45843.25, "resid": 5103.36, "method": "loop"}
+{"case": "ex:Case_jon+jane:ls", "status": "solved", "time": 31.8, "obj": 160904.75, "fed": 939075.06, "state": 54984.07, "resid": 0.11, "method": "local search (SS, IRMAA, LTCG, NIIT)"}
+{"case": "ny:Yonkers:0:2099:loop", "status": "solved", "time": 0.6, "obj": 922112.4, "fed": 254418.27, "state": -46099.91, "resid": 3294.13, "method": "loop"}
+{"case": "ex:Case_john+sally:ls", "status": "solved", "time": 41.4, "obj": 31778.17, "fed": 473695.01, "state": 186975.74, "resid": 0.13, "method": "local search (SS, IRMAA, LTCG, NIIT, senior bonus)"}
+{"case": "ny:Yonkers:600000:2032:loop", "status": "solved", "time": 1.8, "obj": 706025.76, "fed": 263721.77, "state": -64426.49, "resid": 55403.81, "method": "loop"}
+{"case": "ny:Yonkers:0:2099:ls", "status": "solved", "time": 70.9, "obj": 968422.45, "fed": 166448.15, "state": -26670.57, "resid": 0.13, "method": "local search (SS, IRMAA, LTCG, NIIT, STAR)"}
+{"case": "ny:Yonkers:600000:2099:loop", "status": "solved", "time": 1.1, "obj": 732260.1, "fed": 240906.62, "state": -64426.49, "resid": 42668.32, "method": "loop"}
+{"case": "ny:Yonkers:600000:2032:ls", "status": "solved", "time": 95.6, "obj": 793149.01, "fed": 140593.77, "state": -40137.02, "resid": 33.92, "method": "local search (SS, IRMAA, LTCG, NIIT, STAR)"}
+{"case": "ny::0:2099:loop", "status": "solved", "time": 0.6, "obj": 828806.77, "fed": 259354.76, "state": 13506.39, "resid": 1821.03, "method": "loop"}
+{"case": "ny::600000:2099:loop", "status": "solved", "time": 1.0, "obj": 641615.06, "fed": 239748.05, "state": 0.0, "resid": 64166.46, "method": "loop"}
+{"case": "star:loop", "status": "solved", "time": 0.2, "obj": 4421516.1, "fed": 450043.61, "state": 33821.38, "resid": 17157.61, "method": "loop"}
+{"case": "star:optimize", "status": "solved", "time": 5.6, "obj": 4423509.0, "fed": 450078.74, "state": 32378.67, "resid": 17191.78, "method": "branch-and-bound (STAR)"}
+{"case": "nj:0:2099:loop", "status": "solved", "time": 0.7, "obj": 807507.84, "fed": 229755.56, "state": 41638.54, "resid": 1274.21, "method": "loop"}
+{"case": "ny:Yonkers:600000:2099:ls", "status": "solved", "time": 71.6, "obj": 779775.91, "fed": 140901.36, "state": -36147.91, "resid": 0.21, "method": "local search (SS, IRMAA, LTCG, NIIT, STAR)"}
+{"case": "nj:600000:2099:loop", "status": "solved", "time": 0.7, "obj": 586239.22, "fed": 215497.92, "state": 44989.97, "resid": 2159.83, "method": "loop"}
+{"case": "nj:0:2099:ls", "status": "solved", "time": 42.1, "obj": 856700.7, "fed": 166197.93, "state": 49378.56, "resid": 0.12, "method": "local search (SS, IRMAA, LTCG, NIIT)"}
+{"case": "ex:Case_jack+jill:ls", "status": "solved", "time": 214.5, "obj": 104275.66, "fed": 200773.33, "state": 0.0, "resid": 0.08, "method": "local search (SS, IRMAA, LTCG, NIIT, senior bonus)"}
+{"case": "ny:Yonkers:0:2032:ls", "status": "solved", "time": 218.0, "obj": 898300.6, "fed": 211796.25, "state": -27996.99, "resid": 158.95, "method": "local search (SS, IRMAA, LTCG, NIIT, STAR)"}
+{"case": "nj:600000:2099:ls", "status": "solved", "time": 44.8, "obj": 642469.19, "fed": 135841.72, "state": 56106.37, "resid": 0.14, "method": "local search (SS, IRMAA, LTCG, NIIT)"}

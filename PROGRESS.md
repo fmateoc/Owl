@@ -1357,6 +1357,31 @@ upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fo
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
 
+## ss-convex removed (2026-10-17, on `claude/friendly-mccarthy-585okd`)
+
+The fork had kept upstream's experiment branch `ss-convex` (merged in `ae1fb9d`, `bb00250`) under
+the rule "drop it when upstream drops it", although our PR #196 reply asks upstream to drop it and
+no decision run uses it (the local-search preset replaces "convex" with "optimize"). User's call:
+remove it now, as with the NJ code. Done by applying the reverse of upstream's three commits
+(`git diff c22f46d 10b9f72`, 3-way) to the current tree: `schema.py`, `utils.py` and `_run_highs`
+are upstream `dev`'s again (the LP basis cache goes), `_configure_ss_taxability_convex`,
+`_update_ss_regions`, `_ss_provisional_income_row`, `_ssCapProbeSolve` / `_ssCapProbe` /
+`_ssCapGap` and `_BasisCache` are gone, and `tests/plan/test_ss_convex.py` with them. Three
+`plan.py` conflicts, each resolved to the fork's pre-convex code (checked against `ae1fb9d^1`):
+the probe body (removed), the loop start (`sc_lp = self._snapshot_sc()`, no warm start), the SS
+residual move (`psi_implied - sc_lp["Psi_n"]`, no `tss` branch). Fork edits dropped too:
+`warm_keys` in `_ssCapProbe`, `tests/plan/test_ss_convex_fork.py`. `withSSTaxability="convex"` is
+now refused like any unknown mode. Every function the three commits touched is either gone, equal
+to upstream `dev`, or a fork function whose remaining diff from `dev` is fork work only (no
+convex identifier left, grep).
+
+Regression (same 40 cases as the NJ removal, against its "after" run at `a5fd533`;
+`fork-notes/model-review/nj-removal/compare_ss_convex_2026-10-17.txt`): all 40 identical to the
+cent. Full suite **3190 passed, 1 skipped** (7:40; the 3 removed tests: two in `test_ss_convex.py`,
+one in `test_ss_convex_fork.py`). flake8/ruff: only upstream's known lines. The fork-notes scripts
+that ran "convex" (`model-review/ss-loop/convex_*.py`, `pr196_*.py`, `issue-193-*.py`) need `a5fd533`
+or earlier.
+
 ## Fork NJ code removed (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 
 User's decision after "NJ dropped from the investigation" (below): the fork's NJ mechanisms were

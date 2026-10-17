@@ -68,21 +68,6 @@ from .stresstests import (
 from .varmap import VarMap
 
 
-class _BasisCache:
-    """The last optimal HiGHS LP basis, to start the next LP of the same shape from.
-
-    Held on the plan while the SS cap probe runs. A HiGHS basis cannot be copied, and a plan
-    snapshot reaches it through bound methods as well as directly, so a copy shares the cache.
-    """
-
-    def __init__(self):
-        self.shape = None
-        self.basis = None
-
-    def __deepcopy__(self, memo):
-        return self
-
-
 def _mosek_available():
     import importlib.util
     import os
@@ -136,9 +121,6 @@ GAP = 1e-4
 # residual arithmetic on FEDSC_n never meets inf - inf.
 _SALT_NO_CAP = 1e15
 _PSI_DAMP = 0.3  # SC-loop damping weight for new Psi_n estimate (blend 30% new / 70% old)
-# withSSTaxability="convex": switches between the phase-in and capped pieces a year may make
-# before it stays on the one it is on.
-SS_REGION_FLIPS = 2
 MILP_GAP = 30 * GAP
 MAX_ITERATIONS = 29
 STAGNATION_WINDOW = 8  # SC iterations without improvement before early-exit check
@@ -3191,15 +3173,7 @@ class Plan:
         vm.add_if(ss_lp, "plo", self.N_n)  # p^lo_n = max(0, Π_n − 𝒫^lo)
         vm.add_if(ss_lp, "phi", self.N_n)  # p^hi_n = max(0, Π_n − 𝒫^hi)
         vm.add_if(ss_lp, "pmin", self.N_n)  # p^{σ,min}_n = min(𝒫^hi−𝒫^lo, p^lo_n)
-        # withSSTaxability="convex" carries t^σ_n too, without the binaries (see
-        # _configure_ss_taxability_convex). Not with withSSAges="optimize": its provisional
-        # income would have to follow the ssb variables, which the rows below do not.
-        ss_cvx = options.get("withSSTaxability", "loop") == "convex" and not ssa_lp
-        if options.get("withSSTaxability", "loop") == "convex" and ssa_lp:
-            self.mylog.print('withSSTaxability="convex" does not cover withSSAges="optimize": using the loop.',
-                             tag="WARNING")
-        self._ss_cvx = ss_cvx
-        vm.add_if(ss_lp or ss_cvx, "tss", self.N_n)  # t^σ_n  = min(0.85·ζ̄_n, 0.5·p^{σ,min}_n + 0.85·p^hi_n)
+        vm.add_if(ss_lp, "tss", self.N_n)  # t^σ_n  = min(0.85·ζ̄_n, 0.5·p^{σ,min}_n + 0.85·p^hi_n)
         vm.add_if(ltcg_lp, "gn", self.N_n)  # G_n: ordinary taxable income (LTCG MILP)
         vm.add_if(niit_lp or sb_lp, "magi", self.N_n)  # MAGI_n LP variable (NIIT, senior bonus)
         vm.add_if(niit_lp, "Jn", self.N_n)  # J_n: NIIT tax LP variable (NIIT MILP)
@@ -3293,7 +3267,6 @@ class Plan:
             self._add_state_taxable_income()
             self._add_local_taxable_income()
         self._configure_ss_taxability_lp(options)
-        self._configure_ss_taxability_convex()
         self._configure_ss_age_variables()
         self._configure_ltcg_constraints()
         self._configure_Medicare_binary_variables(options)
@@ -4940,7 +4913,7 @@ class Plan:
             self.B.setRange(g0, E_n[0], np.inf)
 
     def _add_taxable_income(self, options=None):
-        ss_lp = "tss" in self.vm
+        ss_lp = options is not None and options.get("withSSTaxability", "loop") == "optimize"
         # Only positive returns are taxable (interest/dividends); losses don't reduce income.
         fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
         for n in range(self.N_n):
@@ -4985,50 +4958,6 @@ class Plan:
                 # e_n - t^σ_n + sum_t(f_tn) = non_SS_ordinary_income
                 row.addElem(self.vm["tss"].idx(n), -1)
             self.A.addRow(row, rhs, rhs, tag=("taxable_income", n))
-
-    def _ss_provisional_income_row(self, n):
-        """Provisional income of year n as LP terms: Π_n = rhs_pi - Σ_k pi_row[k]·x_k.
-
-        The income columns carry negative coefficients, so "t ≥ Π_n - c" is the row
-        t + Σ pi_row·x ≥ rhs_pi - c.
-        """
-        zetaBar_n = np.sum(self.zetaBar_in[:, n])
-        rhs_pi = (
-            self.fixed_assets_ordinary_income_n[n] + self.fixed_assets_capital_gains_n[n] + 0.5 * zetaBar_n
-        )  # 0.5·SS for provisional income (not full SS)
-
-        pi_row = {}
-
-        for i in range(self.N_i):
-            # Combined dividend + interest yield for taxable account (equity + bonds/notes/cash).
-            afac = self.mu * self.alpha_ijkn[i, 0, 0, n] + np.sum(
-                self.alpha_ijkn[i, 0, 1:, n] * np.maximum(0, self.tau_kn[1:, n])
-            )
-            # Capital gains on taxable account withdrawal (uses tracked basis if available).
-            bfac = self.alpha_ijkn[i, 0, 0, n] * self._effective_cap_gain_coef(i, n)
-
-            w1_idx = self.vm["w"].idx(i, 1, n)
-            x_idx = self.vm["x"].idx(i, n)
-            b_idx = self.vm["b"].idx(i, 0, n)
-            d_idx = self.vm["d"].idx(i, n)
-            w0_idx = self.vm["w"].idx(i, 0, n)
-
-            pi_row[w1_idx] = pi_row.get(w1_idx, 0) - 1  # IRA withdrawals (income)
-            pi_row[x_idx] = pi_row.get(x_idx, 0) - 1  # Roth conversions (income)
-            pi_row[b_idx] = pi_row.get(b_idx, 0) - afac  # beginning balance × yield
-            pi_row[d_idx] = pi_row.get(d_idx, 0) - afac  # contributions × yield
-            pi_row[w0_idx] = pi_row.get(w0_idx, 0) + (afac - bfac)  # withdrawals (net)
-
-            rhs_pi += (
-                self.omega_in[i, n]
-                + self.other_inc_in[i, n]
-                + self.netinv_in[i, n]
-                + self.piBar_in[i, n]
-                + self.spiaBar_in[i, n]
-                + 0.5 * self.kappa_ijn[i, 0, n] * afac
-            )  # half-period contribution yield
-
-        return pi_row, rhs_pi
 
     def _configure_ss_taxability_lp(self, options):
         """
@@ -5075,7 +5004,40 @@ class Plan:
             # here. Adding e_n would count the exemption a second time, and subtracting
             # t^σ_n would remove taxable SS that the terms never included.
 
-            pi_row, rhs_pi = self._ss_provisional_income_row(n)
+            rhs_pi = (
+                self.fixed_assets_ordinary_income_n[n] + self.fixed_assets_capital_gains_n[n] + 0.5 * zetaBar_n
+            )  # 0.5·SS for provisional income (not full SS)
+
+            pi_row = {}
+
+            for i in range(self.N_i):
+                # Combined dividend + interest yield for taxable account (equity + bonds/notes/cash).
+                afac = self.mu * self.alpha_ijkn[i, 0, 0, n] + np.sum(
+                    self.alpha_ijkn[i, 0, 1:, n] * np.maximum(0, self.tau_kn[1:, n])
+                )
+                # Capital gains on taxable account withdrawal (uses tracked basis if available).
+                bfac = self.alpha_ijkn[i, 0, 0, n] * self._effective_cap_gain_coef(i, n)
+
+                w1_idx = self.vm["w"].idx(i, 1, n)
+                x_idx = self.vm["x"].idx(i, n)
+                b_idx = self.vm["b"].idx(i, 0, n)
+                d_idx = self.vm["d"].idx(i, n)
+                w0_idx = self.vm["w"].idx(i, 0, n)
+
+                pi_row[w1_idx] = pi_row.get(w1_idx, 0) - 1  # IRA withdrawals (income)
+                pi_row[x_idx] = pi_row.get(x_idx, 0) - 1  # Roth conversions (income)
+                pi_row[b_idx] = pi_row.get(b_idx, 0) - afac  # beginning balance × yield
+                pi_row[d_idx] = pi_row.get(d_idx, 0) - afac  # contributions × yield
+                pi_row[w0_idx] = pi_row.get(w0_idx, 0) + (afac - bfac)  # withdrawals (net)
+
+                rhs_pi += (
+                    self.omega_in[i, n]
+                    + self.other_inc_in[i, n]
+                    + self.netinv_in[i, n]
+                    + self.piBar_in[i, n]
+                    + self.spiaBar_in[i, n]
+                    + 0.5 * self.kappa_ijn[i, 0, n] * afac
+                )  # half-period contribution yield
 
             # Variable index shorthands.
             plo_idx = self.vm["plo"].idx(n)
@@ -5136,118 +5098,6 @@ class Plan:
                 tag=("ss_tax_tss_lb_formula", n),
             )
             self.B.setRange(tss_idx, 0, 0.85 * zetaBar_n)  # t^σ ≤ 0.85·ζ̄
-
-    def _configure_ss_taxability_convex(self):
-        """withSSTaxability="convex": price the phase-in of SS taxability exactly, without binaries.
-
-        Under the loop, taxable SS enters the LP as Psi_n·ζ̄_n with Psi_n a constant, so a dollar
-        of income in a phase-in year is charged the bracket rate only. It also makes up to $0.85
-        of benefits taxable, and the LP never sees that: the loop's fixed point under-prices
-        exactly the income an exact model moves out of those years, and the ties a constant
-        Psi_n leaves let each iterate pick a plan with a different Psi_n (issue #193).
-
-        When ζ̄_n ≥ Δ𝒫_n, taxable SS below the 85% cap is a convex function of provisional
-        income, max(0, 0.5·(Π_n − 𝒫^lo), 0.5·Δ𝒫_n + 0.85·(Π_n − 𝒫^hi)), so t^σ_n above those
-        three pieces is exact: tax rises with t^σ_n (and a tie-break prices it where tax does
-        not), so the solver sets it to the largest piece. Only the cap min(0.85·ζ̄_n, ·) is not
-        convex, and it is handled per year from the previous iterate (_update_ss_regions):
-          0  phase-in: the rows below, with no cap (income past the cap point is overcharged,
-             and the next iterate moves the year to 1);
-          1  capped:   t^σ_n = 0.85·ζ̄_n, a dollar of income adds no taxable SS;
-          2  small benefit (ζ̄_n < Δ𝒫_n, where the formula has a flat middle and is not
-             convex): t^σ_n = Psi_n·ζ̄_n with Psi_n updated as in the loop;
-          3  start:    t^σ_n = 0.85·ζ̄_n with no condition, for the first iterate only.
-        """
-        if not self._ss_cvx:
-            return
-        tss = self.vm["tss"]
-        if getattr(self, "_ss_region_n", None) is None:
-            # Unseeded, every year starts at a flat 85% (3), as the loop does: starting on the
-            # phase-in piece overcharges every year past its cap point, which pushes income
-            # into the first years and keeps the late ones under the cap, so they never move.
-            seed = getattr(self, "_ss_region_seed", None)
-            self._ss_region_n = np.full(self.N_n, 3, dtype=int) if seed is None else np.array(seed, dtype=int)
-            self._ss_flips_n = np.zeros(self.N_n, dtype=int)
-            self._ss_psi_fixed_n = np.full(self.N_n, 0.85)
-            for n in range(self.N_n):
-                status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
-                if np.sum(self.zetaBar_in[:, n]) < tx.ssTaxabilityHi[status_n] - tx.ssTaxabilityLo[status_n]:
-                    self._ss_region_n[n] = 2
-        self._ss_pi_rows = {}
-        for n in range(self.N_n):
-            zetaBar_n = np.sum(self.zetaBar_in[:, n])
-            tss_idx = tss.idx(n)
-            if zetaBar_n == 0:
-                self.B.setRange(tss_idx, 0, 0)
-                continue
-            self._ss_pi_rows[n] = self._ss_provisional_income_row(n)
-            region = self._ss_region_n[n]
-            status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
-            ss_lo_n = tx.ssTaxabilityLo[status_n]
-            ss_hi_n = tx.ssTaxabilityHi[status_n]
-            pi_row, rhs_pi = self._ss_pi_rows[n]
-            # Every year with a benefit gets the same three rows whatever its region, switched on
-            # and off through their bounds: the LP keeps its shape from one solve to the next, so
-            # HiGHS can start each one from the previous basis (see _run_highs).
-            free = (-np.inf, np.inf)
-            # t^σ_n ≥ 0.5·(Π_n − 𝒫^lo)
-            lb50 = (0.5 * (rhs_pi - ss_lo_n), np.inf) if region == 0 else free
-            # t^σ_n ≥ 0.5·Δ𝒫_n + 0.85·(Π_n − 𝒫^hi)
-            lb85 = (0.5 * (ss_hi_n - ss_lo_n) + 0.85 * (rhs_pi - ss_hi_n), np.inf) if region == 0 else free
-            # Capped, and held there: provisional income stays at or above the cap point
-            # Π* = 𝒫^hi + ζ̄_n − 0.5·Δ𝒫_n / 0.85, so the constant is exact on the whole piece.
-            pi_cap = ss_hi_n + zetaBar_n - 0.5 * (ss_hi_n - ss_lo_n) / 0.85
-            cap = (-np.inf, rhs_pi - pi_cap) if region == 1 else free
-            row = {k: 0.5 * v for k, v in pi_row.items()}
-            row[tss_idx] = 1
-            self.A.addNewRow(row, *lb50, tag=("ss_cvx_50", n))
-            row = {k: 0.85 * v for k, v in pi_row.items()}
-            row[tss_idx] = 1
-            self.A.addNewRow(row, *lb85, tag=("ss_cvx_85", n))
-            self.A.addNewRow(dict(pi_row), *cap, tag=("ss_cvx_cap", n))
-            if region == 0:
-                self.B.setRange(tss_idx, 0, np.inf)
-            elif region == 2:
-                val = self._ss_psi_fixed_n[n] * zetaBar_n
-                self.B.setRange(tss_idx, val, val)
-            else:  # 1 (capped) and 3 (start)
-                self.B.setRange(tss_idx, 0.85 * zetaBar_n, 0.85 * zetaBar_n)
-
-    def _update_ss_regions(self, x):
-        """Move each year of withSSTaxability="convex" to the piece its provisional income is on.
-
-        Sets self._ss_tss_true_n, the taxable SS the IRS formula gives on this iterate's own
-        provisional income. A year switches between phase-in and capped when its income has
-        crossed the cap point by more than a dollar; after SS_REGION_FLIPS switches it stays where
-        it is, so a year sitting on the cap point cannot keep the loop going.
-        """
-        ss_n = np.sum(self.zetaBar_in, axis=0)
-        pi_n = np.zeros(self.N_n)
-        for n, (pi_row, rhs_pi) in self._ss_pi_rows.items():
-            pi_n[n] = rhs_pi - sum(v * x[k] for k, v in pi_row.items())
-        psi_true = tx.compute_social_security_taxability(self.N_i, pi_n + 0.5 * ss_n, ss_n, n_d=self.n_d)
-        self._ss_tss_true_n = psi_true * ss_n
-        self._ss_pi_n = pi_n
-        for n in self._ss_pi_rows:
-            region = self._ss_region_n[n]
-            if region == 2:
-                blended = _PSI_DAMP * psi_true[n] + (1.0 - _PSI_DAMP) * self._ss_psi_fixed_n[n]
-                if abs(blended - self._ss_psi_fixed_n[n]) > 1e-3:
-                    self._ss_psi_fixed_n[n] = blended
-                continue
-            status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
-            lo, hi = tx.ssTaxabilityLo[status_n], tx.ssTaxabilityHi[status_n]
-            uncapped = max(0.0, 0.5 * (pi_n[n] - lo), 0.5 * (hi - lo) + 0.85 * (pi_n[n] - hi))
-            cap = 0.85 * ss_n[n]
-            if region == 3:
-                # The flat start is not a piece: place the year where its income landed.
-                self._ss_region_n[n] = 1 if uncapped >= cap else 0
-                continue
-            if self._ss_flips_n[n] >= SS_REGION_FLIPS:
-                continue
-            if (region == 0 and uncapped > cap + 1.0) or (region == 1 and uncapped < cap - 1.0):
-                self._ss_region_n[n] = 1 - region
-                self._ss_flips_n[n] += 1
 
     def _ss_benefit_terms(self, i, n):
         """Person i's SS income in year n as (constant part, ssb column index or None).
@@ -6645,8 +6495,6 @@ class Plan:
         self._applyBreakpointOptions(myoptions)
         if self._useLocalSearch(myoptions):
             return self._localSearchSolve(objective, myoptions)
-        if myoptions.get("withSSTaxability") == "convex" and not getattr(self, "_ssProbing", False):
-            return self._ssCapProbeSolve(objective, myoptions)
 
         if objective == "maxBequest" and "netSpending" not in myoptions and self.budget is None:
             raise RuntimeError(f"Objective '{objective}' needs netSpending option.")
@@ -6712,7 +6560,6 @@ class Plan:
         self._niit_lp = False  # Will be set to True in _buildOffsetMap when withNIIT="optimize"
         self._sb_lp = False  # Will be set to True in _buildOffsetMap when withSeniorBonus="optimize"
         self._ssa_lp = False  # Will be set to True in _buildOffsetMap when withSSAges="optimize"
-        self._ss_cvx = False  # Will be set to True in _buildOffsetMap when withSSTaxability="convex"
         self._st_lp = False  # Will be set to True in _buildOffsetMap when state is set
         self._adjustedParameters = False  # Force fresh parameter setup for each solve()
         self._highs_warm_start = None  # MIP warm-start hint; reset each solve(), updated each SC iter
@@ -6900,113 +6747,6 @@ class Plan:
     def _fixedPointResidualTotal(self):
         """Sum over families of the plan's absolute fixed-point residual (today's $)."""
         return sum(v["abs_sum"] for v in (getattr(self, "fixedPointResidual", None) or {}).values())
-
-    def _ssCapProbeSolve(self, objective, myoptions):
-        """withSSTaxability="convex": solve, then try each year on the other side of the SS cap.
-
-        The convex rows price the phase-in exactly; what they cannot see is a year where stacking
-        income past the cap point is worth it, because there a dollar adds no taxable benefit and
-        the phase-in piece overcharges it. Which years sit on the cap is the only combinatorial
-        choice left, and this makes it greedily, one year at a time: each probe is a full solve
-        (a few pure LPs, started from the best plan's premiums, NIIT and gains) with that year
-        moved, kept when it raises the objective. A pass that kept something is followed by one
-        over the years that came within a near-tie, until a pass keeps nothing.
-        """
-
-        def run(seed, warm=None):
-            self._ss_region_seed = seed
-            self._sc_warm_start = warm
-            self._ssProbing = True
-            try:
-                self.solve(objective, options=dict(myoptions))
-            finally:
-                self._ssProbing = False
-                self._ss_region_seed = None
-                self._sc_warm_start = None
-            return self.caseStatus == "solved"
-
-        self._lp_basis = _BasisCache()
-        try:
-            return self._ssCapProbe(objective, myoptions, run)
-        finally:
-            self._lp_basis = None
-
-    def _ssCapProbe(self, objective, myoptions, run):
-        """Body of _ssCapProbeSolve, run with LP basis reuse on."""
-        skip = ("mylog", "_lp_basis")
-        warm_keys = ("M_n", "ACA_n", "J_n", "I_n", "G_n", "Q_n", "U_n", "MAGI_n", "MAGI_aca_n", "gain_fraction_in",
-                     "_tax_tiebreak_on")
-        # Fork: the fork's own loop parameters too (NY recapture, itemizing branches and floors,
-        # STAR), so each probe starts from the best plan's. Psi_n stays out: "convex" sets SS by region.
-        warm_keys += tuple(k for k in self._SC_PARAMS if k not in warm_keys and k != "Psi_n")
-        if not run(None) or not self._ss_cvx:
-            return None
-        if self.convergenceType == "unsolvable iterate":
-            # Exact SS pricing from the first iterate can move MAGI enough that the premiums the
-            # loop then charges leave no feasible plan (Case_john+sally, a tight spending floor).
-            # Until the loop's step control covers that, fall back on the loop's own answer.
-            self.mylog.print('withSSTaxability="convex" hit an unsolvable iterate; solving with the loop instead.',
-                             tag="WARNING")
-            self._ssProbing = True
-            try:
-                self.solve(objective, options=dict(myoptions, withSSTaxability="loop"))
-            finally:
-                self._ssProbing = False
-            self.solverOptions = myoptions
-            return None
-        # A probe counts only if its plan is as consistent as the base one: a solve that fell back
-        # on an earlier iterate ("unsolvable iterate") can report a plan whose own income implies
-        # premiums it was never charged, and its objective is then not one to compare.
-        resid_bar = max(self._fixedPointResidualTotal(), self.N_n * self._residual_tol)
-        best = self._objectiveValue(objective)
-        best_state = copy.deepcopy({k: v for k, v in self.__dict__.items() if k not in skip})
-        regions = self._ss_region_n.copy()
-        candidates = [n for n in self._ss_pi_rows if regions[n] in (0, 1)]
-        probes = kept = 0
-        self._ssProbeTrace = []
-        improved = True
-        _pass = 0
-        while improved and candidates:
-            improved = False
-            _pass += 1
-            near = []  # years whose probe came within a near-tie of the best plan this pass
-            for n in candidates:
-                seed = regions.copy()
-                seed[n] = 1 - seed[n]
-                _gap = self._ssCapGap(best_state, n)
-                _t0 = time.time()
-                warm = {k: best_state[k] for k in warm_keys if k in best_state}
-                probes += 1
-                ok = run(seed, warm) and self.convergenceType != "unsolvable iterate"
-                ok = ok and self._fixedPointResidualTotal() <= resid_bar
-                value = self._objectiveValue(objective) if ok else -np.inf
-                self._ssProbeTrace.append((n, regions[n], _gap, value - best, time.time() - _t0, _pass))
-                if not ok:
-                    continue
-                # A probe that lands on the same plan (to the dollar) moved nothing worth revisiting.
-                if best - max(100.0, 1e-4 * abs(best)) < value and abs(value - best) > 1.0:
-                    near.append(n)
-                if value > best + max(1.0, 1e-9 * abs(best)):
-                    best, regions, improved = value, self._ss_region_n.copy(), True
-                    best_state = copy.deepcopy({k: v for k, v in self.__dict__.items() if k not in skip})
-                    kept += 1
-            # Nearly all the gain comes on the first pass (measured on the shipped examples and the
-            # #193 cases: later passes added $81 in all, at one to three times its cost). Only a
-            # near-tie can turn into a gain once other years have moved, so only those go again.
-            candidates = near
-        trace = self._ssProbeTrace
-        self.__dict__.update(best_state)
-        self._ssProbeTrace = trace
-        self.mylog.vprint(f"SS cap probe: {probes} probe(s), {kept} kept; objective {u.d(best)}.")
-        return None
-
-    def _ssCapGap(self, state, n):
-        """Year n's provisional income less its cap point, as a fraction of its benefit."""
-        ss = np.sum(state["zetaBar_in"][:, n])
-        status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
-        lo, hi = tx.ssTaxabilityLo[status_n], tx.ssTaxabilityHi[status_n]
-        pi_cap = hi + ss - 0.5 * (hi - lo) / 0.85
-        return (state["_ss_pi_n"][n] - pi_cap) / ss
 
     def _localSearchSolve(self, objective, myoptions):
         """mipStrategy="local-search": solve the loop first, search from its plan, keep the better.
@@ -7445,12 +7185,6 @@ class Plan:
         self._computeNLstuff(None, includeMedicare, fixedPsi=fixed_psi)
         self._init_gain_fraction()
         self._tax_tiebreak_on = False
-        warm = getattr(self, "_sc_warm_start", None)
-        if warm is not None:
-            # A cap probe re-solves a plan the loop has just converged on with one year moved:
-            # start from that plan's premiums, NIIT, LTCG room and basis, not from zero.
-            for k, v in warm.items():
-                setattr(self, k, copy.deepcopy(v))
         sc_lp = self._snapshot_sc()
         while True:
             # Snapshot the NL parameters actually embedded in this iteration's LP constraints.
@@ -7561,13 +7295,7 @@ class Plan:
                 if fixed_psi is not None or "tss" in self.vm
                 else tx.compute_social_security_taxability(self.N_i, self.MAGI_aca_n, ss_n, n_d=self.n_d)
             )
-            if self._ss_cvx:
-                # The LP's own t^σ_n against the formula on the plan's provisional income: off
-                # only in a year on the wrong side of the cap, or of a small benefit's Psi_n.
-                ss_move = np.sum(np.abs(self._ss_tss_true_n - self.tss_n) / g_today)
-            else:
-                ss_move = np.sum(np.abs(psi_implied - sc_lp["Psi_n"]) * ss_n / g_today)
-            moves = [ss_move]
+            moves = [np.sum(np.abs(psi_implied - sc_lp["Psi_n"]) * ss_n / g_today)]
             for _name, _active in (
                 ("J_n", True), ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0),
                 ("STR_n", self._str_active),
@@ -8141,15 +7869,7 @@ class Plan:
             h.setSolution(len(c), all_idx, warm_x.astype(np.float64))
 
         is_mip = bool(integrality.any())
-        # The SS cap probe solves long runs of LPs of the same shape that differ by a few bounds:
-        # starting each from the previous optimal basis saves most of the simplex work.
-        cache = getattr(self, "_lp_basis", None) if not is_mip else None
-        shape = (len(c), len(lbvec))
-        if cache is not None and cache.shape == shape:
-            h.setBasis(cache.basis)
         h.run()
-        if cache is not None and h.getModelStatus() == highspy.HighsModelStatus.kOptimal:
-            cache.shape, cache.basis = shape, h.getBasis()
         nodes = self._countHighsNodes(h, options, is_mip)
         ms = h.getModelStatus()
         # HiGHS's MIP presolve can call a feasible model infeasible when big-M coefficients are
@@ -8640,7 +8360,6 @@ class Plan:
         if x is None:
             # Reset all nonlinear quantities to their starting values for a fresh solve.
             self.Psi_n = np.ones(self.N_n) * (fixedPsi if fixedPsi is not None else 0.85)
-            self._ss_region_n = None  # withSSTaxability="convex": rebuilt on the first build
             self.MAGI_aca_n = np.zeros(self.N_n)
             self.MAGI_n = np.zeros(self.N_n)
             self.G_n = np.zeros(self.N_n)
@@ -8693,8 +8412,6 @@ class Plan:
         # Also skip when fixedPsi is set (numeric withSSTaxability).
         if "tss" not in self.vm and fixedPsi is None:
             self._update_Psi_n()
-        elif self._ss_cvx:
-            self._update_ss_regions(x)
 
         # SS claiming-age LP: update zetaBar_in from optimal zssa solution each SC iteration.
         # _ssa_spousal_offset is updated here so next iteration's cash-flow constraint is correct.
@@ -8803,10 +8520,7 @@ class Plan:
             ss_n = np.sum(self.zetaBar_in, axis=0)
             mask = ss_n > 0
             self.Psi_n = np.zeros(Nn)
-            # Under "convex" a year past the cap point is charged above 0.85 until the next
-            # iterate caps it; keep that share so MAGI_aca_n (which adds back 1 - Psi_n) stays exact.
-            psi_max = np.inf if self._ss_cvx else 0.85
-            self.Psi_n[mask] = np.minimum(self.tss_n[mask] / ss_n[mask], psi_max)
+            self.Psi_n[mask] = np.minimum(self.tss_n[mask] / ss_n[mask], 0.85)
 
         # Extract optimal SS claiming ages from zssa binaries (full aggregation only).
         if "zssa" in vm and not short:

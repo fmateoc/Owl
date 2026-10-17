@@ -129,7 +129,7 @@ _MODE_OPTIONS = {
     "withACA": ("loop", "optimize"),
     "withLTCG": ("loop", "optimize"),
     "withNIIT": ("loop", "optimize"),
-    "withSSTaxability": ("loop", "optimize", "convex"),
+    "withSSTaxability": ("loop", "optimize"),
     "withSeniorBonus": ("loop", "optimize"),
     "withItemized": ("none", "loop"),
     "withSTAR": ("none", "loop", "optimize"),  # fork: NY STAR credit
@@ -168,9 +168,7 @@ def normalize_mode_option(key, value):
                 fraction = None
         if isinstance(fraction, (int, float)):
             if not 0 <= fraction <= 1:  # also refuses nan
-                raise ValueError(
-                    f"withSSTaxability {value!r} must be 'loop', 'optimize', 'convex' or a fraction in [0, 1]."
-                )
+                raise ValueError(f"withSSTaxability {value!r} must be 'loop', 'optimize' or a fraction in [0, 1].")
             return float(fraction)
     if isinstance(value, str):
         name = value.strip().lower()

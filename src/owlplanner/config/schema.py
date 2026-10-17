@@ -402,7 +402,7 @@ class SolverOptions(BaseModel):
     withACA: Optional[Literal["loop", "optimize"]] = None
     withLTCG: Optional[Literal["loop", "optimize"]] = None
     withNIIT: Optional[Literal["loop", "optimize"]] = None
-    withSSTaxability: Optional[Union[Literal["loop", "optimize", "convex"], float]] = None
+    withSSTaxability: Optional[Union[Literal["loop", "optimize"], float]] = None
     withSeniorBonus: Optional[Literal["loop", "optimize"]] = None
     withItemized: Optional[Literal["none", "loop"]] = None
     withSTAR: Optional[Literal["none", "loop", "optimize"]] = None  # fork: NY STAR credit

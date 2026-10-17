@@ -1178,6 +1178,30 @@ contains it.
   profile and no `medical` line, it is counted as paid even though the budget lines do not list
   it (upstream says it sits inside net spending).
 
+## Upstream dev 2b34633 merged; #193 PR prepared at the maintainer's request (2026-10-17)
+
+Upstream `dev` `2b34633` (#194: Debts/Fixed Assets editors keep rows still being typed; #195:
+optimized SS claiming age no longer in the past, and with one free age the couple's whole benefit
+streams tabulated per candidate age, `_ssa_B_cross`, `_ssaMaxBenefit`). Merge `0874f0f`: conflicts in
+`_gateCeilings` (fork's `ss_in` parameter kept, upstream's `_ssaMaxBenefit` bound taken) and the
+CHANGELOG (fork section above upstream's 2026.10.16, unchanged); the fork's `_item_income_ub_n` also
+switched to `_ssaMaxBenefit` (it bounds income, and #195's partner streams belong in it). Full suite
+**3232 passed, 1 skipped**.
+
+Maintainer on #193 (2026-10-17; read from the issue page with WebFetch, which paraphrases): the SS MIP
+uses 3 binaries a year, 1 suffices when the benefit exceeds the tier gap; he tried it hoping to go
+pure MIP on SS, much slower in some cases, faster in others (the deleted `ss-binaries`); "Can you
+bundle both points above in a single PR and I'll test and push"; out of tokens until Sunday.
+Read as our two points: the warning/pointer when the loop leaves SS unsettled (first reply) and the
+"loop" label of a convex solve (second reply). PR branch `ss-convex-pr` (local worktree; stock code
+only): `upstream/ss-convex` + `upstream/dev` merged (clean, `7d1169c`) + `fb8b10e` (label,
+`_warnSSResidual`, PARAMETERS.md, CHANGELOG under Version WIP, 3 tests). Upstream suite 2871 passed,
+1 skipped; the two new tests fail without the change. Found while testing: under the tests' frozen
+date the #193 couple at $105k leaves only $1,167 of SS residual (bar $1,550) although the loop is
+>$10k short, so a residual warning catches non-settling, not settled-short; stated in the PR.
+PR text `fork-notes/pr-193-body.md`. Not pushed: waiting for the user's go (push the branch to the
+fork and open the PR against `mdlacasse/Owl` `dev`).
+
 ## "Convex" cap probe: the fork's loop parameters warm-started (2026-10-17, on `claude/eager-cray-s0fvks`)
 
 The SS cap probe (upstream `ss-convex`, `_ssCapProbe`) re-solves the plan once per year it tries,
@@ -1571,6 +1595,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-17, after merging upstream `dev` `2b34633`: **3232 passed, 1 skipped** (7:57).
 
 2026-10-17, fork `_SC_PARAMS` warm-started in the "convex" cap probe: full suite **3228 passed, 1 skipped** (7:46) with the fix, then with `test_ss_convex_fork.py`: **3229 passed, 1 skipped** (7:44).
 

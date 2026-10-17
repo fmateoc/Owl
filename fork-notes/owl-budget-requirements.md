@@ -50,9 +50,12 @@ Everything else can evolve; this contract is what both projects maintain.
    **non-scalable lines** (rent, insurance, a car loan), which needs a fixed outflow next to
    spending in Owl's LP: the "constraint" option the maintainer mentioned. Our recommendation:
    shape only in v1; it answers rent vs buy, which is read at fixed spending.
-5. **Categories survive the trip.** Owl reports net spending by line, and the fork's NJ property
-   tax deduction reads the property-tax and rent lines **(checked: fork)**. Totals alone would
-   lose both.
+5. **Categories survive the trip.** Owl reports net spending by line, and the fork's tax rules
+   read lines by type: property tax (federal SALT, NY IT-196, the NY STAR owner signal), medical
+   and charity (federal and NY itemized) **(checked: fork, 2026-10-17)**. Totals alone would lose
+   both. (Until 2026-10-17 the example was the fork's NJ property tax deduction, which also read
+   the rent lines; it was removed with the rest of the fork's NJ code, and rent now feeds no
+   deduction.)
 6. **No double counting.** The budget excludes what Owl already charges **(checked)**: federal and
    state income tax, Medicare Part B/D premiums and IRMAA, ACA premiums, loan payments in
    `Debts`, `big-ticket items`, contributions. It must include what Owl does not charge:
@@ -171,7 +174,7 @@ supplies local numbers.
 
 ## Our household's use, as a test case
 
-NY metro couple: rent vs buy with cash vs buy with a mortgage, Yonkers / NYC / Westchester / NJ,
-a possible later move, part-time work, healthcare costs as the main worry. The fork's Phase 2b
+NY metro couple: rent vs buy with cash vs buy with a mortgage, Yonkers / NYC / Westchester,
+a possible later move within NY (NJ dropped 2026-10-17), part-time work, healthcare costs as the main worry. The fork's Phase 2b
 (Budget sheet, `budget.py`, the `"budget"` profile) already covers section 2 items 2-6 for one
 format; it can serve as the reference consumer on Owl's side.

@@ -243,7 +243,7 @@ def test_local_search_keeps_the_loops_itemizing_branch():
 
 
 def test_rent_has_no_federal_salt():
-    """Rent is not a federal SALT; NJ's 18% share is a state rule only."""
+    """Rent is not a federal SALT."""
     p = _plan(state="FL", property_tax=0.0)
     p.houseLists["Budget"] = conditionDebtsAndFixedAssetsDF(pd.DataFrame([
         _line("core", "core", 80000.0),

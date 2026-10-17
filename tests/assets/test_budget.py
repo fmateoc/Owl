@@ -1,4 +1,4 @@
-"""Tests for the budget spending profile and the NJ property tax deduction that reads it."""
+"""Tests for the budget spending profile."""
 
 import io
 from pathlib import Path
@@ -300,7 +300,7 @@ def test_lines_left_out_warn_at_solve():
 
 
 # ---------------------------------------------------------------------------
-# NJ property tax deduction, read from the budget
+# A budget with a property tax line: replayed rows, UI pre-solve, reporting
 # ---------------------------------------------------------------------------
 
 

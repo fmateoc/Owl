@@ -28,8 +28,8 @@ The same lines can arrive as JSON (``load_json``) instead of the workbook sheet:
 the sheet's DataFrame, amounts in today's dollars like the sheet. Unknown fields, an unknown
 ``schema_version`` or ``type``, and loosely typed values are refusals. ``kind`` is free text.
 
-Deductible lines (fork): types ``property tax``, ``rent`` (NJ's 18% share), ``medical``
-and ``charity`` feed tax deductions where the law gives one. ``care`` is not deductible by
+Deductible lines (fork): types ``property tax``, ``medical`` and ``charity`` feed tax
+deductions where the law gives one. ``rent`` feeds none. ``care`` is not deductible by
 default: assisted-living room and board is not medical expense unless care is the main reason;
 use ``medical`` for deductible care.
 
@@ -76,7 +76,7 @@ BUDGET_TYPES = (
 
 # Types that feed a tax deduction. "care" is not one of them: assisted-living room and board is
 # not medical expense unless care is the main reason (use "medical" for deductible care).
-DEDUCTIBLE_TYPES = frozenset({"property tax", "rent", "medical", "charity"})
+DEDUCTIBLE_TYPES = frozenset({"property tax", "medical", "charity"})
 
 # Costs of the home: a survivor keeps paying them in full unless the line says otherwise.
 HOUSEHOLD_TYPES = frozenset({"rent", "property tax", "insurance", "maintenance"})

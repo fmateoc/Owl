@@ -1,7 +1,7 @@
 """Step-1 itemized plumbing: SALT cap schedule, mortgage interest, budget amount terms.
 
 Phase 3 step 1 (fork-notes/phase3-plan.md): the shared data and helpers the later itemized
-rows build on, and the NJ property-tax bound under essential budget lines (the §3.3 bug).
+rows build on, and the budget amount terms under essential budget lines (the §3.3 bug).
 """
 
 from datetime import date
@@ -242,7 +242,7 @@ class TestBudgetTypes:
     def test_medical_and_charity_are_types(self):
         assert "medical" in budget.BUDGET_TYPES and "charity" in budget.BUDGET_TYPES
         assert "medical" in budget.DEDUCTIBLE_TYPES and "charity" in budget.DEDUCTIBLE_TYPES
-        assert "care" not in budget.DEDUCTIBLE_TYPES
+        assert "care" not in budget.DEDUCTIBLE_TYPES and "rent" not in budget.DEDUCTIBLE_TYPES
 
     def test_by_type_essential_filter(self):
         b = budget.evaluate(

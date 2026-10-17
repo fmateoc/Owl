@@ -1,6 +1,6 @@
 # Draft reply on #175 (Owl-budget, third round, conceptual), for the user to post
 
-Status: draft, 2026-10-09. Not posted. Answers the maintainer's reply of 2026-10-09 (ownership,
+Status: **posted** by the user on Discussion #177, 2026-10-09. Answers the maintainer's reply of 2026-10-09 (ownership,
 hooks, longevity, JSON vs Excel, sources, cost function), at the level of the discussion: ideas
 first, measurements only as support. The earlier, measurement-led version is
 `issue-175-reply-3-measured.md` (superseded); the numbers quoted here come from it

@@ -1,6 +1,9 @@
 # Draft reply on #175 (Owl-budget requirements), for the user to post
 
-Status: draft, 2026-10-08. Not posted. Longer working version: `owl-budget-requirements.md`.
+Status: **posted** by the user on #175 (now Discussion #177), 2026-10-08. Longer working version:
+`owl-budget-requirements.md`. Since 2026-10-17 the test-case line ("a possible move to NJ") is out
+of date: NJ was dropped from the investigation. Not worth a comment on its own; mention it in the
+next reply.
 
 ---
 

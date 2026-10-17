@@ -1357,6 +1357,26 @@ upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fo
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
 
+## Discussion #177 after the NJ removal (2026-10-17, on `claude/intelligent-faraday-pfhera`)
+
+Question: does dropping NJ affect the housing / budget proposal (#175, now Discussion #177)? No,
+not in substance (grep over `fork-notes/` and `src/`). The NJ line 41 rule left the upstream ask in
+our first #175 reply (2026-10-08); what #177 discusses is the budget -> spending-profile contract.
+The posted reply 2 mentions NJ only in the test-case line ("a possible move to NJ"); reply 3 not at
+all. No comment posted for that alone; the next reply can mention it in passing.
+
+Cleanup:
+- `budget.DEDUCTIBLE_TYPES` drops `"rent"`: NJ's 18% share was its only consumer (grep: nothing in
+  `src/` read rent as deductible after `a5fd533`). Rent keeps its survivor default
+  (`HOUSEHOLD_TYPES`). Stale NJ docstrings fixed in `budget.py`, `test_itemized.py`,
+  `test_itemized_data.py`, `test_budget.py`; the latter now asserts rent is not deductible.
+- `owl-budget-requirements.md`: requirement 5's example is now the fork's property tax (federal
+  SALT, NY IT-196, STAR), medical and charity readers; test case without NJ.
+- `issue-175-reply-2.md`, `issue-175-reply-3.md`: headers say posted (PROGRESS.md already did).
+
+Tests: full suite **3190 passed, 1 skipped** (10:16, slowed by a parallel targeted run; same count
+as before, the change only extends an assertion). flake8/ruff: only upstream's known lines.
+
 ## ss-convex removed (2026-10-17, on `claude/friendly-mccarthy-585okd`)
 
 The fork had kept upstream's experiment branch `ss-convex` (merged in `ae1fb9d`, `bb00250`) under

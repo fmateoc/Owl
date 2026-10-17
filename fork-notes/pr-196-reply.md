@@ -6,7 +6,7 @@ ss-convex implementation? My tests were mixed. I am not sure this adds much. You
 Measured on stock `fb8b10e` (the PR head), date frozen at 2026-10-15:
 `model-review/ss-loop/pr196_check_2026-10-17.txt` (scripts `pr196_*.py` beside it).
 
-Revised 2026-10-17 after the user's review. The first draft recommended keeping "convex" as an
+Revised 2026-10-17 after the user's review; the PR was reworked the same day (`pr-193-body.md`: new title and text to paste). The first draft recommended keeping "convex" as an
 opt-in, in a version A. That is dropped, for these reasons:
 - An opt-in adds work for the maintainer (code, docs, tests) and a decision for every user. A
   user can only make that decision with a signal saying when "convex" matters, and there is none.
@@ -40,9 +40,9 @@ on the fork.
 
 ---
 
-No, drop it. I'll rework the PR onto `dev` without `ss-convex`. It will keep only the warning
-when the loop leaves Social Security unsettled, pointing to `withSSTaxability="optimize"`. The
-Summary label change goes too, since without "convex" there is nothing for it to name.
+No, drop it. I've reworked the PR onto `dev` (`7abed19`) without `ss-convex`: one commit, only the
+warning when the loop leaves Social Security unsettled, pointing to `withSSTaxability="optimize"`.
+The Summary label change is gone, since without "convex" there is nothing for it to name.
 
 For the record, what I measured on the PR head (date frozen at 2026-10-15), since it may help
 read your tests:

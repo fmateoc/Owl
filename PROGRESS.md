@@ -1572,7 +1572,7 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
 
 ## Test status
 
-2026-10-17, fork `_SC_PARAMS` warm-started in the "convex" cap probe: full suite **3228 passed, 1 skipped** (7:46) with the fix, then `test_ss_convex_fork.py` added (1 passed): 3229 expected.
+2026-10-17, fork `_SC_PARAMS` warm-started in the "convex" cap probe: full suite **3228 passed, 1 skipped** (7:46) with the fix, then with `test_ss_convex_fork.py`: **3229 passed, 1 skipped** (7:44).
 
 2026-10-16, after merging upstream `ss-convex` `c22f46d`: **3228 passed, 1 skipped** (7:30).
 

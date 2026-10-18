@@ -1387,7 +1387,9 @@ then its bot block); it works through the versioner API with a browser User-Agen
 indexing formula; no charge in months at FRA, which settles one of the two inferences).
 `www.ssa.gov` is passed by the proxy but denied by SSA's Akamai edge (curl with any User-Agent,
 WebFetch); `ssa.gov` sends no intermediate certificate, and its issuer's host is refused by the
-proxy. Details in the plan's header.
+proxy. Details in the plan's header. After the user allowed `cacerts.digicert.com`: `ssa.gov`
+verifies with the intermediate but 301s every page to `www.ssa.gov`. Test-first development for
+steps 1-5 agreed in principle (plan §5b: strict-xfail test commits reviewed before the code).
 
 Next: step 0.
 

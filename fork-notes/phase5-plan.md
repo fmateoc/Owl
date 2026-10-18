@@ -20,7 +20,11 @@ How each claim below is backed:
   - **`ssa.gov`** (no www): the server sends its `*.ssa.gov` certificate without the DigiCert
     intermediate ("DigiCert Global G2 TLS RSA SHA256 2020 CA1"), so TLS verification fails; the
     intermediate's host `cacerts.digicert.com` is refused by the proxy, and verification is not
-    to be switched off. So the Act and the AWI series are still unread here.
+    to be switched off. 2026-10-18, after the user allowed `cacerts.digicert.com`: with the
+    intermediate added to the CA bundle TLS verifies, but every page tried (`/oact/cola/AWI.html`,
+    `/oact/cola/cbb.html`, `/oact/cola/rtea.html`, `/OP_Home/ssact/title02/0209.htm`) answers 301
+    to the same path on `www.ssa.gov`, which denies us. So the Act and the AWI series are still
+    unread here.
   - `www.federalregister.gov` is refused by the proxy.
 - **Read in code**: cited by file and line on this commit.
 - **Measured**: a script in `fork-notes/phase5/` and its saved output.
@@ -372,6 +376,29 @@ own design, take theirs and drop ours, as before.
 spread over `months worked`, exempt amounts at inflation, family charging exact only with one free
 age), `modeling-capabilities.md` SS row, `Documentation.py`, `PARAMETERS.md`, template comments,
 CLAUDE.md state and gotchas.
+
+## 5b. Test-first development (steps 1-5)
+
+Each of steps 1-5 starts with a commit of its tests, marked `pytest.mark.xfail(strict=True)` so
+the suite and CI (which runs on every push) stay green and an accidental pass fails; the user
+reviews that commit; the implementation commit removes the markers. Expected values never come
+from the code under test:
+
+- **Step 1**: worked examples from the primary text, each test citing its source: RS 02501.080
+  ($1,260; $4,333), RS 02501.095 (3 family months; 4 then 5), 404.435 Example 1 (retire in
+  April, May-December paid), ARF by hand from the 404.410 rates (5/9% for each of the first 36
+  months, 5/12% beyond; claim at 62 with FRA 67 = 60 months = 70%; 12 crediting months leave 48
+  = 75%). These also fix the function's signature.
+- **Step 2**: round trip, defaults, refusals; behaviour, no numbers to derive.
+- **Steps 3-4**: properties that hold whatever the plan's numbers are: switch off or no earnings
+  → every example identical to today; Jill's 2028 benefit zero with `months worked` 12 and
+  unchanged with a stop before her claim month; her benefit from FRA equal to PIA x the factor
+  for 10 fewer reduction months (hand number); the `withSSAges` MILP equal to the best fixed-age
+  solve; a second solve after editing wages uses the new wages.
+- **Step 5**: payroll tax for one year by hand, from the rates step 0 verifies.
+
+Not test-first: steps 0, 6 and 8 (measurements) and re-recorded fixtures (with D6 off, none should
+move; that is itself a step-3 test).
 
 ## 6. Decisions
 

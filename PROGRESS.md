@@ -1453,6 +1453,8 @@ no-work grace year (404.435(a)(7): a month without work is a non-service month; 
 skipped it, harmless in this grid) and Owl's earliest claiming month (62y1m for anyone born after
 the 2nd; the prototype's claim-62 rows start one month earlier). Plan §3b, §3c, step 0, step 1.
 
+`main` fast-forwarded to `claude/phase5-step0` (`afb53d5` -> `3803337`, then this note), at the user's request.
+
 Next: step 1 (the rules as a pure function, test-first per §5b).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)

@@ -1375,6 +1375,8 @@ known lines (`localsearch.py:31`, `test_roth_maturation_losses.py:49`).
 
 PR #196 is done. Upstream table row: merged by the maintainer 2026-10-18 (as relayed by the user).
 
+`main` fast-forwarded to this branch (`6d3a155` -> `0acf6a4`, then this note), at the user's request.
+
 ## Phase 5 planned: work, part time, SS earnings test (2026-10-17, on `claude/lucid-noether-20vnnv`)
 
 Plan: `fork-notes/phase5-plan.md` (no code changed). Rules verified this session in the POMS

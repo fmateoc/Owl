@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-17)
+# Owl fork — progress (as of 2026-10-18)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -1411,7 +1411,38 @@ proxy. Details in the plan's header. After the user allowed `cacerts.digicert.co
 verifies with the intermediate but 301s every page to `www.ssa.gov`. Test-first development for
 steps 1-5 agreed in principle (plan §5b: strict-xfail test commits reviewed before the code).
 
-Next: step 0.
+Next: step 0 *(done 2026-10-18, below)*.
+
+## Phase 5 step 0: sources and stakes (2026-10-18, on `claude/phase5-step0`)
+
+Branch from `main` `afb53d52` (= `claude/lucid-noether-20vnnv`). No Owl code changed; the
+step-0 scripts are fork-notes.
+
+**Sources (plan §2.3).** Verified on `irs.gov` (2026-10-18): Pub. 15 (2026) "What's New" —
+2026 SS wage base **$184,500**, SS 6.2% each, Medicare 1.45% each, no Medicare wage base;
+Instructions for Form 8959 (2025) — Additional Medicare Tax **0.9%**, MFJ threshold **$250,000**,
+not indexed. Both match what the plan recalled. The SSA Statement continued-work assumption is
+**still recalled**: no Statement under `otherFiles/`, and the POMS pages tried (RS 00601.001/.020,
+RS 00605.001/.010/.035, RS 02001.001, DI 10515.001) do not state it; only needed for D4(b), which
+the user declined. AWI/PIA formula not checked (D4 = (a)).
+
+**Stakes without the LP** (`fork-notes/phase5/et_stakes.py`, `et_stakes_compare.py`; outputs
+`et_stakes_2026-10-18.txt`, `et_stakes_compare_2026-10-18.txt`; plan §3b). Stand-in worker born
+1964-03-15, PIA $3,000, FRA 67, last plan year 2053; grid earnings x stop year x months-last x
+claim 62–70. Best claiming age is **70 with and without the test in every cell**; at that age the
+lifetime PV is unchanged. **Gate PASSES: stop after step 4 as a correctness fix; skip steps
+6–8's LP sweeps.** Claim-62-while-working moves 0–10.5% in PV (the ARF replaces withheld months
+and, on this stand-in, is worth more than the withholding costs): the correct stream is 0–10.5%
+above Owl's no-test stream at 62, and Owl overstates cash in the work years by the withheld
+amount (up to $121,800 nominal at $100k / 5 years). The plan's "early claiming is close to
+claiming at the stop date" is only true at high earnings / long work (within 0.5% of claim-at-67
+at $100k / stop 2031); at $40k / stop 2028 it looks like claim-at-63 (3.4% below claim-at-stop).
+`months worked` 6 vs 12 flips whether the stop year is withheld (confirms D2 is load-bearing for
+Pat and Jill). Prototype reviewed before commit (plan §3c: the first draft mixed payment and
+entitlement months and dropped a chargeable month; grace-year start and the monthly exempt amount
+checked; POMS RS 02501.080 examples and the 0.70/0.75 ARF hand numbers pass).
+
+Next: step 1 (the rules as a pure function, test-first per §5b).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

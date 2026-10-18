@@ -1,7 +1,8 @@
 # Phase 5 plan: work, part-time work and the Social Security earnings test (2026-10-17)
 
 Fork-only planning note. Written on `claude/lucid-noether-20vnnv` (= `main` `50b152c`, after
-`claude/intelligent-faraday-pfhera`; upstream `dev` `7abed19` merged). No code changed yet.
+`claude/intelligent-faraday-pfhera`; upstream `dev` `7abed19` merged). Step 0 done 2026-10-18 on
+`claude/phase5-step0` (fork-notes scripts only; no Owl code changed).
 
 How each claim below is backed:
 
@@ -127,16 +128,24 @@ year after the worker's last year.
   months (capped at FRA), so `getSelfFactor(fra, claim + c/12)` / `getSpousalFactor(...)` can be
   reused. To check against an RS 00615.490 worked example in step 1.
 
-### 2.3 Recalled, to check in step 0
+### 2.3 Formerly recalled — step 0 check (2026-10-18)
 
-- 2026 SS wage base $184,500; Additional Medicare Tax 0.9% above $250,000 MFJ (statutory, not
-  indexed). Source to use: IRS Pub. 15 (2026) and Form 8959 instructions on `irs.gov` (reachable
-  in earlier sessions).
-- SSA Statement estimates assume the person keeps earning at the latest level until each claiming
-  age, so a Statement PIA overstates the PIA of someone who stops earlier. Check on the user's own
-  Statement text (local) or a POMS/SSA page reachable from here.
-- AWI series and the PIA formula (42 U.S.C. 415(a), govinfo.gov was reachable on 2026-10-04) are
-  only needed if D4 picks the script.
+- **Verified** (IRS Pub. 15 (2026), "What's New", `irs.gov/publications/p15`, read 2026-10-18):
+  2026 social security wage base limit **\$184,500**; SS tax 6.2% each for employer and
+  employee; Medicare 1.45% each, no wage base. **Verified** (Instructions for Form 8959 (2025),
+  "Threshold Amounts for Additional Medicare Tax", `irs.gov/instructions/i8959`, read 2026-10-18):
+  Additional Medicare Tax **0.9%**, MFJ threshold **\$250,000**, Single \$200,000, MFS \$125,000;
+  "The threshold amounts below aren't indexed for inflation." W-2 box 5 is Medicare wages.
+  Both match what this plan recalled.
+- **Not verified.** SSA Statement estimates assumed to keep earning at the latest level until each
+  claiming age (a Statement PIA then overstates the PIA of someone who stops earlier). No Statement
+  text under `otherFiles/` (checked 2026-10-18: Case_us.toml, HFP, no Statement). POMS pages tried
+  on 2026-10-18 (RS 00601.001, RS 00601.020, RS 00605.001/.010/.035, RS 02001.001, DI 10515.001 —
+  the last is blind-employee SGA, not the Statement) do not state it. Stays **recalled**; check on
+  the user's own Statement text or a reachable SSA page before relying on it. Only needed for D4(b),
+  which the user declined (D4 = (a)).
+- **Not needed.** AWI series and the PIA formula (42 U.S.C. 415(a)): D4 picked SSA's calculator
+  (a), not the script. No check done.
 
 ## 3. Evidence gathered for this plan (measured)
 
@@ -159,6 +168,99 @@ above). That is the main input question of this phase (§4.2, D2).
 
 jack+jill is also the case upstream's user guide walks through (`info/USER_GUIDE.md:41`), so this
 table is the evidence for the upstream issue (step 9).
+
+### 3b. Step 0 stakes without the LP (measured 2026-10-18)
+
+`fork-notes/phase5/et_stakes.py` (prototype of the step-1 function, not wired into Owl) and
+`et_stakes_compare.py`; outputs `et_stakes_2026-10-18.txt`, `et_stakes_compare_2026-10-18.txt`.
+Stand-in worker from `nj_stakes.py`: born 1964-03-15, PIA \$3,000/mo, FRA 67, last plan year
+2053 (expectancy 89, Owl's `horizons` convention). Grid: earnings {0, 20k, 30k, 40k, 60k,
+100k} (annual rate; the last year is `earnings x months/12`) x last work year 2026–2031 x
+`months worked` in the last year {6, 12} x claiming age 62–70. Exempt amounts are the 2026 ones
+held flat in today's dollars. Lifetime own benefits, today's \$, undiscounted and at 2% real.
+
+**Gate (§5 step 0.3): PASSES.** In every household cell (earnings 20–60k, stop 2026–2029, 32
+cells) the best claiming age is **70 both with and without the test**, and the lifetime PV of that
+best age is unchanged (claim at 70 is after the work ends, so nothing is withheld). The SS-only
+optimum never moves. By the gate, stop after step 4 with the test as a correctness fix and skip
+steps 6–8's LP sweeps.
+
+**How far "claim at 62 while working" moves** (the correctness-fix size). Owl's no-test stream at
+62 is PIA x 0.70 for life (PV \$541,920 on this worker). With the test the ARF replaces withheld
+months at FRA, so on this stand-in (death at 89) the *lifetime* PV at 62 goes **up**, not down —
+the ARF is worth more than the withholding costs, at 0% and at 2% real:
+
+| earn | stop | mo | c62 no-test | c62 test | dPV | claim at stop | c67 | c70 | ARF mo | withheld |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 20k | any | any | 541,920 | 541,920 | 0% | 542–602k | 601,942 | 628,058 | 0 | 0 |
+| 30k | 2028 | 12 | 541,920 | 548,850 | +1.3% | 566,617 | 601,942 | 628,058 | 6 | 8,280 |
+| 40k | 2028 | 12 | 541,920 | 549,191 | +1.3% | 568,499 | 601,942 | 628,058 | 12 | 23,280 |
+| 60k | 2028 | 12 | 541,920 | 559,904 | +3.3% | 572,264 | 601,942 | 628,058 | 27 | 53,280 |
+| 60k | 2029 | 12 | 541,920 | 573,266 | +5.8% | 586,295 | 601,942 | 628,058 | 36 | 71,040 |
+| 100k | 2031 | 12 | 541,920 | 599,057 | +10.5% | 601,942 | 601,942 | 628,058 | 58 | 121,800 |
+
+(PVs at 2% real. "Claim at stop" is the claiming age in the last work year, with the test.)
+
+Findings that revise §5 step 0's expectation:
+
+1. **The plan's inference** ("above roughly 2x the exempt amount plus the benefit, early claiming
+   is close to claiming at the stop date") is **half right**. Claim-62-while-working with the ARF
+   is close to claiming at the *ARF effective age* (claim + crediting months), not at the stop
+   date. At \$40k / stop 2028 (12 ARF months) c62-test is 3.4% below claim-at-stop but looks
+   like claim-at-63; at \$100k / stop 2031 (58 ARF months, nearly full FRA credit) it is within
+   0.5% of claim-at-67. Distance to the stop date falls as earnings and work length rise.
+2. **Owl's miss is two-sided.** For a claim-62-while-working plan Owl overstates the early years
+   (it pays benefits SSA withholds — the §3 table) *and* understates the benefit from FRA (no
+   ARF). On this stand-in the ARF wins: the correct stream is **0–10.5% above** Owl's no-test
+   stream at 62, and the cash-flow error in the work years is the withholding (up to \$121,800
+   nominal at \$100k / 5 years). Taxes on SS, IRMAA and ACA still follow the wrong early cash, so
+   the early years are wrong in the direction that matters for the household's tax questions.
+   The sign of the lifetime error is not universal: it flips if the remaining life after FRA is
+   too short for the ARF to repay the withholding (not this stand-in).
+3. **Near the exempt amount the test is small.** \$20k < \$24,480: no change at all. \$30k for a
+   few years: +0.4–2.2% at 62, ARF 2–10 months. The household's "part time 20–60k" band spans
+   "no effect" to "+5.8% at claim-62", which is why the best-age question needs the LP (taxes) and
+   not SS dollars alone — but the SS-only best age does not move, so the gate is clear.
+4. **Grace year is live for the stop year.** `months worked` 6 vs 12 in the last year flips
+   whether that year is withheld (e.g. \$40k / stop 2028 / claim 62: withheld \$23,280 with 12
+   months, \$15,520 with 6). Confirms D2 is load-bearing for Pat and Jill (§3).
+
+Interpretation note: the grid treats `earnings` as an annual rate and the last year's countable
+amount as `earnings x months/12`; `months worked` also decides service vs non-service months
+(together with the monthly exempt amount). Step 2's `gross earnings` column is the year's W-2
+box 5 (not a rate).
+
+#### 3c. Prototype review notes (for the step-1 author / an external reader)
+
+What `et_stakes.py` models and how it was checked (2026-10-18, after a first draft that mixed
+payment months with entitlement months):
+
+- **Entitlement months**, not payment months, are the charge grid. The check for entitlement
+  month `m` arrives in `m+1` and is bucketed to that payment year, matching
+  `socialsecurity._payment_start` and `compute_social_security_benefits`. The first draft charged
+  from the first *check* month and compared it to the FRA *entitlement* month, which dropped one
+  chargeable month per work year (visible as ARF 9 instead of 10 at \$100k / 2026 / claim 62).
+- **Hand checks that pass** (run before the grid): POMS RS 02501.080 excess examples
+  (\$12,121 − \$9,600 → \$1,260; (\$30,000 − \$17,000)/3 → \$4,333, both rounded down);
+  `getSelfFactor(67, 62) = 0.70` and `(67, 63) = 0.75` (the ARF hand numbers of §5b);
+  ent start Mar 2026 and FRA Mar 2031; \$100k / 2026 / 12 / claim 62 withholds \$21,000 =
+  10 x \$2,100 with 10 ARF months; grace year when the claim month is after the months-worked
+  period; monthly exempt test (\$20k/12 = \$1,667 ≤ \$2,040 → every work month is a non-service
+  month).
+- **What it does not model** (step 1's job): family charging to auxiliaries, the spouse's
+  record, survivor benefits under the test, substantial services in self-employment (the
+  monthly test here is only the grace-year rule of 404.435, which is where it applies), and a
+  primary-source check of the §2.2 ARF-as-recomputed-factor inference against an RS 00615.490
+  worked example. One worker, own benefit only (this couple has no spousal add-on:
+  `max(0, 0.5·other − own)` is 0 both ways).
+- **Two-pass ARF**: charge once with the pre-ARF stream to count crediting months, rebuild the
+  stream with the ARF, re-charge; one extra pass if the crediting count moved. Fine here; step 1
+  should make the ARF a single deterministic function of the withholding, which it is when the
+  monthly benefit is fixed (the only coupling is which months end up with a partial deduction).
+- **Last payment month**: the prototype pays entitlement through December of the last plan year
+  (2053), so the last check lands in January 2054. Owl's annual `zeta_in` stops at the last plan
+  year as 12 full months, a slightly different tail. The difference is one month of benefit on
+  every claiming age and does not move the gate.
 
 ## 4. Design
 
@@ -256,22 +358,22 @@ Conventions (CLAUDE.md): full suite before a commit is green; re-record moved fi
 frozen test date; flake8 and Ruff (`zip(strict=)`); `$` escaped in Markdown/UI text; upstream
 names and style in upstream files; PROGRESS.md updated each session.
 
-### Step 0: sources and stakes — size S
+### Step 0: sources and stakes — size S — **done 2026-10-18**
 
-1. Check the §2.3 items on `irs.gov` and in POMS; record what was and was not verified in this
-   file.
-2. Stakes without the LP: `fork-notes/phase5/et_stakes.py` on the stand-in couple (both 1964,
-   PIAs $3,000 / $2,400 as in `nj_stakes.py`), using a prototype of the step-1 function. Grid:
-   worker's earnings {0, 20k, 30k, 40k, 60k, 100k} x last work year {2026 ... 2031} x
-   `months worked` in the last year {6, 12} x claiming age {62, 63, ..., 70}. Print lifetime
-   benefits (today's $, no discounting, and at 2% real) with and without the test. What it
-   answers: how far "claim at 62 while working" moves once withholding and the ARF are counted,
-   and whether the best age moves at part-time earnings near the exempt amount (where the test is
-   partial and the ARF small). Expected (inferred, not computed): above roughly 2x the exempt
-   amount plus the benefit, early claiming is close to claiming at the stop date.
-3. Gate: if the household-relevant cells (part time 20-60k, stop 2026-2029) show no change in
-   best age and lifetime benefits within about 1%, stop after step 4 with the test as a
-   correctness fix (it is still wrong for 3 of 18 examples) and skip steps 6-8's LP sweeps.
+1. ~~Check the §2.3 items on `irs.gov` and in POMS.~~ Done: Pub. 15 (2026) and Form 8959
+   verified; the Statement-PIA assumption is still recalled (§2.3); AWI/PIA formula not needed
+   (D4 = (a)). Recorded in §2.3.
+2. ~~Stakes without the LP: `fork-notes/phase5/et_stakes.py` on the stand-in couple.~~ Done.
+   Grid, both lifetime measures, and a claim-62 vs stop/67/70 table in §3b and the saved
+   outputs. Prototype of the step-1 function lives in `et_stakes.py` (`lifetime_pair`).
+3. ~~Gate.~~ **PASSES**: household cells (20–60k, stop 2026–2029) show no change in best age
+   (always 70) and lifetime benefits of that best age are identical. So stop after step 4 with
+   the test as a correctness fix (it is still wrong for 3 of 18 examples) and **skip steps
+   6–8's LP sweeps**. The claim-62 cells themselves move 0–10.5% (§3b) — that is the bug, not a
+   decision change. Prototype reviewed the same day (§3c: payment vs entitlement months, grace
+   year, monthly exempt; hand checks listed there).
+
+Next: step 1 (the rules as a pure function, test-first).
 
 ### Step 1: the rules as a pure function — size M
 

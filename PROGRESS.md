@@ -1360,7 +1360,7 @@ follow-ups: a past SS claiming age).
 ## Phase 5 planned: work, part time, SS earnings test (2026-10-17, on `claude/lucid-noether-20vnnv`)
 
 Plan: `fork-notes/phase5-plan.md` (no code changed). Rules verified this session in the POMS
-(`secure.ssa.gov`; `www.ssa.gov`, eCFR and the Federal Register were not reachable): 2026 exempt
+(`secure.ssa.gov`): 2026 exempt
 amounts $24,480 / $65,160 (RS 02501.025 D), what counts and the FRA-year cut (RS 02501.021,
 .080), family charging with no carry-over (RS 02501.095), partial months (RS 02501.110), grace
 year and non-service months (RS 02501.030), ARF crediting months incl. partial deductions
@@ -1379,7 +1379,17 @@ goes into the SS streams and the `withSSAges` tables (no new LP variables, rows,
 loop parameters). Inputs: optional HFP columns for gross earnings and months worked. Steps 0-10
 and decisions D1-D8 in the plan; D1, D2 and D6 are needed before code.
 
-Next: the user's answers to D1-D8, then step 0.
+2026-10-18: **decisions D1-D8 as recommended, D5 no** (nobody works past 65 with employer
+coverage; step 7 dropped). Access corrected after the user pointed out that `ssa.gov` and eCFR
+are on the allow list: the first draft's "not reachable" was wrong for eCFR (wrong API path,
+then its bot block); it works through the versioner API with a browser User-Agent, and
+20 CFR 404.412, .429, .430, .434, .435 now back the plan (§2.1b: the exempt amounts' AWI
+indexing formula; no charge in months at FRA, which settles one of the two inferences).
+`www.ssa.gov` is passed by the proxy but denied by SSA's Akamai edge (curl with any User-Agent,
+WebFetch); `ssa.gov` sends no intermediate certificate, and its issuer's host is refused by the
+proxy. Details in the plan's header.
+
+Next: step 0.
 
 ## Discussion #177 after the NJ removal (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

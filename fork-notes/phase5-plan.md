@@ -5,10 +5,23 @@ Fork-only planning note. Written on `claude/lucid-noether-20vnnv` (= `main` `50b
 
 How each claim below is backed:
 
-- **Verified**: read this session in the primary text. For SSA rules that is the POMS on
-  `secure.ssa.gov` (section, transmittal and date given). `www.ssa.gov` (the Act, the AWI series)
-  answers 403 to curl, `www.ecfr.gov` returned 403/404 for 20 CFR 404.4xx, and
-  `www.federalregister.gov` is refused by the proxy, so no CFR or Act text was read.
+- **Verified**: read in the primary text. For SSA rules: the POMS on `secure.ssa.gov` (section,
+  transmittal and date given) and, from 2026-10-18, 20 CFR 404 subpart E as of 2026-10-15 from
+  the eCFR versioner API. Access, tested 2026-10-18 (the first draft said eCFR and `ssa.gov`
+  were unreachable; for eCFR that was wrong, see below):
+  - **eCFR works** through `https://www.ecfr.gov/api/versioner/v1/full/<date>/title-20.xml?part=404&subpart=E`
+    with a browser User-Agent, `Accept: application/xml` and `--compressed`. The HTML pages
+    redirect automated clients to `unblock.federalregister.gov`, which the proxy refuses, and
+    after a few calls the API answered "Your IP address has been blocked ... Support Code 02";
+    the first draft's 403/404 were a wrong API path and that block, not the allow list.
+  - **`www.ssa.gov`**: the proxy passes it, but SSA's Akamai edge answers "Access Denied" (403)
+    to curl with any User-Agent and to WebFetch (`/oact/cola/AWI.html`, `/oact/cola/cbb.html`,
+    `/OP_Home/ssact/title02/0209.htm`).
+  - **`ssa.gov`** (no www): the server sends its `*.ssa.gov` certificate without the DigiCert
+    intermediate ("DigiCert Global G2 TLS RSA SHA256 2020 CA1"), so TLS verification fails; the
+    intermediate's host `cacerts.digicert.com` is refused by the proxy, and verification is not
+    to be switched off. So the Act and the AWI series are still unread here.
+  - `www.federalregister.gov` is refused by the proxy.
 - **Read in code**: cited by file and line on this commit.
 - **Measured**: a script in `fork-notes/phase5/` and its saved output.
 - **Inferred** or **recalled**: marked where used; each recalled item has a step-0 check.
@@ -82,10 +95,30 @@ year after the worker's last year.
   plus net self-employment earnings (inferred from the definitions above; box 5 itself was not
   checked against them).
 
+### 2.1b Verified in 20 CFR 404 subpart E (eCFR, 2026-10-15 text, read 2026-10-18)
+
+- **Indexing** (404.430(a)(2)): the lower monthly exempt amount is $670 x AWI(year − 2) /
+  AWI(1992), the higher one $2,500 x AWI(year − 2) / AWI(2000), each rounded to the nearest $10
+  ($5 rounds up); annual = 12 x monthly; never below the amount in effect when it is set. So they
+  follow wages with a two-year lag.
+- **FRA year** (404.430(b), 404.435(a)(3), 404.434(c)): only earnings of the months before the
+  FRA month count, and no month at FRA is charged. This settles the first inference of the first
+  draft.
+- **Charging** (404.434(a)-(b)): from the beginning of the year, $1 of the worker's excess per $1
+  of all benefits on the worker's record; an auxiliary's excess only against the auxiliary's own
+  remaining benefits, after the worker's. Same as RS 02501.095.
+- **Non-service months and grace year** (404.435(a)(7), (b)), with Example 1 there: retire in
+  April, part time under the monthly amount after it → May-December paid although the year's
+  earnings exceed the annual amount; later years annual test only. **Presumption**
+  (404.435(e)): wages above the monthly amount are presumed in every month until shown
+  otherwise, which is what `months worked` lets the user show.
+- **ARF** (404.412): months subject to deduction under 404.415 are not counted in the reduction;
+  the increase is effective with the month of FRA (widow(er)s: also at 62).
+- **Earnings** (404.429(a)): wages for services in the taxable year plus net earnings from
+  self-employment minus a net SE loss; which payments are wages is in the POMS sections above.
+
 ### 2.2 Inferred
 
-- In the FRA year deductions fall only on months before the FRA month (the test "does not apply
-  to individuals at or above FRA", RS 02501.021 A). To confirm in RS 02501.095/.100 in step 1.
 - The ARF is equivalent to recomputing the reduction factor at the claiming age plus the crediting
   months (capped at FRA), so `getSelfFactor(fra, claim + c/12)` / `getSpousalFactor(...)` can be
   reused. To check against an RS 00615.490 worked example in step 1.
@@ -159,9 +192,12 @@ through `hfp_io`), so they ride on `timeLists`, `rawHFP` and `clone` like every 
   Tied to the year row, so it is not a free-floating date (lesson 6).
 
 Exempt amounts: a table in `socialsecurity.py` (2024-2026 from RS 02501.025 D, source comment),
-projected in today's dollars at the last known amount, i.e. growing with inflation. They grow
-with wages in reality, so this slightly overstates withholding after 2026; the horizon that
-matters is at most 5 years (62 to FRA). Stated in the docstring.
+projected in today's dollars at the last known amount, i.e. growing with inflation. By statute
+they follow the AWI with a two-year lag (404.430(a)(2)); Owl has no wage index, so this slightly
+overstates withholding after 2026; the horizon that matters is at most 5 years (62 to FRA).
+Stated in the docstring. The 2027 amounts are already fixed by the 2025 AWI and are normally
+announced in October (recalled): add them to the table in step 1 if a primary copy is reachable (POMS
+RS 02501.025 D is updated each November).
 
 ### 4.3 The function
 
@@ -249,7 +285,7 @@ run with their own year's numbers:
 - no carry-over into the next year; nothing at or after FRA;
 - earnings zero → streams identical to today's.
 
-Confirm the two §2.2 inferences in POMS while writing this (RS 02501.095/.100, RS 00615.490).
+Confirm the §2.2 inference against an RS 00615.490 worked example while writing this.
 
 ### Step 2: inputs — size S
 
@@ -303,9 +339,9 @@ objective, the claiming ages chosen (`withSSAges` on both), lifetime SS withheld
 tax, Medicare + ACA, and the difference from the base. The same day, one machine, one at a time.
 PIA per variant from D4. Rewrite `phase0-scenarios.md` §4 and §4b around it.
 
-### Step 7 (conditional): working past 65 — size S-M (D5)
+### Step 7: working past 65 — dropped (D5 = no, 2026-10-18)
 
-Only if a scenario has someone working past 65 with employer coverage. Per-person Medicare start
+Kept for reference, in case a scenario changes: only if a scenario has someone working past 65 with employer coverage. Per-person Medicare start
 (delayed Part B: no premium and no IRMAA until coverage ends) in `mediVals`, and HSA contributions
 allowed until that start (Owl zeroes them at 65, `plan.py:2333`). Rules to verify before coding:
 the special enrollment period and Part A/HSA interaction (recalled: claiming SS at 65+ enrolls
@@ -313,7 +349,7 @@ in Part A, which ends HSA contributions).
 
 ### Step 8: measure on the stand-in couple — size M
 
-With steps 1-6 (7 if done): the grid of step 0 inside the LP, both claiming ages optimized.
+With steps 1-6: the grid of step 0 inside the LP, both claiming ages optimized.
 Report: (a) the value of the test against the scenario-4b workaround (worker fixed at 67) per
 variant; (b) how much Owl without the test overstates a "claim at 62 while working" plan; (c) the
 price of each extra work year and of part time vs stopping, with and without payroll tax. Decide
@@ -337,14 +373,22 @@ spread over `months worked`, exempt amounts at inflation, family charging exact 
 age), `modeling-capabilities.md` SS row, `Documentation.py`, `PARAMETERS.md`, template comments,
 CLAUDE.md state and gotchas.
 
-## 6. Decisions for the user
+## 6. Decisions
+
+**Answered by the user 2026-10-18: D1-D8 as recommended, D5 no** (no scenario works past 65 with
+employer coverage, so step 7 is dropped). So: D1 `gross earnings` column with the
+`anticipated wages` fallback and warning; D2 `months worked` column; D3 payroll tax in core,
+opt-in `withPayrollTax`, self-employment only if a variant has consulting income; D4 PIA per
+variant from SSA's calculator, by hand; D6 `withEarningsTest` off in code, on in the household
+template; D7 survivor benefits in step 1 if the engine makes it cheap; D8 upstream issue after
+step 4. The table keeps the options as they were put.
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
 | D1 | Earnings the test uses | (a) new optional column `gross earnings`, fallback `anticipated wages` + warning; (b) derive from `anticipated wages` + `401k ctrb` + `Roth 401k ctrb` (overstates by the employer match, which sits in the same columns); (c) `anticipated wages` only | (a): the only one that is right when the match is non-zero; the fallback keeps old files working |
 | D2 | When the last year's work stops | (a) optional `months worked` column; (b) assume the last work year ends before the claim (grace year always applies); (c) assume work through December | (a). (b) and (c) give opposite answers for Jill and Pat (§3), so an assumption alone decides the result |
 | D3 | Payroll tax on earnings | (a) core, opt-in `withPayrollTax`; (b) written by the sweep script as a negative big-ticket item (big-ticket items enter the cash-flow row, `plan.py:4839`, and not the taxable-income row, `:4928-4940`); (c) leave out | (a) once D1 exists: about 7.65% of earnings is a cost of every work variant (on $40k part time, about $3k/yr; inferred arithmetic), and (b) is lost whenever wages are edited by hand. Self-employment only if a variant has consulting income |
-| D4 | PIA per work scenario | (a) SSA's own calculator in the user's account, one PIA per variant, entered by hand; (b) `pia_from_record.py` from the earnings record (needs the AWI series, not reachable from here) | (a) first; (b) only if the sweep needs more than a handful of variants |
+| D4 | PIA per work scenario | (a) SSA's own calculator in the user's account, one PIA per variant, entered by hand; (b) `pia_from_record.py` from the earnings record (needs the AWI series; `www.ssa.gov` denies us) | (a) first; (b) only if the sweep needs more than a handful of variants |
 | D5 | Does any scenario work past 65 with employer coverage? | yes → step 7; no → skip | Your call; it decides step 7 |
 | D6 | Default of `withEarningsTest` | (a) on; (b) off in code, on in the household template | (b) for now: on, it moves recorded results of jack+jill, chris+pat and alex+jamie, which 32 test files reference (grep; how many pin numbers is counted in step 3), and every upstream re-record of those cases would then conflict at merge. Revisit when upstream decides (step 9) |
 | D7 | Survivor benefits under the test (a survivor under FRA who works) | (a) include in step 1; (b) defer | (a) if step 1's engine makes it cheap, since it is the same charging rule; otherwise (b) and documented |
@@ -365,11 +409,12 @@ CLAUDE.md state and gotchas.
   time (as upstream's docs already do).
 - **Stale streams.** `zeta_in` built before the HFP is read would silently skip the test; the
   step-3 test of a second solve after editing wages guards it.
-- **Data access.** `www.ssa.gov`, eCFR and the Federal Register are not reachable from this
-  environment; POMS is. Any number not found in POMS or on `irs.gov` stays marked recalled.
+- **Data access.** POMS and eCFR (API, browser User-Agent, rate-limited) work; `www.ssa.gov` is
+  denied by SSA's edge and `ssa.gov` fails TLS (header of this note). Any number not found in
+  POMS, eCFR or on `irs.gov` stays marked recalled.
 
 ## 8. Order and size
 
 Step 0 (S) → 1 (M) → 2 (S) → 3 (M) → 4 (M) → [9 upstream draft] → 5 (S) → 6 (M) → 7 (conditional)
 → 8 (M) → 10 (S). Steps 1-4 are the earnings test itself; 5-8 turn it into answers for the
-household. D1, D2 and D6 are needed before step 2; D3 before step 5; D4 and D5 before step 6.
+household. All decisions answered 2026-10-18 (§6); step 7 dropped.

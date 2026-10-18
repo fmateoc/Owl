@@ -1,4 +1,9 @@
-"""Claim-62 comparison table appended to the step-0 stakes output."""
+"""Claim-62 comparison table appended to the step-0 stakes output.
+
+Run from the repo root:
+
+    .venv/bin/python fork-notes/phase5/et_stakes_compare.py > fork-notes/phase5/et_stakes_compare_<date>.txt
+"""
 
 import sys
 

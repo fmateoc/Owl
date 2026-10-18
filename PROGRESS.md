@@ -1430,8 +1430,8 @@ the user declined. AWI/PIA formula not checked (D4 = (a)).
 `et_stakes_2026-10-18.txt`, `et_stakes_compare_2026-10-18.txt`; plan §3b). Stand-in worker born
 1964-03-15, PIA $3,000, FRA 67, last plan year 2053; grid earnings x stop year x months-last x
 claim 62–70. Best claiming age is **70 with and without the test in every cell**; at that age the
-lifetime PV is unchanged. **Gate PASSES: stop after step 4 as a correctness fix; skip steps
-6–8's LP sweeps.** Claim-62-while-working moves 0–10.5% in PV (the ARF replaces withheld months
+lifetime PV is unchanged. **Gate: not informative (review below); steps 6-8
+stay.** Claim-62-while-working moves 0–10.5% in PV (the ARF replaces withheld months
 and, on this stand-in, is worth more than the withholding costs): the correct stream is 0–10.5%
 above Owl's no-test stream at 62, and Owl overstates cash in the work years by the withheld
 amount (up to $121,800 nominal at $100k / 5 years). The plan's "early claiming is close to
@@ -1441,6 +1441,17 @@ at $100k / stop 2031); at $40k / stop 2028 it looks like claim-at-63 (3.4% below
 Pat and Jill). Prototype reviewed before commit (plan §3c: the first draft mixed payment and
 entitlement months and dropped a chargeable month; grace-year start and the monthly exempt amount
 checked; POMS RS 02501.080 examples and the 0.70/0.75 ARF hand numbers pass).
+
+**Review (2026-10-18, same branch).** The numbers reproduce (both scripts rerun: identical output
+except one header line saved from an earlier version). Three changes: (1) the gate could not fail
+(with no work the own-benefit PV rises with every year of delay to 70, and every cell stops by
+age 67, so a claim at 70 never meets the test); it was the plan's gate design, not the
+implementation; steps 6 and 8 stay, and step 0's result is the size of the claim-while-working
+correction. (2) Both outputs were UTF-16 with CRLF (PowerShell redirect), which git stores as
+binary: regenerated as UTF-8; the run line says `.venv/bin/python`. (3) Step 1's tests gain the
+no-work grace year (404.435(a)(7): a month without work is a non-service month; the prototype
+skipped it, harmless in this grid) and Owl's earliest claiming month (62y1m for anyone born after
+the 2nd; the prototype's claim-62 rows start one month earlier). Plan §3b, §3c, step 0, step 1.
 
 Next: step 1 (the rules as a pure function, test-first per §5b).
 

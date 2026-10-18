@@ -40,5 +40,5 @@ for f in sorted(glob.glob("Case_*.toml")):
         continue
     i0 = p.inames.index(rows[0][0])
     print(f"{f}: {rows[0][0]} born {p.yobs[i0]}-{p.mobs[i0]:02d}, claims at {p.ssecAges[i0]:.2f}, FRA {fras[i0]:.2f}")
-    for name, yr, w, ss, half in rows:
+    for _name, yr, w, ss, half in rows:
         print(f"    {yr}  wages {w:9,.0f}  SS paid by Owl {ss:8,.0f}  (wages - 24,480)/2 {half:8,.0f}")

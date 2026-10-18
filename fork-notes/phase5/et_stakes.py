@@ -22,7 +22,10 @@ never charged (404.435(a)(3)).
 
 Run from the repo root:
 
-    .venv/Scripts/python fork-notes/phase5/et_stakes.py
+    .venv/bin/python fork-notes/phase5/et_stakes.py > fork-notes/phase5/et_stakes_<date>.txt
+
+(On Windows, `.venv\\Scripts\\python`; write the output as UTF-8, e.g. `$env:PYTHONIOENCODING="utf-8"`
+and `| Out-File -Encoding utf8`, not PowerShell's default `>`, which writes UTF-16.)
 """
 
 from __future__ import annotations

@@ -179,11 +179,19 @@ Stand-in worker from `nj_stakes.py`: born 1964-03-15, PIA \$3,000/mo, FRA 67, la
 `months worked` in the last year {6, 12} x claiming age 62–70. Exempt amounts are the 2026 ones
 held flat in today's dollars. Lifetime own benefits, today's \$, undiscounted and at 2% real.
 
-**Gate (§5 step 0.3): PASSES.** In every household cell (earnings 20–60k, stop 2026–2029, 32
-cells) the best claiming age is **70 both with and without the test**, and the lifetime PV of that
-best age is unchanged (claim at 70 is after the work ends, so nothing is withheld). The SS-only
-optimum never moves. By the gate, stop after step 4 with the test as a correctness fix and skip
-steps 6–8's LP sweeps.
+**Gate (§5 step 0.3): not informative; steps 6-8 stay** (review, 2026-10-18). In every household
+cell (earnings 20–60k, stop 2026–2029, 32 cells) the best claiming age is 70 with and without the
+test, and its lifetime PV is unchanged. That outcome was certain before the grid ran: with no work
+at all the own-benefit PV rises with every year of delay (62: \$541,920 ... 67: \$601,942 ...
+70: \$628,058, death at 89, 2% real), so 70 is the PV maximum whatever the earnings; and every
+cell stops working by 2031 (age 67), so a claim at 70 never meets the test. The gate as written
+in §5 step 0.3 (author's design, not the step-0 implementation) could not fail, and it judged a
+decision question on SS dollars alone, which finding 3 below says is not enough. What step 0
+measured is the size of the correction for a claim made while working (below), not whether the
+test changes the household's plan: that needs the LP (taxes, IRMAA, ACA, survivor benefits,
+Owl's returns) and is step 8's job. Step 6 (the work-scenario sweep) answers the household's own
+questions (when to stop, part time or not) whatever the test's size, so it never depended on
+this gate.
 
 **How far "claim at 62 while working" moves** (the correctness-fix size). Owl's no-test stream at
 62 is PIA x 0.70 for life (PV \$541,920 on this worker). With the test the ARF replaces withheld
@@ -220,7 +228,7 @@ Findings that revise §5 step 0's expectation:
 3. **Near the exempt amount the test is small.** \$20k < \$24,480: no change at all. \$30k for a
    few years: +0.4–2.2% at 62, ARF 2–10 months. The household's "part time 20–60k" band spans
    "no effect" to "+5.8% at claim-62", which is why the best-age question needs the LP (taxes) and
-   not SS dollars alone — but the SS-only best age does not move, so the gate is clear.
+   not SS dollars alone (and why the SS-only gate above settles nothing).
 4. **Grace year is live for the stop year.** `months worked` 6 vs 12 in the last year flips
    whether that year is withheld (e.g. \$40k / stop 2028 / claim 62: withheld \$23,280 with 12
    months, \$15,520 with 6). Confirms D2 is load-bearing for Pat and Jill (§3).
@@ -260,7 +268,17 @@ payment months with entitlement months):
 - **Last payment month**: the prototype pays entitlement through December of the last plan year
   (2053), so the last check lands in January 2054. Owl's annual `zeta_in` stops at the last plan
   year as 12 full months, a slightly different tail. The difference is one month of benefit on
-  every claiming age and does not move the gate.
+  every claiming age and does not move any conclusion here.
+- **Earliest claim** (review 2026-10-18): the grid's claim at 62.0 starts entitlement in March
+  2026 (nine checks, April-December). Owl moves a claim at 62.0 to 62y1m for anyone born after
+  the 2nd (`compute_social_security_benefits`: first-year benefit \$16,900, eight checks, May-
+  December), so every claim-62 number here is one month earlier than Owl allows. No conclusion
+  depends on it; step 1's tests use Owl's rule.
+- **No-work months** (review 2026-10-18): `_is_non_service` returns False for a year without
+  earnings and `_grace_year` only scans years with earnings. By 404.435(a)(7) a month with no
+  work is a non-service month, so a year after entitlement with no earnings is the initial grace
+  year and uses it up. Harmless in this grid (earnings always start in 2026, the first year);
+  step 1 must get it right (test listed there).
 
 ## 4. Design
 
@@ -366,12 +384,13 @@ names and style in upstream files; PROGRESS.md updated each session.
 2. ~~Stakes without the LP: `fork-notes/phase5/et_stakes.py` on the stand-in couple.~~ Done.
    Grid, both lifetime measures, and a claim-62 vs stop/67/70 table in §3b and the saved
    outputs. Prototype of the step-1 function lives in `et_stakes.py` (`lifetime_pair`).
-3. ~~Gate.~~ **PASSES**: household cells (20–60k, stop 2026–2029) show no change in best age
-   (always 70) and lifetime benefits of that best age are identical. So stop after step 4 with
-   the test as a correctness fix (it is still wrong for 3 of 18 examples) and **skip steps
-   6–8's LP sweeps**. The claim-62 cells themselves move 0–10.5% (§3b) — that is the bug, not a
-   decision change. Prototype reviewed the same day (§3c: payment vs entitlement months, grace
-   year, monthly exempt; hand checks listed there).
+3. ~~Gate.~~ Ran, but **not informative** (review 2026-10-18, §3b): the SS-only best age is 70
+   with or without the test by construction, so the gate could not fail. **Steps 6 and 8 stay.**
+   Step 0's result is the size of the correction: a claim at 62 while working moves 0–10.5% in
+   lifetime PV (§3b), and Owl pays the withheld amounts in the work years. Whether that changes
+   the household's plan is step 8's question. Prototype reviewed the same day (§3c: payment vs
+   entitlement months, grace year, monthly exempt; hand checks listed there), and again in the
+   review (§3c: earliest claim month, no-work months).
 
 Next: step 1 (the rules as a pure function, test-first).
 
@@ -389,7 +408,12 @@ run with their own year's numbers:
 - ARF: claim at 62, 12 crediting months → from FRA, the factor of claiming at 63; a partial
   deduction month counts;
 - no carry-over into the next year; nothing at or after FRA;
-- earnings zero → streams identical to today's.
+- earnings zero → streams identical to today's;
+- a year after entitlement with no earnings is the initial grace year (404.435(a)(7), (b)): claim
+  in 2026 while not working, work above the limit in 2027 → 2027 gets the annual test only, with
+  no non-service months spared;
+- the earliest claiming month follows Owl's rule (62y1m for anyone born after the 2nd), as
+  `compute_social_security_benefits` resets it; the step-0 prototype started one month earlier.
 
 Confirm the §2.2 inference against an RS 00615.490 worked example while writing this.
 

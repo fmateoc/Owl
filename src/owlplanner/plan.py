@@ -665,6 +665,10 @@ class Plan:
 
         # Parameters from timeLists initialized to zero.
         self.omega_in = np.zeros((self.N_i, self.N_n))
+        # SS earnings-test inputs (Phase 5): gross earnings (W-2 box 5 + net SE) and
+        # months of work at the start of each year. Filled by setContributions.
+        self.etEarnings_in = np.zeros((self.N_i, self.N_n))
+        self.etMonths_in = np.zeros((self.N_i, self.N_n))
         self.other_inc_in = np.zeros((self.N_i, self.N_n))
         self.netinv_in = np.zeros((self.N_i, self.N_n))
         self.Lambda_in = np.zeros((self.N_i, self.N_n))
@@ -2297,6 +2301,35 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
+    def _warnGrossEarningsFallback(self, i, iname, h):
+        """
+        Warn that countable earnings fall back to anticipated wages, naming the years
+        where a payroll/tax-advantaged deferral column is non-zero (those dollars are
+        not in ``anticipated wages`` but are wages for the SSA earnings test).
+        """
+        deferral_cols = ("401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb", "HSA ctrb")
+        df = self.timeLists[iname]
+        thisyear = date.today().year
+        flagged = []
+        for n in range(h):
+            row = df.iloc[5 + n]
+            if any(float(row.get(c, 0.0) or 0.0) != 0.0 for c in deferral_cols):
+                flagged.append(str(thisyear + n))
+        if flagged:
+            self.mylog.print(
+                f"'gross earnings' is absent from HFP sheet {iname!r}: falling back to "
+                f"'anticipated wages' for the SSA earnings test. That understates countable "
+                f"earnings by payroll deferrals. Non-zero deferral columns in year(s): "
+                f"{', '.join(flagged)}.",
+                tag="WARNING",
+            )
+        else:
+            self.mylog.print(
+                f"'gross earnings' is absent from HFP sheet {iname!r}: falling back to "
+                f"'anticipated wages' for the SSA earnings test.",
+                tag="WARNING",
+            )
+
     def setContributions(self, timeLists=None):
         """
         If no argument is given, use the values that have been stored in self.timeLists.
@@ -2322,6 +2355,21 @@ class Plan:
             self.netinv_in[i, :h] = self.timeLists[iname]["net inv"].iloc[5 : 5 + h]
             self.Lambda_in[i, :h] = self.timeLists[iname]["big-ticket items"].iloc[5 : 5 + h]
             qcd_in[i, :h] = self.timeLists[iname]["QCD"].iloc[5 : 5 + h]
+
+            # SS earnings-test inputs (Phase 5 §4.2). Absent columns were zero-filled
+            # in the tables; the array-level fallbacks live here so a present zero
+            # still wins over the default.
+            self.etEarnings_in[i, :h] = self.timeLists[iname]["gross earnings"].iloc[5 : 5 + h]
+            if "gross earnings" in self.hfpAbsentCols.get(iname, []):
+                # D1: fall back to anticipated wages (net of contributions), and name
+                # the years where a deferral column is non-zero (the fallback understates
+                # countable earnings by those payroll deferrals).
+                self.etEarnings_in[i, :h] = self.omega_in[i, :h]
+                self._warnGrossEarningsFallback(i, iname, h)
+            self.etMonths_in[i, :h] = self.timeLists[iname]["months worked"].iloc[5 : 5 + h]
+            if "months worked" in self.hfpAbsentCols.get(iname, []):
+                # D2: 12 when that year's countable earnings are positive, else 0.
+                self.etMonths_in[i, :h] = np.where(self.etEarnings_in[i, :h] > 0, 12.0, 0.0)
 
             # Values for last 5 years of Roth conversion and contributions stored at the end
             # of array and accessed with negative index.
@@ -2666,6 +2714,8 @@ class Plan:
 
         # Reset parameters with zeros.
         self.omega_in[:, :] = 0.0
+        self.etEarnings_in[:, :] = 0.0
+        self.etMonths_in[:, :] = 0.0
         self.other_inc_in[:, :] = 0.0
         self.netinv_in[:, :] = 0.0
         self.Lambda_in[:, :] = 0.0

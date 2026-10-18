@@ -42,6 +42,16 @@ timetableHelp = {
         "contribution column to the right. Employer contributions were never part of your "
         "wages, so do not subtract those."
     ),
+    "gross earnings": (
+        "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
+        "plus net self-employment earnings. If you leave this column out, Owl uses "
+        "*anticipated wages*, which understates the test's wages by payroll deferrals."
+    ),
+    "months worked": (
+        "Months of work at the start of this year (0-12). Earnings are taken as spread "
+        "evenly over those months; it decides the grace-year monthly test and the share of "
+        "FRA-year earnings that counts. Defaults to 12 when earnings are positive."
+    ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "
         "e.g. consulting income, alimony, or rents you treat as ordinary."
@@ -104,6 +114,11 @@ def timetableColumnConfig(df, helpdic):
             continue
         if col in owb.booleanTimeHorizonItems():
             formatdic[col] = st.column_config.CheckboxColumn(None, help=helpdic.get(col), default=False)
+            continue
+        if col == "months worked":
+            formatdic[col] = st.column_config.NumberColumn(
+                None, help=helpdic.get(col), min_value=0, max_value=12, format="%d"
+            )
             continue
         minValue = None if col in negativeOK else 0.0
         formatdic[col] = st.column_config.NumberColumn(

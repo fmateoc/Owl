@@ -1521,7 +1521,37 @@ months. Subtract from original reduction factor. Apply result to PIA." That is e
 
 Full suite: 3222 passed / 1 skipped (8:33). flake8 and Ruff clean.
 
-Next: step 2 (inputs: `gross earnings` / `months worked` columns).
+Next: step 2 (inputs: `gross earnings` / `months worked` columns) *(done 2026-10-18, below)*.
+
+## Phase 5 step 2: `gross earnings` / `months worked` columns (2026-10-18, on `claude/phase5-step1`)
+
+Size S from `phase5-plan.md` §5 step 2. Spec commit `fca2f2cf` (17 xfail tests), independent
+review (approve with gaps: clone test needed `rawHFP`, months-default keyed on gross not wages,
+present-zero months unpinned), must-fixes applied, then implementation. Xfail markers removed.
+
+**Columns** (`hfp_io._timeHorizonItems`, after `anticipated wages`): `gross earnings` (D1,
+nominal $, W-2 box 5 + net SE) and `months worked` (D2, whole months 0-12). Both optional;
+typo check applies; written back by `build_hfp_dataframes`. Months is not a dollar column:
+`_conditionTimetables` refuses anything outside integer [0, 12] (12.5 and 6.5 included).
+
+**Arrays** (`plan.py`): `etEarnings_in` / `etMonths_in`, shape (N_i, N_n), zeros in `__init__`,
+filled in `setContributions` from `iloc[5:5+h]`, cleared by `zeroWagesAndContributions`.
+Fallbacks at array-build time so a present zero wins: absent `gross earnings` → `anticipated
+wages` plus a warning naming years with a non-zero deferral column (401k / Roth 401k / IRA /
+Roth IRA / HSA); absent `months worked` → 12 when *countable* earnings > 0 else 0.
+
+**Also:** UI bubble help + 0-12 editor for months; `Documentation.py` (16-column table and
+descriptions); `PARAMETERS.md`; all 17 `examples/HFP*.xlsx` gain the two headers.
+
+**Tests** (`tests/config/test_hfp_earnings_columns.py`, 17): schema, load, present-zero vs
+absent, fallback warning, round trip (cell values, not just headers), clone after UI-style
+`readHFP`, refusals, fresh-plan zeros, reset. Reviewer findings folded in: clone populates
+`rawHFP` via `readHFP({n: timeLists[n]})` (bare `zeroWages` plans never set it — `clone`
+skips HFP when `rawHFP` is empty, `plan_bridge.py:694`).
+
+Full suite: 3239 passed / 1 skipped (8:41). flake8 and Ruff clean.
+
+Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

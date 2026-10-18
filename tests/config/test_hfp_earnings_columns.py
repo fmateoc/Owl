@@ -5,8 +5,7 @@ Plan: ``fork-notes/phase5-plan.md`` §4.2 (inputs), §5 step 2 (round trip, defa
 refusals). Expected behaviour is from that plan and the existing optional-column
 conventions in ``hfp_io.py`` — not from the code under test.
 
-Committed test-first (plan §5b) as xfail(strict=True); the implementation commit
-removes the markers.
+Committed test-first (plan §5b); the markers were removed when the implementation landed.
 
 Month / money conventions:
   ``gross earnings``   nominal $, W-2 box 5 + net SE (D1). Absent → ``anticipated wages``
@@ -40,14 +39,6 @@ import owlplanner as owl
 from owlplanner import hfp_io
 
 thisyear = date.today().year
-
-# Step 1 is test-first (phase5-plan.md §5b). Same rule here (step 2 is in the same
-# test-first list). Strict xfail keeps the suite green and fails if a test passes
-# while the markers are still on.
-pytestmark = pytest.mark.xfail(
-    strict=True,
-    reason="Phase 5 step 2 spec: gross earnings / months worked columns not implemented yet",
-)
 
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
@@ -159,26 +150,45 @@ def test_absent_gross_earnings_falls_back_to_anticipated_wages():
 
 
 def test_absent_months_worked_defaults_by_earnings():
-    """D2: absent ``months worked`` → 12 when that year's earnings are positive, else 0."""
+    """D2: absent ``months worked`` → 12 when that year's earnings are positive, else 0.
+
+    The default keys off the *effective* countable earnings (``gross earnings`` if the
+    column is present, else the ``anticipated wages`` fallback) — not off wages alone.
+    """
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
-    df.loc[df.index[5], "anticipated wages"] = 90_000.0
-    df.loc[df.index[5], "gross earnings"] = 95_000.0
-    # row 6: no earnings at all
+    df.loc[df.index[5], "gross earnings"] = 95_000.0  # present and positive
+    df.loc[df.index[6], "gross earnings"] = 0.0  # present, explicit zero
+    df.loc[df.index[6], "anticipated wages"] = 90_000.0  # wages alone do not count
     p.setContributions()
 
     p2, tmp = _write_and_reload(p, drop=["months worked"])
     try:
         assert "months worked" in p2.hfpAbsentCols["Alice"]
-        assert p2.etMonths_in[0, 0] == 12  # earnings > 0
-        assert p2.etMonths_in[0, 1] == 0  # no earnings
+        assert p2.etMonths_in[0, 0] == 12  # gross earnings > 0
+        assert p2.etMonths_in[0, 1] == 0  # gross present and 0: default is 0, not 12
     finally:
         os.unlink(tmp)
 
 
+def test_present_zero_months_worked_is_not_replaced_by_default():
+    """An explicit ``months worked`` of 0 is not a missing column (symmetry with gross)."""
+    p = _plan()
+    p.zeroWagesAndContributions()
+    df = p.timeLists["Alice"]
+    df.loc[df.index[5], "gross earnings"] = 90_000.0
+    df.loc[df.index[5], "months worked"] = 0
+    p.setContributions()
+    assert p.etMonths_in[0, 0] == 0  # user wins over the 12-when-earning default
+
+
 def test_present_zero_gross_earnings_is_not_replaced_by_wages():
-    """An explicit zero is not a missing column: the user's value wins over the fallback."""
+    """An explicit zero is not a missing column: the user's value wins over the fallback.
+
+    Jointly with ``test_present_zero_months_worked_is_not_replaced_by_default``: both
+    columns are literal when present.
+    """
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
@@ -191,7 +201,13 @@ def test_present_zero_gross_earnings_is_not_replaced_by_wages():
 
 
 def test_fallback_warning_names_deferral_years():
-    """§4.2: a warning names the years where a deferral column is non-zero in a test year."""
+    """§4.2: a warning names the years where a deferral column is non-zero in a test year.
+
+    Fires when ``setContributions`` applies the ``anticipated wages`` fallback (the
+    array-build path), naming calendar years in which any payroll/tax-advantaged
+    contribution column is non-zero. Those columns are *401k ctrb*, *Roth 401k ctrb*,
+    *IRA ctrb*, *Roth IRA ctrb*, and *HSA ctrb*.
+    """
     log_lines = []
 
     class _Log:
@@ -206,12 +222,11 @@ def test_fallback_warning_names_deferral_years():
     df = p.timeLists["Alice"]
     df.loc[df.index[5], "anticipated wages"] = 90_000.0
     df.loc[df.index[5], "401k ctrb"] = 10_000.0
-    df.loc[df.index[6], "anticipated wages"] = 50_000.0
+    df.loc[df.index[6], "anticipated wages"] = 50_000.0  # no deferral this year
     p.setContributions()
 
     p2, tmp = _write_and_reload(p, drop=["gross earnings"])
     try:
-        # Rebuild with a capturing log so the fallback warning is visible.
         p2.mylog = _Log()
         p2.setContributions()
         text = "\n".join(log_lines)
@@ -227,7 +242,7 @@ def test_fallback_warning_names_deferral_years():
 
 
 def test_round_trip_workbook_plan_workbook():
-    """§5 step 2: workbook → plan → workbook keeps both columns."""
+    """§5 step 2: workbook → plan → workbook keeps both columns (values, not just headers)."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
@@ -239,19 +254,31 @@ def test_round_trip_workbook_plan_workbook():
     try:
         assert p2.etEarnings_in[0, 0] == pytest.approx(111_000.0)
         assert p2.etMonths_in[0, 0] == 7
-        # Write-back carries the columns too.
+        # Write-back carries the column *values*, not just the headers.
         wb = p2.saveContributions()
         sheet = wb["Alice"]
         headers = [c.value for c in sheet[1]]
-        assert "gross earnings" in headers
-        assert "months worked" in headers
+        i_gross = headers.index("gross earnings") + 1
+        i_months = headers.index("months worked") + 1
+        # Row 1 is the header; plan year 0 is Excel row 7 (five lead-in rows + header).
+        assert sheet.cell(row=7, column=i_gross).value == pytest.approx(111_000.0)
+        assert sheet.cell(row=7, column=i_months).value == 7
     finally:
         os.unlink(tmp)
 
 
 def test_clone_with_new_expectancy_keeps_columns():
-    """§5 step 2: ``clone`` with a new horizon keeps the two columns (they ride on rawHFP)."""
+    """§5 step 2: ``clone`` with a new horizon keeps the two columns.
+
+    ``clone`` re-applies HFP from ``rawHFP``, so the plan must have been through
+    ``readHFP`` (the same way the UI syncs the per-person tables). Account balances
+    are required because clone serializes the full plan.
+    """
     p = _plan(remaining=30)
+    p.setAccountBalances(taxable=[100], taxDeferred=[500], taxFree=[100])
+    p.setAllocationRatios("individual", generic=[[[60, 40, 0, 0], [60, 40, 0, 0]]])
+    p.setRates("conservative")
+    p.setSpendingProfile("flat")
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
     df.loc[df.index[5], "gross earnings"] = 77_000.0
@@ -259,6 +286,8 @@ def test_clone_with_new_expectancy_keeps_columns():
     df.loc[df.index[6], "gross earnings"] = 88_000.0
     df.loc[df.index[6], "months worked"] = 12
     p.setContributions()
+    # Populate rawHFP the way the UI sync does, so clone can rebuild from it.
+    p.readHFP({n: p.timeLists[n] for n in p.inames}, houseTables=False)
 
     c = owl.clone(p, expectancy=[(thisyear - 1970) + 25], verbose=False)
     assert c.etEarnings_in[0, 0] == pytest.approx(77_000.0)
@@ -272,12 +301,18 @@ def test_clone_with_new_expectancy_keeps_columns():
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad_months", [-1, 13, 12.5])
+@pytest.mark.parametrize("bad_months", [-1, 13, 12.5, 6.5])
 def test_months_worked_outside_0_12_refused(bad_months):
-    """§5 step 2: bad values refused like other columns. Months must be in [0, 12]."""
+    """§5 step 2: bad values refused like other columns. Months must be an integer in [0, 12].
+
+    12.5 is outside [0, 12] on the reals; 6.5 is inside the interval but is not a whole
+    month. ``months worked`` is a count (plan §4.2; ``earnings_test`` takes ``int``).
+    """
     p = _plan()
     p.zeroWagesAndContributions()
-    df = p.timeLists["Alice"]
+    df = p.timeLists["Alice"].copy()
+    # The live table may hold an integer dtype; allow a bad entry into the sheet itself.
+    df["months worked"] = df["months worked"].astype(float)
     df.loc[df.index[5], "months worked"] = bad_months
     tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
     tmp.close()
@@ -324,3 +359,12 @@ def test_zero_wages_reset_clears_et_arrays_and_columns():
     assert "gross earnings" in p.timeLists["Alice"].columns
     assert "months worked" in p.timeLists["Alice"].columns
     assert p.hfpAbsentCols["Alice"] == []
+
+
+def test_fresh_plan_has_zero_et_arrays():
+    """A new Plan starts with zero earnings-test inputs (like omega_in)."""
+    p = _plan()
+    assert (p.etEarnings_in == 0).all()
+    assert (p.etMonths_in == 0).all()
+    assert p.etEarnings_in.shape == (p.N_i, p.N_n)
+    assert p.etMonths_in.shape == (p.N_i, p.N_n)

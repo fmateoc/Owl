@@ -35,6 +35,8 @@ from .budget import BUDGET_TYPES, is_essential
 _timeHorizonItems = [
     "year",
     "anticipated wages",
+    "gross earnings",
+    "months worked",
     "other inc",
     "net inv",
     "taxable ctrb",
@@ -352,7 +354,16 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
                     # Flags carry no magnitude, so the sign check does not apply.
                     if item in _booleanTimeHorizonItems:
                         continue
-                    if year_rows[item].iloc[0] < 0:
+                    val = year_rows[item].iloc[0]
+                    if item == "months worked":
+                        # A count of months, not an amount: integer in [0, 12].
+                        if val < 0 or val > 12 or float(val) != int(float(val)):
+                            raise ValueError(
+                                f"Item {item} for {iname} in year {year} is {val}: "
+                                "months worked must be a whole number of months from 0 to 12."
+                            )
+                        continue
+                    if val < 0:
                         if item == "big-ticket items":
                             continue
                         if item == "Roth conv":
@@ -684,6 +695,8 @@ def build_hfp_dataframes(plan):
         for n in range(h):
             row = lead_in + n
             df.at[row, "anticipated wages"] = float(plan.omega_in[i, n])
+            df.at[row, "gross earnings"] = float(plan.etEarnings_in[i, n])
+            df.at[row, "months worked"] = float(plan.etMonths_in[i, n])
             df.at[row, "other inc"] = float(plan.other_inc_in[i, n])
             df.at[row, "net inv"] = float(plan.netinv_in[i, n])
             df.at[row, "big-ticket items"] = float(plan.Lambda_in[i, n])
@@ -756,6 +769,8 @@ def time_lists_agree(a, b):
     # Carried by the arrays for plan years only (see the note above).
     planOnlyCols = [
         "anticipated wages",
+        "gross earnings",
+        "months worked",
         "other inc",
         "net inv",
         "QCD",

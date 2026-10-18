@@ -1357,6 +1357,24 @@ upstream drops it, the fork can drop it too at the next sync (the `warm_keys` fo
 `_ssCapProbe` goes with it). Not merged here yet: upstream `dev` `7e5f11a`, `7abed19` (#195
 follow-ups: a past SS claiming age).
 
+## Upstream dev 4932cb9 merged: PR #196 landed (2026-10-18, on `claude/lucid-noether-20vnnv`)
+
+The maintainer merged PR #196 (`4932cb9`, merge of our `e5a9ad5`; its tree is identical to
+`e5a9ad5`, checked with `git diff`): the loop warns when taxable Social Security does not settle
+(`_warnSSResidual`, `tests/plan/test_ss_residual_warning.py`). Merged here after `origin/main`
+(`6d3a155`, #185 recheck, docs only; PROGRESS.md conflict, both sections kept). CHANGELOG
+conflict: upstream's new "Version WIP" section kept below the fork's "Unreleased".
+
+One fork adaptation: upstream's test couple (#193, NY + mortgage, $95k) settles under the fork's
+default itemizing, SS residual $890 against the $1,550 bar (no warning), and does not with
+`withItemized="none"`, upstream's model ($2,131, warning). The test's `_solve` now passes
+`withItemized="none"`, with a comment; `withSTAR="none"` changes nothing there.
+
+Tests: full suite **3193 passed, 1 skipped** (8:33; +3 upstream). flake8/ruff: only upstream's
+known lines (`localsearch.py:31`, `test_roth_maturation_losses.py:49`).
+
+PR #196 is done. Upstream table row: merged by the maintainer 2026-10-18 (as relayed by the user).
+
 ## Phase 5 planned: work, part time, SS earnings test (2026-10-17, on `claude/lucid-noether-20vnnv`)
 
 Plan: `fork-notes/phase5-plan.md` (no code changed). Rules verified this session in the POMS

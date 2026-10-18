@@ -1,0 +1,19 @@
+# gain_basis_loop.py (gain_basis.py with withItemized 'loop'; date frozen 2026-10-11). NY rows: withItemized now also switches NY IT-196, so they are not the posted federal-only measure.
+## fe4db7f
+NY mort=False yOBBBA=2099: bequest gain 38,635; fed tax 6,769; state tax -22,072; total tax -15,303
+NY mort=True yOBBBA=2099: bequest gain 107,085; fed tax -8,131; state tax -40,853; total tax -48,983
+NJ mort=False yOBBBA=2099: bequest gain 0; fed tax 0; state tax 0; total tax 0
+NJ mort=True yOBBBA=2099: bequest gain 30,385; fed tax -15,478; state tax 0; total tax -15,478
+NY mort=False yOBBBA=2032: bequest gain 55,347; fed tax -4,568; state tax -20,722; total tax -25,290
+NY mort=True yOBBBA=2032: bequest gain 209,501; fed tax -66,540; state tax -40,560; total tax -107,101
+NJ mort=False yOBBBA=2032: bequest gain 27,934; fed tax -20,453; state tax 0; total tax -20,453
+NJ mort=True yOBBBA=2032: bequest gain 140,995; fed tax -88,708; state tax 0; total tax -88,708
+## 50b152c
+NY mort=False yOBBBA=2099: bequest gain 38,635; fed tax 6,769; state tax -22,072; total tax -15,303
+NY mort=True yOBBBA=2099: bequest gain 107,085; fed tax -8,131; state tax -40,853; total tax -48,983
+NJ mort=False yOBBBA=2099: bequest gain 0; fed tax 0; state tax 0; total tax 0
+NJ mort=True yOBBBA=2099: bequest gain 42,272; fed tax -17,730; state tax 63; total tax -17,667
+NY mort=False yOBBBA=2032: bequest gain 55,347; fed tax -4,568; state tax -20,722; total tax -25,290
+NY mort=True yOBBBA=2032: bequest gain 209,501; fed tax -66,540; state tax -40,560; total tax -107,101
+NJ mort=False yOBBBA=2032: bequest gain 32,040; fed tax -24,093; state tax -99; total tax -24,191
+NJ mort=True yOBBBA=2032: bequest gain 159,164; fed tax -95,924; state tax -288; total tax -96,212

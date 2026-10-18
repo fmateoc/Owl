@@ -126,7 +126,10 @@ year after the worker's last year.
 
 - The ARF is equivalent to recomputing the reduction factor at the claiming age plus the crediting
   months (capped at FRA), so `getSelfFactor(fra, claim + c/12)` / `getSpousalFactor(...)` can be
-  reused. To check against an RS 00615.490 worked example in step 1.
+  reused. **Checked 2026-10-18** against RS 00615.490 (TN 24): that section has no numeric
+  worked example — the procedure is "Determine crediting months. Subtract from original
+  reduction factor. Apply result to PIA." which is exactly the inferred form. Verified as
+  procedure; no numeric example exists to check.
 
 ### 2.3 Formerly recalled — step 0 check (2026-10-18)
 
@@ -394,11 +397,14 @@ names and style in upstream files; PROGRESS.md updated each session.
 
 Next: step 1 (the rules as a pure function, test-first).
 
-### Step 1: the rules as a pure function — size M
+### Step 1: the rules as a pure function — size M — **done 2026-10-18**
 
 `socialsecurity.py`: exempt-amount table and projection, `earnings_test(...)` (§4.3). Tests
-(`tests/ss/test_earnings_test.py`) taking the exempt amounts as parameters, so the POMS examples
-run with their own year's numbers:
+(`tests/ss/test_earnings_test.py`, 23) taking the exempt amounts as parameters, so the POMS
+examples run with their own year's numbers. All of the listed cases are in the suite (see
+PROGRESS.md "Phase 5 step 1"). Survivor ARF deferred (D7); survivor streams still fold in as
+the greater of own and survivor. Not yet wired into `compute_social_security_benefits` /
+`build_own_benefit_table` (steps 3-4).
 
 - RS 02501.080 examples ($1,260; $4,333; the FRA-year wage cut at the FRA month);
 - RS 02501.095 examples (3 family months; 4 family months then 5 spouse-only months);
@@ -415,7 +421,10 @@ run with their own year's numbers:
 - the earliest claiming month follows Owl's rule (62y1m for anyone born after the 2nd), as
   `compute_social_security_benefits` resets it; the step-0 prototype started one month earlier.
 
-Confirm the §2.2 inference against an RS 00615.490 worked example while writing this.
+Confirm the §2.2 inference against an RS 00615.490 worked example while writing this — done
+2026-10-18: no numeric example in that section; see §2.2.
+
+Next: step 2 (inputs).
 
 ### Step 2: inputs — size S
 

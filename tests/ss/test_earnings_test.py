@@ -37,17 +37,12 @@ import pytest
 
 from owlplanner import socialsecurity as ss
 
-# Step 1 is test-first (phase5-plan.md §5b): this file is the specification, committed
-# before the implementation. Strict xfail keeps the suite green and fails if a test
-# passes while the markers are still on. The implementation commit removes them.
+# Step 1 is test-first (phase5-plan.md §5b). The spec commit carried these tests with
+# pytest.mark.xfail(strict=True); the implementation commit removes the markers.
 #
 # Month indexing (locked API — do not mix them):
 #   charge_excess_months: 0-based month index within the charged span (0 = first month).
 #   is_non_service_month / initial_grace_year: 1-based calendar month (1 = January).
-pytestmark = pytest.mark.xfail(
-    strict=True,
-    reason="Phase 5 step 1 spec: earnings_test not implemented yet (plan §5b)",
-)
 
 
 # Frozen plan start (tests/conftest.py freezes the date; keep this in step with it).

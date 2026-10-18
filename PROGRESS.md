@@ -1455,7 +1455,73 @@ the 2nd; the prototype's claim-62 rows start one month earlier). Plan §3b, §3c
 
 `main` fast-forwarded to `claude/phase5-step0` (`afb53d5` -> `3803337`, then this note), at the user's request.
 
-Next: step 1 (the rules as a pure function, test-first per §5b).
+Next: step 1 (the rules as a pure function, test-first per §5b) *(done 2026-10-18, below)*.
+
+## Phase 5 step 1: the earnings-test rules as a pure function (2026-10-18, on `claude/phase5-step1`)
+
+Branch from `main` `41abe581` (= `claude/phase5-step0`). Size M from `phase5-plan.md` §5 step 1.
+`socialsecurity.py` gains the rule pieces and `earnings_test(...)` (§4.3); **not yet wired** into
+`compute_social_security_benefits` / `build_own_benefit_table` / `Plan` (steps 3-4). No recorded
+value moves (the function is new and unused).
+
+**What landed** (`socialsecurity.py`, `tests/ss/test_earnings_test.py`, 29 tests):
+
+- Exempt-amount table (2024-2026 from RS 02501.025 D, TN 55, source comment) and
+  `get_exempt_amounts` (later years held at the 2026 real level); tests pass their own
+  `exempt_for_year` so the POMS examples run with their year's numbers.
+- `excess_earnings` / `countable_earnings` (RS 02501.080, FRA-year cut at the FRA month),
+  `is_non_service_month` / `initial_grace_year` (404.435; a month with no work is a
+  non-service month — the step-0 gap), `charge_excess_months` (RS 02501.095 family charge,
+  RS 02501.110 partial-month split by original shares with cap-and-reapportion).
+- ARF as a single deterministic function of the withholding: `arf_self_factor` /
+  `arf_spousal_factor` recompute the factor at `claim + crediting_months/12` (capped at
+  FRA). ARF is effective only from the FRA month and charging never reaches that month,
+  so crediting months come from the pre-ARF stream alone (one pass, not the prototype's two).
+  A month with any deduction counts (RS 00615.482 B.1); an auxiliary is credited for
+  deductions from the worker's charge too (B.2).
+- `earnings_test(...)`: monthly own + spousal grids (eligibility reset 62y1m like
+  `compute_social_security_benefits`), excess per person per year, family charging
+  (worker's excess to the family on their record; an auxiliary's own excess to their
+  remaining check), ARF from FRA, aggregation to payment-year annual amounts (check for
+  month m in m+1). Survivor folded in after the first death as the greater of own and
+  survivor; **survivor ARF deferred** (D7 said include if cheap — the charging rule is
+  cheap, the survivor ARF schedule (RS 00615.580) is not; documented in the module
+  docstring).
+
+**Test-first (plan §5b) and reviews.** Spec commit first (`5d298f62`, tests only, strict
+xfail, expected values from the POMS text). Three independent review passes: (1) approve
+with gaps — grace-year outcomes were inequality-only, claim-62 had no hand number, tob=2
+comment wrong; (2) those fixed but the grace-year e2e fed multi-year work while pinning
+single-year totals (fixed to 2026-only work); hand numbers re-audited against POMS and
+404.410; (3) **approve**, ready to implement. Implementation commit removes the markers.
+The specs then caught two implementation bugs: the monthly grid overran `horizons` by 11
+months (hidden in the single-worker no-op because the overflow fell past `N_n`), and the
+December arrears check landed past the person's horizon (Owl stops at 12 full months of
+the last plan year). Both fixed; the couple-with-survivor no-op is exact.
+
+**Tests cite primary worked examples** (not numbers from the code): RS 02501.080
+(\$1,260; \$4,333; the June FRA cut), RS 02501.095 (3 family months; 4 then 5, order as
+`earnings_test` behavior), RS 02501.110 (\$600 split 2/6 and 1/6; Example 3
+cap-and-reapportion → \$38/\$16/\$19/\$19), 404.435 grace-year shapes with hand totals
+(\$0 vs \$7,760), ARF hand numbers (0.70 → 0.75 at 12 crediting months; claim-62-while-
+working: ARF **57**, withheld **\$120,412.50**, from-FRA **\$2,966.67**/mo), payment-year
+bucketing, PIA-share partial split, spousal ARF crediting from the worker's charge,
+survivor fold-in / deferred survivor ARF, no-op when earnings are zero (identical to
+`compute_social_security_benefits`), Owl's earliest claiming month (tob 1/2/3/15), nothing
+at/after FRA.
+
+**§2.2 ARF inference checked** against RS 00615.490 (TN 24, read 2026-10-18): the section
+has **no numeric worked example** — it only states the procedure "Determine crediting
+months. Subtract from original reduction factor. Apply result to PIA." That is exactly
+`getSelfFactor(fra, claim + c/12)`. Marked **verified as procedure, no numeric example**.
+
+**Cross-check** against `fork-notes/phase5/et_stakes.py` on the stand-in (claim 62,
+\$40k / stop 2028 / 12 months): withheld **\$23,280** and **12** ARF months, identical.
+(Prototype claim-62 starts one month early; the withheld/ARF match still holds here.)
+
+Full suite: 3222 passed / 1 skipped (8:33). flake8 and Ruff clean.
+
+Next: step 2 (inputs: `gross earnings` / `months worked` columns).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

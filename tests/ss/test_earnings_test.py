@@ -58,6 +58,11 @@ def _exempt_2026(_year):
     return ss.ExemptAmounts(*_EXEMPT_2026_VALUES)
 
 
+# Review of 2026-10-18 (PROGRESS.md "Phase 5 steps 1-2 review"): spec for the fixes,
+# committed before them like the step's own tests (plan §5b).
+_REVIEW_XFAIL = pytest.mark.xfail(strict=True, reason="Phase 5 steps 1-2 review fixes not yet in")
+
+
 # --------------------------------------------------------------------------------------
 # Excess earnings — RS 02501.080
 # --------------------------------------------------------------------------------------
@@ -687,6 +692,7 @@ def test_withheld_buckets_to_payment_year_not_entitlement_month():
     assert res.withheld_in.sum() == pytest.approx(19_012.0)
 
 
+@_REVIEW_XFAIL
 def test_family_charge_order_and_spousal_arf_crediting():
     """RS 02501.095 B.4 order as *earnings_test* behavior + RS 00615.482 B.2 crediting.
 
@@ -704,8 +710,10 @@ def test_family_charge_order_and_spousal_arf_crediting():
     A reversed charge would take the spouse's June-July instead — different result.
 
     Person 1 is reduced in all four months (two from the worker's charge, two from
-    their own) → **4** ARF crediting months for person 1 (RS 00615.482 B.2), **2** for
-    person 0. Partial-month shares are PIA-based 2:1 (RS 02501.110 examples).
+    their own) → **4** crediting months on person 1's *spouse* record (RS 00615.482
+    B.2), **2** on person 0's own record. Person 1 has no own benefit (PIA 0), so 0 on
+    their own record: ARFs are granted separately on each record (RS 00615.482 B.3,
+    NOTE). Partial-month shares are PIA-based 2:1 (RS 02501.110 examples).
     """
     pias = np.array([2000, 0], dtype=np.int32)
     ages = np.array([62.0, 62.0], dtype=np.float64)
@@ -732,7 +740,9 @@ def test_family_charge_order_and_spousal_arf_crediting():
     # Entitlement June 2026 (claim 62, born June). Chargeable Jun-Dec.
     # Person 0 takes June+July of [own_0, spousal_1]; person 1 then Aug+Sep of spousal_1.
     assert res.arf_months[0] == 2
-    assert res.arf_months[1] == 4
+    assert res.arf_months[1] == 0
+    assert res.arf_months_spousal[0] == 0
+    assert res.arf_months_spousal[1] == 4
     # Person 0 loses only their own June+July.
     assert res.withheld_in[0, :2].sum() == pytest.approx(2 * 1400.0)
     # Person 1 loses spousal June-Sep (two from the family charge, two from their own).
@@ -741,6 +751,7 @@ def test_family_charge_order_and_spousal_arf_crediting():
     assert res.withheld_in.sum() == pytest.approx(2 * 1400.0 + 4 * 650.0)
 
 
+@_REVIEW_XFAIL
 def test_family_partial_month_uses_pia_shares():
     """RS 02501.110: a partial family payment is split by original entitlement shares
     (NH 2 / aux 1 in the examples), not by the reduced dollar rates.
@@ -776,7 +787,7 @@ def test_family_partial_month_uses_pia_shares():
     assert res.withheld_in[1, 0] == pytest.approx(650.0 + (650.0 - 1025.0 * 1 / 3))
     assert res.withheld_in.sum() == pytest.approx(3_075.0)
     assert res.arf_months[0] == 2  # 1 full + 1 partial
-    assert res.arf_months[1] == 2
+    assert res.arf_months_spousal[1] == 2
 
 
 def test_survivor_fold_in_and_deferred_arf():
@@ -876,3 +887,305 @@ def test_exempt_amounts_table_projection():
     a30 = ss.get_exempt_amounts(2030)
     assert a30.annual == pytest.approx(24_480.0)
     assert a30.monthly == pytest.approx(2_040.0)
+
+
+# --------------------------------------------------------------------------------------
+# Review fixes (2026-10-18)
+# --------------------------------------------------------------------------------------
+
+
+def _both(pias, ages, yobs, mobs, tobs, horizons, N_i, N_n, earnings=None, **kw):
+    """Run today's ``compute_social_security_benefits`` and ``earnings_test`` on one case."""
+    args = (
+        np.array(pias, dtype=np.int32),
+        np.array(ages, dtype=np.float64),
+        np.array(yobs, dtype=np.int64),
+        np.array(mobs, dtype=np.int64),
+        np.array(tobs, dtype=np.int64),
+        np.array(horizons, dtype=np.int64),
+        N_i,
+        N_n,
+    )
+    base, _ = ss.compute_social_security_benefits(*args[:1], args[1].copy(), *args[2:], thisyear=THISYEAR, **kw)
+    if earnings is None:
+        earnings = np.zeros((N_i, N_n))
+    res = ss.earnings_test(
+        *args[:1], args[1].copy(), *args[2:], earnings, thisyear=THISYEAR, exempt_for_year=_exempt_2026, **kw
+    )
+    return base, res
+
+
+def _noop_cases():
+    """Zero-earnings cases covering what the first no-op tests missed: claims before the
+    plan starts (own and spousal), a trim with a survivor period, a survivor who claims
+    the survivor benefit later than the first death, birthdays on the 1st/2nd."""
+    cases = []
+    for yob, mob, tob, claim in [
+        (1961, 1, 15, 62.0),  # claimed 2023: Jamie in alex+jamie
+        (1960, 12, 15, 62.0),  # entitlement Dec 2022 + 1 month
+        (1963, 12, 15, 62.0),  # entitlement Jan 2026: first check Feb 2026
+        (1963, 11, 15, 62.0),  # entitlement Dec 2025: first check Jan 2026
+        (1964, 3, 1, 62.0),
+        (1964, 3, 2, 63.5),
+        (1958, 7, 15, 67.0),
+        (1964, 6, 15, 70.0),
+    ]:
+        cases.append(([2400], [claim], [yob], [mob], [tob], [25], 1, 25, {}))
+    for kw in [{}, {"trim_pct": 20, "trim_year": 2035}, {"survivor_claim_age": "FRA"},
+               {"survivor_claim_age": 70}, {"trim_pct": 23, "trim_year": 2027, "survivor_claim_age": 65}]:
+        # Spousal add-on for person 1 (0.5 x 3000 > 800), both already collecting.
+        cases.append(([3000, 800], [62.0, 62.0], [1961, 1962], [1, 5], [15, 15], [9, 22], 2, 22, kw))
+        # Spousal add-on, younger spouse, first death before the survivor's FRA.
+        cases.append(([3000, 800], [64.0, 62.0], [1962, 1967], [4, 9], [15, 15], [5, 25], 2, 25, kw))
+        # Survivor's own benefit larger than the survivor benefit.
+        cases.append(([1200, 2600], [67.0, 70.0], [1964, 1965], [6, 2], [15, 1], [12, 24], 2, 24, kw))
+    return cases
+
+
+@_REVIEW_XFAIL
+@pytest.mark.parametrize("case", _noop_cases())
+def test_zero_earnings_matches_today_on_a_grid(case):
+    """No-op property on a grid: zero earnings → exactly ``compute_social_security_benefits``.
+
+    Review finding 1 (a claim before the plan start lost the January check) and finding 2
+    (a trim applied twice to survivor years).
+    """
+    pias, ages, yobs, mobs, tobs, horizons, N_i, N_n, kw = case
+    base, res = _both(pias, ages, yobs, mobs, tobs, horizons, N_i, N_n, **kw)
+    assert res.zeta_in == pytest.approx(base, abs=1e-6)
+    assert np.all(res.withheld_in == 0)
+    assert np.all(res.arf_months == 0)
+    assert np.all(res.arf_months_spousal == 0)
+
+
+def _order_couple(worker_index):
+    """The order-test couple at 40k / 40k, with the worker at ``worker_index``."""
+    pias = [2000, 0]
+    earnings = np.zeros((2, 28))
+    earnings[:, 0] = 40_000.0  # excess (40,000 - 24,480)/2 = 7,760 each
+    if worker_index == 1:
+        pias = pias[::-1]
+    res = ss.earnings_test(
+        np.array(pias, dtype=np.int32),
+        np.array([62.0, 62.0]),
+        np.array([1964, 1964], dtype=np.int64),
+        np.array([6, 6], dtype=np.int64),
+        np.array([2, 2], dtype=np.int64),
+        np.array([28, 28], dtype=np.int64),
+        2,
+        28,
+        earnings,
+        thisyear=THISYEAR,
+        exempt_for_year=_exempt_2026,
+    )
+    w, a = worker_index, 1 - worker_index
+    return res, w, a
+
+
+@_REVIEW_XFAIL
+@pytest.mark.parametrize("worker_index", [0, 1])
+def test_charge_order_does_not_depend_on_person_index(worker_index):
+    """RS 02501.095: the worker's excess is charged first, whichever person is listed first.
+
+    Review finding 3. Entitlement June-December 2026; family $2,050 (own $1,400 +
+    spousal $650). Worker's excess $7,760: June-August in full ($6,150), then $1,610 of
+    September; the $440 paid that month splits 2:1 (RS 02501.110) → own $293.33,
+    spousal $146.67. Then the auxiliary's own $7,760 against what is left of their
+    check: September's $146.67 and October-December ($1,950) → all of it.
+      worker withheld  3 x 1,400 + (1,400 - 293.33) = **$5,306.67**, 4 crediting months
+      aux withheld     7 x 650                        = **$4,550.00**, 7 (spouse record)
+    """
+    res, w, a = _order_couple(worker_index)
+    assert res.withheld_in[w].sum() == pytest.approx(3 * 1400.0 + 1400.0 - 440.0 * 2 / 3)
+    assert res.withheld_in[a].sum() == pytest.approx(7 * 650.0)
+    assert res.arf_months[w] == 4
+    assert res.arf_months_spousal[a] == 7
+    assert res.arf_months[a] == 0
+
+
+def _dual_couple(ages, earnings):
+    return ss.earnings_test(
+        np.array([3000, 1000], dtype=np.int32),
+        np.array(ages, dtype=np.float64),
+        np.array([1964, 1964], dtype=np.int64),
+        np.array([6, 6], dtype=np.int64),
+        np.array([15, 15], dtype=np.int64),
+        np.array([28, 28], dtype=np.int64),
+        2,
+        28,
+        earnings,
+        thisyear=THISYEAR,
+        exempt_for_year=_exempt_2026,
+    )
+
+
+@_REVIEW_XFAIL
+def test_dual_entitled_own_record_not_credited_for_worker_charge():
+    """RS 00615.482 B.3 NOTE: "grant ARFs separately on each record" (review finding 4).
+
+    Worker PIA $3,000, auxiliary PIA $1,000 (spousal add-on $500), both born 1964-06-15
+    and claiming at 62 → 62y1m (July 2026). Only the worker works, $80,000 in 2026-2028:
+    excess $27,760 a year against a family of $2,112.50 (0.704167 x 3,000) + $327.08
+    (0.654167 x 500) = $2,439.58: July-December 2026 (6), then 11 full months and a
+    partial December in 2027 and 2028 (12 + 12) → **30** months on the worker's record,
+    and the auxiliary's *spouse* record. The auxiliary's own benefit was never reduced,
+    so **0** months on their own record.
+
+    From 2032 (all checks after the June 2031 FRA) the auxiliary is paid
+      own     1,000 x 0.704167 (62y1m, unadjusted)              = 704.17
+      spousal   500 x (1 - (1/12) x 29/12) = 500 x 0.798611      = 399.31  (64y7m)
+    """
+    earnings = np.zeros((2, 28))
+    earnings[0, :3] = 80_000.0
+    res = _dual_couple([62.0, 62.0], earnings)
+    assert res.arf_months[0] == 30
+    assert res.arf_months_spousal[1] == 30
+    assert res.arf_months[1] == 0
+    own = 1000 * (0.8 - 0.05 * 23 / 12)
+    spousal = 500 * (1 - 29 / 144)
+    assert res.zeta_in[1, 6] == pytest.approx(12 * (own + spousal))
+
+
+@_REVIEW_XFAIL
+def test_spousal_record_not_credited_before_spousal_entitlement():
+    """Months withheld from the auxiliary's own benefit before the spousal benefit starts
+    do not reduce the spousal reduction (review finding 4; RS 00615.482 B.2-B.3).
+
+    Auxiliary PIA $800 claims at 62 → 62y1m (July 2026) and works $60,000 in 2026-2027:
+    excess $17,760 a year against $563.33 a month → July-December 2026 and all of 2027
+    withheld: **18** months on their own record. The worker (PIA $3,000) claims at 66
+    (June 2030), so the spousal add-on ($700) starts then, at the auxiliary's age 66,
+    with no deduction ever: **0** months on the spouse record.
+
+    From 2032 the auxiliary is paid
+      own     800 x factor at 62y1m + 18 months = 63y7m = 800 x 0.779167 = 623.33
+      spousal 700 x factor at 66 = 700 x (1 - 1/12)                      = 641.67
+    """
+    earnings = np.zeros((2, 28))
+    earnings[1, :2] = 60_000.0
+    res = ss.earnings_test(
+        np.array([3000, 800], dtype=np.int32),
+        np.array([66.0, 62.0]),
+        np.array([1964, 1964], dtype=np.int64),
+        np.array([6, 6], dtype=np.int64),
+        np.array([15, 15], dtype=np.int64),
+        np.array([28, 28], dtype=np.int64),
+        2,
+        28,
+        earnings,
+        thisyear=THISYEAR,
+        exempt_for_year=_exempt_2026,
+    )
+    assert res.arf_months[1] == 18
+    assert res.arf_months_spousal[1] == 0
+    own = 800 * (0.8 - 0.05 * 5 / 12)
+    spousal = 700 * (1 - 1 / 12)
+    assert res.zeta_in[1, 6] == pytest.approx(12 * (own + spousal))
+
+
+@_REVIEW_XFAIL
+def test_survivor_years_are_not_charged():
+    """Review finding 5: the test is not applied to checks paid from the first death on
+    (survivor benefits under the test are not modeled; module docstring). What is paid
+    there is today's stream, and nothing is reported as withheld.
+
+    Person 0 dies first (plan year 3, 2029); person 1 (born 1965-06, under FRA until
+    2032) earns $100,000 in 2029-2031.
+    """
+    earnings = np.zeros((2, 20))
+    earnings[1, 3:6] = 100_000.0
+    base, res = _both([5000, 1000], [62.0, 62.0], [1964, 1965], [6, 6], [15, 15], [3, 20], 2, 20, earnings)
+    assert np.all(res.withheld_in[1, 3:] == 0)
+    assert res.zeta_in[1, 3:] == pytest.approx(base[1, 3:])
+
+
+@_REVIEW_XFAIL
+def test_survivor_base_uses_deceased_arf_after_their_fra():
+    """The widow(er)'s benefit is based on the deceased's benefit at death (CFR 404.338),
+    which includes the ARF when death comes after the deceased's FRA.
+
+    Deceased: PIA $3,000, born 1964-06-15, claims 62 → 62y1m (July 2026), earns $100,000
+    in 2026-2030: every month to the end of 2030 withheld (excess $37,760 a year) → 6 +
+    48 = **54** crediting months; at FRA (June 2031) the factor is that of 62y1m + 54
+    months = 66y7m, 5 months early: 1 - 5 x 5/9 % = 0.972222, i.e. $2,916.67 a month.
+    Death in 2046 (plan year 20). The survivor (PIA $1,000, same birth date) is past
+    their survivor FRA then, so the survivor benefit is the full
+    $2,916.67 x 12 = **$35,000** a year (not max($2,112.50, 0.825 x 3,000) x 12 = $29,700).
+    """
+    earnings = np.zeros((2, 30))
+    earnings[0, :5] = 100_000.0
+    base, res = _both([3000, 1000], [62.0, 62.0], [1964, 1964], [6, 6], [15, 15], [20, 30], 2, 30, earnings)
+    assert res.arf_months[0] == 54
+    assert res.zeta_in[1, 20:] == pytest.approx(35_000.0)
+    assert base[1, 20:] == pytest.approx(29_700.0)
+
+
+def test_survivor_base_without_arf_when_death_precedes_deceased_fra():
+    """Death before the deceased's FRA: the ARF has not happened, so the survivor
+    benefit is today's (same couple, deceased's horizon ends in 2029)."""
+    earnings = np.zeros((2, 30))
+    earnings[0, :4] = 100_000.0
+    base, res = _both([3000, 1000], [62.0, 62.0], [1964, 1964], [6, 6], [15, 15], [4, 30], 2, 30, earnings)
+    assert res.zeta_in[1, 4:] == pytest.approx(base[1, 4:])
+
+
+@_REVIEW_XFAIL
+def test_fra_year_monthly_exempt_is_the_fra_amount():
+    """RS 02501.025 B.2: the monthly exempt amount is 1/12 of the *applicable* annual
+    amount, $65,160 / 12 = $5,430 in the FRA year (review finding 6). And a non-service
+    month must be before FRA (RS 02501.030; 404.435(a)(7)).
+
+    FRA June 2031, entitlement January 2031.
+    - $3,000 a month all year: January-May are non-service months under $5,430 → 2031 is
+      the initial grace year (under $2,040 none would be, and June-December, at or after
+      FRA, never count).
+    - $10,000 a month for 5 months: January-May are service months; June-December have
+      no work but are at or after FRA → no grace year.
+    """
+    exempt = _exempt_2026
+    assert ss.initial_grace_year(
+        {2031: 36_000.0}, 1, 2031, exempt, {2031: 12}, end_year=2031, fra_year=2031, fra_month_in_year=6
+    ) == 2031
+    assert ss.initial_grace_year(
+        {2031: 50_000.0}, 1, 2031, exempt, {2031: 5}, end_year=2031, fra_year=2031, fra_month_in_year=6
+    ) is None
+
+
+@_REVIEW_XFAIL
+def test_arf_never_exceeds_full_benefit_born_on_first():
+    """Review finding 7: someone born on the 1st attains FRA a month earlier in calendar
+    terms; crediting months bring the factor up to 1.0 and never past it."""
+    # Born on the 1st, conventional 62 = SSA 62y1m: 59 reduction months.
+    assert ss.arf_self_factor(67, 62.0, 59, True) == pytest.approx(1.0)
+    assert ss.arf_self_factor(67, 62.0, 60, True) == pytest.approx(1.0)
+    assert ss.arf_spousal_factor(67, 62.0, 60, True) == pytest.approx(1.0)
+
+
+@_REVIEW_XFAIL
+def test_born_on_first_fra_month_is_not_charged():
+    """Born 1964-03-01: attains 67 on 2031-02-28, so the FRA month is February 2031 and
+    only January's earnings count in 2031 (RS 02501.021 B; 404.430(b)).
+
+    $600,000 a year 2026-2031: March 2026 - December 2030 all withheld (10 + 48 = **58**
+    crediting months); 2031 countable = $50,000 < $65,160 → no excess. Reduction months
+    at conventional 62 (SSA 62y1m) are 59, so 1 is left at FRA: factor 1 - 5/9 % =
+    0.994444, $2,983.33 a month, **$35,800** a year from 2032.
+    """
+    earnings = np.zeros((1, 28))
+    earnings[0, :6] = 600_000.0
+    res = ss.earnings_test(
+        np.array([3000], dtype=np.int32),
+        np.array([62.0]),
+        np.array([1964], dtype=np.int64),
+        np.array([3], dtype=np.int64),
+        np.array([1], dtype=np.int64),
+        np.array([28], dtype=np.int64),
+        1,
+        28,
+        earnings,
+        thisyear=THISYEAR,
+        exempt_for_year=_exempt_2026,
+    )
+    assert res.excess_by_year[0, 5] == 0
+    assert res.arf_months[0] == 58
+    assert res.zeta_in[0, 6] == pytest.approx(12 * 3000 * (1 - 1 / 180))

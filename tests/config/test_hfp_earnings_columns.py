@@ -40,6 +40,10 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
+# Review of 2026-10-18 (PROGRESS.md "Phase 5 steps 1-2 review"): spec for the fixes,
+# committed before them (plan §5b).
+_REVIEW_XFAIL = pytest.mark.xfail(strict=True, reason="Phase 5 steps 1-2 review fixes not yet in")
+
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -127,9 +131,13 @@ def test_present_columns_land_in_et_arrays():
     assert p.etMonths_in[0, 2] == 0
 
 
+@_REVIEW_XFAIL
 def test_absent_gross_earnings_falls_back_to_anticipated_wages():
     """D1 (a): absent ``gross earnings`` → ``anticipated wages``, not zero (unlike other
-    optional columns). The column is still recorded as absent."""
+    optional columns). The column is still recorded as absent.
+
+    The fallback is written into the table itself (review finding 9), so what the UI
+    shows, re-reads on every sync and writes back is what the earnings test uses."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
@@ -143,8 +151,9 @@ def test_absent_gross_earnings_falls_back_to_anticipated_wages():
         # Fallback: countable earnings track anticipated wages when the column is absent.
         assert p2.etEarnings_in[0, 0] == pytest.approx(90_000.0)
         assert p2.etEarnings_in[0, 1] == pytest.approx(50_000.0)
-        # ... but the raw column in timeLists is zero-filled like any other absent column.
-        assert p2.timeLists["Alice"]["gross earnings"].iloc[5] == 0
+        # ... and the table holds the same values.
+        assert p2.timeLists["Alice"]["gross earnings"].iloc[5] == pytest.approx(90_000.0)
+        assert p2.timeLists["Alice"]["gross earnings"].iloc[6] == pytest.approx(50_000.0)
     finally:
         os.unlink(tmp)
 
@@ -368,3 +377,162 @@ def test_fresh_plan_has_zero_et_arrays():
     assert (p.etMonths_in == 0).all()
     assert p.etEarnings_in.shape == (p.N_i, p.N_n)
     assert p.etMonths_in.shape == (p.N_i, p.N_n)
+
+
+# --------------------------------------------------------------------------------------
+# Review fixes (2026-10-18)
+# --------------------------------------------------------------------------------------
+
+
+class _Log:
+    """Collects log lines; stands in for ``Plan.mylog``."""
+
+    def __init__(self):
+        self.lines = []
+
+    def print(self, msg, tag=None):
+        self.lines.append(f"{tag}: {msg}")
+
+    def vprint(self, msg, tag=None):
+        self.lines.append(f"{tag}: {msg}")
+
+    def text(self):
+        return "\n".join(self.lines)
+
+
+def _sheet_without_et_columns(edit, name="Alice", birth="1970-01-15"):
+    """Write a one-sheet workbook without the two columns; ``edit(df)`` fills it first."""
+    p = _plan(name=name, birth=birth)
+    p.zeroWagesAndContributions()
+    df = p.timeLists[name].copy()
+    edit(df)
+    df = df.drop(columns=["gross earnings", "months worked"])
+    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    tmp.close()
+    df.to_excel(tmp.name, sheet_name=name, index=False)
+    return tmp.name
+
+
+def _load(path, name="Alice", birth="1970-01-15"):
+    p = _plan(name=name, birth=birth)
+    p.mylog = _Log()
+    p.readHFP(path)
+    return p
+
+
+@_REVIEW_XFAIL
+def test_ui_sync_keeps_the_fallback():
+    """Review finding 9: the UI re-reads its edited tables (``owlbridge._setContributions``
+    → ``readHFP({iname: table})``). Those tables carry every column, so the fallback must
+    already be in them, or the sync replaces it with zeros."""
+
+    def edit(df):
+        df.loc[df.index[5:8], "anticipated wages"] = 80_000.0
+
+    path = _sheet_without_et_columns(edit)
+    try:
+        p = _load(path)
+        p.readHFP({n: p.timeLists[n].copy() for n in p.inames}, houseTables=False)
+        assert p.etEarnings_in[0, :3] == pytest.approx([80_000.0] * 3)
+        assert list(p.etMonths_in[0, :3]) == [12, 12, 12]
+        assert p.etMonths_in[0, 3] == 0
+    finally:
+        os.unlink(path)
+
+
+@_REVIEW_XFAIL
+def test_absent_et_columns_are_not_reported_as_zero():
+    """Review finding 9: the two columns are filled from defaults, not with zeros, so the
+    "treated as zero" notice must not list them (it still lists the others)."""
+
+    def edit(df):
+        df.loc[df.index[5], "anticipated wages"] = 80_000.0
+
+    path = _sheet_without_et_columns(edit)
+    try:
+        p = _load(path)
+        zero_lines = [line for line in p.mylog.lines if "treated as zero" in line]
+        assert not any("gross earnings" in line or "months worked" in line for line in zero_lines)
+        assert any("anticipated wages" in line and "gross earnings" in line for line in p.mylog.lines)
+    finally:
+        os.unlink(path)
+
+
+@_REVIEW_XFAIL
+def test_no_fallback_warning_without_wages_or_deferrals():
+    """Review finding 11: no WARNING for a workbook with no wages (a retiree), and none
+    for years whose only contribution is an HSA (a payroll HSA is not in W-2 box 5)."""
+
+    def retiree(df):
+        pass
+
+    def hsa_only(df):
+        df.loc[df.index[5], "anticipated wages"] = 80_000.0
+        df.loc[df.index[5], "HSA ctrb"] = 4_000.0
+
+    for edit in (retiree, hsa_only):
+        path = _sheet_without_et_columns(edit)
+        try:
+            p = _load(path)
+            assert not [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+        finally:
+            os.unlink(path)
+
+
+@_REVIEW_XFAIL
+def test_fallback_warning_names_only_test_years():
+    """Review finding 11: the warning names years up to the FRA year only (the test does
+    not apply later). Alice, born 1970-01-15, reaches FRA (67) in 2037."""
+
+    def edit(df):
+        for n in (0, 12):  # thisyear (named) and thisyear + 12 = after the FRA year
+            df.loc[df.index[5 + n], "anticipated wages"] = 80_000.0
+            df.loc[df.index[5 + n], "401k ctrb"] = 10_000.0
+
+    path = _sheet_without_et_columns(edit)
+    try:
+        p = _load(path)
+        warn = [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+        assert len(warn) == 1
+        assert str(thisyear) in warn[0]
+        assert str(thisyear + 12) not in warn[0]
+    finally:
+        os.unlink(path)
+
+
+@_REVIEW_XFAIL
+def test_blank_months_worked_cell_reads_as_zero():
+    """A blank cell means zero like in every other column (Documentation: "leave it blank
+    where it does not apply"); it used to stop the read with "cannot convert float NaN"."""
+    p = _plan()
+    p.zeroWagesAndContributions()
+    df = p.timeLists["Alice"].copy()
+    df["months worked"] = df["months worked"].astype(float)
+    df.loc[df.index[5], "gross earnings"] = 50_000.0
+    df.loc[df.index[5], "months worked"] = 6
+    df.loc[df.index[6], "months worked"] = float("nan")
+    tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    tmp.close()
+    try:
+        df.to_excel(tmp.name, sheet_name="Alice", index=False)
+        p2 = _load(tmp.name)
+        assert p2.etMonths_in[0, 0] == 6
+        assert p2.etMonths_in[0, 1] == 0
+    finally:
+        os.unlink(tmp.name)
+
+
+@pytest.mark.toml
+@_REVIEW_XFAIL
+def test_example_workbooks_feed_the_test_from_wages():
+    """Review finding 10: the upstream example workbooks do not carry the two columns, so
+    the fallback applies: Jill (jack+jill) has $85,000 of wages in 2028, which the earnings
+    test must see (phase5-plan.md §3), not a present zero."""
+    from pathlib import Path
+
+    case = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
+    p = owl.readConfig(str(case), verbose=False)
+    j = p.inames.index("Jill")
+    n = 2028 - thisyear
+    assert p.etEarnings_in[j, n] == pytest.approx(85_000.0)
+    assert p.etMonths_in[j, n] == 12

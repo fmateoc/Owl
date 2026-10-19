@@ -23,9 +23,11 @@ Limitations and known omissions:
   income above the exempt amount. Assumptions of the rule implementation: earnings
   are spread evenly over ``months worked``; exempt amounts after 2026 are held at the
   2026 real level (statute indexes them to wages with a two-year lag); family charging
-  across spouses is exact only for the streams that are on one record; survivor
-  benefits under the test use the retirement FRA for the test and the same charging
-  rule, with survivor ARF deferred (Phase 5 D7).
+  across spouses is exact only for the streams that are on one record; years before
+  the plan have no earnings (so anyone entitled before the plan has used their grace
+  year); the test is not applied to checks paid from the year of the first death on
+  (survivor benefits under the test and the survivor ARF are not modeled, Phase 5 D7),
+  but the survivor benefit does start from the deceased's benefit after their ARF.
 
 - Survivor benefit timing: the date at which the survivor claims the survivor benefit
   is a user setting (``survivor_claim_age``), not an optimized decision. Owl models
@@ -397,7 +399,10 @@ def _add_spousal_benefit(spousal_in, i, nd, spousal_amount, fra, yobs, mobs, age
         return  # Spousal benefit would start at or after the end of entitlement.
     spousal_factor = getSpousalFactor(fra, claim_age, bool(tobs[i] == 1))
     spousal_in[i, ns2:nd] += spousal_amount * spousal_factor
-    spousal_in[i, ns2] -= spousal_amount * spousal_factor * (payment_claim_year % 1.0)
+    if int(payment_claim_year) >= thisyear:
+        # Partial first year only when the first spousal check falls inside the plan
+        # (fork fix, as for own benefits in compute_social_security_benefits).
+        spousal_in[i, ns2] -= spousal_amount * spousal_factor * (payment_claim_year % 1.0)
 
 
 def validate_survivor_claim_age(survivor_claim_age):
@@ -530,6 +535,7 @@ def compute_survivor_stream(
     trim_pct=0,
     trim_year=None,
     thisyear=None,
+    deceased_factor=None,
 ):
     """
     Compute the surviving spouse's survivor benefit as a standalone annual stream.
@@ -543,6 +549,9 @@ def compute_survivor_stream(
 
     This is the same stream ``compute_social_security_benefits`` combines with the
     survivor's own benefit; it is exposed separately so callers can report it on its own.
+
+    ``deceased_factor`` (fork, Phase 5) replaces the deceased's own-benefit factor when
+    they had claimed, e.g. after an earnings-test ARF raised it (``earnings_test``).
 
     Returns
     -------
@@ -573,9 +582,9 @@ def compute_survivor_stream(
     fra_deceased = getFRAs(yobs, mobs, tobs)[deceased_idx]
     started_n, _ = _payment_start(yobs[deceased_idx], mobs[deceased_idx], ages[deceased_idx], thisyear)
     if started_n < death_year_n:
-        deceased_monthly = pias[deceased_idx] * getSelfFactor(
-            fra_deceased, ages[deceased_idx], bool(tobs[deceased_idx] == 1)
-        )
+        if deceased_factor is None:
+            deceased_factor = getSelfFactor(fra_deceased, ages[deceased_idx], bool(tobs[deceased_idx] == 1))
+        deceased_monthly = pias[deceased_idx] * deceased_factor
     else:
         # Died before claiming: no reduced benefit, so the widow(er)'s limit (82.5% floor) does not
         # apply (POMS RS 00615.320). The survivor's base is the full PIA, plus the delayed retirement
@@ -694,16 +703,20 @@ def compute_social_security_benefits(
     fras = getFRAs(yobs, mobs, tobs)
     spousalBenefits = getSpousalBenefits(pias)
 
-    own_in = np.zeros((N_i, N_n))
-    spousal_in = np.zeros((N_i, N_n))
+    # Eligibility: born on 1st or 2nd can claim in their birthday month (or prior for 1st).
+    # Every age is reset before any stream is built: the spousal start below reads both
+    # spouses' ages (fork fix; it used to read the partner's age before its reset).
     for i in range(N_i):
-        # Eligibility: born on 1st or 2nd can claim in their birthday month (or prior for 1st).
-        # Factor shift: only born on 1st attains age one month early, warranting +1/12 SSA age.
         bornOnFirstDays = tobs[i] <= 2
-        bornOnFirst = tobs[i] == 1
         eligible = 62 if bornOnFirstDays else 62 + 1 / 12
         if round(ages[i] * 12) < round(eligible * 12):
             ages[i] = eligible
+
+    own_in = np.zeros((N_i, N_n))
+    spousal_in = np.zeros((N_i, N_n))
+    for i in range(N_i):
+        # Factor shift: only born on 1st attains age one month early, warranting +1/12 SSA age.
+        bornOnFirst = tobs[i] == 1
 
         payment_start_n, frac = _payment_start(yobs[i], mobs[i], ages[i], thisyear)
         ns = max(0, payment_start_n)
@@ -970,15 +983,23 @@ def initial_grace_year(
     exempt_for_year: Callable[[int], ExemptAmounts],
     months_worked_by_year: Optional[dict] = None,
     end_year: Optional[int] = None,
+    fra_year: Optional[int] = None,
+    fra_month_in_year: Optional[int] = None,
 ) -> Optional[int]:
     """
     Return the initial grace year, or None (404.435(b)).
 
     The initial grace year is the first taxable year with a non-service month in or
-    after the month of entitlement. A year with no earnings has non-service months
-    in every entitlement month and can be the grace year (using it up); a later year
-    then gets the annual test only. Only one initial grace year. Scans years
-    ``start_year`` .. ``end_year`` (default: the last year in ``earnings_by_year``).
+    after the month of entitlement and before the month of FRA (RS 02501.030). A year
+    with no earnings has non-service months in every entitlement month and can be the
+    grace year (using it up); a later year then gets the annual test only. Only one
+    initial grace year. Scans years ``start_year`` .. ``end_year`` (default: the last
+    year in ``earnings_by_year``). A year missing from ``earnings_by_year`` (one before
+    the plan, say) counts as a year without earnings.
+
+    In ``fra_year`` only months before ``fra_month_in_year`` count, and the monthly
+    exempt amount is 1/12 of the FRA-year annual amount (RS 02501.025 B.2: 1/12 of the
+    *applicable* annual amount).
     """
     months_worked_by_year = months_worked_by_year or {}
     if end_year is None:
@@ -987,9 +1008,12 @@ def initial_grace_year(
         y_earn = float(earnings_by_year.get(year, 0.0))
         n_work = int(months_worked_by_year.get(year, 12 if y_earn > 0 else 0))
         exempt = exempt_for_year(year)
+        in_fra_year = fra_year is not None and year == fra_year
+        monthly = exempt.monthly_fra if in_fra_year else exempt.monthly
+        last_month = fra_month_in_year - 1 if in_fra_year and fra_month_in_year is not None else 12
         ent_month0 = ent_start_month_in_year if year == start_year else 1
-        for month_num in range(ent_month0, 13):
-            if is_non_service_month(month_num, y_earn, n_work, exempt.monthly):
+        for month_num in range(ent_month0, last_month + 1):
+            if is_non_service_month(month_num, y_earn, n_work, monthly):
                 return year
     return None
 
@@ -1037,9 +1061,7 @@ def charge_excess_months(
     months_with_deduction = 0
     partial_index = None
     remaining = float(excess)
-    if shares is None:
-        shares = None
-    else:
+    if shares is not None:
         shares = [float(s) for s in shares]
         if len(shares) != n_bene:
             raise ValueError("shares length must match number of beneficiaries")
@@ -1106,21 +1128,38 @@ def charge_excess_months(
     return withheld, months_with_deduction, partial_index
 
 
+def _fra_conventional_age(fra: float, born_on_first: bool) -> float:
+    """
+    Conventional age at which the SSA age reaches ``fra``.
+
+    Someone born on the 1st attains each age a month early (RS 00615.015; ``_ssa_age``),
+    so their FRA falls one calendar month before the conventional age ``fra``.
+    """
+    return float(fra) - (1.0 / 12 if born_on_first else 0.0)
+
+
+def _arf_effective_age(fra: float, claim_age: float, crediting_months: int, born_on_first: bool) -> float:
+    """Conventional claiming age whose reduction equals the one left after the ARF (capped at FRA)."""
+    return min(_fra_conventional_age(fra, born_on_first), float(claim_age) + crediting_months / 12.0)
+
+
 def arf_self_factor(fra: float, claim_age: float, crediting_months: int, born_on_first: bool = False) -> float:
     """
     Own-benefit factor after the adjustment of the reduction factor (RS 00615.480/.482/.490).
 
     Crediting months (months of full or partial work deduction) are subtracted from
     the original reduction factor, which is the same as recomputing at
-    ``claim_age + crediting_months/12``, capped at FRA. Effective with the month of
-    FRA. This is the §2.2 inference of the Phase 5 plan, confirmed against the
-    RS 00615.490 procedure ("Determine crediting months. Subtract from original
-    reduction factor. Apply result to PIA") — that section has no numeric example.
+    ``claim_age + crediting_months/12``, capped at FRA (for someone born on the 1st,
+    a month before the conventional age ``fra``), so the factor never exceeds 1.
+    Effective with the month of FRA. This is the §2.2 inference of the Phase 5 plan,
+    confirmed against the RS 00615.490 procedure ("Determine crediting months. Subtract
+    from original reduction factor. Apply result to PIA") — that section has no
+    numeric example.
     """
-    if crediting_months <= 0 or claim_age >= fra:
+    if crediting_months <= 0 or claim_age >= _fra_conventional_age(fra, born_on_first):
         return getSelfFactor(fra, claim_age, born_on_first)
-    effective = min(float(fra), claim_age + crediting_months / 12.0)
-    return getSelfFactor(fra, effective, born_on_first)
+    return min(1.0, getSelfFactor(fra, _arf_effective_age(fra, claim_age, crediting_months, born_on_first),
+                                  born_on_first))
 
 
 def arf_spousal_factor(fra: float, claim_age: float, crediting_months: int, born_on_first: bool = False) -> float:
@@ -1129,10 +1168,10 @@ def arf_spousal_factor(fra: float, claim_age: float, crediting_months: int, born
     (RS 00615.482 B.2: a spouse is credited for deductions from their own work and
     from the worker's). No delayed credit past FRA.
     """
-    if crediting_months <= 0 or claim_age >= fra:
+    if crediting_months <= 0 or claim_age >= _fra_conventional_age(fra, born_on_first):
         return getSpousalFactor(fra, claim_age, born_on_first)
-    effective = min(float(fra), claim_age + crediting_months / 12.0)
-    return getSpousalFactor(fra, effective, born_on_first)
+    return min(1.0, getSpousalFactor(fra, _arf_effective_age(fra, claim_age, crediting_months, born_on_first),
+                                     born_on_first))
 
 
 class EarningsTestResult(NamedTuple):
@@ -1145,7 +1184,7 @@ class EarningsTestResult(NamedTuple):
     """Shape (N_i, N_n); amounts withheld by the test, same bucketing."""
 
     arf_months: np.ndarray
-    """Shape (N_i,); crediting months applied at FRA."""
+    """Shape (N_i,); crediting months on each person's own record, applied at FRA."""
 
     ages: np.ndarray
     """Claiming ages after the eligibility reset (62 or 62+1/12)."""
@@ -1153,36 +1192,29 @@ class EarningsTestResult(NamedTuple):
     excess_by_year: np.ndarray
     """Shape (N_i, n_years); excess for each calendar year (0 at/after the FRA year)."""
 
+    arf_months_spousal: np.ndarray
+    """Shape (N_i,); crediting months on each person's spouse record (their spousal
+    add-on), applied at their FRA. ARFs are granted separately on each record
+    (RS 00615.482 B.3, NOTE)."""
+
 
 def _ent_start_abs(yob: int, mob: int, claim_age: float) -> int:
     """Absolute month (year*12 + month-1) when entitlement begins (age attained)."""
     return int(yob) * 12 + (int(mob) - 1) + int(round(float(claim_age) * 12))
 
 
-def _chargeable_months(
-    start_rel,
-    end_rel,
-    ent_abs,
-    fra_abs,
-    thisyear,
-    y_earn,
-    months_worked,
-    exempt,
-    is_grace,
-):
-    """Relative months in [start_rel, end_rel) that the annual test may charge."""
+def _chargeable_months(start_abs, end_abs, ent_abs, fra_abs, y_earn, months_worked, monthly_exempt, is_grace):
+    """
+    Absolute months in [start_abs, end_abs) that the annual test may charge: months of
+    entitlement before FRA, less the non-service months of the grace year.
+    ``monthly_exempt`` is the year's applicable monthly amount (RS 02501.025 B.2).
+    """
     months = []
-    for rel in range(start_rel, end_rel):
-        abs_m = thisyear * 12 + rel
-        if abs_m >= fra_abs:
-            break
-        if abs_m < ent_abs:
-            continue
+    for abs_m in range(max(start_abs, ent_abs), min(end_abs, fra_abs)):
         month_num = abs_m % 12 + 1
-        ns = is_non_service_month(month_num, y_earn, months_worked, exempt.monthly)
-        if ns and is_grace:
+        if is_grace and is_non_service_month(month_num, y_earn, months_worked, monthly_exempt):
             continue
-        months.append(rel)
+        months.append(abs_m)
     return months
 
 
@@ -1207,15 +1239,28 @@ def earnings_test(
     Apply the SSA earnings test to one- or two-person SS streams (phase5-plan.md §4.3).
 
     Builds the same monthly entitlement streams as ``compute_social_security_benefits``
-    (own + spousal add-on from the later claim), charges each worker's excess against
-    the family benefit on their record and each auxiliary's own excess against their
-    remaining benefit, applies the ARF from each person's FRA, and aggregates to
-    annual payment-year amounts. Survivor streams are folded in after the first death
-    as the greater of own and survivor (survivor ARF deferred, Phase 5 D7).
+    (own + spousal add-on from the later claim), charges, year by year, each worker's
+    excess against the family benefit on their record first and then each auxiliary's
+    own excess against their remaining benefit (RS 02501.095), applies the ARF from each
+    person's FRA with crediting months counted separately on each record (RS 00615.482
+    B.3, NOTE), and aggregates to annual payment-year amounts. With zero earnings the
+    result equals ``compute_social_security_benefits``.
+
+    Survivor period: from the first death the survivor receives the greater of their
+    own benefit and the survivor benefit, as in ``compute_social_security_benefits``.
+    The survivor benefit is based on the deceased's benefit after their ARF when the
+    death comes after the deceased's FRA. The test is **not** applied to checks paid
+    from the year of the first death on (survivor benefits under the test, and the
+    survivor ARF of RS 00615.580, are not modeled; Phase 5 D7).
+
+    Years before the plan carry no earnings here, so a person entitled before the plan
+    has their initial grace year in their (pre-plan) entitlement year and only the
+    annual test in plan years.
 
     Parameters match ``compute_social_security_benefits``, plus:
     earnings_in : array, shape (N_i, N_n)
-        Annual countable wages (W-2 box 5 + net SE) in today's dollars, by plan year.
+        Annual countable earnings (W-2 box 5 + net SE) by plan year, in today's dollars
+        like the exempt amounts (the HFP column is nominal: deflate it first).
     work_months_in : array or None
         Shape (N_i, N_n); months of work at the start of each year. Default 12 when
         that year's earnings are positive, else 0.
@@ -1246,9 +1291,10 @@ def earnings_test(
     if work_months_in.shape != (N_i, N_n):
         raise ValueError(f"work_months_in shape {work_months_in.shape} != ({N_i}, {N_n})")
 
-    death_year_n, _, survivor_idx = _survivor_period(horizons, N_i, N_n)
+    death_year_n, deceased_idx, survivor_idx = _survivor_period(horizons, N_i, N_n)
     fras = getFRAs(yobs, mobs, tobs)
     spousalBenefits = getSpousalBenefits(pias)
+    born_on_first = [bool(tobs[i] == 1) for i in range(N_i)]
 
     # Eligibility reset (same rule as compute_social_security_benefits).
     for i in range(N_i):
@@ -1258,62 +1304,62 @@ def earnings_test(
             ages[i] = eligible
 
     # --- Monthly entitlement grids on absolute months, pre-ARF -------------------
-    # ARF is effective only from the FRA month and charging never reaches that month,
-    # so crediting months are a function of the pre-ARF stream alone (one pass).
-    M = N_n * 12
-    own = [[0.0] * M for _ in range(N_i)]
-    spousal = [[0.0] * M for _ in range(N_i)]
+    # The grid starts with the December before the plan: its check is paid in January
+    # of the first plan year (payments one month in arrears). Absolute month a sits at
+    # index a - g0. ARF is effective only from the FRA month and charging never reaches
+    # that month, so crediting months are a function of the pre-ARF stream alone.
+    g0 = thisyear * 12 - 1
+    M = N_n * 12 + 1
+    own = np.zeros((N_i, M))
+    spousal = np.zeros((N_i, M))
     ent_abs = [0] * N_i
     fra_abs = [0] * N_i
+    spousal_age = [0.0] * N_i
 
     for i in range(N_i):
-        bornOnFirst = bool(tobs[i] == 1)
         ent_abs[i] = _ent_start_abs(yobs[i], mobs[i], ages[i])
-        fra_abs[i] = _ent_start_abs(yobs[i], mobs[i], fras[i])
-        factor = getSelfFactor(float(fras[i]), float(ages[i]), bornOnFirst)
-        monthly_own = float(pias[i]) * factor
-        # horizons[i] is Owl's exclusive end plan year (own_in[i, ns:nd]); last month is
-        # December of year thisyear + horizons[i] - 1, so the exclusive absolute end is
-        # (thisyear + horizons[i]) * 12.
+        fra_abs[i] = _ent_start_abs(yobs[i], mobs[i], _fra_conventional_age(fras[i], born_on_first[i]))
+        # horizons[i] is Owl's exclusive end plan year; entitlement runs through December
+        # of the year before it, whose check (paid in January) is then dropped below.
         end_abs = (thisyear + min(int(horizons[i]), N_n)) * 12
-        for m in range(ent_abs[i], end_abs):
-            rel = m - thisyear * 12
-            if 0 <= rel < M:
-                own[i][rel] = monthly_own
+        lo = max(ent_abs[i], g0)
+        if lo < end_abs:
+            own[i, lo - g0 : end_abs - g0] = float(pias[i]) * getSelfFactor(
+                float(fras[i]), float(ages[i]), born_on_first[i]
+            )
 
+    latest = max(ent_abs)
     if N_i == 2:
         for i in range(N_i):
             if spousalBenefits[i] <= 0:
                 continue
-            j = (i + 1) % 2
-            latest = max(ent_abs[i], ent_abs[j])
-            bornOnFirst = bool(tobs[i] == 1)
-            spousal_age = (latest - (int(yobs[i]) * 12 + int(mobs[i]) - 1)) / 12.0
-            if spousal_age < 62:
-                spousal_age = 62.0
-            factor = getSpousalFactor(float(fras[i]), spousal_age, bornOnFirst)
-            monthly_sp = float(spousalBenefits[i]) * factor
+            spousal_age[i] = max(62.0, (latest - (int(yobs[i]) * 12 + int(mobs[i]) - 1)) / 12.0)
             # Spousal entitlement ends at the first death (_add_spousal_benefit's rule).
-            end_year = int(min(int(horizons[i]), N_n, death_year_n if death_year_n < N_n else N_n))
-            end_abs = (thisyear + end_year) * 12
-            for m in range(latest, end_abs):
-                rel = m - thisyear * 12
-                if 0 <= rel < M:
-                    spousal[i][rel] = monthly_sp
+            end_abs = (thisyear + min(int(horizons[i]), N_n, death_year_n)) * 12
+            lo = max(latest, g0)
+            if lo < end_abs:
+                factor = getSpousalFactor(float(fras[i]), spousal_age[i], born_on_first[i])
+                spousal[i, lo - g0 : end_abs - g0] = float(spousalBenefits[i]) * factor
 
     # --- Excess per person per calendar year ------------------------------------
     excess_by_year = np.zeros((N_i, N_n))
     grace = [None] * N_i
-    fra_year = [0] * N_i
+    fra_year = [fra_abs[i] // 12 for i in range(N_i)]
+    fra_month = [fra_abs[i] % 12 + 1 for i in range(N_i)]
 
     for i in range(N_i):
-        fra_year[i] = int(yobs[i] + fras[i] + (mobs[i] - 1) / 12.0)
         ent_year = ent_abs[i] // 12
-        ent_month_in_year = ent_abs[i] % 12 + 1
         earn_map = {thisyear + n: float(earnings_in[i, n]) for n in range(N_n)}
         months_map = {thisyear + n: int(work_months_in[i, n]) for n in range(N_n)}
         grace[i] = initial_grace_year(
-            earn_map, ent_month_in_year, ent_year, exempt_for_year, months_map, end_year=fra_year[i]
+            earn_map,
+            ent_abs[i] % 12 + 1,
+            ent_year,
+            exempt_for_year,
+            months_map,
+            end_year=fra_year[i],
+            fra_year=fra_year[i],
+            fra_month_in_year=fra_month[i],
         )
         for n in range(N_n):
             y = thisyear + n
@@ -1321,37 +1367,39 @@ def earnings_test(
                 continue
             is_fra_year = y == fra_year[i]
             exempt = exempt_for_year(y)
-            y_earn = earn_map[y]
-            mw = months_map[y]
-            fra_month_in_year = (fra_abs[i] % 12) + 1 if is_fra_year else 13
-            countable = countable_earnings(y_earn, mw, is_fra_year, fra_month_in_year)
+            countable = countable_earnings(
+                earn_map[y], months_map[y], is_fra_year, fra_month[i] if is_fra_year else 13
+            )
             excess_by_year[i, n] = excess_earnings(
                 countable, exempt.annual_fra if is_fra_year else exempt.annual, is_fra_year
             )
 
     # --- Charge ----------------------------------------------------------------
-    paid_own = [list(r) for r in own]
-    paid_sp = [list(r) for r in spousal]
-    withheld_own = [[0.0] * M for _ in range(N_i)]
-    withheld_sp = [[0.0] * M for _ in range(N_i)]
+    paid_own = own.copy()
+    paid_sp = spousal.copy()
+    withheld_own = np.zeros((N_i, M))
+    withheld_sp = np.zeros((N_i, M))
+
+    # Checks paid from the year of the first death on are not charged (docstring).
+    survivor_stop = (thisyear + death_year_n) * 12 - 1 if survivor_idx >= 0 and death_year_n < N_n else None
 
     def _year_months(i, n):
         y = thisyear + n
-        ent_year = ent_abs[i] // 12
-        if y < ent_year or y > fra_year[i]:
+        if y < ent_abs[i] // 12 or y > fra_year[i]:
             return []
-        start_rel = (y - thisyear) * 12 if y > ent_year else (ent_abs[i] - thisyear * 12)
-        end_rel = min(M, (y - thisyear + 1) * 12)
+        end_abs = (y + 1) * 12
+        if i == survivor_idx and survivor_stop is not None:
+            end_abs = min(end_abs, survivor_stop)
         exempt = exempt_for_year(y)
+        monthly_exempt = exempt.monthly_fra if y == fra_year[i] else exempt.monthly
         return _chargeable_months(
-            max(0, start_rel),
-            end_rel,
+            y * 12,
+            end_abs,
             ent_abs[i],
             fra_abs[i],
-            thisyear,
             float(earnings_in[i, n]),
             int(work_months_in[i, n]),
-            exempt,
+            monthly_exempt,
             grace[i] == y,
         )
 
@@ -1363,108 +1411,102 @@ def earnings_test(
             if spousalBenefits[j] > 0:
                 aux_on[j] = i
 
-    for i in range(N_i):
-        for n in range(N_n):
+    # Within each year the workers' excess is charged before any auxiliary's own excess
+    # (RS 02501.095); excess never carries into another year, so years are independent.
+    order = [i for i in range(N_i) if i not in aux_on] + [i for i in range(N_i) if i in aux_on]
+    for n in range(N_n):
+        for i in order:
             if excess_by_year[i, n] <= 0:
                 continue
-            months = _year_months(i, n)
-            if not months:
+            idx = [m - g0 for m in _year_months(i, n)]
+            if not idx:
                 continue
             excess = float(excess_by_year[i, n])
             if i in aux_on:
                 # Auxiliary's own excess: only their remaining check (RS 02501.095 B.3).
-                remaining = [[paid_own[i][rel] + paid_sp[i][rel] for rel in months]]
+                remaining = [[paid_own[i, k] + paid_sp[i, k] for k in idx]]
                 w_left, _, _ = charge_excess_months(remaining, excess)
-                for k, rel in enumerate(months):
-                    take = w_left[0][k]
-                    if take <= 0:
+                for pos, k in enumerate(idx):
+                    take = w_left[0][pos]
+                    tot = paid_own[i, k] + paid_sp[i, k]
+                    if take <= 0 or tot <= 0:
                         continue
-                    o, s = paid_own[i][rel], paid_sp[i][rel]
-                    tot = o + s
-                    if tot <= 0:
-                        continue
-                    withheld_own[i][rel] += take * (o / tot)
-                    withheld_sp[i][rel] += take * (s / tot)
-                    paid_own[i][rel] -= take * (o / tot)
-                    paid_sp[i][rel] -= take * (s / tot)
+                    o_share = paid_own[i, k] / tot
+                    withheld_own[i, k] += take * o_share
+                    withheld_sp[i, k] += take * (1.0 - o_share)
+                    paid_own[i, k] -= take * o_share
+                    paid_sp[i, k] -= take * (1.0 - o_share)
             else:
                 # Worker's excess: the family on i's record (RS 02501.095 B.2).
                 fam_aux = [k for k, rec in aux_on.items() if rec == i]
                 if fam_aux:
                     j = fam_aux[0]
-                    family = [
-                        [paid_own[i][rel] for rel in months],
-                        [paid_sp[j][rel] for rel in months],
-                    ]
+                    family = [[paid_own[i, k] for k in idx], [paid_sp[j, k] for k in idx]]
                     shares = [float(pias[i]), float(spousalBenefits[j])]
                     if sum(shares) <= 0:
                         shares = None
                 else:
-                    family = [[paid_own[i][rel] for rel in months]]
+                    family = [[paid_own[i, k] for k in idx]]
                     shares = [float(pias[i])] if pias[i] > 0 else None
                 w_family, _, _ = charge_excess_months(family, excess, shares=shares)
-                for k, rel in enumerate(months):
-                    withheld_own[i][rel] += w_family[0][k]
-                    paid_own[i][rel] = family[0][k]
+                for pos, k in enumerate(idx):
+                    withheld_own[i, k] += w_family[0][pos]
+                    paid_own[i, k] = family[0][pos]
                     if fam_aux:
-                        j = fam_aux[0]
-                        withheld_sp[j][rel] += w_family[1][k]
-                        paid_sp[j][rel] = family[1][k]
+                        withheld_sp[j, k] += w_family[1][pos]
+                        paid_sp[j, k] = family[1][pos]
 
-    # Crediting months (RS 00615.482): a month with a full or partial work deduction,
-    # including deductions a spouse suffers from the worker's charge.
-    crediting = [0] * N_i
-    for i in range(N_i):
-        for rel in range(M):
-            if withheld_own[i][rel] > 0 or withheld_sp[i][rel] > 0:
-                crediting[i] += 1
+    # Crediting months (RS 00615.482), counted separately on each record (B.3, NOTE):
+    # own record, months with a deduction from the own benefit; spouse record, months
+    # with a deduction from the spousal add-on, including the worker's charge (B.2).
+    tol = 1e-9
+    arf_months = np.array([int(np.count_nonzero(withheld_own[i] > tol)) for i in range(N_i)], dtype=np.int64)
+    arf_months_sp = np.array([int(np.count_nonzero(withheld_sp[i] > tol)) for i in range(N_i)], dtype=np.int64)
 
     # --- ARF from FRA (RS 00615.480/.482) --------------------------------------
-    arf_months = np.array(crediting, dtype=np.int64)
     for i in range(N_i):
-        if arf_months[i] <= 0:
-            continue
-        bornOnFirst = bool(tobs[i] == 1)
-        old_own_factor = getSelfFactor(float(fras[i]), float(ages[i]), bornOnFirst)
-        new_own_factor = arf_self_factor(
-            float(fras[i]), float(ages[i]), int(arf_months[i]), bornOnFirst
-        )
-        if N_i == 2 and spousalBenefits[i] > 0:
-            j = (i + 1) % 2
-            latest = max(ent_abs[i], ent_abs[j])
-            spousal_age = (latest - (int(yobs[i]) * 12 + int(mobs[i]) - 1)) / 12.0
-            if spousal_age < 62:
-                spousal_age = 62.0
-            old_sp_factor = getSpousalFactor(float(fras[i]), spousal_age, bornOnFirst)
-            new_sp_factor = arf_spousal_factor(
-                float(fras[i]), spousal_age, int(arf_months[i]), bornOnFirst
-            )
-        else:
-            old_sp_factor = new_sp_factor = 1.0
-        for rel in range(max(0, fra_abs[i] - thisyear * 12), M):
-            if old_own_factor > 0:
-                paid_own[i][rel] *= new_own_factor / old_own_factor
-            if old_sp_factor > 0:
-                paid_sp[i][rel] *= new_sp_factor / old_sp_factor
+        k0 = max(0, fra_abs[i] - g0)
+        if arf_months[i] > 0:
+            old = getSelfFactor(float(fras[i]), float(ages[i]), born_on_first[i])
+            new = arf_self_factor(float(fras[i]), float(ages[i]), int(arf_months[i]), born_on_first[i])
+            if old > 0:
+                paid_own[i, k0:] *= new / old
+        if arf_months_sp[i] > 0:
+            old = getSpousalFactor(float(fras[i]), spousal_age[i], born_on_first[i])
+            new = arf_spousal_factor(float(fras[i]), spousal_age[i], int(arf_months_sp[i]), born_on_first[i])
+            if old > 0:
+                paid_sp[i, k0:] *= new / old
 
-    # --- Aggregate to annual payment-year amounts (check for month m arrives in m+1)
+    # --- Aggregate to annual payment-year amounts (check for month a arrives in a+1)
     zeta_in = np.zeros((N_i, N_n))
     withheld_in = np.zeros((N_i, N_n))
+    pay_year_n = (np.arange(M) + g0 + 1) // 12 - thisyear
     for i in range(N_i):
-        for rel in range(M):
-            paid = paid_own[i][rel] + paid_sp[i][rel]
-            wh = withheld_own[i][rel] + withheld_sp[i][rel]
-            pay_year_n = (rel + 1) // 12
-            # Owl's annual stream stops at 12 full months of the last plan year
-            # (horizons[i] is the exclusive end); a check that would land in that
-            # plan year or later is dropped, matching compute_social_security_benefits.
-            if 0 <= pay_year_n < min(N_n, int(horizons[i])):
-                zeta_in[i, pay_year_n] += paid
-                withheld_in[i, pay_year_n] += wh
+        # Owl's annual stream stops at 12 full months of the last plan year
+        # (horizons[i] is the exclusive end); a check paid in that year or later is dropped.
+        # The spousal add-on likewise stops with the checks paid in the year before the
+        # first death (compute_social_security_benefits: spousal_in[i, ns2:death_year_n]).
+        keep = pay_year_n < min(N_n, int(horizons[i]))
+        keep_sp = pay_year_n < min(N_n, int(horizons[i]), death_year_n)
+        for paid, wh, k in ((paid_own[i], withheld_own[i], keep), (paid_sp[i], withheld_sp[i], keep_sp)):
+            np.add.at(zeta_in[i], pay_year_n[k], paid[k])
+            np.add.at(withheld_in[i], pay_year_n[k], wh[k])
 
-    # Survivor: greater of own and survivor after the first death (as in
-    # compute_social_security_benefits). Survivor ARF is deferred (D7).
+    # Trim before the survivor fold-in: the survivor stream carries its own trim
+    # (same order as compute_social_security_benefits).
+    if trim_pct > 0 and trim_year is not None:
+        trim_n = max(0, trim_year - thisyear)
+        if trim_n < N_n:
+            zeta_in[:, trim_n:] *= 1.0 - trim_pct / 100.0
+            withheld_in[:, trim_n:] *= 1.0 - trim_pct / 100.0
+
     if survivor_idx >= 0 and death_year_n < N_n:
+        # The deceased's benefit at death includes their ARF if they reached FRA alive
+        # (alive through December of the year before death_year_n).
+        deceased_factor = None
+        d = deceased_idx
+        if arf_months[d] > 0 and fra_abs[d] < (thisyear + death_year_n) * 12:
+            deceased_factor = arf_self_factor(float(fras[d]), float(ages[d]), int(arf_months[d]), born_on_first[d])
         survivor = compute_survivor_stream(
             pias,
             ages,
@@ -1478,16 +1520,10 @@ def earnings_test(
             trim_pct=trim_pct,
             trim_year=trim_year,
             thisyear=thisyear,
+            deceased_factor=deceased_factor,
         )
-        i = survivor_idx
-        for n in range(death_year_n, N_n):
-            zeta_in[i, n] = max(zeta_in[i, n], float(survivor.annual[n]))
-
-    if trim_pct > 0 and trim_year is not None:
-        trim_n = max(0, trim_year - thisyear)
-        if trim_n < N_n:
-            zeta_in[:, trim_n:] *= 1.0 - trim_pct / 100.0
-            withheld_in[:, trim_n:] *= 1.0 - trim_pct / 100.0
+        s = survivor_idx
+        zeta_in[s, death_year_n:] = np.maximum(zeta_in[s, death_year_n:], survivor.annual[death_year_n:])
 
     return EarningsTestResult(
         zeta_in=zeta_in,
@@ -1495,4 +1531,5 @@ def earnings_test(
         arf_months=arf_months,
         ages=ages,
         excess_by_year=excess_by_year,
+        arf_months_spousal=arf_months_sp,
     )

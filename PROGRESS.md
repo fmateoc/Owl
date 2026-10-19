@@ -1551,6 +1551,68 @@ skips HFP when `rawHFP` is empty, `plan_bridge.py:694`).
 
 Full suite: 3239 passed / 1 skipped (8:41). flake8 and Ruff clean.
 
+Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`), after the review below.
+
+## Phase 5 steps 1-2 review (2026-10-18) and fixes (2026-10-19, on `claude/phase5-step1`)
+
+Review of `9743233` (steps 1-2): checks green (3239 passed / 1 skipped; flake8/Ruff only
+upstream's two), but `earnings_test` was wrong in several cases and step 2 would have made
+step 3 a no-op on the three examples of plan §3. Each finding was reproduced by a probe before
+fixing; POMS RS 00615.482 (TN 76), RS 02501.025 and RS 02501.030 read on `secure.ssa.gov`
+2026-10-18. Spec commit first (`e3b69da`, strict xfail), then the fixes. Findings and fixes:
+
+1. **No-op broken for claims before the plan** (Jamie in alex+jamie): the monthly grid started
+   in January, so the December check paid in January was lost (2026: 15,491.67 vs 16,900).
+   Grid now starts the December before the plan.
+2. **Trim applied twice in survivor years** (28,800 → 23,040 at 20%). Trim now precedes the
+   survivor fold-in, as in `compute_social_security_benefits`.
+3. **Charge order depended on person index**: person 0's excess was charged first. At 40k/40k
+   the household total withheld was 9,856.67 with the worker first, 12,310 with the auxiliary
+   first. Now workers' excess first in each year (RS 02501.095).
+4. **One crediting count for both records**. RS 00615.482 B.3 NOTE: "grant ARFs separately on
+   each record". A non-working auxiliary whose spousal add-on was withheld for the worker got
+   +$1,617/yr on their own benefit; months before the spousal start raised the spousal factor.
+   Now `arf_months` (own record) and `arf_months_spousal` (spouse record).
+5. **Survivor years**: the docstring claimed survivor benefits were charged; the code paid them
+   in full while `withheld_in` reported withholding. D7 fallback (b), since charging Owl's annual
+   greater-of fold-in month by month is not cheap: the test is not applied to checks paid from the
+   first death on (documented; `withheld_in` 0 there). Added: the survivor base uses the
+   deceased's post-ARF benefit when the death follows their FRA (`compute_survivor_stream`
+   gains a fork kwarg `deceased_factor`; 29,700 → 35,000 in the test case).
+6. **FRA-year monthly exempt amount**: RS 02501.025 B.2, 1/12 of the *applicable* annual amount
+   ($5,430 in 2026), and non-service months only before the FRA month. Measured effect with
+   even spreading over `months worked`: none (an FRA-year excess needs more than $5,923 a
+   worked month, so worked months are service months under either amount); fixed for fidelity.
+7. **Born on the 1st**: FRA month one month late (the SSA-age FRA used as a conventional age) and
+   the ARF cap past FRA (factor 1.00667, $3,020/mo on a $3,000 PIA). Both fixed; factor ≤ 1.
+8. Docstrings (pre-plan years have no earnings, so anyone entitled before the plan has used
+   the grace year; `earnings_in` must be deflated), dead code, plan's test count.
+9. **UI sync dropped the fallback** (80,000 → 0 on the first sync, `owlbridge._setContributions`
+   re-reads the edited tables). The defaults are now written into the table by `hfp_io`
+   (`_derivedTimeHorizonItems`), so what is shown, synced and written back is what the test
+   uses; the "treated as zero" log and UI warning no longer list these two columns, which get
+   their own notice. Also fixed: a blank `months worked` cell stopped the read ("cannot convert
+   float NaN to integer").
+10. **Example workbooks**: the 16 upstream `HFP_*.xlsx` had present zeros, which turned the test
+    off for jack+jill, chris+pat and alex+jamie. Reverted to upstream's (binary files: merge
+    cost); the template keeps the headers. Upstream's
+    `test_example_hfp_workbooks_have_required_person_sheet_columns` and
+    `test_legacy_workbook_notice_points_at_saving` now leave out the derived columns (fork edits).
+11. **Fallback warning** fired on every old workbook (a retiree included). Now only for years up
+    to the FRA year with wages and a non-zero 401k/Roth 401k/IRA/Roth IRA column (HSA dropped:
+    a payroll HSA is not in box 5).
+
+**Two upstream bugs found by the new no-op grid** (`compute_social_security_benefits`'s spousal
+add-on), on stock `dev` `4932cb9` too: the first plan year is cut by the partial-year fraction
+when the later claim predates the plan (9,507.50 vs 12,255.00), and the spousal start depends on
+which spouse is listed first when the later claimer's age is reset (11,123.61 vs 10,762.50).
+No upstream example is affected (checked on the 18 TOMLs). Fixed in the fork
+(`tests/ss/test_spousal_start_fork.py`, not test-first: found while fixing); draft issue, repro
+and patch `fork-notes/issue-spousal-start.*` for the user to file (patched stock `dev`:
+`tests/ss` + `tests/plan` 448 passed).
+
+Full suite: 3282 passed / 1 skipped (7:05; +43 tests). flake8 and Ruff: only upstream's two.
+
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)

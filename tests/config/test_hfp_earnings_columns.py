@@ -40,10 +40,6 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
-# Review of 2026-10-18 (PROGRESS.md "Phase 5 steps 1-2 review"): spec for the fixes,
-# committed before them (plan §5b).
-_REVIEW_XFAIL = pytest.mark.xfail(strict=True, reason="Phase 5 steps 1-2 review fixes not yet in")
-
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -131,7 +127,6 @@ def test_present_columns_land_in_et_arrays():
     assert p.etMonths_in[0, 2] == 0
 
 
-@_REVIEW_XFAIL
 def test_absent_gross_earnings_falls_back_to_anticipated_wages():
     """D1 (a): absent ``gross earnings`` → ``anticipated wages``, not zero (unlike other
     optional columns). The column is still recorded as absent.
@@ -420,7 +415,6 @@ def _load(path, name="Alice", birth="1970-01-15"):
     return p
 
 
-@_REVIEW_XFAIL
 def test_ui_sync_keeps_the_fallback():
     """Review finding 9: the UI re-reads its edited tables (``owlbridge._setContributions``
     → ``readHFP({iname: table})``). Those tables carry every column, so the fallback must
@@ -440,7 +434,6 @@ def test_ui_sync_keeps_the_fallback():
         os.unlink(path)
 
 
-@_REVIEW_XFAIL
 def test_absent_et_columns_are_not_reported_as_zero():
     """Review finding 9: the two columns are filled from defaults, not with zeros, so the
     "treated as zero" notice must not list them (it still lists the others)."""
@@ -458,7 +451,6 @@ def test_absent_et_columns_are_not_reported_as_zero():
         os.unlink(path)
 
 
-@_REVIEW_XFAIL
 def test_no_fallback_warning_without_wages_or_deferrals():
     """Review finding 11: no WARNING for a workbook with no wages (a retiree), and none
     for years whose only contribution is an HSA (a payroll HSA is not in W-2 box 5)."""
@@ -479,7 +471,6 @@ def test_no_fallback_warning_without_wages_or_deferrals():
             os.unlink(path)
 
 
-@_REVIEW_XFAIL
 def test_fallback_warning_names_only_test_years():
     """Review finding 11: the warning names years up to the FRA year only (the test does
     not apply later). Alice, born 1970-01-15, reaches FRA (67) in 2037."""
@@ -500,7 +491,6 @@ def test_fallback_warning_names_only_test_years():
         os.unlink(path)
 
 
-@_REVIEW_XFAIL
 def test_blank_months_worked_cell_reads_as_zero():
     """A blank cell means zero like in every other column (Documentation: "leave it blank
     where it does not apply"); it used to stop the read with "cannot convert float NaN"."""
@@ -523,7 +513,6 @@ def test_blank_months_worked_cell_reads_as_zero():
 
 
 @pytest.mark.toml
-@_REVIEW_XFAIL
 def test_example_workbooks_feed_the_test_from_wages():
     """Review finding 10: the upstream example workbooks do not carry the two columns, so
     the fallback applies: Jill (jack+jill) has $85,000 of wages in 2028, which the earnings

@@ -25,7 +25,7 @@ import pandas as pd
 from datetime import date
 
 from owlplanner.debts import PROPERTY_TYPES
-from owlplanner.hfp_io import getTableTypes
+from owlplanner.hfp_io import derivedTimeHorizonItems, getTableTypes
 
 import sskeys as kz
 import owlbridge as owb
@@ -254,7 +254,23 @@ that has not yet been uploaded.""")
     # to the Logs page. The columns are already in the table by now, so point at
     # saving the workbook rather than asking for them to be added by hand.
     absentCols = kz.getCaseKey("hfpAbsentCols") or {}
-    reported = {iname: cols for iname, cols in absentCols.items() if cols}
+    derivedCols = derivedTimeHorizonItems()
+    reported = {
+        iname: [c for c in cols if c not in derivedCols] for iname, cols in absentCols.items()
+    }
+    reported = {iname: cols for iname, cols in reported.items() if cols}
+    derived = {iname: [c for c in cols if c in derivedCols] for iname, cols in absentCols.items()}
+    derived = {iname: cols for iname, cols in derived.items() if cols}
+    if derived:
+        lines = "\n".join(f"- **{iname}**: {', '.join(cols)}" for iname, cols in derived.items())
+        st.info(
+            "The workbook did not contain the following column(s) used by the Social Security "
+            f"earnings test:\n\n{lines}\n\n*gross earnings* has been filled from *anticipated wages* "
+            "(which leave out payroll deferrals) and *months worked* with 12 in years with earnings. "
+            "Check them in the tables below, then use *Download HFP workbook* at the foot of this page "
+            "to save a copy that has them.",
+            icon=":material/info:",
+        )
     if reported:
         lines = "\n".join(f"- **{iname}**: {', '.join(cols)}" for iname, cols in reported.items())
         st.warning(

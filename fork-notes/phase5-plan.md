@@ -400,11 +400,20 @@ Next: step 1 (the rules as a pure function, test-first).
 ### Step 1: the rules as a pure function — size M — **done 2026-10-18**
 
 `socialsecurity.py`: exempt-amount table and projection, `earnings_test(...)` (§4.3). Tests
-(`tests/ss/test_earnings_test.py`, 23) taking the exempt amounts as parameters, so the POMS
-examples run with their own year's numbers. All of the listed cases are in the suite (see
-PROGRESS.md "Phase 5 step 1"). Survivor ARF deferred (D7); survivor streams still fold in as
-the greater of own and survivor. Not yet wired into `compute_social_security_benefits` /
-`build_own_benefit_table` (steps 3-4).
+(`tests/ss/test_earnings_test.py`, 29 functions at first) taking the exempt amounts as
+parameters, so the POMS examples run with their own year's numbers. All of the listed cases are
+in the suite (see PROGRESS.md "Phase 5 step 1"). Survivor ARF deferred (D7); survivor streams
+still fold in as the greater of own and survivor. Not yet wired into
+`compute_social_security_benefits` / `build_own_benefit_table` (steps 3-4).
+
+Reviewed 2026-10-18 and fixed 2026-10-19 (PROGRESS.md "Phase 5 steps 1-2 review"): the
+zero-earnings no-op now holds on a grid (past claims, trims, late survivor claims), the charge
+order no longer depends on which person is listed first, crediting months are counted separately
+on each record (RS 00615.482 B.3, NOTE), the FRA-year monthly exempt amount and the born-on-the-
+1st FRA month are right, and survivor years are **not charged** (D7 fallback (b), since charging
+Owl's annual greater-of survivor fold-in month by month is not cheap: the test is not
+applied to checks paid from the first death on; the survivor benefit does use the deceased's
+post-ARF benefit). Two upstream spousal bugs found on the way: `fork-notes/issue-spousal-start.md`.
 
 - RS 02501.080 examples ($1,260; $4,333; the FRA-year wage cut at the FRA month);
 - RS 02501.095 examples (3 family months; 4 family months then 5 spouse-only months);

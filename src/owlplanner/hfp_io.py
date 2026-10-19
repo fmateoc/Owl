@@ -52,9 +52,14 @@ _timeHorizonItems = [
 ]
 
 # "year" is the row index, not a value: its absence is unrecoverable rather than
-# zero, so it stays a hard error. Every other column means zero when absent.
+# zero, so it stays a hard error. Every other column means zero when absent, except
+# the derived ones below.
 _requiredTimeHorizonItems = ["year"]
 _optionalTimeHorizonItems = [c for c in _timeHorizonItems if c not in _requiredTimeHorizonItems]
+
+# Fork (Phase 5): optional columns whose absence means a value derived from other
+# columns, not zero (see _conditionTimetables).
+_derivedTimeHorizonItems = ["gross earnings", "months worked"]
 
 # Columns holding a flag rather than an amount. They are excluded from the
 # non-negativity check below and coerced to bool on load.
@@ -241,6 +246,11 @@ def booleanTimeHorizonItems():
     return list(_booleanTimeHorizonItems)
 
 
+def derivedTimeHorizonItems():
+    """Person-sheet columns that default to values derived from other columns, not zero."""
+    return list(_derivedTimeHorizonItems)
+
+
 def _normalizeHeader(col):
     """
     Fold a column header for near-miss comparison: case, surrounding and internal
@@ -326,9 +336,10 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
         for col in absent:
             df[col] = 0
         absentCols[iname] = absent
-        if absent:
+        zeroed = [col for col in absent if col not in _derivedTimeHorizonItems]
+        if zeroed:
             mylog.print(
-                f"Column(s) absent from HFP sheet {iname!r}, treated as zero: {absent}.",
+                f"Column(s) absent from HFP sheet {iname!r}, treated as zero: {zeroed}.",
                 tag="WARNING",
             )
 
@@ -355,6 +366,8 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
                     if item in _booleanTimeHorizonItems:
                         continue
                     val = year_rows[item].iloc[0]
+                    if pd.isna(val):
+                        continue  # a blank cell; read as zero below
                     if item == "months worked":
                         # A count of months, not an amount: integer in [0, 12].
                         if val < 0 or val > 12 or float(val) != int(float(val)):
@@ -381,6 +394,21 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
         df.sort_values("year", inplace=True)
         # Replace empty (NaN) cells with 0 value.
         df.fillna(0, inplace=True)
+
+        # The SS earnings-test columns (Phase 5, D1/D2) default to values derived from the
+        # sheet rather than to zero. The defaults are written into the table itself, so what
+        # is shown, re-read on every UI sync and written back is what the test uses.
+        if "gross earnings" in absent:
+            df["gross earnings"] = df["anticipated wages"]
+        if "months worked" in absent:
+            df["months worked"] = np.where(df["gross earnings"] > 0, 12, 0)
+        derived = [col for col in absent if col in _derivedTimeHorizonItems]
+        if derived:
+            mylog.print(
+                f"Column(s) absent from HFP sheet {iname!r}: 'gross earnings' (SSA earnings test) is "
+                "taken from 'anticipated wages', 'months worked' is 12 in years with earnings, else 0. "
+                f"Filled in: {derived}.",
+            )
 
         # Excel round-trips a flag as TRUE/FALSE, 1/0, or a blank; settle on bool.
         for item in _booleanTimeHorizonItems:

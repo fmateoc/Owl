@@ -134,7 +134,10 @@ def test_legacy_workbook_notice_points_at_saving(monkeypatch, tmp_path):
 
     plan = owl.Plan(["Jack", "Jill"], ["1963-01-15", "1966-01-15"], [89, 92], "legacy", verbose=False)
     plan.readHFP(str(legacy))
-    assert plan.hfpAbsentCols["Jack"] == ["Roth conv fixed"]
+    # Fork: the example workbooks also lack the SS earnings-test columns, which are
+    # filled from other columns (and noticed separately), not zeroed.
+    derived = owl.hfp_io.derivedTimeHorizonItems()
+    assert [c for c in plan.hfpAbsentCols["Jack"] if c not in derived] == ["Roth conv fixed"]
     assert "Roth conv fixed" in plan.timeLists["Jack"].columns
     assert not plan.rothXfixed_in.any()
 
@@ -146,6 +149,22 @@ def test_legacy_workbook_notice_points_at_saving(monkeypatch, tmp_path):
     assert "added to the tables below" in text
     assert "Download HFP workbook" in text
     assert "Add them to the workbook" not in text
+
+
+def test_earnings_test_columns_noticed_as_filled_not_zero(monkeypatch):
+    """Fork (Phase 5): a workbook without *gross earnings* / *months worked* gets them
+    filled from the other columns. The page says so in its own notice, and the
+    "treated as zero" warning does not list them."""
+    import owlplanner as owl
+
+    plan = owl.Plan(["Jack", "Jill"], ["1963-01-15", "1966-01-15"], [89, 92], "et", verbose=False)
+    plan.readHFP(str(EXAMPLES / "HFP_jack+jill.xlsx"))
+    at = _render(monkeypatch, plan)
+    assert not at.exception, [str(e.message) for e in at.exception]
+    infos = [str(i.value) for i in at.info if "gross earnings" in str(i.value)]
+    assert len(infos) == 1
+    assert "anticipated wages" in infos[0]
+    assert not [str(w.value) for w in at.warning if "gross earnings" in str(w.value)]
 
 
 def test_workbook_download_does_not_need_a_solve(monkeypatch, tmp_path):

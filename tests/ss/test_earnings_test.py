@@ -58,11 +58,6 @@ def _exempt_2026(_year):
     return ss.ExemptAmounts(*_EXEMPT_2026_VALUES)
 
 
-# Review of 2026-10-18 (PROGRESS.md "Phase 5 steps 1-2 review"): spec for the fixes,
-# committed before them like the step's own tests (plan §5b).
-_REVIEW_XFAIL = pytest.mark.xfail(strict=True, reason="Phase 5 steps 1-2 review fixes not yet in")
-
-
 # --------------------------------------------------------------------------------------
 # Excess earnings — RS 02501.080
 # --------------------------------------------------------------------------------------
@@ -692,7 +687,6 @@ def test_withheld_buckets_to_payment_year_not_entitlement_month():
     assert res.withheld_in.sum() == pytest.approx(19_012.0)
 
 
-@_REVIEW_XFAIL
 def test_family_charge_order_and_spousal_arf_crediting():
     """RS 02501.095 B.4 order as *earnings_test* behavior + RS 00615.482 B.2 crediting.
 
@@ -751,7 +745,6 @@ def test_family_charge_order_and_spousal_arf_crediting():
     assert res.withheld_in.sum() == pytest.approx(2 * 1400.0 + 4 * 650.0)
 
 
-@_REVIEW_XFAIL
 def test_family_partial_month_uses_pia_shares():
     """RS 02501.110: a partial family payment is split by original entitlement shares
     (NH 2 / aux 1 in the examples), not by the reduced dollar rates.
@@ -942,7 +935,6 @@ def _noop_cases():
     return cases
 
 
-@_REVIEW_XFAIL
 @pytest.mark.parametrize("case", _noop_cases())
 def test_zero_earnings_matches_today_on_a_grid(case):
     """No-op property on a grid: zero earnings → exactly ``compute_social_security_benefits``.
@@ -982,7 +974,6 @@ def _order_couple(worker_index):
     return res, w, a
 
 
-@_REVIEW_XFAIL
 @pytest.mark.parametrize("worker_index", [0, 1])
 def test_charge_order_does_not_depend_on_person_index(worker_index):
     """RS 02501.095: the worker's excess is charged first, whichever person is listed first.
@@ -1019,7 +1010,6 @@ def _dual_couple(ages, earnings):
     )
 
 
-@_REVIEW_XFAIL
 def test_dual_entitled_own_record_not_credited_for_worker_charge():
     """RS 00615.482 B.3 NOTE: "grant ARFs separately on each record" (review finding 4).
 
@@ -1046,7 +1036,6 @@ def test_dual_entitled_own_record_not_credited_for_worker_charge():
     assert res.zeta_in[1, 6] == pytest.approx(12 * (own + spousal))
 
 
-@_REVIEW_XFAIL
 def test_spousal_record_not_credited_before_spousal_entitlement():
     """Months withheld from the auxiliary's own benefit before the spousal benefit starts
     do not reduce the spousal reduction (review finding 4; RS 00615.482 B.2-B.3).
@@ -1083,7 +1072,6 @@ def test_spousal_record_not_credited_before_spousal_entitlement():
     assert res.zeta_in[1, 6] == pytest.approx(12 * (own + spousal))
 
 
-@_REVIEW_XFAIL
 def test_survivor_years_are_not_charged():
     """Review finding 5: the test is not applied to checks paid from the first death on
     (survivor benefits under the test are not modeled; module docstring). What is paid
@@ -1099,7 +1087,6 @@ def test_survivor_years_are_not_charged():
     assert res.zeta_in[1, 3:] == pytest.approx(base[1, 3:])
 
 
-@_REVIEW_XFAIL
 def test_survivor_base_uses_deceased_arf_after_their_fra():
     """The widow(er)'s benefit is based on the deceased's benefit at death (CFR 404.338),
     which includes the ARF when death comes after the deceased's FRA.
@@ -1129,7 +1116,6 @@ def test_survivor_base_without_arf_when_death_precedes_deceased_fra():
     assert res.zeta_in[1, 4:] == pytest.approx(base[1, 4:])
 
 
-@_REVIEW_XFAIL
 def test_fra_year_monthly_exempt_is_the_fra_amount():
     """RS 02501.025 B.2: the monthly exempt amount is 1/12 of the *applicable* annual
     amount, $65,160 / 12 = $5,430 in the FRA year (review finding 6). And a non-service
@@ -1151,7 +1137,6 @@ def test_fra_year_monthly_exempt_is_the_fra_amount():
     ) is None
 
 
-@_REVIEW_XFAIL
 def test_arf_never_exceeds_full_benefit_born_on_first():
     """Review finding 7: someone born on the 1st attains FRA a month earlier in calendar
     terms; crediting months bring the factor up to 1.0 and never past it."""
@@ -1161,7 +1146,6 @@ def test_arf_never_exceeds_full_benefit_born_on_first():
     assert ss.arf_spousal_factor(67, 62.0, 60, True) == pytest.approx(1.0)
 
 
-@_REVIEW_XFAIL
 def test_born_on_first_fra_month_is_not_charged():
     """Born 1964-03-01: attains 67 on 2031-02-28, so the FRA month is February 2031 and
     only January's earnings count in 2031 (RS 02501.021 B; 404.430(b)).

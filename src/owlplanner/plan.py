@@ -2223,6 +2223,8 @@ class Plan:
 
                 'year',
                 'anticipated wages',
+                'gross earnings',
+                'months worked',
                 'other inc',
                 'net inv',
                 'taxable ctrb',
@@ -2237,7 +2239,8 @@ class Plan:
 
         in any order. Only 'year' is required: list the columns your household
         actually uses, and any other column that is absent is treated as zero
-        for every year. A header differing from a recognized one only by case,
+        for every year, except 'gross earnings' (filled from 'anticipated wages')
+        and 'months worked' (12 in years with gross earnings). A header differing from a recognized one only by case,
         spacing, or punctuation is rejected as a typo rather than dropped.
         Legacy header 'other inc.' is read as 'other inc'.
         Optional workbook sheets 'Debts', 'Fixed Assets' and 'Budget' follow HFP formats.
@@ -2303,30 +2306,30 @@ class Plan:
 
     def _warnGrossEarningsFallback(self, i, iname, h):
         """
-        Warn that countable earnings fall back to anticipated wages, naming the years
-        where a payroll/tax-advantaged deferral column is non-zero (those dollars are
-        not in ``anticipated wages`` but are wages for the SSA earnings test).
+        Warn that the ``gross earnings`` fallback (``anticipated wages``) understates the
+        earnings the SSA test counts, naming the years up to the person's FRA year where
+        there are wages and a deferral column is non-zero: those deferrals are wages for
+        the test (W-2 box 5) but are not in ``anticipated wages``. HSA contributions are
+        not listed: a payroll HSA is not in box 5, so the fallback is right for them.
         """
-        deferral_cols = ("401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb", "HSA ctrb")
+        deferral_cols = ("401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb")
+        fra = socsec.getFRAs(self.yobs, self.mobs, self.tobs)[i]
+        fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fra) * 12)) // 12
         df = self.timeLists[iname]
-        thisyear = date.today().year
         flagged = []
         for n in range(h):
+            year = int(self.year_n[n])
             row = df.iloc[5 + n]
+            if year > fra_year or float(row["anticipated wages"]) <= 0:
+                continue
             if any(float(row.get(c, 0.0) or 0.0) != 0.0 for c in deferral_cols):
-                flagged.append(str(thisyear + n))
+                flagged.append(str(year))
         if flagged:
             self.mylog.print(
-                f"'gross earnings' is absent from HFP sheet {iname!r}: falling back to "
-                f"'anticipated wages' for the SSA earnings test. That understates countable "
-                f"earnings by payroll deferrals. Non-zero deferral columns in year(s): "
-                f"{', '.join(flagged)}.",
-                tag="WARNING",
-            )
-        else:
-            self.mylog.print(
-                f"'gross earnings' is absent from HFP sheet {iname!r}: falling back to "
-                f"'anticipated wages' for the SSA earnings test.",
+                f"'gross earnings' is absent from HFP sheet {iname!r}: the SSA earnings test uses "
+                f"'anticipated wages', which leave out payroll deferrals (W-2 box 5 counts them). "
+                f"Wages with a non-zero 401k/IRA contribution in year(s): {', '.join(flagged)}. "
+                f"Enter 'gross earnings' for those years if anyone claims SS before FRA then.",
                 tag="WARNING",
             )
 
@@ -2356,20 +2359,14 @@ class Plan:
             self.Lambda_in[i, :h] = self.timeLists[iname]["big-ticket items"].iloc[5 : 5 + h]
             qcd_in[i, :h] = self.timeLists[iname]["QCD"].iloc[5 : 5 + h]
 
-            # SS earnings-test inputs (Phase 5 §4.2). Absent columns were zero-filled
-            # in the tables; the array-level fallbacks live here so a present zero
-            # still wins over the default.
+            # SS earnings-test inputs (Phase 5 §4.2). When the workbook lacks a column,
+            # hfp_io has already written its default into the table (D1: anticipated
+            # wages; D2: 12 in years with earnings), so the table is read as is and a
+            # present zero wins.
             self.etEarnings_in[i, :h] = self.timeLists[iname]["gross earnings"].iloc[5 : 5 + h]
-            if "gross earnings" in self.hfpAbsentCols.get(iname, []):
-                # D1: fall back to anticipated wages (net of contributions), and name
-                # the years where a deferral column is non-zero (the fallback understates
-                # countable earnings by those payroll deferrals).
-                self.etEarnings_in[i, :h] = self.omega_in[i, :h]
-                self._warnGrossEarningsFallback(i, iname, h)
             self.etMonths_in[i, :h] = self.timeLists[iname]["months worked"].iloc[5 : 5 + h]
-            if "months worked" in self.hfpAbsentCols.get(iname, []):
-                # D2: 12 when that year's countable earnings are positive, else 0.
-                self.etMonths_in[i, :h] = np.where(self.etEarnings_in[i, :h] > 0, 12.0, 0.0)
+            if "gross earnings" in self.hfpAbsentCols.get(iname, []):
+                self._warnGrossEarningsFallback(i, iname, h)
 
             # Values for last 5 years of Roth conversion and contributions stored at the end
             # of array and accessed with negative index.

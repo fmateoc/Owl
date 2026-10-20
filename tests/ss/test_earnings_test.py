@@ -58,6 +58,10 @@ def _exempt_2026(_year):
     return ss.ExemptAmounts(*_EXEMPT_2026_VALUES)
 
 
+# Review of the fixes (2026-10-19, PROGRESS.md): spec committed before the change.
+_FIX2_XFAIL = pytest.mark.xfail(strict=True, reason="review-of-fixes changes not yet in")
+
+
 # --------------------------------------------------------------------------------------
 # Excess earnings — RS 02501.080
 # --------------------------------------------------------------------------------------
@@ -1173,3 +1177,68 @@ def test_born_on_first_fra_month_is_not_charged():
     assert res.excess_by_year[0, 5] == 0
     assert res.arf_months[0] == 58
     assert res.zeta_in[0, 6] == pytest.approx(12 * 3000 * (1 - 1 / 180))
+
+
+# --------------------------------------------------------------------------------------
+# Review of the fixes (2026-10-19)
+# --------------------------------------------------------------------------------------
+
+
+@_FIX2_XFAIL
+def test_zero_months_with_earnings_means_twelve():
+    """``months worked`` 0 in a year with earnings means "not given" (12), as on the
+    plan side: otherwise ``countable_earnings`` would count nothing and the year would
+    go untested. Same worker and earnings as the $40,000 / 12 months case."""
+    pias, ages, yobs, mobs, tobs, horizons, N_i, N_n = _single_worker(claim=62.0, N_n=28)
+    earnings = np.zeros((1, 28))
+    earnings[0, :3] = 40_000.0
+    months_zero = np.zeros((1, 28))
+    months_twelve = np.where(earnings > 0, 12, 0)
+    runs = [
+        ss.earnings_test(pias, ages.copy(), yobs, mobs, tobs, horizons, N_i, N_n, earnings, work_months_in=m,
+                         thisyear=THISYEAR, exempt_for_year=_exempt_2026)
+        for m in (months_zero, months_twelve)
+    ]
+    assert runs[0].withheld_in.sum() > 0
+    assert runs[0].withheld_in == pytest.approx(runs[1].withheld_in)
+    assert runs[0].arf_months[0] == runs[1].arf_months[0]
+
+
+@_FIX2_XFAIL
+def test_spousal_crediting_months_stop_at_the_auxiliarys_fra():
+    """The ARF is computed at FRA from the reduction months before it (RS 00615.482):
+    deductions from the spousal add-on after the auxiliary's FRA are still withheld but
+    are not crediting months.
+
+    Auxiliary: PIA $800, born 1962-06-15 (FRA June 2029), claims own at 62y1m (July 2024),
+    never works. Worker: PIA $3,000, born 1966-06-15, claims 62y1m (July 2028), so the
+    spousal add-on ($700) starts July 2028 at the auxiliary's 66y1m, factor 1 - (1/12) x
+    11/12 = 0.923611 ($646.53). The worker earns $40,000 in 2028-2032: excess $7,760 a year
+    against a family of $2,112.50 + $646.53 = $2,759.03, so about 2.8 months a year, from
+    the first chargeable month: July-September 2028 and January-March 2029 are before the
+    auxiliary's FRA → **6** crediting months (2030-2032's are after it). From FRA the
+    spousal factor is that of 66y1m + 6 months = 66y7m: 1 - (1/12) x 5/12 = 0.965278.
+    In 2034 (no work, all checks after FRA) the auxiliary is paid
+      12 x (800 x 0.704167 + 700 x 0.965278) = 12 x (563.33 + 675.69) = 14,868.25
+    """
+    N = 20
+    earnings = np.zeros((2, N))
+    earnings[1, 2:7] = 40_000.0
+    res = ss.earnings_test(
+        np.array([800, 3000], dtype=np.int32),
+        np.array([62.0, 62.0]),
+        np.array([1962, 1966], dtype=np.int64),
+        np.array([6, 6], dtype=np.int64),
+        np.array([15, 15], dtype=np.int64),
+        np.array([N, N], dtype=np.int64),
+        2,
+        N,
+        earnings,
+        thisyear=THISYEAR,
+        exempt_for_year=_exempt_2026,
+    )
+    assert res.arf_months_spousal[0] == 6
+    assert res.arf_months[0] == 0
+    own = 800 * (0.8 - 0.05 * 23 / 12)
+    spousal = 700 * (1 - 5 / 144)
+    assert res.zeta_in[0, 8] == pytest.approx(12 * (own + spousal))

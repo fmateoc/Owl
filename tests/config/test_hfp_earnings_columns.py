@@ -40,6 +40,10 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
+# Review of the fixes (2026-10-19, PROGRESS.md): 0 means "not given" in both columns.
+# Spec committed before the change (plan §5b).
+_ZERO_XFAIL = pytest.mark.xfail(strict=True, reason="zero-means-default rule not yet in")
+
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -127,12 +131,13 @@ def test_present_columns_land_in_et_arrays():
     assert p.etMonths_in[0, 2] == 0
 
 
+@_ZERO_XFAIL
 def test_absent_gross_earnings_falls_back_to_anticipated_wages():
-    """D1 (a): absent ``gross earnings`` → ``anticipated wages``, not zero (unlike other
-    optional columns). The column is still recorded as absent.
-
-    The fallback is written into the table itself (review finding 9), so what the UI
-    shows, re-reads on every sync and writes back is what the earnings test uses."""
+    """D1 (a): absent ``gross earnings`` → ``anticipated wages``. The column is still
+    recorded as absent and read as zero like any other; zero means "not given", and the
+    earnings test then uses the year's wages (``Plan._earnings_test_inputs``). Review of
+    the fixes (2026-10-19): the rule lives where the test's inputs are built, so it holds
+    for workbooks, UI tables and the MCP alike, and follows later edits to wages."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
@@ -143,65 +148,95 @@ def test_absent_gross_earnings_falls_back_to_anticipated_wages():
     p2, tmp = _write_and_reload(p, drop=["gross earnings"])
     try:
         assert "gross earnings" in p2.hfpAbsentCols["Alice"]
-        # Fallback: countable earnings track anticipated wages when the column is absent.
-        assert p2.etEarnings_in[0, 0] == pytest.approx(90_000.0)
-        assert p2.etEarnings_in[0, 1] == pytest.approx(50_000.0)
-        # ... and the table holds the same values.
-        assert p2.timeLists["Alice"]["gross earnings"].iloc[5] == pytest.approx(90_000.0)
-        assert p2.timeLists["Alice"]["gross earnings"].iloc[6] == pytest.approx(50_000.0)
+        assert p2.timeLists["Alice"]["gross earnings"].iloc[5] == 0
+        assert p2.etEarnings_in[0, 0] == 0
+        earnings, months = p2._earnings_test_inputs()
+        assert earnings[0, 0] == pytest.approx(90_000.0)
+        assert earnings[0, 1] == pytest.approx(50_000.0)
+        assert list(months[0, :3]) == [12, 12, 0]
     finally:
         os.unlink(tmp)
 
 
+@_ZERO_XFAIL
 def test_absent_months_worked_defaults_by_earnings():
-    """D2: absent ``months worked`` → 12 when that year's earnings are positive, else 0.
-
-    The default keys off the *effective* countable earnings (``gross earnings`` if the
-    column is present, else the ``anticipated wages`` fallback) — not off wages alone.
-    """
+    """D2: ``months worked`` absent (or 0) → 12 when that year's effective earnings are
+    positive, else 0. Effective earnings are ``gross earnings`` when positive, else
+    ``anticipated wages``."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
-    df.loc[df.index[5], "gross earnings"] = 95_000.0  # present and positive
-    df.loc[df.index[6], "gross earnings"] = 0.0  # present, explicit zero
-    df.loc[df.index[6], "anticipated wages"] = 90_000.0  # wages alone do not count
+    df.loc[df.index[5], "gross earnings"] = 95_000.0
+    df.loc[df.index[6], "anticipated wages"] = 90_000.0  # gross 0: wages are used
     p.setContributions()
 
     p2, tmp = _write_and_reload(p, drop=["months worked"])
     try:
         assert "months worked" in p2.hfpAbsentCols["Alice"]
-        assert p2.etMonths_in[0, 0] == 12  # gross earnings > 0
-        assert p2.etMonths_in[0, 1] == 0  # gross present and 0: default is 0, not 12
+        earnings, months = p2._earnings_test_inputs()
+        assert earnings[0, 0] == pytest.approx(95_000.0)
+        assert earnings[0, 1] == pytest.approx(90_000.0)
+        assert list(months[0, :3]) == [12, 12, 0]
     finally:
         os.unlink(tmp)
 
 
-def test_present_zero_months_worked_is_not_replaced_by_default():
-    """An explicit ``months worked`` of 0 is not a missing column (symmetry with gross)."""
+@_ZERO_XFAIL
+def test_zero_months_worked_means_the_default():
+    """A ``months worked`` of 0 in a year with earnings means "not given" (12), not "no
+    work": earnings with no month of work would be ignored by the test
+    (``countable_earnings`` counts nothing over zero months)."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
     df.loc[df.index[5], "gross earnings"] = 90_000.0
     df.loc[df.index[5], "months worked"] = 0
+    df.loc[df.index[6], "gross earnings"] = 40_000.0
+    df.loc[df.index[6], "months worked"] = 5
     p.setContributions()
-    assert p.etMonths_in[0, 0] == 0  # user wins over the 12-when-earning default
+    assert p.etMonths_in[0, 0] == 0  # the column as entered
+    _, months = p._earnings_test_inputs()
+    assert months[0, 0] == 12
+    assert months[0, 1] == 5  # a positive entry is used as is
 
 
-def test_present_zero_gross_earnings_is_not_replaced_by_wages():
-    """An explicit zero is not a missing column: the user's value wins over the fallback.
-
-    Jointly with ``test_present_zero_months_worked_is_not_replaced_by_default``: both
-    columns are literal when present.
-    """
+@_ZERO_XFAIL
+def test_zero_gross_earnings_means_wages():
+    """A ``gross earnings`` of 0 means "not given": the test uses ``anticipated wages``.
+    A positive entry is used as is (it is meant to be the larger W-2 box 5 amount)."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
     df.loc[df.index[5], "anticipated wages"] = 90_000.0
-    df.loc[df.index[5], "gross earnings"] = 0.0
-    df.loc[df.index[5], "months worked"] = 0
+    df.loc[df.index[6], "anticipated wages"] = 90_000.0
+    df.loc[df.index[6], "gross earnings"] = 101_000.0
     p.setContributions()
-    assert p.etEarnings_in[0, 0] == 0
-    assert p.etMonths_in[0, 0] == 0
+    earnings, _ = p._earnings_test_inputs()
+    assert earnings[0, 0] == pytest.approx(90_000.0)
+    assert earnings[0, 1] == pytest.approx(101_000.0)
+
+
+@_ZERO_XFAIL
+def test_case_without_workbook_feeds_the_test_from_wages():
+    """Review of the fixes (2026-10-19): a UI case with no workbook starts from
+    ``zeroWagesAndContributions`` (every column at 0) and the user types wages; the UI
+    then re-reads its tables (``owlbridge._setContributions``). The MCP assistant writes
+    ``omega_in`` directly. Both must reach the earnings test."""
+    p = _plan()
+    p.zeroWagesAndContributions()
+    df = p.timeLists["Alice"]
+    df.loc[df.index[5:8], "anticipated wages"] = 80_000.0
+    p.readHFP({"Alice": df.copy()}, houseTables=False)
+    earnings, months = p._earnings_test_inputs()
+    assert earnings[0, :3] == pytest.approx([80_000.0] * 3)
+    assert list(months[0, :4]) == [12, 12, 12, 0]
+
+    q = _plan()
+    q.zeroWagesAndContributions()
+    q.omega_in[0, :2] = 70_000.0  # assistant/tools.py writes wages this way
+    earnings, months = q._earnings_test_inputs()
+    assert earnings[0, :2] == pytest.approx([70_000.0] * 2)
+    assert list(months[0, :3]) == [12, 12, 0]
 
 
 def test_fallback_warning_names_deferral_years():
@@ -415,10 +450,11 @@ def _load(path, name="Alice", birth="1970-01-15"):
     return p
 
 
-def test_ui_sync_keeps_the_fallback():
+@_ZERO_XFAIL
+def test_ui_sync_keeps_the_fallback_and_follows_wage_edits():
     """Review finding 9: the UI re-reads its edited tables (``owlbridge._setContributions``
-    → ``readHFP({iname: table})``). Those tables carry every column, so the fallback must
-    already be in them, or the sync replaces it with zeros."""
+    → ``readHFP({iname: table})``), which carry every column. The earnings test must still
+    see the wages after the sync, and wages edited afterwards (no frozen copy)."""
 
     def edit(df):
         df.loc[df.index[5:8], "anticipated wages"] = 80_000.0
@@ -426,17 +462,23 @@ def test_ui_sync_keeps_the_fallback():
     path = _sheet_without_et_columns(edit)
     try:
         p = _load(path)
-        p.readHFP({n: p.timeLists[n].copy() for n in p.inames}, houseTables=False)
-        assert p.etEarnings_in[0, :3] == pytest.approx([80_000.0] * 3)
-        assert list(p.etMonths_in[0, :3]) == [12, 12, 12]
-        assert p.etMonths_in[0, 3] == 0
+        tables = {n: p.timeLists[n].copy() for n in p.inames}
+        p.readHFP(tables, houseTables=False)
+        earnings, months = p._earnings_test_inputs()
+        assert earnings[0, :3] == pytest.approx([80_000.0] * 3)
+        assert list(months[0, :4]) == [12, 12, 12, 0]
+
+        tables["Alice"].loc[tables["Alice"].index[5], "anticipated wages"] = 60_000.0
+        p.readHFP(tables, houseTables=False)
+        earnings, _ = p._earnings_test_inputs()
+        assert earnings[0, 0] == pytest.approx(60_000.0)
     finally:
         os.unlink(path)
 
 
 def test_absent_et_columns_are_not_reported_as_zero():
-    """Review finding 9: the two columns are filled from defaults, not with zeros, so the
-    "treated as zero" notice must not list them (it still lists the others)."""
+    """The two columns read as zero mean "taken from wages / 12 months", so the "treated
+    as zero" notice must not list them (it still lists the others)."""
 
     def edit(df):
         df.loc[df.index[5], "anticipated wages"] = 80_000.0
@@ -446,7 +488,6 @@ def test_absent_et_columns_are_not_reported_as_zero():
         p = _load(path)
         zero_lines = [line for line in p.mylog.lines if "treated as zero" in line]
         assert not any("gross earnings" in line or "months worked" in line for line in zero_lines)
-        assert any("anticipated wages" in line and "gross earnings" in line for line in p.mylog.lines)
     finally:
         os.unlink(path)
 
@@ -491,37 +532,60 @@ def test_fallback_warning_names_only_test_years():
         os.unlink(path)
 
 
+@_ZERO_XFAIL
+def test_fallback_warning_without_a_workbook():
+    """The deferral warning is about years where the test falls back to wages, whatever
+    the reason: here a UI case with no workbook (all columns present, at zero)."""
+    p = _plan()
+    p.zeroWagesAndContributions()
+    p.mylog = _Log()
+    df = p.timeLists["Alice"]
+    df.loc[df.index[5], "anticipated wages"] = 80_000.0
+    df.loc[df.index[5], "401k ctrb"] = 10_000.0
+    p.readHFP({"Alice": df.copy()}, houseTables=False)
+    warn = [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+    assert len(warn) == 1
+    assert str(thisyear) in warn[0]
+
+
+@_ZERO_XFAIL
 def test_blank_months_worked_cell_reads_as_zero():
-    """A blank cell means zero like in every other column (Documentation: "leave it blank
-    where it does not apply"); it used to stop the read with "cannot convert float NaN"."""
+    """A blank cell reads as zero like in every other column (Documentation: "leave it
+    blank where it does not apply"); it used to stop the read with "cannot convert float
+    NaN". Zero means the default: 12 in a year with earnings."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"].copy()
     df["months worked"] = df["months worked"].astype(float)
     df.loc[df.index[5], "gross earnings"] = 50_000.0
     df.loc[df.index[5], "months worked"] = 6
+    df.loc[df.index[6], "gross earnings"] = 30_000.0
     df.loc[df.index[6], "months worked"] = float("nan")
+    df.loc[df.index[7], "months worked"] = float("nan")
     tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
     tmp.close()
     try:
         df.to_excel(tmp.name, sheet_name="Alice", index=False)
         p2 = _load(tmp.name)
-        assert p2.etMonths_in[0, 0] == 6
-        assert p2.etMonths_in[0, 1] == 0
+        assert list(p2.etMonths_in[0, :3]) == [6, 0, 0]
+        _, months = p2._earnings_test_inputs()
+        assert list(months[0, :3]) == [6, 12, 0]
     finally:
         os.unlink(tmp.name)
 
 
 @pytest.mark.toml
+@_ZERO_XFAIL
 def test_example_workbooks_feed_the_test_from_wages():
     """Review finding 10: the upstream example workbooks do not carry the two columns, so
-    the fallback applies: Jill (jack+jill) has $85,000 of wages in 2028, which the earnings
-    test must see (phase5-plan.md §3), not a present zero."""
+    the test falls back to wages: Jill (jack+jill) has $85,000 of wages in 2028, which the
+    earnings test must see (phase5-plan.md §3)."""
     from pathlib import Path
 
     case = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
     p = owl.readConfig(str(case), verbose=False)
     j = p.inames.index("Jill")
     n = 2028 - thisyear
-    assert p.etEarnings_in[j, n] == pytest.approx(85_000.0)
-    assert p.etMonths_in[j, n] == 12
+    earnings, months = p._earnings_test_inputs()
+    assert earnings[j, n] == pytest.approx(85_000.0)
+    assert months[j, n] == 12

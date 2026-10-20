@@ -44,13 +44,13 @@ timetableHelp = {
     ),
     "gross earnings": (
         "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
-        "plus net self-employment earnings. If you leave this column out, Owl uses "
+        "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
         "*anticipated wages*, which understates the test's wages by payroll deferrals."
     ),
     "months worked": (
         "Months of work at the start of this year (0-12). Earnings are taken as spread "
         "evenly over those months; it decides the grace-year monthly test and the share of "
-        "FRA-year earnings that counts. Defaults to 12 when earnings are positive."
+        "FRA-year earnings that counts. 0 (or no column) means not given: 12 in a year with earnings."
     ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "
@@ -254,23 +254,13 @@ that has not yet been uploaded.""")
     # to the Logs page. The columns are already in the table by now, so point at
     # saving the workbook rather than asking for them to be added by hand.
     absentCols = kz.getCaseKey("hfpAbsentCols") or {}
+    # Fork (Phase 5): in these columns zero means "taken from other columns", so their
+    # absence changes nothing and is not reported.
     derivedCols = derivedTimeHorizonItems()
     reported = {
         iname: [c for c in cols if c not in derivedCols] for iname, cols in absentCols.items()
     }
     reported = {iname: cols for iname, cols in reported.items() if cols}
-    derived = {iname: [c for c in cols if c in derivedCols] for iname, cols in absentCols.items()}
-    derived = {iname: cols for iname, cols in derived.items() if cols}
-    if derived:
-        lines = "\n".join(f"- **{iname}**: {', '.join(cols)}" for iname, cols in derived.items())
-        st.info(
-            "The workbook did not contain the following column(s) used by the Social Security "
-            f"earnings test:\n\n{lines}\n\n*gross earnings* has been filled from *anticipated wages* "
-            "(which leave out payroll deferrals) and *months worked* with 12 in years with earnings. "
-            "Check them in the tables below, then use *Download HFP workbook* at the foot of this page "
-            "to save a copy that has them.",
-            icon=":material/info:",
-        )
     if reported:
         lines = "\n".join(f"- **{iname}**: {', '.join(cols)}" for iname, cols in reported.items())
         st.warning(

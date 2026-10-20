@@ -183,7 +183,7 @@ headers (they must match exactly, including capitalization; column order may var
 `Roth IRA ctrb`, `HSA ctrb`, `Roth conv`, `Roth conv fixed`, `QCD`, `big-ticket items`. Only `year` **must be
 present**: enter `0` where a column does not apply, or leave the column out of the workbook entirely and it is
 read as zero for every year, with **Owl** reporting which columns were absent. The two exceptions are
-`gross earnings` and `months worked`, which are filled from the other columns when absent (see below).
+`gross earnings` and `months worked`, where zero (or an absent column) means *not given* (see below).
 The legacy header `other inc.` is read as `other inc`.
 Numeric cells are **nominal dollars** (not thousands), independent of spending/bequest *units* in the case file.
 On load, the planner keeps rows from five calendar years before the **current** year through each person's
@@ -448,15 +448,15 @@ leave it blank where it does not apply), where:
   calculated automatically based on the assumptions you made for future return rates.
 - *gross earnings* is the employment income the Social Security earnings test counts: W-2 box 5
   (Medicare wages) plus net self-employment earnings. Those dollars include payroll deferrals that
-  are not in *anticipated wages*. If you leave this column out, **Owl** fills it with
+  are not in *anticipated wages*. Where it is 0 or blank, or the column is absent, **Owl** uses
   *anticipated wages* and warns about years, up to full retirement age, with wages and a non-zero
   *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb* (a payroll HSA is not in box 5). Fill it in for
   any year in which someone claims Social Security before full retirement age while still working.
 - *months worked* is how many months of that year the person works (a whole number from 0 to 12).
   Earnings are taken as spread evenly over those months. It decides whether a month counts for the
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
-  counts. If you leave this column out, **Owl** fills it with 12 in years where *gross earnings*
-  are positive and 0 otherwise.
+  counts. Where it is 0 or blank, or the column is absent, **Owl** uses 12 in a year with
+  earnings.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
   cash flow and ordinary-income tax logic like wages.

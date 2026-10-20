@@ -58,10 +58,6 @@ def _exempt_2026(_year):
     return ss.ExemptAmounts(*_EXEMPT_2026_VALUES)
 
 
-# Review of the fixes (2026-10-19, PROGRESS.md): spec committed before the change.
-_FIX2_XFAIL = pytest.mark.xfail(strict=True, reason="review-of-fixes changes not yet in")
-
-
 # --------------------------------------------------------------------------------------
 # Excess earnings — RS 02501.080
 # --------------------------------------------------------------------------------------
@@ -1184,7 +1180,6 @@ def test_born_on_first_fra_month_is_not_charged():
 # --------------------------------------------------------------------------------------
 
 
-@_FIX2_XFAIL
 def test_zero_months_with_earnings_means_twelve():
     """``months worked`` 0 in a year with earnings means "not given" (12), as on the
     plan side: otherwise ``countable_earnings`` would count nothing and the year would
@@ -1204,7 +1199,6 @@ def test_zero_months_with_earnings_means_twelve():
     assert runs[0].arf_months[0] == runs[1].arf_months[0]
 
 
-@_FIX2_XFAIL
 def test_spousal_crediting_months_stop_at_the_auxiliarys_fra():
     """The ARF is computed at FRA from the reduction months before it (RS 00615.482):
     deductions from the spousal add-on after the auxiliary's FRA are still withheld but

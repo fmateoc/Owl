@@ -1613,7 +1613,36 @@ and patch `fork-notes/issue-spousal-start.*` for the user to file (patched stock
 
 Full suite: 3282 passed / 1 skipped (7:05; +43 tests). flake8 and Ruff: only upstream's two.
 
-Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`).
+### Review of the fixes (2026-10-19/20)
+
+Two more problems, both reproduced before fixing; spec commit `b570e94` (strict xfail), then
+the fix.
+
+1. **No earnings-test input for cases built without a workbook.** Step 2's "a present zero
+   wins" left `etEarnings_in` at 0 for a UI case with no workbook (`zeroWagesAndContributions`
+   creates every column at 0; ran: wages 80,000 → earnings 0, months 0), for the MCP assistant
+   (`assistant/tools.py` writes `omega_in` directly), and a blank `months worked` beside
+   positive `gross earnings` read as 0 months, which `countable_earnings` turns into no test
+   for that year. Fix 9 above only covered an old workbook. Now **0 means "not given"** in both
+   columns (user's decision 2026-10-20): `Plan._earnings_test_inputs()` returns earnings =
+   `gross earnings` where positive, else `anticipated wages`, and months = `months worked`
+   where positive, else 12 in a year with earnings; `earnings_test` treats 0 months in a year
+   with earnings as 12. The rule sits where the test's inputs are built, so it covers every
+   path and follows later wage edits. Fix 9's table filling in `hfp_io` and its UI notice are
+   removed (a filled copy would not follow a wage edit); absent columns read as zero like
+   upstream's, still left out of the "treated as zero" notices. The deferral warning now
+   fires for any year that falls back to wages, workbook or not. Step 3 must read the inputs
+   through `_earnings_test_inputs` (and deflate the earnings).
+2. **Spousal crediting months counted after the auxiliary's FRA.** The worker's excess still
+   reduces the add-on then (correct), but the ARF is computed once at FRA from the months
+   before it (RS 00615.482). Ran: auxiliary FRA June 2029, worker earning \$40k 2028-2032:
+   15 months counted vs 6, spousal factor 1.0 vs 0.965278 (about \$291/yr). Both records now
+   count only months before the person's FRA.
+
+Full suite: 3286 passed / 1 skipped (8:22). flake8 and Ruff: only upstream's two.
+
+Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
+`Plan._earnings_test_inputs`).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

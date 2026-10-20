@@ -40,10 +40,6 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
-# Review of the fixes (2026-10-19, PROGRESS.md): 0 means "not given" in both columns.
-# Spec committed before the change (plan §5b).
-_ZERO_XFAIL = pytest.mark.xfail(strict=True, reason="zero-means-default rule not yet in")
-
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -131,7 +127,6 @@ def test_present_columns_land_in_et_arrays():
     assert p.etMonths_in[0, 2] == 0
 
 
-@_ZERO_XFAIL
 def test_absent_gross_earnings_falls_back_to_anticipated_wages():
     """D1 (a): absent ``gross earnings`` → ``anticipated wages``. The column is still
     recorded as absent and read as zero like any other; zero means "not given", and the
@@ -158,7 +153,6 @@ def test_absent_gross_earnings_falls_back_to_anticipated_wages():
         os.unlink(tmp)
 
 
-@_ZERO_XFAIL
 def test_absent_months_worked_defaults_by_earnings():
     """D2: ``months worked`` absent (or 0) → 12 when that year's effective earnings are
     positive, else 0. Effective earnings are ``gross earnings`` when positive, else
@@ -181,7 +175,6 @@ def test_absent_months_worked_defaults_by_earnings():
         os.unlink(tmp)
 
 
-@_ZERO_XFAIL
 def test_zero_months_worked_means_the_default():
     """A ``months worked`` of 0 in a year with earnings means "not given" (12), not "no
     work": earnings with no month of work would be ignored by the test
@@ -200,7 +193,6 @@ def test_zero_months_worked_means_the_default():
     assert months[0, 1] == 5  # a positive entry is used as is
 
 
-@_ZERO_XFAIL
 def test_zero_gross_earnings_means_wages():
     """A ``gross earnings`` of 0 means "not given": the test uses ``anticipated wages``.
     A positive entry is used as is (it is meant to be the larger W-2 box 5 amount)."""
@@ -216,7 +208,6 @@ def test_zero_gross_earnings_means_wages():
     assert earnings[0, 1] == pytest.approx(101_000.0)
 
 
-@_ZERO_XFAIL
 def test_case_without_workbook_feeds_the_test_from_wages():
     """Review of the fixes (2026-10-19): a UI case with no workbook starts from
     ``zeroWagesAndContributions`` (every column at 0) and the user types wages; the UI
@@ -450,7 +441,6 @@ def _load(path, name="Alice", birth="1970-01-15"):
     return p
 
 
-@_ZERO_XFAIL
 def test_ui_sync_keeps_the_fallback_and_follows_wage_edits():
     """Review finding 9: the UI re-reads its edited tables (``owlbridge._setContributions``
     → ``readHFP({iname: table})``), which carry every column. The earnings test must still
@@ -532,7 +522,6 @@ def test_fallback_warning_names_only_test_years():
         os.unlink(path)
 
 
-@_ZERO_XFAIL
 def test_fallback_warning_without_a_workbook():
     """The deferral warning is about years where the test falls back to wages, whatever
     the reason: here a UI case with no workbook (all columns present, at zero)."""
@@ -548,7 +537,6 @@ def test_fallback_warning_without_a_workbook():
     assert str(thisyear) in warn[0]
 
 
-@_ZERO_XFAIL
 def test_blank_months_worked_cell_reads_as_zero():
     """A blank cell reads as zero like in every other column (Documentation: "leave it
     blank where it does not apply"); it used to stop the read with "cannot convert float
@@ -575,7 +563,6 @@ def test_blank_months_worked_cell_reads_as_zero():
 
 
 @pytest.mark.toml
-@_ZERO_XFAIL
 def test_example_workbooks_feed_the_test_from_wages():
     """Review finding 10: the upstream example workbooks do not carry the two columns, so
     the test falls back to wages: Jill (jack+jill) has $85,000 of wages in 2028, which the

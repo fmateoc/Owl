@@ -414,6 +414,9 @@ on each record (RS 00615.482 B.3, NOTE), the FRA-year monthly exempt amount and 
 Owl's annual greater-of survivor fold-in month by month is not cheap: the test is not
 applied to checks paid from the first death on; the survivor benefit does use the deceased's
 post-ARF benefit). Two upstream spousal bugs found on the way: `fork-notes/issue-spousal-start.md`.
+Review of the fixes (2026-10-20): in `gross earnings` / `months worked` **0 means "not given"**
+(wages; 12 months in a year with earnings), resolved in `Plan._earnings_test_inputs` for every
+input path (workbook, UI, MCP), and crediting months count only before the person's FRA.
 
 - RS 02501.080 examples ($1,260; $4,333; the FRA-year wage cut at the FRA month);
 - RS 02501.095 examples (3 family months; 4 family months then 5 spouse-only months);

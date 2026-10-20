@@ -1262,8 +1262,8 @@ def earnings_test(
         Annual countable earnings (W-2 box 5 + net SE) by plan year, in today's dollars
         like the exempt amounts (the HFP column is nominal: deflate it first).
     work_months_in : array or None
-        Shape (N_i, N_n); months of work at the start of each year. Default 12 when
-        that year's earnings are positive, else 0.
+        Shape (N_i, N_n); months of work at the start of each year. 0 (or None for the
+        whole array) means "not given": 12 when that year's earnings are positive, else 0.
     exempt_for_year : callable or None
         ``year -> ExemptAmounts``. Default: :func:`get_exempt_amounts`.
 
@@ -1286,10 +1286,12 @@ def earnings_test(
     if earnings_in.shape != (N_i, N_n):
         raise ValueError(f"earnings_in shape {earnings_in.shape} != ({N_i}, {N_n})")
     if work_months_in is None:
-        work_months_in = np.where(earnings_in > 0, 12, 0)
+        work_months_in = np.zeros((N_i, N_n))
     work_months_in = np.asarray(work_months_in)
     if work_months_in.shape != (N_i, N_n):
         raise ValueError(f"work_months_in shape {work_months_in.shape} != ({N_i}, {N_n})")
+    # Earnings over zero months of work would count for nothing (countable_earnings).
+    work_months_in = np.where((work_months_in <= 0) & (earnings_in > 0), 12, work_months_in)
 
     death_year_n, deceased_idx, survivor_idx = _survivor_period(horizons, N_i, N_n)
     fras = getFRAs(yobs, mobs, tobs)
@@ -1459,9 +1461,16 @@ def earnings_test(
     # Crediting months (RS 00615.482), counted separately on each record (B.3, NOTE):
     # own record, months with a deduction from the own benefit; spouse record, months
     # with a deduction from the spousal add-on, including the worker's charge (B.2).
+    # Only months before the person's FRA count: the ARF is computed once, at FRA, from
+    # the reduction months; the worker's excess can still reduce a spousal add-on later.
     tol = 1e-9
-    arf_months = np.array([int(np.count_nonzero(withheld_own[i] > tol)) for i in range(N_i)], dtype=np.int64)
-    arf_months_sp = np.array([int(np.count_nonzero(withheld_sp[i] > tol)) for i in range(N_i)], dtype=np.int64)
+    pre_fra = [max(0, fra_abs[i] - g0) for i in range(N_i)]
+    arf_months = np.array(
+        [int(np.count_nonzero(withheld_own[i, : pre_fra[i]] > tol)) for i in range(N_i)], dtype=np.int64
+    )
+    arf_months_sp = np.array(
+        [int(np.count_nonzero(withheld_sp[i, : pre_fra[i]] > tol)) for i in range(N_i)], dtype=np.int64
+    )
 
     # --- ARF from FRA (RS 00615.480/.482) --------------------------------------
     for i in range(N_i):

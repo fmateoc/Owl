@@ -52,13 +52,14 @@ _timeHorizonItems = [
 ]
 
 # "year" is the row index, not a value: its absence is unrecoverable rather than
-# zero, so it stays a hard error. Every other column means zero when absent, except
-# the derived ones below.
+# zero, so it stays a hard error. Every other column means zero when absent.
 _requiredTimeHorizonItems = ["year"]
 _optionalTimeHorizonItems = [c for c in _timeHorizonItems if c not in _requiredTimeHorizonItems]
 
-# Fork (Phase 5): optional columns whose absence means a value derived from other
-# columns, not zero (see _conditionTimetables).
+# Fork (Phase 5): columns where zero means "not given", so a year's value is derived
+# from other columns (Plan._earnings_test_inputs). An absent one is read as zero like
+# any other but not reported as "treated as zero"; the upstream example workbooks do
+# not carry them.
 _derivedTimeHorizonItems = ["gross earnings", "months worked"]
 
 # Columns holding a flag rather than an amount. They are excluded from the
@@ -247,7 +248,7 @@ def booleanTimeHorizonItems():
 
 
 def derivedTimeHorizonItems():
-    """Person-sheet columns that default to values derived from other columns, not zero."""
+    """Person-sheet columns where zero means "not given" (a value derived from other columns)."""
     return list(_derivedTimeHorizonItems)
 
 
@@ -394,21 +395,6 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
         df.sort_values("year", inplace=True)
         # Replace empty (NaN) cells with 0 value.
         df.fillna(0, inplace=True)
-
-        # The SS earnings-test columns (Phase 5, D1/D2) default to values derived from the
-        # sheet rather than to zero. The defaults are written into the table itself, so what
-        # is shown, re-read on every UI sync and written back is what the test uses.
-        if "gross earnings" in absent:
-            df["gross earnings"] = df["anticipated wages"]
-        if "months worked" in absent:
-            df["months worked"] = np.where(df["gross earnings"] > 0, 12, 0)
-        derived = [col for col in absent if col in _derivedTimeHorizonItems]
-        if derived:
-            mylog.print(
-                f"Column(s) absent from HFP sheet {iname!r}: 'gross earnings' (SSA earnings test) is "
-                "taken from 'anticipated wages', 'months worked' is 12 in years with earnings, else 0. "
-                f"Filled in: {derived}.",
-            )
 
         # Excel round-trips a flag as TRUE/FALSE, 1/0, or a blank; settle on bool.
         for item in _booleanTimeHorizonItems:

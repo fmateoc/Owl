@@ -40,6 +40,10 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
+# Review of the fixes, second pass (2026-10-20, PROGRESS.md): spec committed before the
+# change (plan §5b).
+_WARN_XFAIL = pytest.mark.xfail(strict=True, reason="fallback warning not yet moved out of the HFP read")
+
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -230,23 +234,15 @@ def test_case_without_workbook_feeds_the_test_from_wages():
     assert list(months[0, :3]) == [12, 12, 0]
 
 
+@_WARN_XFAIL
 def test_fallback_warning_names_deferral_years():
-    """§4.2: a warning names the years where a deferral column is non-zero in a test year.
+    """§4.2: a warning names the years where the test falls back to wages and a deferral
+    column is non-zero (*401k*, *Roth 401k*, *IRA*, *Roth IRA ctrb*).
 
-    Fires when ``setContributions`` applies the ``anticipated wages`` fallback (the
-    array-build path), naming calendar years in which any payroll/tax-advantaged
-    contribution column is non-zero. Those columns are *401k ctrb*, *Roth 401k ctrb*,
-    *IRA ctrb*, *Roth IRA ctrb*, and *HSA ctrb*.
-    """
-    log_lines = []
-
-    class _Log:
-        def print(self, msg, tag=None):
-            log_lines.append(f"{tag}: {msg}")
-
-        def vprint(self, msg):
-            log_lines.append(msg)
-
+    Review of the fixes (2026-10-20): the warning is no longer given at every HFP read
+    (it was noise on most examples, and the test is off by default, D6); step 3 calls
+    ``Plan._warnGrossEarningsFallback(entitled_from)`` when the test is on, with each
+    person's first year of entitlement."""
     p = _plan()
     p.zeroWagesAndContributions()
     df = p.timeLists["Alice"]
@@ -254,16 +250,10 @@ def test_fallback_warning_names_deferral_years():
     df.loc[df.index[5], "401k ctrb"] = 10_000.0
     df.loc[df.index[6], "anticipated wages"] = 50_000.0  # no deferral this year
     p.setContributions()
-
-    p2, tmp = _write_and_reload(p, drop=["gross earnings"])
-    try:
-        p2.mylog = _Log()
-        p2.setContributions()
-        text = "\n".join(log_lines)
-        assert "gross earnings" in text
-        assert str(thisyear) in text  # the deferral year is named
-    finally:
-        os.unlink(tmp)
+    warn = _fallback_warnings(p, [thisyear])
+    assert len(warn) == 1
+    assert str(thisyear) in warn[0]
+    assert str(thisyear + 1) not in warn[0]
 
 
 # --------------------------------------------------------------------------------------
@@ -482,6 +472,14 @@ def test_absent_et_columns_are_not_reported_as_zero():
         os.unlink(path)
 
 
+def _fallback_warnings(p, entitled_from):
+    """Call the deferral warning the way step 3 will, and return its WARNING lines."""
+    p.mylog = _Log()
+    p._warnGrossEarningsFallback(entitled_from)
+    return [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+
+
+@_WARN_XFAIL
 def test_no_fallback_warning_without_wages_or_deferrals():
     """Review finding 11: no WARNING for a workbook with no wages (a retiree), and none
     for years whose only contribution is an HSA (a payroll HSA is not in W-2 box 5)."""
@@ -496,45 +494,65 @@ def test_no_fallback_warning_without_wages_or_deferrals():
     for edit in (retiree, hsa_only):
         path = _sheet_without_et_columns(edit)
         try:
-            p = _load(path)
-            assert not [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+            assert not _fallback_warnings(_load(path), [thisyear])
         finally:
             os.unlink(path)
 
 
+@_WARN_XFAIL
 def test_fallback_warning_names_only_test_years():
-    """Review finding 11: the warning names years up to the FRA year only (the test does
-    not apply later). Alice, born 1970-01-15, reaches FRA (67) in 2037."""
+    """The warning names years from the first year of entitlement up to the FRA year
+    only (the test does not apply outside them). Alice, born 1970-01-15, reaches FRA (67)
+    in 2037; entitled from thisyear + 1 here."""
 
     def edit(df):
-        for n in (0, 12):  # thisyear (named) and thisyear + 12 = after the FRA year
+        for n in (0, 1, 12):  # before entitlement, named, after the FRA year
             df.loc[df.index[5 + n], "anticipated wages"] = 80_000.0
             df.loc[df.index[5 + n], "401k ctrb"] = 10_000.0
 
     path = _sheet_without_et_columns(edit)
     try:
-        p = _load(path)
-        warn = [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+        warn = _fallback_warnings(_load(path), [thisyear + 1])
         assert len(warn) == 1
-        assert str(thisyear) in warn[0]
+        assert str(thisyear + 1) in warn[0]
+        assert str(thisyear) not in warn[0]
         assert str(thisyear + 12) not in warn[0]
+        # Not entitled within the plan: nothing to warn about.
+        assert not _fallback_warnings(_load(path), [None])
     finally:
         os.unlink(path)
 
 
+@_WARN_XFAIL
 def test_fallback_warning_without_a_workbook():
     """The deferral warning is about years where the test falls back to wages, whatever
     the reason: here a UI case with no workbook (all columns present, at zero)."""
     p = _plan()
     p.zeroWagesAndContributions()
-    p.mylog = _Log()
     df = p.timeLists["Alice"]
     df.loc[df.index[5], "anticipated wages"] = 80_000.0
     df.loc[df.index[5], "401k ctrb"] = 10_000.0
     p.readHFP({"Alice": df.copy()}, houseTables=False)
-    warn = [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
+    warn = _fallback_warnings(p, [thisyear])
     assert len(warn) == 1
     assert str(thisyear) in warn[0]
+
+
+@pytest.mark.toml
+@_WARN_XFAIL
+def test_no_fallback_warning_at_hfp_read():
+    """Review of the fixes (2026-10-20): loading an example and re-reading its tables the
+    way the UI does gives no earnings-test warning (7 lines on six examples before, 14
+    after one UI sync). jack+jill: Jack has wages and a 401k contribution in 2026-2027."""
+    from pathlib import Path
+
+    case = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
+    p = owl.readConfig(str(case), verbose=False)
+    p.mylog = _Log()
+    p.readHFP({n: p.timeLists[n] for n in p.inames}, houseTables=False)
+    assert not [line for line in p.mylog.lines if "gross earnings" in line]
+    # ... while the warning itself still finds Jack's years when called.
+    assert _fallback_warnings(p, [thisyear, None])
 
 
 def test_blank_months_worked_cell_reads_as_zero():

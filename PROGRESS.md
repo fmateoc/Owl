@@ -1661,6 +1661,22 @@ strict xfail, then the fix):
 
 Full suite: 3287 passed / 1 skipped (8:15). flake8 and Ruff: only upstream's two. The six-example probe now prints 0 warning lines.
 
+### Third review of the fixes (2026-10-20)
+
+Spec `67a9417` (strict xfail), then the fix:
+
+1. **The fallback warning read the tables, the test reads the plan arrays.** A plan built by
+   the MCP assistant (wages in `omega_in`, contributions in `kappa_ijn`, tables at zero) fell
+   back to wages but got no warning (ran: inputs 70,000 / 12 months, 0 warning lines). The
+   warning now reads `omega_in`, `etEarnings_in` and `kappa_ijn[i, 1] + kappa_ijn[i, 2]`
+   (= 401k + IRA + Roth 401k + Roth IRA, `setContributions`; HSA `[i, 3]` left out).
+2. **Docs described a test that is not applied yet.** `modeling-capabilities.md` and the paper
+   still (correctly) say the earnings test is not modeled; the column help, `Documentation.py`
+   and `PARAMETERS.md` now say the two columns are not used yet. Step 3 removes these caveats
+   (plan §5 step 3).
+
+Full suite: 3288 passed / 1 skipped (7:30). flake8 and Ruff: only upstream's two. The MCP probe now gives one warning line naming both years.
+
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
 `Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3).
 

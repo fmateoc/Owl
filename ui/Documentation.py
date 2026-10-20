@@ -446,6 +446,8 @@ leave it blank where it does not apply), where:
   accounts is therefore not modeled during the working years. This column is not meant to include
   all your ordinary income; for example, interest from your taxable investment accounts is
   calculated automatically based on the assumptions you made for future return rates.
+- *gross earnings* and *months worked* are inputs to the Social Security earnings test, which is
+  **not yet applied** to the plan: for now they have no effect on results.
 - *gross earnings* is the employment income the Social Security earnings test counts: W-2 box 5
   (Medicare wages) plus net self-employment earnings. Those dollars include payroll deferrals that
   are not in *anticipated wages*. Where it is 0 or blank, or the column is absent, **Owl** uses

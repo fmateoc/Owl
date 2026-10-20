@@ -2319,22 +2319,23 @@ class Plan:
         step 3), not at HFP read: there most flagged years could not be tested, and the
         test is off by default (D6).
         """
-        deferral_cols = ("401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb")
+        # The plan arrays the test reads, not the tables: the MCP assistant fills them
+        # directly. kappa_ijn[i, 1] = 401k + IRA, [i, 2] = Roth 401k + Roth IRA
+        # (setContributions); [i, 3] (HSA) is left out.
+        deferrals = self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
         fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
         for i, iname in enumerate(self.inames):
             if entitled_from[i] is None:
                 continue
             fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fras[i]) * 12)) // 12
-            df = self.timeLists[iname]
             flagged = []
             for n in range(self.horizons[i]):
                 year = int(self.year_n[n])
-                row = df.iloc[5 + n]
                 if year < entitled_from[i] or year > fra_year:
                     continue
-                if float(row["anticipated wages"]) <= 0 or float(row["gross earnings"]) > 0:
+                if self.omega_in[i, n] <= 0 or self.etEarnings_in[i, n] > 0:
                     continue
-                if any(float(row.get(c, 0.0) or 0.0) != 0.0 for c in deferral_cols):
+                if deferrals[i, n] != 0:
                     flagged.append(str(year))
             if flagged:
                 self.mylog.print(

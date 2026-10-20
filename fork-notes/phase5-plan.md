@@ -463,7 +463,9 @@ Also (from the steps 1-2 reviews, 2026-10-19/20): inputs through `Plan._earnings
 `entitled_from[i]` = the first calendar year with an entitlement month (from the fixed claiming
 age; under `withSSAges`, step 4, the year the person turns 62), `None` if none in the plan; a
 test that a solve with the switch on warns for jack+jill's Jack only if his years are reachable
-(he claims at 70, so not) and that one with the switch off never warns.
+(he claims at 70, so not) and that one with the switch off never warns. Remove the "not used
+yet" caveats on the two columns (`Financial_Profile.py` help, `Documentation.py`, `PARAMETERS.md`;
+added 2026-10-20) once the test is applied.
 
 ### Step 4: `withSSAges` — size M
 

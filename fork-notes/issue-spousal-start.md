@@ -1,5 +1,10 @@
 # Draft issue: spousal add-on in `compute_social_security_benefits` — first year cut when the later claim predates the plan; start depends on person order
 
+**Status (2026-10-20): filed as #198 and fixed upstream** (`9770116`, with `d34dc0b` CHANGELOG;
+the same two changes, three tests in `tests/ss/test_socsec.py`), merged here with `dev` `bb52632`;
+the fork's patch and `tests/ss/test_spousal_start_fork.py` were dropped for upstream's. Kept as
+the record of what was filed.
+
 Fork note (2026-10-19). Found by the fork's earnings-test no-op grid (Phase 5 steps 1-2
 review): a monthly rebuild of the SS streams disagreed with `compute_social_security_benefits`
 in two cases, and in both the monthly rebuild was right. Checked on stock upstream `dev`

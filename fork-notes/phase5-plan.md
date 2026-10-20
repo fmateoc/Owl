@@ -46,8 +46,8 @@ What Owl does today (read in code):
 |---|---|---|
 | Wages | Fixed per-person, per-year input `anticipated wages`, nominal, **net of all contribution columns** (employer contributions included in those columns) | `plan.py:2320`, `ui/Documentation.py:440` |
 | Earnings test | Not modeled; documented as a limitation | `socialsecurity.py:19-22`, `papers/owl.tex:407` |
-| SS streams | `compute_social_security_benefits(pias, ages, ...)` in today's $, annual, payments one month in arrears; called at `setSocialSecurity` (`plan.py:1397`), for the one-free-spouse tabulation (`plan.py:3131`) and on each loop iteration under `withSSAges` (`plan.py:8433`); `build_own_benefit_table` for `B_own` (`plan.py:3099`) | `socialsecurity.py:602`, `:735` |
-| Claiming-age choice | `withSSAges`: binaries `zssa` over 97 months, `ssb = B_own·zssa (+ B_cross·zssa_partner)`; exact when one spouse is free, spousal/survivor in a loop offset when both are | `plan.py:5174` (`_configure_ss_age_variables`) |
+| SS streams | `compute_social_security_benefits(pias, ages, ...)` in today's $, annual, payments one month in arrears; called at `setSocialSecurity` (`plan.py:1401` on `c7db2db`); `zetaBar_in` set from it at solve time in `_adjustParameters` (`plan.py:2823`). *(Before upstream #195, merged 2026-10-20, also for the one-free-spouse tabulation, on each loop iteration under `withSSAges`, and `build_own_benefit_table` for `B_own`; all removed.)* | `socialsecurity.py:627` |
+| Claiming-age choice | `withSSAges` (since upstream #195, 2026-10-20): the plan is solved at fixed ages for every open claiming month (`_ssaOpenAges`), on clones in parallel threads, and the best kept; with both spouses selected, one age at a time until neither moves. *(Before: binaries `zssa` over 97 months with `B_own`/`B_cross` tables.)* | `plan.py:6614` (`_ssAgeSearch`), `:5079` |
 | PIA | Fixed input; extra work years do not change it | `plan.py:1439` |
 | Payroll tax | No FICA, SECA or Additional Medicare Tax found: a case-insensitive grep for `fica`, `payroll`, `0.0765`, `wage base`, `additional medicare`, `seca` in `src/owlplanner` hits only `ssecAmounts`/`ssecAges` and two unrelated comments | — |
 | Medicare | Every person from 65 (`mediVals`: `yob + 65`), IRMAA on the household MAGI; HSA contributions zeroed from 65 | `tax_federal.py:383`, `plan.py:2333-2355` |
@@ -343,16 +343,19 @@ to each horizon, in today's dollars:
    FRA with the spousal factor and the spouse's crediting months; survivor per RS 00615.580 (D7).
 4. Aggregate to annual payment-year amounts.
 
-`compute_social_security_benefits` and `build_own_benefit_table` gain an optional
-`earnings_in` / `work_months_in` (today's $) and call it; with `earnings_in=None` both return
-exactly what they return now (upstream behaviour, and the no-op test).
+`compute_social_security_benefits` gains an optional `earnings_in` / `work_months_in` (today's
+$) and calls it; with `earnings_in=None` it returns exactly what it returns now (upstream
+behaviour, and the no-op test). *(`build_own_benefit_table` was the other caller in the first
+draft; upstream removed it with #195.)*
 
 ### 4.4 Where it plugs into `Plan`
 
 - Earnings are known only after the HFP is read, and `setSocialSecurity` can run before that. So
-  `zeta_in` is rebuilt with the test where `zetaBar_in` is set at solve time (`plan.py:2753`,
-  inside `_adjustedParameters`), through one helper `Plan._ss_streams(ages)` that all four call
-  sites use. Same pattern as the Budget profile (`xi_n` built in `solve()`, CLAUDE.md gotcha).
+  `zeta_in` is rebuilt with the test where `zetaBar_in` is set at solve time (`plan.py:2823` on
+  `c7db2db`, inside `_adjustParameters`), through one helper `Plan._ss_streams(ages)` that both
+  call sites use (`setSocialSecurity` and that rebuild; since upstream #195 the claiming-age
+  search's candidates reach the rebuild through their own `solve()`, and the four call sites of
+  the first draft are two). Same pattern as the Budget profile (`xi_n` built in `solve()`, CLAUDE.md gotcha).
   `_adjustedParameters` must be reset when the HFP is re-read, or a second solve keeps stale
   streams (test it).
 - Outputs: `Plan.ss_withheld_in` (nominal), `Plan.ss_arf_months_i`; Summary rows "SS withheld by
@@ -403,7 +406,8 @@ Next: step 1 (the rules as a pure function, test-first).
 parameters, so the POMS examples run with their own year's numbers. All of the listed cases are
 in the suite (see PROGRESS.md "Phase 5 step 1"). Survivor ARF deferred (D7); survivor streams
 still fold in as the greater of own and survivor. Not yet wired into
-`compute_social_security_benefits` / `build_own_benefit_table` (steps 3-4).
+`compute_social_security_benefits` (step 3; `build_own_benefit_table`, also listed at first, was
+removed upstream with #195).
 
 Reviewed 2026-10-18 and fixed 2026-10-19 (PROGRESS.md "Phase 5 steps 1-2 review"): the
 zero-earnings no-op now holds on a grid (past claims, trims, late survivor claims), the charge

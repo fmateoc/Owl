@@ -1705,6 +1705,17 @@ definitions after the merge (scripted check; the repeats left are upstream's own
 3280 passed / 1 skipped (10:38; upstream's SS-age tests now run real solves). flake8 and Ruff:
 only upstream's two.
 
+Merge review (2026-10-20): nothing lost or mis-resolved (diffs against upstream limited to fork
+additions; the 3288 → 3280 test change accounted for test by test: upstream's #195/#198/scenario
+test changes and our 3 dropped duplicates; no reference left to the removed MILP in `src`, `ui`,
+`tests`, `info`; the same claiming ages as stock `dev` on jack+jill with Jill free, 65y11m, and
+joe, 68y7m). Runtime, one run each on 4 cores: jack+jill (Jill free) 61.9 s on the fork vs 47.6 s
+stock, joe 7.4 s vs 4.7 s (the fork's loops run in every candidate solve); the household template
+frees both ages, so a run takes minutes, and the step-6 sweep should free only the spouse who
+stops. Fixed after the review (docs only): stale MILP references in `phase5-plan.md` (§1 table,
+§4.3, §4.4 call sites, step 1; `_adjustedParameters` → `_adjustParameters` where the method is
+meant) and a status line on `fork-notes/issue-spousal-start.md` (#198, fixed in `9770116`).
+
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
 `Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3).
 

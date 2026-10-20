@@ -12,8 +12,10 @@ by a sequence of small restricted problems, each solved with most binaries pinne
    narrow band and the binaries free. Never the full program: if every attempt fails, the
    search stops and the caller keeps the loop's plan.
 2. (a) Social Security taxability pinned; the other families freed one at a time.
-   (b) The other families pinned, except LTCG; Social Security taxability free within a
-       local-branching ball of at most `radius` flips from the current plan.
+   (b) Social Security taxability free within a local-branching ball of at most `radius` flips
+       from the current plan, with the LTCG binaries free alongside it; the other families pinned.
+       The LTCG binaries hold ordinary income on one side of each LTCG threshold, so moving
+       income across a threshold and SS taxability with it takes both at once.
    (a') When neither moved: the other families freed jointly, once.
    (c)  The binaries of every family freed in the years where the plan's own income implies a
         different cost than the one charged.
@@ -28,8 +30,9 @@ machine speed or load), with a time backstop (`stepTime`), and solved to a relat
 `STEP_GAP`, whatever the case's gap; the whole search has a budget (`totalTime`). A capped step
 keeps the best plan it found. When the loop rebuilds the problem of the previous iteration, that
 iteration's plan is returned without searching again. Withdrawal-ordering gates
-(withdrawalOrder="taxable_first") and claiming-age selectors (withSSAges="optimize") are not searched: Plan.solve() hands such cases to
-branch-and-bound.
+(withdrawalOrder="taxable_first") are not searched: Plan.solve() hands such cases to branch-and-bound.
+Claiming ages (withSSAges) are chosen around the solve, one fixed-age solve per candidate, each of
+which can use this search.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -278,9 +281,7 @@ class LocalSearch:
                 self._step(steps, f"round {rnd} (a): {FAMILY_LABEL[f]} free", res, dt)
                 if self._better(res, best):
                     best, improved = res, True
-            # (b) the others pinned; SS taxability within a local-branching ball. LTCG stays free:
-            # its regime binaries hold ordinary taxable income on one side of each LTCG threshold,
-            # so pinned they block every SS move that takes income across one.
+            # (b) SS taxability within a local-branching ball, LTCG free with it; the others pinned.
             if "zs" in fams:
                 A = copy.deepcopy(p.A)
                 row, ones = {}, 0

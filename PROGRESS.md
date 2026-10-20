@@ -1677,6 +1677,34 @@ Spec `67a9417` (strict xfail), then the fix:
 
 Full suite: 3288 passed / 1 skipped (7:30). flake8 and Ruff: only upstream's two. The MCP probe now gives one warning line naming both years.
 
+## Upstream `dev` `bb52632` merged (2026-10-20, on `claude/phase5-step1`)
+
+Eight upstream commits since `4932cb9` (2026.10.20):
+
+- **#198** (`9770116`): our spousal-start report (`fork-notes/issue-spousal-start.md`, filed by
+  the user as #198) fixed upstream with the same two changes as the fork's, crediting us, with 3
+  tests in `tests/ss/test_socsec.py`. Took theirs: conflict hunks resolved to upstream's code,
+  `tests/ss/test_spousal_start_fork.py` dropped (duplicate). `socialsecurity.py` now differs from
+  upstream only by the earnings-test section and `compute_survivor_stream`'s `deceased_factor`.
+- **#197** (`70fb8dd`, `7bf12cd`): our local-search LTCG fix landed upstream (same change, their
+  wording). `localsearch.py` now differs from upstream only by the fork's STAR family. Upstream
+  added no test, so `tests/plan/test_local_search_ltcg.py` stays (docstring updated). Upstream's
+  CHANGELOG entry replaces the fork's.
+- **#195** (`0b318e0`): the claiming-month MILP (`zssa`, `ssb`, `B_own`/`B_cross`, spousal
+  offset, `build_own_benefit_table`) is gone; `withSSAges` now solves the plan at fixed ages for
+  every open month and keeps the best (both: one age at a time until neither moves). Fork code
+  that read the removed pieces: `_item_income_ub_n` and `_gateCeilings`' `ss_in` default (both
+  now `zetaBar_in`, the solve's own Social Security). Phase 5 §4.1 and step 4 rewritten: step 4
+  shrinks to S, since every candidate is a fixed-age solve.
+- `ad79391`: scenario runs (historical, Monte Carlo, spending, regret) hold the plan's claiming
+  ages. `bb52632`: version and lock refresh.
+
+Conflicts: `CHANGELOG.md`, `localsearch.py` (2 comment hunks), `plan.py` (1), `socialsecurity.py`
+(3, incl. the removed `build_own_benefit_table` next to the earnings-test section). No duplicated
+definitions after the merge (scripted check; the repeats left are upstream's own). Full suite:
+3280 passed / 1 skipped (10:38; upstream's SS-age tests now run real solves). flake8 and Ruff:
+only upstream's two.
+
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
 `Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3).
 

@@ -18,12 +18,11 @@ Limitations and known omissions:
 
 - Earnings test: the rules themselves are implemented below (``earnings_test`` and
   its helpers: exempt amounts, excess, family charging, grace year, ARF). They are
-  not yet applied to ``compute_social_security_benefits`` / ``build_own_benefit_table``
-  (Phase 5 steps 3-4). Until then this tool assumes users are retired with no earned
+  not yet applied to ``compute_social_security_benefits``
+  (Phase 5 step 3). Until then this tool assumes users are retired with no earned
   income above the exempt amount. Assumptions of the rule implementation: earnings
   are spread evenly over ``months worked``; exempt amounts after 2026 are held at the
-  2026 real level (statute indexes them to wages with a two-year lag); family charging
-  across spouses is exact only for the streams that are on one record; years before
+  2026 real level (statute indexes them to wages with a two-year lag); years before
   the plan have no earnings (so anyone entitled before the plan has used their grace
   year); the test is not applied to checks paid from the year of the first death on
   (survivor benefits under the test and the survivor ARF are not modeled, Phase 5 D7),
@@ -52,7 +51,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 Public API (used by plan.py): getFRAs, compute_social_security_benefits,
-build_own_benefit_table, compute_survivor_stream, validate_survivor_claim_age.
+compute_survivor_stream, validate_survivor_claim_age.
 All other functions are internal and may change without notice.
 """
 
@@ -60,7 +59,6 @@ __all__ = [
     "getFRAs",
     "getSurvivorFRAs",
     "compute_social_security_benefits",
-    "build_own_benefit_table",
     "compute_survivor_stream",
     "survivor_claim_window",
     "validate_survivor_claim_age",
@@ -394,14 +392,14 @@ def _add_spousal_benefit(spousal_in, i, nd, spousal_amount, fra, yobs, mobs, age
     latest_claim_year = float(np.max(yobs + (mobs - 1) / 12 + ages))
     claim_age = latest_claim_year - yobs[i] - (mobs[i] - 1) / 12
     payment_claim_year = latest_claim_year + 1 / 12
-    ns2 = max(0, int(payment_claim_year) - thisyear)
+    payment_start_n = int(payment_claim_year) - thisyear
+    ns2 = max(0, payment_start_n)
     if ns2 >= nd:
         return  # Spousal benefit would start at or after the end of entitlement.
     spousal_factor = getSpousalFactor(fra, claim_age, bool(tobs[i] == 1))
     spousal_in[i, ns2:nd] += spousal_amount * spousal_factor
-    if int(payment_claim_year) >= thisyear:
-        # Partial first year only when the first spousal check falls inside the plan
-        # (fork fix, as for own benefits in compute_social_security_benefits).
+    if payment_start_n >= 0:
+        # Partial first year only when the first spousal check falls inside the plan.
         spousal_in[i, ns2] -= spousal_amount * spousal_factor * (payment_claim_year % 1.0)
 
 
@@ -704,8 +702,7 @@ def compute_social_security_benefits(
     spousalBenefits = getSpousalBenefits(pias)
 
     # Eligibility: born on 1st or 2nd can claim in their birthday month (or prior for 1st).
-    # Every age is reset before any stream is built: the spousal start below reads both
-    # spouses' ages (fork fix; it used to read the partner's age before its reset).
+    # Every age is reset before any stream is built: the spousal start reads both ages.
     for i in range(N_i):
         bornOnFirstDays = tobs[i] <= 2
         eligible = 62 if bornOnFirstDays else 62 + 1 / 12
@@ -761,100 +758,6 @@ def compute_social_security_benefits(
         )
 
     return zeta_in, ages
-
-
-def build_own_benefit_table(
-    pias, fras, yobs, mobs, tobs, horizons, N_i, N_n, gamma_n, trim_pct=0, trim_year=None, N_K=97, thisyear=None
-):
-    """
-    Precompute own-benefit table B_own[N_i, N_K, N_n] for SS claiming-age LP optimization.
-
-    Each entry B_own[i, k, n] is the annual own SS benefit (in nominal, gamma-adjusted dollars)
-    that individual i would receive in year n if they claim at ages_k[k].
-    Spousal and survivor benefits are NOT included; they are handled as parameters via the SC loop.
-
-    Parameters
-    ----------
-    pias : array, shape (N_i,)
-        Monthly PIAs (Primary Insurance Amounts), one per individual.
-    fras : array, shape (N_i,)
-        Full retirement ages, one per individual.
-    yobs, mobs, tobs : arrays, shape (N_i,)
-        Birth year, month, and day-of-month, one per individual.
-    horizons : array, shape (N_i,)
-        Plan year index when each individual's horizon ends.
-    N_i, N_n : int
-        Number of individuals and planning years.
-    gamma_n : array, shape (N_n,)
-        Cumulative inflation factors for plan years 0..N_n-1.
-    trim_pct : float
-        SS benefit trim percentage (0 = no trim).
-    trim_year : int or None
-        Calendar year when trim begins (required if trim_pct > 0).
-    N_K : int
-        Number of claiming-age choices (default 97 = monthly from 62.0 to 70.0 inclusive).
-    thisyear : int or None
-        Current calendar year (default: date.today().year).
-
-    Returns
-    -------
-    B_own : ndarray, shape (N_i, N_K, N_n)
-        B_own[i, k, n] = annual own-benefit in nominal dollars for individual i claiming at
-        ages_k[k] in plan year n. Zero for years before benefit starts or past horizon.
-    ages_k : ndarray, shape (N_K,)
-        Conventional claiming ages: 62.0, 62+1/12, ..., 70.0.
-    """
-    if thisyear is None:
-        thisyear = date.today().year
-
-    pias = np.asarray(pias, dtype=np.int32)
-    fras = np.asarray(fras, dtype=np.float64)
-
-    # Monthly claiming-age grid: 62.0, 62+1/12, ..., 70.0 (97 points over 96 months = 8 years).
-    ages_k = 62.0 + np.arange(N_K) / 12.0
-
-    B_own = np.zeros((N_i, N_K, N_n))
-
-    for i in range(N_i):
-        if pias[i] == 0:
-            continue  # No SS income; B_own[i,:,:] stays zero.
-        bornOnFirst = tobs[i] == 1
-        bornOnFirstDays = tobs[i] <= 2
-        eligible = 62.0 if bornOnFirstDays else 62.0 + 1.0 / 12
-        nd = min(int(horizons[i]), N_n)
-
-        for k in range(N_K):
-            claim_age = ages_k[k]
-            if claim_age < eligible:
-                continue  # Ineligible claiming age; skip.
-
-            factor = getSelfFactor(fras[i], claim_age, bornOnFirst)
-            benefit_real = pias[i] * 12 * factor  # annual benefit in today's dollars
-
-            # Payment start year (mirrors compute_social_security_benefits logic).
-            janage = claim_age + (mobs[i] - 1) / 12
-            paymentJanage = janage + 1.0 / 12
-            paymentIage = int(paymentJanage)
-            payment_start_n = yobs[i] + paymentIage - thisyear
-            ns = max(0, payment_start_n)
-
-            if ns >= nd:
-                continue  # Payment starts after horizon; no benefit within plan.
-
-            B_own[i, k, ns:nd] = benefit_real * gamma_n[ns:nd]
-
-            # Partial-year adjustment: in year ns, payments cover only the fraction of the
-            # year remaining after the first payment month (1 - fractional part of janage).
-            if payment_start_n >= 0:
-                B_own[i, k, ns] *= 1.0 - (paymentJanage % 1.0)
-
-    if trim_pct > 0 and trim_year is not None:
-        trim = 1.0 - trim_pct / 100.0
-        trim_n = max(0, trim_year - thisyear)
-        if 0 <= trim_n < N_n:
-            B_own[:, :, trim_n:] *= trim
-
-    return B_own, ages_k
 
 
 # --------------------------------------------------------------------------------------

@@ -28,14 +28,6 @@ NY's itemized deduction subtracts it from real estate taxes (IT-196 line 6). `wi
 or `"none"`; `previousSTARIncomes` gives the two years before the plan. The Taxes sheet has a
 *STAR credit* column and the Summary a total.
 
-#### Fixed: local search kept LTCG pinned while it moved Social Security taxability
-
-The local search's Social Security step (b) pinned the LTCG regime binaries, which hold ordinary
-taxable income on one side of each LTCG threshold, so a plan that has to move income across a
-threshold and change Social Security taxability in the same years was out of its reach. That step
-now leaves the LTCG binaries free. On `Case_john+sally` the local-search preset went from \$20,004
-to \$31,778 of bequest, the branch-and-bound preset's plan; the search takes about 1.5x as long.
-
 #### New: itemized deductions, federal and state (`withItemized`)
 
 Each year deducts the larger of the standard deduction and the itemized total, built from the
@@ -208,7 +200,7 @@ Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are repl
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
 fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
 
-### Version WIP
+### Version 2026.10.20
 
 #### New: the loop says when Social Security did not settle
 
@@ -220,6 +212,42 @@ the exact plan (#193). When the loop leaves taxable Social Security unsettled (t
 implies more than the loop's tolerance, \$50 a year by default, of different taxable benefits over
 the horizon), the log now says so and points to `withSSTaxability = "optimize"`. A loop can also
 settle on a plan short of the exact one with a small residual, which this does not detect.
+
+#### Fixed: local search can move Social Security taxability and the LTCG regime together
+
+The LTCG regime binaries hold each year's ordinary income on one side of the 15% and 20% thresholds,
+gains or not. The local search's Social Security step kept them pinned, and no other step frees both
+families at once, so it could not move income under a threshold and the taxable share of benefits
+with it. On `Case_john+sally.toml` under `breakpointMethod = "local-search"`, the bequest was
+\$20,004 where branch-and-bound finds \$31,778: converting more early lets the couple's income drop
+under the 15% threshold later, where benefits are taxed in the phase-in rather than at 85%. The
+Social Security step now leaves the LTCG binaries free, and local search finds \$31,778, the
+branch-and-bound plan. On the 18 examples, Florin measured no example worse, gains of 0.08% or less
+on seven others, and 1.5x the total local-search time. Thanks to Florin Mateoc for finding it,
+explaining it, and proposing the fix (#197).
+
+#### Fixed: an optimized Social Security claiming age is never worse than one entered by hand
+
+The claiming age was chosen inside the solve, with a binary per claiming month. Each candidate
+month's benefits were taxed at the share settled for the current one, so the choice ignored how a
+later claim changes the tax on benefits, and it kept the earliest open month. On the case reported
+in #195, it chose 66 9/12 for \$212,035/yr where entering 68 6/12 by hand gives \$212,233/yr.
+Taxing each candidate exactly inside the solve was tried and dropped: neighbouring months differ by
+less than the solver's gap, and a single solve took minutes instead of seconds. **Owl** now solves
+the plan once for each open claiming month, with the case's own options, and keeps the best, so
+the age chosen is never worse than any age entered. With both spouses selected, each age is
+searched in turn with the other held, until neither moves. The reported case now gets 68 5/12 at
+\$212,236/yr (40 solves, 1.4 s), or 69 2/12 at \$213,464/yr with the tax thresholds solved exactly.
+The claiming-month binaries and their benefit tables are removed from the model. Thanks to
+@sengsational for following up with the hand-entered ages that showed it (#195).
+
+#### Changed: scenario runs keep the plan's claiming ages
+
+Historical-range, Monte Carlo, spending-optimization, and regret runs passed *Optimize SS claiming
+age for...* on to every scenario, which chose the age again knowing that scenario's returns and
+lifespans. A claiming age is decided once, without that knowledge: these runs now hold the ages
+the plan has, chosen by a solve under the life expectancies entered, and say so in the log. In the
+regret sweep, this leaves the first-year conversion as the only decision that varies.
 
 ### Version 2026.10.17
 
@@ -252,6 +280,18 @@ receives for each candidate age, so the choice is exact: here it picks 70. When 
 optimized, spousal and survivor amounts are still settled by the self-consistent loop. Small
 differences between an optimized and a fixed-age solve at the same age can remain in loop mode,
 where taxable Social Security and Medicare premiums land on slightly different fixed points.
+
+#### Fixed: the spousal benefit keeps its full first plan year and no longer depends on listing order
+
+The spousal add-on starts the month after the later spouse claims. When that claim predated the
+plan, Owl still cut the first plan year as if the add-on began then: a spouse with a PIA of \$800
+married to one with \$3,000, both collecting since 2024, was credited \$9,507.50 in 2026 instead of
+\$12,255.00. Separately, an age entered below the earliest claiming age (62, or 62 1/12 for most
+birthdays) is raised to it, but the spouse listed first had their add-on timed from the other's
+age before it was raised, so it started a month early and the result changed when the couple was
+listed the other way round. The first year is now cut only when the add-on starts within the plan,
+and all ages are raised before any benefit is computed. Thanks to Florin Mateoc for reporting it
+and proposing the fix (#198).
 
 #### Fixed: rows being typed in the Debts and Fixed Assets tables no longer vanish
 

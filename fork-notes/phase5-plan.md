@@ -292,12 +292,11 @@ dollars per year, crediting months, the higher benefit from FRA) is a fixed func
 month. It therefore goes **into the SS streams Owl already builds**, before the LP sees them:
 
 - fixed ages: `zeta_in` with the test applied;
-- `withSSAges`, one free spouse: the 97 tabulated pair streams (`B_own`/`B_cross`), built by the
-  same function, so the MILP's choice stays exact;
-- `withSSAges`, both free: `B_own` holds each person's own benefit with their own excess charged
-  and their own ARF (exact); the part of a worker's excess charged to the partner's spousal
-  add-on goes through the existing spousal offset and is exact at convergence, the same status
-  the spousal and survivor amounts already have there.
+- `withSSAges`: since upstream #195 (`0b318e0`, merged 2026-10-20) the claiming age is chosen by
+  solving the plan at fixed ages for every open month and keeping the best (both free: one age
+  at a time until neither moves). Every candidate is a fixed-age solve, so the test applies
+  exactly through the fixed-age path, spousal charging and ARF included; no tables. *(The first
+  draft tabulated `B_own`/`B_cross` for upstream's former claiming-month MILP, now removed.)*
 
 No new variables, rows, binaries, loop parameters or local-search families; taxes, IRMAA, ACA
 and the Summary follow the net benefit automatically. This is the property that makes the piece
@@ -467,16 +466,18 @@ test that a solve with the switch on warns for jack+jill's Jack only if his year
 yet" caveats on the two columns (`Financial_Profile.py` help, `Documentation.py`, `PARAMETERS.md`;
 added 2026-10-20) once the test is applied.
 
-### Step 4: `withSSAges` — size M
+### Step 4: `withSSAges` — size S (was M; revised 2026-10-20 after upstream #195)
 
-`build_own_benefit_table(earnings_in=...)`, pair tabulation through `_ss_streams`, loop update at
-`plan.py:8433` through the same helper. Tests (exact-LP settings, `withMedicare="none"`,
-`withSSTaxability=0.85`, `maxBequest` with `netSpending`, per the degenerate-tests gotcha):
-one free spouse who works → the MILP's objective equals the best of the 97 fixed-age solves
-(brute force on a coarse grid, plus the MILP's pick and its neighbours); both free → converges,
-and the result is not worse than the best one-at-a-time alternation; the 3 examples with
-`withSSAges` on the earner. Local search: no new family, check that a run with the test equals
-branch-and-bound on one case.
+Upstream replaced the claiming-month MILP (`zssa`, `B_own`/`B_cross`, spousal offset,
+`build_own_benefit_table`) with a search over fixed-age solves (`_ssAgeSearch`, clones solved in
+parallel threads). The step reduces to checking that each candidate's clone carries the earnings
+inputs and the switch (`etEarnings_in`, `etMonths_in`, `withEarningsTest`) and goes through step
+3's path. Tests: one free spouse who works → the search's pick equals the best of fixed-age
+solves with the test on (it does by construction; the test guards the clone carrying the inputs);
+jack+jill with `withSSAges` on Jill, test on vs off, `months worked` 12 vs 6 in 2028: record
+the picks and objectives (no expected value is known before the run). Scenario runs hold the plan's ages (upstream
+`ad79391`), so they need nothing. `_ssAgeSearch` clones with `clone(self)`, a deepcopy when the
+horizon is unchanged, so the earnings arrays travel with each candidate (read in code 2026-10-20).
 
 Upstream checkpoint: after step 4 the fork has a working, measured piece (step 9).
 

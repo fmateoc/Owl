@@ -3,7 +3,9 @@ Fork: local search leaves the LTCG regime binaries free when it moves SS taxabil
 
 The `zl` binaries hold ordinary taxable income on one side of each LTCG threshold. Pinned while
 SS moved, they blocked every move that needs both: on Case_john+sally the local-search preset
-stopped at about 63% of branch-and-bound's bequest. Draft upstream issue: fork-notes/issue-ls-ltcg.md.
+stopped at about 63% of branch-and-bound's bequest. Filed as #197 (fork-notes/issue-ls-ltcg.md) and
+fixed upstream (70fb8dd, 2026-10-20), whose code the fork now runs; upstream added no test for it,
+so this one stays.
 """
 
 import io

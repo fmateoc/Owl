@@ -45,7 +45,8 @@ timetableHelp = {
     "gross earnings": (
         "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
         "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
-        "*anticipated wages*, which understates the test's wages by payroll deferrals."
+        "*anticipated wages* alone, which leave out payroll deferrals and anything in *other inc* "
+        "(consulting or other self-employment income must be entered here to count)."
     ),
     "months worked": (
         "Months of work at the start of this year (0-12). Earnings are taken as spread "
@@ -54,7 +55,8 @@ timetableHelp = {
     ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "
-        "e.g. consulting income, alimony, or rents you treat as ordinary."
+        "e.g. consulting income, alimony, or rents you treat as ordinary. Not seen by the Social "
+        "Security earnings test: add net self-employment earnings to *gross earnings*."
     ),
     "net inv": (
         "Net investment income such as rent or trust distributions (nominal \\$). Taxed as "

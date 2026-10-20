@@ -457,6 +457,14 @@ a second solve after editing wages sees the new earnings. Then the full suite; l
 recorded value that moves and why (expected: only the three examples, and only with the switch
 on).
 
+Also (from the steps 1-2 reviews, 2026-10-19/20): inputs through `Plan._earnings_test_inputs()`
+(0 = not given), earnings deflated to today's dollars before `earnings_test`; call
+`Plan._warnGrossEarningsFallback(entitled_from)` once per solve **only with the switch on**,
+`entitled_from[i]` = the first calendar year with an entitlement month (from the fixed claiming
+age; under `withSSAges`, step 4, the year the person turns 62), `None` if none in the plan; a
+test that a solve with the switch on warns for jack+jill's Jack only if his years are reachable
+(he claims at 70, so not) and that one with the switch off never warns.
+
 ### Step 4: `withSSAges` — size M
 
 `build_own_benefit_table(earnings_in=...)`, pair tabulation through `_ss_streams`, loop update at

@@ -40,10 +40,6 @@ from owlplanner import hfp_io
 
 thisyear = date.today().year
 
-# Review of the fixes, second pass (2026-10-20, PROGRESS.md): spec committed before the
-# change (plan §5b).
-_WARN_XFAIL = pytest.mark.xfail(strict=True, reason="fallback warning not yet moved out of the HFP read")
-
 
 def _plan(name="Alice", birth="1970-01-15", remaining=30):
     birth_year = int(birth[:4])
@@ -234,7 +230,6 @@ def test_case_without_workbook_feeds_the_test_from_wages():
     assert list(months[0, :3]) == [12, 12, 0]
 
 
-@_WARN_XFAIL
 def test_fallback_warning_names_deferral_years():
     """§4.2: a warning names the years where the test falls back to wages and a deferral
     column is non-zero (*401k*, *Roth 401k*, *IRA*, *Roth IRA ctrb*).
@@ -479,7 +474,6 @@ def _fallback_warnings(p, entitled_from):
     return [line for line in p.mylog.lines if line.startswith("WARNING") and "gross earnings" in line]
 
 
-@_WARN_XFAIL
 def test_no_fallback_warning_without_wages_or_deferrals():
     """Review finding 11: no WARNING for a workbook with no wages (a retiree), and none
     for years whose only contribution is an HSA (a payroll HSA is not in W-2 box 5)."""
@@ -499,7 +493,6 @@ def test_no_fallback_warning_without_wages_or_deferrals():
             os.unlink(path)
 
 
-@_WARN_XFAIL
 def test_fallback_warning_names_only_test_years():
     """The warning names years from the first year of entitlement up to the FRA year
     only (the test does not apply outside them). Alice, born 1970-01-15, reaches FRA (67)
@@ -523,7 +516,6 @@ def test_fallback_warning_names_only_test_years():
         os.unlink(path)
 
 
-@_WARN_XFAIL
 def test_fallback_warning_without_a_workbook():
     """The deferral warning is about years where the test falls back to wages, whatever
     the reason: here a UI case with no workbook (all columns present, at zero)."""
@@ -539,7 +531,6 @@ def test_fallback_warning_without_a_workbook():
 
 
 @pytest.mark.toml
-@_WARN_XFAIL
 def test_no_fallback_warning_at_hfp_read():
     """Review of the fixes (2026-10-20): loading an example and re-reading its tables the
     way the UI does gives no earnings-test warning (7 lines on six examples before, 14

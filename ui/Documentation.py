@@ -449,9 +449,12 @@ leave it blank where it does not apply), where:
 - *gross earnings* is the employment income the Social Security earnings test counts: W-2 box 5
   (Medicare wages) plus net self-employment earnings. Those dollars include payroll deferrals that
   are not in *anticipated wages*. Where it is 0 or blank, or the column is absent, **Owl** uses
-  *anticipated wages* and warns about years, up to full retirement age, with wages and a non-zero
-  *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb* (a payroll HSA is not in box 5). Fill it in for
-  any year in which someone claims Social Security before full retirement age while still working.
+  *anticipated wages* alone, which leaves out payroll deferrals and everything in *other inc*:
+  consulting or other self-employment income counts for the earnings test only if it is entered
+  here. When the earnings test is applied, **Owl** warns about the years it can reach that have
+  wages and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb* (a payroll HSA is not in
+  box 5). Fill it in for any year in which someone claims Social Security before full retirement
+  age while still working.
 - *months worked* is how many months of that year the person works (a whole number from 0 to 12).
   Earnings are taken as spread evenly over those months. It decides whether a month counts for the
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
@@ -459,7 +462,8 @@ leave it blank where it does not apply), where:
   earnings.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
-  cash flow and ordinary-income tax logic like wages.
+  cash flow and ordinary-income tax logic like wages. The Social Security earnings test does not
+  read it: enter net self-employment earnings in *gross earnings* as well.
 - *net inv* is net investment income such as rent or trust distributions that the model counts as
   ordinary income for cash flow and taxable income, and that also enter the Net Investment Income Tax
   (NIIT, 3.8% surtax) when applicable. Use `0` if you do not model that income separately.

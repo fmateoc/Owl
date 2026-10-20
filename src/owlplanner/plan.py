@@ -2305,35 +2305,45 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
-    def _warnGrossEarningsFallback(self, i, iname, h):
+    def _warnGrossEarningsFallback(self, entitled_from):
         """
         Warn where the SSA earnings test falls back to ``anticipated wages`` (``gross
-        earnings`` 0, i.e. not given) and that understates what the test counts: years up
-        to the person's FRA year with wages and a non-zero deferral column. Those deferrals
-        are wages for the test (W-2 box 5) but are not in ``anticipated wages``. HSA
-        contributions are not listed: a payroll HSA is not in box 5, so the fallback is
-        right for them.
+        earnings`` 0, i.e. not given) and that understates what the test counts: years with
+        wages and a non-zero deferral column. Those deferrals are wages for the test (W-2
+        box 5) but are not in ``anticipated wages``. HSA contributions are not listed: a
+        payroll HSA is not in box 5, so the fallback is right for them.
+
+        Only the years the test can reach are named: from ``entitled_from[i]`` (the first
+        calendar year with an entitlement month for person i, or None if none falls in the
+        plan) to that person's FRA year. Called when the earnings test is on (Phase 5
+        step 3), not at HFP read: there most flagged years could not be tested, and the
+        test is off by default (D6).
         """
         deferral_cols = ("401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb")
-        fra = socsec.getFRAs(self.yobs, self.mobs, self.tobs)[i]
-        fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fra) * 12)) // 12
-        df = self.timeLists[iname]
-        flagged = []
-        for n in range(h):
-            year = int(self.year_n[n])
-            row = df.iloc[5 + n]
-            if year > fra_year or float(row["anticipated wages"]) <= 0 or float(row["gross earnings"]) > 0:
+        fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
+        for i, iname in enumerate(self.inames):
+            if entitled_from[i] is None:
                 continue
-            if any(float(row.get(c, 0.0) or 0.0) != 0.0 for c in deferral_cols):
-                flagged.append(str(year))
-        if flagged:
-            self.mylog.print(
-                f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: the SSA "
-                f"earnings test uses 'anticipated wages' there, which leave out payroll deferrals "
-                f"(W-2 box 5 counts them) and those years have a 401k/IRA contribution. Enter "
-                f"'gross earnings' for them if anyone claims SS before FRA then.",
-                tag="WARNING",
-            )
+            fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fras[i]) * 12)) // 12
+            df = self.timeLists[iname]
+            flagged = []
+            for n in range(self.horizons[i]):
+                year = int(self.year_n[n])
+                row = df.iloc[5 + n]
+                if year < entitled_from[i] or year > fra_year:
+                    continue
+                if float(row["anticipated wages"]) <= 0 or float(row["gross earnings"]) > 0:
+                    continue
+                if any(float(row.get(c, 0.0) or 0.0) != 0.0 for c in deferral_cols):
+                    flagged.append(str(year))
+            if flagged:
+                self.mylog.print(
+                    f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: the SSA "
+                    f"earnings test uses 'anticipated wages' there, which leave out payroll deferrals "
+                    f"(W-2 box 5 counts them) and those years have a 401k/IRA contribution. Enter "
+                    f"'gross earnings' for them.",
+                    tag="WARNING",
+                )
 
     def _earnings_test_inputs(self):
         """
@@ -2379,7 +2389,6 @@ class Plan:
             # and is resolved by _earnings_test_inputs (D1: anticipated wages; D2: 12).
             self.etEarnings_in[i, :h] = self.timeLists[iname]["gross earnings"].iloc[5 : 5 + h]
             self.etMonths_in[i, :h] = self.timeLists[iname]["months worked"].iloc[5 : 5 + h]
-            self._warnGrossEarningsFallback(i, iname, h)
 
             # Values for last 5 years of Roth conversion and contributions stored at the end
             # of array and accessed with negative index.

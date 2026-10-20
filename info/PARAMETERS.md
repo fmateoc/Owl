@@ -81,9 +81,9 @@ Reference to the **Household Financial Profile (HFP)** workbook: wages, contribu
 |--------|---------|
 | `year` | Calendar year (**required**) |
 | `anticipated wages` | Expected annual wages (gross minus tax-deferred contributions through payroll), nominal \$ |
-| `gross earnings` | Earnings the SSA earnings test counts (W-2 box 5 + net SE), nominal \$. Optional; 0 or absent → `anticipated wages` |
+| `gross earnings` | Earnings the SSA earnings test counts (W-2 box 5 + net SE), nominal \$. Optional; 0 or absent → `anticipated wages` alone (no deferrals, nothing from `other inc`) |
 | `months worked` | Whole months of work at the start of the year, 0–12. Optional; 0 or absent → 12 in a year with earnings, else 0 |
-| `other inc` | Other ordinary income (e.g. part-time work, consulting, royalties), nominal \$ |
+| `other inc` | Other ordinary income (e.g. part-time work, consulting, royalties), nominal \$. Not read by the SSA earnings test: add net SE earnings to `gross earnings` |
 | `net inv` | Net investment income from rent or trust distributions treated as ordinary income; also feeds NIIT, nominal \$ |
 | `taxable ctrb` | Contributions to taxable / after-tax investment accounts, nominal \$ |
 | `401k ctrb` | Traditional employer plan / 401(k) deferrals, nominal \$ |

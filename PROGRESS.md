@@ -1641,8 +1641,28 @@ the fix.
 
 Full suite: 3286 passed / 1 skipped (8:22). flake8 and Ruff: only upstream's two.
 
+### Second review of the fixes (2026-10-20)
+
+No correctness bugs in `b570e94`/`1e88780`; two behaviour problems, both fixed (spec `fb4acd4`,
+strict xfail, then the fix):
+
+1. **The 401k/IRA fallback warning was noise.** After `1e88780` it fired at every HFP read
+   and every UI sync. Ran: six examples (jack+jill, jon+jane, chris+pat, alex+jamie, joe,
+   robin) gave 7 WARNING lines on load, 14 after one sync, nearly all for years the test could
+   not reach (Jack claims at 70, Alex at 69, Jane 57-64 in the flagged years and claiming at
+   65), with the test off by default (D6). It is no longer given at the HFP read:
+   `Plan._warnGrossEarningsFallback(entitled_from)` names years from each person's first year
+   of entitlement to their FRA year, and step 3 calls it when the test is on (plan §5 step 3).
+2. **`other inc` is not read by the earnings test** (the fallback is `anticipated wages`
+   alone), while the docs suggested consulting income goes there; net SE earnings count for
+   the test (RS 02501.080 B.1.c, 404.429(a), read 2026-10-17/18). Help text, `Documentation.py`
+   (*gross earnings* and *other inc*) and `PARAMETERS.md` now say to enter net self-employment
+   earnings in *gross earnings*.
+
+Full suite: 3287 passed / 1 skipped (8:15). flake8 and Ruff: only upstream's two. The six-example probe now prints 0 warning lines.
+
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
-`Plan._earnings_test_inputs`).
+`Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

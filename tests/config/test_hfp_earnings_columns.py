@@ -530,6 +530,30 @@ def test_fallback_warning_without_a_workbook():
     assert str(thisyear) in warn[0]
 
 
+@pytest.mark.xfail(strict=True, reason="third review of the fixes: warning not yet reading the plan arrays")
+def test_fallback_warning_on_a_plan_built_by_the_assistant():
+    """Third review of the fixes (2026-10-20): the warning reads what the test reads, the
+    plan arrays. The MCP assistant (``assistant/tools.py``) writes wages to ``omega_in``
+    and contributions to ``kappa_ijn`` and leaves the tables at zero; the test then falls
+    back to those wages, so the warning must name the year. ``kappa_ijn[i, 1]`` holds the
+    401k and IRA columns, ``[i, 2]`` the Roth 401k and Roth IRA ones; ``[i, 3]`` (HSA) is
+    left out."""
+    q = _plan()
+    q.zeroWagesAndContributions()
+    q.omega_in[0, :3] = 70_000.0
+    q.kappa_ijn[0, 1, 0] = 10_000.0  # 401k / IRA
+    q.kappa_ijn[0, 2, 1] = 6_000.0  # Roth 401k / Roth IRA
+    q.kappa_ijn[0, 3, 2] = 4_000.0  # HSA only: not named
+    warn = _fallback_warnings(q, [thisyear])
+    assert len(warn) == 1
+    assert str(thisyear) in warn[0] and str(thisyear + 1) in warn[0]
+    assert str(thisyear + 2) not in warn[0]
+    # A positive gross earnings entry is not a fallback.
+    q.etEarnings_in[0, 0] = 85_000.0
+    warn = _fallback_warnings(q, [thisyear])
+    assert len(warn) == 1 and str(thisyear) not in warn[0].replace(str(thisyear + 1), "")
+
+
 @pytest.mark.toml
 def test_no_fallback_warning_at_hfp_read():
     """Review of the fixes (2026-10-20): loading an example and re-reading its tables the

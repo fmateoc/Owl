@@ -420,15 +420,17 @@ def test_switch_passed_to_solve_warns_under_with_ssages():
 def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
     """Alex's age is searched (and skipped by the warning); Jamie's is fixed and pays
     nothing before FRA. The warning must not depend on a previous solve having built the
-    streams: a fresh plan warns the same as a re-solved one."""
+    streams: a fresh plan warns like a re-solved one, once per solve."""
     p = _load("alex+jamie")
     buf = _warn_log(p)
-    p.solve(p.objective, dict(p.solverOptions or {}, withEarningsTest=True, withSSAges=["Alex"]))
-    assert p.caseStatus == "solved"
+    for _ in range(2):
+        p.solve(p.objective, dict(p.solverOptions or {}, withEarningsTest=True, withSSAges=["Alex"]))
+        assert p.caseStatus == "solved"
     warned = [w for w in _warn_lines(buf) if "withheld" in w]
-    assert len(warned) == 1
-    assert "Jamie" in warned[0]
-    assert "2026-2027" in warned[0]
+    assert len(warned) == 2
+    for w in warned:
+        assert "Jamie" in w
+        assert "2026-2027" in w
 
 
 def test_switch_value_parsing():
@@ -451,7 +453,7 @@ def test_jack_jill_2028_is_unchanged_with_a_stop_before_her_claim():
     p = _load("jack+jill")
     p.etMonths_in[1, _n(p, 2028)] = 1.0
     _solve(p, test_on=True)
-    # The no-test year is 10 checks (Feb-Dec 2028, payments one month in arrears).
+    # The no-test year is 10 checks (entitlement Feb-Dec 2028, paid one month in arrears).
     assert p.zeta_in[1, _n(p, 2028)] == pytest.approx(10.0 * 1642.0 * _factor(59))
     assert np.all(p.ss_withheld_in[1] == 0)
     assert p.ss_arf_months_i[1] == 0
@@ -514,3 +516,82 @@ def test_with_earnings_test_round_trips():
     uidic = config_to_ui(diconf)
     assert uidic["withEarningsTest"] is True
     assert ui_to_config(uidic)["solver_options"]["withEarningsTest"] is True
+
+
+def test_ui_solve_parameters_keep_the_switch(monkeypatch):
+    """The UI run passes the switch to Plan.solve() through getSolveParameters() — the
+    shape of issue #156: a setting handled in one builder and forgotten in the other is
+    ignored by the run."""
+    import ui.sskeys as kz
+
+    from owlplanner.config.ui_bridge import config_to_ui
+
+    diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))
+    diconf["solver_options"]["withEarningsTest"] = True
+    uidic = config_to_ui(diconf)
+    monkeypatch.setattr(kz, "getCaseKey", uidic.get)
+    _, run_opts = kz.getSolveParameters()
+    assert run_opts["withEarningsTest"] is True
+
+
+# --------------------------------------------------------------------------------------
+# Second review of the fixes (2026-10-21)
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(strict=True, reason="review 2: one parser for the switch, the schema's")
+def test_switch_spellings_match_the_schema():
+    """Whatever a caller hands `solve()` must read the way the case schema reads it:
+    `Plan._earningsTestOn` sees raw values (the UI, a script), `parse_solver_options`
+    coerces them at load (the TOML, `owlcli --solver-opt`, the MCP). Booleans and 0/1,
+    numpy scalars included, and the spellings a switch takes; anything else is refused by
+    both, not read as another."""
+    from owlplanner.config.schema import parse_solver_options
+
+    p = _load("jack+jill")
+    for value in (
+        True,
+        False,
+        0,
+        1,
+        "true",
+        "false",
+        "y",
+        "n",
+        "t",
+        "f",
+        "on",
+        "off",
+        np.True_,
+        np.int64(1),
+        np.float64(0.0),
+    ):
+        expected = bool(parse_solver_options({"withEarningsTest": value})["withEarningsTest"])
+        assert p._earningsTestOn({"withEarningsTest": value}) is expected, value
+    for value in (2, 0.5, float("nan"), "sometimes", "loop"):
+        with pytest.raises(ValueError):
+            p._earningsTestOn({"withEarningsTest": value})
+        with pytest.raises(ValueError):
+            parse_solver_options({"withEarningsTest": value})
+
+
+def test_local_search_warns_once():
+    """The local search's two nested solves (the seeding loop, the search itself) are one
+    user-visible solve: one warning, whether the switch arrives with `solve()`'s options."""
+    p = _load("chris+pat")
+    buf = _warn_log(p)
+    p.solve(
+        p.objective,
+        dict(
+            p.solverOptions or {},
+            withEarningsTest=True,
+            withSSTaxability="optimize",
+            mipStrategy="local-search",
+            localSearchTime=2,
+            localSearchStepTime=1,
+        ),
+    )
+    assert p.caseStatus == "solved"
+    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
+    assert len(warned) == 1
+    assert "Pat" in warned[0]

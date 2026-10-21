@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .. import socialsecurity as socsec
-from ..utils import normalize_mode_options
+from ..utils import normalize_mode_options, parse_switch
 from .defaults import (
     DEFAULT_DOB,
     DEFAULT_LIFE_EXPECTANCY,
@@ -466,6 +466,13 @@ class SolverOptions(BaseModel):
         if isinstance(raw, dict):
             raw = normalize_mode_options(dict(raw))
         return raw
+
+    @field_validator("withEarningsTest", mode="before")
+    @classmethod
+    def _parse_switch(cls, value: Any) -> Any:
+        """One parser with `Plan._earningsTestOn` (utils.parse_switch): a switch reads the
+        same whatever path it arrives by, and a value that is not one is refused."""
+        return parse_switch("withEarningsTest", value)
 
 
 def parse_solver_options(raw: dict) -> dict:

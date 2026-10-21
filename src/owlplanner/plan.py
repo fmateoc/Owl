@@ -2410,21 +2410,12 @@ class Plan:
 
         ``options`` is the solve's own options dict, and is what the warnings pass:
         ``solve()`` only assigns ``self.solverOptions`` after it has branched into
-        ``withSSAges`` and the local search. A value that is not a switch is refused,
-        not read as another (the same contract as the mode options).
+        ``withSSAges`` and the local search. Parsed like the case schema does
+        (``utils.parse_switch``, the one parser): a value that is not a switch is
+        refused, not read as another (the same contract as the mode options).
         """
         opt = ((options if options is not None else self.solverOptions) or {}).get("withEarningsTest", False)
-        if opt is None:
-            return False
-        if isinstance(opt, str):
-            name = opt.strip().lower()
-            if name in ("true", "1", "yes", "on"):
-                return True
-            if name in ("false", "0", "no", "off"):
-                return False
-        elif isinstance(opt, (bool, int, float)) and opt == opt:
-            return bool(opt)
-        raise ValueError(f"withEarningsTest {opt!r} must be a boolean.")
+        return u.parse_switch("withEarningsTest", opt) is True
 
     def _earningsTestResult(self, ages=None, gamma_n=None):
         """
@@ -6547,6 +6538,10 @@ class Plan:
 
         # Canonical mode names; a value that is none of them is refused, not solved as another.
         u.normalize_mode_options(myoptions)
+
+        # The same contract for the switch options: refused at the door, not mid-solve.
+        if "withEarningsTest" in myoptions:
+            myoptions["withEarningsTest"] = self._earningsTestOn(myoptions)
 
         # A "budget" profile is evaluated now, on the plan's current horizon and first death. Under
         # maxBequest its first year is the spending level unless a positive netSpending is given (see

@@ -539,7 +539,6 @@ def test_ui_solve_parameters_keep_the_switch(monkeypatch):
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="review 2: one parser for the switch, the schema's")
 def test_switch_spellings_match_the_schema():
     """Whatever a caller hands `solve()` must read the way the case schema reads it:
     `Plan._earningsTestOn` sees raw values (the UI, a script), `parse_solver_options`

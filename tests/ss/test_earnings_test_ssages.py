@@ -165,3 +165,33 @@ def test_search_keeps_the_best_fixed_age_solve(runs, test_on):
     assert np.array_equal(searched.ss_arf_months_i, ref.ss_arf_months_i)
     assert np.allclose(searched.ss_withheld_in, ref.ss_withheld_in, rtol=0.0, atol=1e-6)
     assert searched.ss_earnings_test_applied is test_on
+
+
+# --------------------------------------------------------------------------------------
+# Review of step 4 (2026-10-21): the switch changes the decision
+# --------------------------------------------------------------------------------------
+
+
+def test_switch_moves_pats_pick():
+    """chris+pat: Pat (born 1966-01-15, PIA $1,400) earns $85k in 2028, her last work year.
+    Between a claim at 62y3m (April 2028, in that year) and at 63y0m (January 2029, the month
+    after it), the search takes the earlier one with the test off, which Owl pays, and the
+    later one with it on, as SSA would withhold April-December 2028. A regression pin: the
+    values come from the plan (et_step4_probe.py; the sign agrees under the loop, local
+    search and the exact LP, et_step4_crosscheck.py), not from a hand rule. Unlike the pick
+    test above, it fails when the candidates lose the switch even though the returned plan is
+    re-solved with it: it checks the decision, not only the plan returned."""
+    months = [62 * 12 + 3, 63 * 12]
+    open_ages = Plan._ssaOpenAges
+    picks = {}
+    for test_on in (False, True):
+        p = owl.readConfig(os.path.join(_EXAMPLES, "Case_chris+pat.toml"), verbose=False, logstreams=[io.StringIO()])
+        p.readHFP(os.path.join(_EXAMPLES, "HFP_chris+pat.xlsx"))
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(Plan, "_ssaOpenAges", lambda self, i: [m / 12 for m in months] if i == 1 else open_ages(self, i))
+            p.solve(p.objective, _opts(p, test_on, withSSAges=["Pat"]))
+        assert p.caseStatus == "solved"
+        picks[test_on] = int(round(p.ssecAges[1] * 12))
+        if test_on:
+            assert np.all(p.ss_withheld_in == 0)  # the pick claims after the work year
+    assert picks == {False: 62 * 12 + 3, True: 63 * 12}

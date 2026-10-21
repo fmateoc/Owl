@@ -1456,8 +1456,8 @@ class Plan:
         ``socsec.compute_social_security_benefits``.
 
         Stores ``zeta_in`` (today's $) and the earnings-test outputs: ``ss_withheld_in``
-        (nominal $) and the ARF crediting months ``ss_arf_months_i`` /
-        ``ss_arf_months_spousal_i``.
+        (nominal $, today's $ until the rates are set) and the ARF crediting months
+        ``ss_arf_months_i`` / ``ss_arf_months_spousal_i``.
         """
         thisyear = date.today().year
         if gamma_n is None:
@@ -2404,10 +2404,27 @@ class Plan:
         months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
         return earnings, months
 
-    def _earningsTestOn(self):
-        """True when this solve applies the SSA earnings test (D6: off by default)."""
-        opt = (self.solverOptions or {}).get("withEarningsTest", False)
-        return False if opt is None else u.convert_to_bool(opt)
+    def _earningsTestOn(self, options=None):
+        """
+        True when this solve applies the SSA earnings test (D6: off by default).
+
+        ``options`` is the solve's own options dict, and is what the warnings pass:
+        ``solve()`` only assigns ``self.solverOptions`` after it has branched into
+        ``withSSAges`` and the local search. A value that is not a switch is refused,
+        not read as another (the same contract as the mode options).
+        """
+        opt = ((options if options is not None else self.solverOptions) or {}).get("withEarningsTest", False)
+        if opt is None:
+            return False
+        if isinstance(opt, str):
+            name = opt.strip().lower()
+            if name in ("true", "1", "yes", "on"):
+                return True
+            if name in ("false", "0", "no", "off"):
+                return False
+        elif isinstance(opt, (bool, int, float)) and opt == opt:
+            return bool(opt)
+        raise ValueError(f"withEarningsTest {opt!r} must be a boolean.")
 
     def _earningsTestResult(self, ages=None, gamma_n=None):
         """
@@ -2485,11 +2502,14 @@ class Plan:
         """
         if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
             return
-        if not self._earningsTestOn():
+        if not self._earningsTestOn(options):
             return
         searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
         self._warnGrossEarningsFallback(self._ssEntitledFrom(options))
 
+        # Fresh from the plan's current ages and earnings, not from the stored outputs:
+        # withSSAges warns before any solve has rebuilt the streams (plan §5 step 3).
+        res = self._earningsTestResult()
         fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
         thisyear = int(self.year_n[0])
         for i, iname in enumerate(self.inames):
@@ -2506,13 +2526,13 @@ class Plan:
             )
             start = max(ent_abs, thisyear * 12)  # first entitlement month in the plan
             end = min(fra_abs, (thisyear + int(self.horizons[i])) * 12)  # FRA, or the horizon
-            if end <= start or int(self.ss_arf_months_i[i]) < end - start:
+            if end <= start or int(res.arf_months[i]) < end - start:
                 continue
             y0, y1 = start // 12, (end - 1) // 12
             span = f"{y0}" if y1 == y0 else f"{y0}-{y1}"
             self.mylog.print(
                 f"All Social Security of {iname} is withheld by the earnings test in {span}; the benefit "
-                f"is raised at FRA by the ARF ({int(self.ss_arf_months_i[i])} crediting months). A claiming "
+                f"is raised at FRA by the ARF ({int(res.arf_months[i])} crediting months). A claiming "
                 f"age that pays nothing before FRA is often a typo or a plan to revisit.",
                 tag="WARNING",
             )

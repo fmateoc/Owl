@@ -404,7 +404,6 @@ def test_explain_ss_block_gains_both():
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="review: the switch must be read from the solve's own options")
 def test_switch_passed_to_solve_warns_under_with_ssages():
     """The switch can reach `solve()` as an option (owlcli --solver-opt, the MCP), without
     being pre-assigned to `solverOptions`. Under withSSAges the warning must still fire
@@ -418,7 +417,6 @@ def test_switch_passed_to_solve_warns_under_with_ssages():
     assert "Pat" in warned[0]
 
 
-@pytest.mark.xfail(strict=True, reason="review: the warning must read the current inputs, not a previous solve")
 def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
     """Alex's age is searched (and skipped by the warning); Jamie's is fixed and pays
     nothing before FRA. The warning must not depend on a previous solve having built the
@@ -433,7 +431,6 @@ def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
     assert "2026-2027" in warned[0]
 
 
-@pytest.mark.xfail(strict=True, reason="review: 'off' must not read as on, and nonsense is refused")
 def test_switch_value_parsing():
     """A switch is a boolean: 'off' is off, and a value that is none of the spellings is
     refused rather than read as another (the same contract as the mode options)."""
@@ -509,7 +506,7 @@ def test_with_earnings_test_round_trips():
 
     assert parse_solver_options({"withEarningsTest": True})["withEarningsTest"] is True
     assert parse_solver_options({"withEarningsTest": "off"})["withEarningsTest"] is False
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         parse_solver_options({"withEarningsTest": "sometimes"})
 
     diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))

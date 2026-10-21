@@ -1759,7 +1759,7 @@ reviewed, then the implementation (markers removed).
 
 **Tests** (`tests/ss/test_earnings_test_plan.py`, 30): the §5b properties (switch off or no
 earnings → streams identical to `compute_social_security_benefits`); the three §3 examples
-with the test on — Jill's 2028 fully withheld with `months worked` 12 and spared with 6 (5
+with the test on — Jill's 2028 fully withheld with `months worked` 12 and partly spared with 6 (5
 checks paid, grace year), hand ARF numbers from the 20 CFR 404.410 rates (11 crediting
 months → the factor of 48 reduction months, 0.75, at FRA; Jamie's 24 → 35 left, 0.805556;
 the one 2026 check is for December 2025, a pre-plan month the test cannot charge); taxes on
@@ -1881,6 +1881,44 @@ fails each key assertion), and `info/PARAMETERS.md`'s table contiguous with its 
 claims matching `earnings_test`.
 
 Full suite: 3323 passed / 1 skipped (9:30; 3320 + the 3 new tests). flake8 clean; Ruff only
+upstream's `B905`.
+
+### Third review (2026-10-21)
+
+Review of `13c3017`..`4a6ef71` (full suite 3323 / 1 on `4a6ef71`, read-only probes). One bug,
+three doc points, two suggestions; all taken. Spec `8f8bf37` (strict xfail, each checked to fail
+at the targeted assertion), then the fix `add3caf`.
+
+1. **A rejected `setSocialSecurity` changed the plan.** Step 3 moved the `ssec*` assignments
+   ahead of the stream build, so a call that raises left its values behind. Ran on jack+jill,
+   `setSocialSecurity(pias, [71, 71])`: on `d1d1681` it raises `Age 71.0 out of range.` with the
+   ages still `[70, 62.0833]`; on `4a6ef71` it raises the same with the ages `[71, 71]`, and
+   every later solve fails. Fixed: the previous settings are put back when `_ss_streams`
+   raises (`compute_survivor_stream` runs inside the build with the same arguments, so it is
+   covered). Test with the switch off and on; the plan still solves afterwards.
+2. **Summary rows only when something was withheld.** The UI's case comparison
+   (`compareSummaries`) keeps only the rows both cases have, so two variants that both apply
+   the test lost them whenever one withheld nothing. Now shown whenever the solve applied the
+   test (`Plan.ss_earnings_test_applied`, set by `_ss_streams`): \$0 and "none".
+3. **ARF months ignored the Summary's `N`** (no caller passes `N` today). The ARF takes effect
+   at FRA, so the row counts a person's months only where their FRA month falls within the N
+   years (`Plan._ssFRAStartAbs`, shared with the pays-nothing warning). Jill: a Summary through
+   2032 holds her 2028 withholding and "none"; through 2033, "Jill 11 own".
+4. **`plan_metrics`** gains `ss_withheld_today` / `ss_withheld_nominal` (0 with the test off),
+   mapped to the Summary rows in `METRICS_COLUMN_MAP`; `owlcli compare` diffs every metric, so
+   it now shows the withholding's delta (step 6 needs it per variant).
+5. **Docs.** CLAUDE.md and the `_ss_streams` docstring said the test is applied "not at
+   `setSocialSecurity`": it is applied there too when the plan's current options have the switch
+   on (probe: switch set, `setSocialSecurity`, no solve → Jill's 2028 already 0, ARF 11); what
+   counts is the rebuild in each solve. Reworded. "Spared with 6" (test name, this file, plan
+   §5 step 3) is "partly spared": Feb-Jun are withheld, Jul-Nov paid. PARAMETERS.md lists the
+   new metrics and when the rows appear.
+
+Also seen, not changed: upstream's `info/PARAMETERS.md` (`dev` `bb52632`, line 376) still has
+the blank line after `withSSAges` that leaves `withdrawalOrder` and `withDuals` outside the
+table (fixed here in the first review); a one-line docs fix to send upstream some time.
+
+Full suite: 3328 passed / 1 skipped (11:43; 3323 + the 5 new). flake8 clean; Ruff only
 upstream's `B905`.
 
 Next: step 4 (`withSSAges`: the clones carry the inputs and the switch).

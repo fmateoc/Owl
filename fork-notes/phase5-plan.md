@@ -495,14 +495,18 @@ is emitted once per solve from `_ssAgeSearch` (searched ages still open), the ma
 and `_localSearchSolve`; of the nested solves, the age candidates print to their clones' discarded
 logs, while the seeding runs and the search's own final solve are skipped by flag.
 
-Tests (`tests/ss/test_earnings_test_plan.py`, 30 at the step, 43 after the two review rounds): the §5b properties (switch off or no earnings
+Tests (`tests/ss/test_earnings_test_plan.py`, 30 at the step, 48 after the three review rounds): the §5b properties (switch off or no earnings
 → streams identical to `compute_social_security_benefits`), the three §3 examples with the test
-on (Jill's 2028 fully withheld with `months worked` 12 and spared with 6; hand ARF numbers from
+on (Jill's 2028 fully withheld with `months worked` 12 and partly spared with 6: Feb-Jun withheld, Jul-Nov paid; hand ARF numbers from
 the 20 CFR 404.410 rates: 11 crediting months → the factor of 48 reduction months, 0.75, at FRA;
 Jamie's 24 → 35 left, 0.805556; taxes on SS from the net), the no-op objective on the other
 fifteen to the cent, a second solve after editing wages through the UI's table re-read, both
 warnings on and off, and the Summary, worksheet and explain outputs. No recorded value moved:
 the switch is off by default and the examples do not set it.
+
+Third review (2026-10-21, PROGRESS.md): a rejected `setSocialSecurity` changes nothing again;
+the Summary rows appear whenever the test is applied (\$0 / "none"), the ARF months only where
+FRA falls in the summarized years; `plan_metrics` gains `ss_withheld_today` / `_nominal`.
 
 ### Step 4: `withSSAges` — size S (was M; revised 2026-10-20 after upstream #195)
 

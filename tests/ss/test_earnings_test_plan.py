@@ -48,13 +48,9 @@ from owlplanner import socialsecurity as ss
 from owlplanner.export import build_summary_dic
 from owlplanner.mylogging import Logger
 
-# Step 3 is test-first (phase5-plan.md §5b): this file is the specification, committed
-# before the implementation. Strict xfail keeps the suite green and fails if a test
-# passes while the markers are still on. The implementation commit removes them.
-pytestmark = pytest.mark.xfail(
-    strict=True,
-    reason="Phase 5 step 3 spec: the earnings test is not applied to the plan yet (plan §5b)",
-)
+# Step 3 was written test-first (phase5-plan.md §5b): the spec commit carried these
+# tests with pytest.mark.xfail(strict=True); the implementation commit removes the
+# markers.
 
 # Frozen plan start (tests/conftest.py freezes the date; keep this in step with it).
 THISYEAR = 2026
@@ -352,13 +348,13 @@ def test_warning_when_a_claiming_age_pays_nothing_before_fra():
 def test_summary_rows_appear_only_with_withholding():
     on = _solve(_load("jack+jill"), test_on=True)
     dic = build_summary_dic(on)
-    assert "SS withheld by the earnings test" in dic
+    assert any(k.startswith("SS withheld by the earnings test") for k in dic)
     assert "ARF months" in dic
     assert "11" in dic["ARF months"]
 
     off = _solve(_load("jack+jill"), test_on=False)
     dic = build_summary_dic(off)
-    assert "SS withheld by the earnings test" not in dic
+    assert not any(k.startswith("SS withheld by the earnings test") for k in dic)
     assert "ARF months" not in dic
 
 
@@ -390,6 +386,7 @@ def test_explain_ss_block_gains_both():
     assert jill["applied"] is False  # D6: off unless the case asks for it
     assert jill["arf_months"] == 11
     assert jill["arf_months_spousal"] == 0
-    assert jill["ss_withheld_total_today"] > 0
+    # Every month of 2028 withheld, one month's benefit each (today's $).
+    assert jill["ss_withheld_total_today"] == pytest.approx(11 * 1642 * _factor(59), abs=1.0)
     assert by_name["Jack"]["earnings_test"]["arf_months"] == 0
     assert by_name["Jack"]["earnings_test"]["ss_withheld_total_today"] == 0

@@ -407,6 +407,7 @@ class SolverOptions(BaseModel):
     withItemized: Optional[Literal["none", "loop"]] = None
     withSTAR: Optional[Literal["none", "loop", "optimize"]] = None  # fork: NY STAR credit
     withSSAges: Optional[Union[str, List[str]]] = None
+    withEarningsTest: Optional[bool] = None  # fork: SSA earnings test on the SS streams (off by default)
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None
     mipStrategy: Optional[Literal["branch-and-bound", "local-search"]] = None

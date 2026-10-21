@@ -91,6 +91,7 @@ SOLVER_UI_PASSTHROUGH_KEYS = [
     "withSeniorBonus",
     "withItemized",
     "withSTAR",  # fork: NY STAR credit
+    "withEarningsTest",  # fork: SSA earnings test on the SS streams (off by default)
     "previousSTARIncomes",
 ]
 

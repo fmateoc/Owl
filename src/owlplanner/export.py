@@ -513,6 +513,24 @@ def build_summary_dic(plan, N=None):
                     prefix="»  ",
                 )
 
+    # SSA earnings test (Phase 5 step 3): benefits withheld before FRA and returned at
+    # FRA by the ARF. Reported only where the test withheld something.
+    withheld = float(np.sum(plan.ss_withheld_in[:, :N]))
+    if withheld > 0:
+        _summary_currency_pair(
+            dic,
+            "SS withheld by the earnings test",
+            float(np.sum(plan.ss_withheld_in[:, :N] * inv_gamma)),
+            withheld,
+        )
+        credited = []
+        for i in range(plan.N_i):
+            own, sp = int(plan.ss_arf_months_i[i]), int(plan.ss_arf_months_spousal_i[i])
+            parts = ([f"{own} own"] if own else []) + ([f"{sp} spouse"] if sp else [])
+            if parts:
+                credited.append(f"{plan.inames[i]} {' + '.join(parts)}")
+        dic["ARF months"] = ", ".join(credited)
+
     totRoth = np.sum(plan.x_in[:, :N], axis=(0, 1))
     totRothNow = np.sum(np.sum(plan.x_in[:, :N], axis=0) / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total Roth conversions", totRothNow, totRoth)
@@ -1152,6 +1170,8 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "other inc": plan.sources_in["other inc"],
         "net inv": plan.sources_in["net inv"],
         "social sec": plan.sources_in["ssec"],
+        # SSA earnings-test withholding (Phase 5 step 3), next to the SS it reduces.
+        **({"SS withheld": plan.ss_withheld_in} if np.any(plan.ss_withheld_in > 0) else {}),
         "pension": plan.sources_in["pension"],
         "txbl acc wdrwl": plan.sources_in["txbl acc wdrwl"],
         "RMDs": plan.sources_in["RMD"],

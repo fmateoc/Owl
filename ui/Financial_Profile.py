@@ -47,13 +47,13 @@ timetableHelp = {
         "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
         "*anticipated wages* alone, which leave out payroll deferrals and anything in *other inc* "
         "(consulting or other self-employment income must be entered here to count). "
-        "Not used yet: the earnings test is not yet applied to the plan."
+        "Used when the earnings test is on (solver option *withEarningsTest*)."
     ),
     "months worked": (
         "Months of work at the start of this year (0-12). Earnings are taken as spread "
         "evenly over those months; it decides the grace-year monthly test and the share of "
         "FRA-year earnings that counts. 0 (or no column) means not given: 12 in a year with earnings. "
-        "Not used yet: the earnings test is not yet applied to the plan."
+        "Used when the earnings test is on (solver option *withEarningsTest*)."
     ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "

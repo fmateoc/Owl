@@ -653,6 +653,11 @@ class Plan:
         self.piBar_in = np.zeros((self.N_i, self.N_n))
         self.zeta_in = np.zeros((self.N_i, self.N_n))
         self.zetaBar_in = np.zeros((self.N_i, self.N_n))
+        # SSA earnings-test outputs (Phase 5 step 3): amounts withheld (nominal $), and
+        # the ARF crediting months granted at FRA on each record (RS 00615.482 B.3).
+        self.ss_withheld_in = np.zeros((self.N_i, self.N_n))
+        self.ss_arf_months_i = np.zeros(self.N_i, dtype=np.int64)
+        self.ss_arf_months_spousal_i = np.zeros(self.N_i, dtype=np.int64)
         self.pensionAmounts = np.zeros(self.N_i, dtype=np.int32)
         self.pensionAges = 65 * np.ones(self.N_i, dtype=np.int32)
         self.pensionIsIndexed = [False] * self.N_i
@@ -1398,26 +1403,19 @@ class Plan:
         self.mylog.vprint("SS FRAs(s)", [fras[i] for i in range(self.N_i)])
 
         thisyear = date.today().year
-        self.zeta_in, ages = socsec.compute_social_security_benefits(
-            pias,
-            ages,
-            self.yobs,
-            self.mobs,
-            self.tobs,
-            self.horizons,
-            self.N_i,
-            self.N_n,
-            trim_pct=trim_pct,
-            trim_year=trim_year,
-            thisyear=thisyear,
-            survivor_claim_age=survivor_claim_age,
-        )
+        self.ssecAmounts = pias
+        self.ssecAges = ages
+        self.ssecTrimPct = trim_pct
+        self.ssecTrimYear = trim_year
+        self.ssecSurvivorClaimAge = survivor_claim_age
+        self.zeta_in, ages = self._ss_streams(ages)
 
         for i in range(self.N_i):
             if ages[i] != ages_orig[i]:
                 eligible = 62 if (self.tobs[i] <= 2) else 62 + 1 / 12
                 self.mylog.print(f"Resetting SS claiming age of {self.inames[i]} to {eligible}.")
 
+        self.ssecAges = ages
         self.mylog.vprint("SS benefits claimed at age(s)", [ages[i] for i in range(self.N_i)])
 
         if trim_pct > 0:
@@ -1440,13 +1438,59 @@ class Plan:
         if survivor.survivor_idx >= 0:
             self._reportSurvivorClaimAge(survivor)
 
-        self.ssecAmounts = pias
-        self.ssecAges = ages
-        self.ssecTrimPct = trim_pct
-        self.ssecTrimYear = trim_year
-        self.ssecSurvivorClaimAge = survivor_claim_age
         self.caseStatus = "modified"
         self._adjustedParameters = False
+
+    def _ss_streams(self, ages, gamma_n=None):
+        """
+        Build this plan's Social Security streams at the given claiming ages, and return
+        ``(zeta_in, ages)`` with the eligibility reset applied (Phase 5 step 3).
+
+        ``setSocialSecurity`` and the rebuild at solve time (``_adjustParameters``, where
+        ``zetaBar_in`` is set) both go through here. The SSA earnings test
+        (``solver_options.withEarningsTest``; off by default, D6) is applied here:
+        ``zeta_in`` follows the PIA and the claiming age alone, and ``setSocialSecurity``
+        can run before the HFP is read, so the test can only bite where the streams are
+        rebuilt at solve time (same pattern as the budget's ``xi_n``). With the switch
+        off, or with no earnings to test, this is exactly
+        ``socsec.compute_social_security_benefits``.
+
+        Stores ``zeta_in`` (today's $) and the earnings-test outputs: ``ss_withheld_in``
+        (nominal $) and the ARF crediting months ``ss_arf_months_i`` /
+        ``ss_arf_months_spousal_i``.
+        """
+        thisyear = date.today().year
+        if gamma_n is None:
+            gamma_n = getattr(self, "gamma_n", None)
+        gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
+        if self._earningsTestOn():
+            res = self._earningsTestResult(ages, gamma)
+            zeta_in, ages = res.zeta_in, res.ages
+            withheld_in = res.withheld_in
+            arf_i, arf_sp_i = res.arf_months, res.arf_months_spousal
+        else:
+            zeta_in, ages = socsec.compute_social_security_benefits(
+                self.ssecAmounts,
+                ages,
+                self.yobs,
+                self.mobs,
+                self.tobs,
+                self.horizons,
+                self.N_i,
+                self.N_n,
+                trim_pct=self.ssecTrimPct,
+                trim_year=self.ssecTrimYear,
+                thisyear=thisyear,
+                survivor_claim_age=self.ssecSurvivorClaimAge,
+            )
+            withheld_in = np.zeros((self.N_i, self.N_n))
+            arf_i = np.zeros(self.N_i, dtype=np.int64)
+            arf_sp_i = np.zeros(self.N_i, dtype=np.int64)
+        self.zeta_in = zeta_in
+        self.ss_withheld_in = withheld_in * gamma
+        self.ss_arf_months_i = arf_i
+        self.ss_arf_months_spousal_i = arf_sp_i
+        return zeta_in, ages
 
     def _reportSurvivorClaimAge(self, survivor):
         """
@@ -2360,6 +2404,119 @@ class Plan:
         months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
         return earnings, months
 
+    def _earningsTestOn(self):
+        """True when this solve applies the SSA earnings test (D6: off by default)."""
+        opt = (self.solverOptions or {}).get("withEarningsTest", False)
+        return False if opt is None else u.convert_to_bool(opt)
+
+    def _earningsTestResult(self, ages=None, gamma_n=None):
+        """
+        The SSA earnings test on this plan's streams at the given claiming ages (default:
+        the ones the plan carries), in today's dollars.
+
+        A pure function of the claiming ages, the PIAs and the earnings columns (plan
+        §4.1), so ``owlcli explain`` can report what the test would withhold without
+        solving. Earnings are nominal in the plan and are deflated here, like the exempt
+        amounts the test compares them to.
+        """
+        if ages is None:
+            ages = self.ssecAges
+        if gamma_n is None:
+            gamma_n = getattr(self, "gamma_n", None)
+        gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
+        earnings, months = self._earnings_test_inputs()
+        return socsec.earnings_test(
+            self.ssecAmounts,
+            ages,
+            self.yobs,
+            self.mobs,
+            self.tobs,
+            self.horizons,
+            self.N_i,
+            self.N_n,
+            np.asarray(earnings, dtype=float) / gamma,
+            work_months_in=months,
+            trim_pct=self.ssecTrimPct,
+            trim_year=self.ssecTrimYear,
+            thisyear=date.today().year,
+            survivor_claim_age=self.ssecSurvivorClaimAge,
+        )
+
+    def _ssEntitledFrom(self, options):
+        """
+        First calendar year with a Social Security entitlement month per person, or None
+        where the plan holds none (Phase 5 step 3).
+
+        From the claiming age the plan carries, except for a person whose age this solve
+        searches (``withSSAges``): any open month may be picked, so the earliest one, the
+        year they turn 62, bounds what the earnings test can reach.
+        """
+        searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
+        thisyear = int(self.year_n[0])
+        entitled_from = []
+        for i in range(self.N_i):
+            year = None
+            if int(self.ssecAmounts[i]) > 0:
+                if i in searched:
+                    year = int(self.yobs[i]) + 62
+                else:
+                    # socsec._ent_start_abs: the absolute month (year*12 + month - 1) of
+                    # the attained age, which is where entitlement begins.
+                    born_on_first = self.tobs[i] <= 2
+                    eligible = 62.0 if born_on_first else 62.0 + 1.0 / 12.0
+                    claim = max(float(self.ssecAges[i]), eligible)
+                    year = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim) // 12
+            last = thisyear + int(self.horizons[i]) - 1
+            entitled_from.append(int(year) if year is not None and year <= last else None)
+        return entitled_from
+
+    def _warnEarningsTest(self, options):
+        """
+        The earnings-test warnings of one solve (plan §4.4), only where the solve applies
+        the test (``withEarningsTest``, D6).
+
+        Names the years in which the test falls back to ``anticipated wages`` and that
+        understates what it counts (a deferral column is non-zero), and flags a fixed
+        claiming age that pays nothing before FRA: every month of entitlement before FRA
+        that falls in the plan is withheld, which usually means the age is a typo or a
+        plan to revisit. Called once per solve: the nested solves (the withSSAges
+        candidates, the local search's seeding runs) and the search's own final solve,
+        which the search has already been warned for, are skipped.
+        """
+        if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
+            return
+        if not self._earningsTestOn():
+            return
+        searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
+        self._warnGrossEarningsFallback(self._ssEntitledFrom(options))
+
+        fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
+        thisyear = int(self.year_n[0])
+        for i, iname in enumerate(self.inames):
+            if i in searched or int(self.ssecAmounts[i]) <= 0:
+                continue
+            born_on_first = self.tobs[i] <= 2
+            eligible = 62.0 if born_on_first else 62.0 + 1.0 / 12.0
+            claim = max(float(self.ssecAges[i]), eligible)
+            ent_abs = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim)
+            fra_abs = socsec._ent_start_abs(
+                int(self.yobs[i]),
+                int(self.mobs[i]),
+                socsec._fra_conventional_age(float(fras[i]), born_on_first),
+            )
+            start = max(ent_abs, thisyear * 12)  # first entitlement month in the plan
+            end = min(fra_abs, (thisyear + int(self.horizons[i])) * 12)  # FRA, or the horizon
+            if end <= start or int(self.ss_arf_months_i[i]) < end - start:
+                continue
+            y0, y1 = start // 12, (end - 1) // 12
+            span = f"{y0}" if y1 == y0 else f"{y0}-{y1}"
+            self.mylog.print(
+                f"All Social Security of {iname} is withheld by the earnings test in {span}; the benefit "
+                f"is raised at FRA by the ARF ({int(self.ss_arf_months_i[i])} crediting months). A claiming "
+                f"age that pays nothing before FRA is often a typo or a plan to revisit.",
+                tag="WARNING",
+            )
+
     def setContributions(self, timeLists=None):
         """
         If no argument is given, use the values that have been stored in self.timeLists.
@@ -2820,6 +2977,10 @@ class Plan:
         if not self._adjustedParameters:
             self.mylog.vprint("Adjusting parameters for inflation.")
             self.DeltaBar_tn = self.Delta_tn * gamma_n[:-1]
+            # Social Security at solve time: zeta_in follows the PIA and the claiming age
+            # alone, and setSocialSecurity can run before the HFP is read, so the SSA
+            # earnings test can only be applied here (Phase 5 step 3).
+            self._ss_streams(self.ssecAges, gamma_n)
             self.zetaBar_in = self.zeta_in * gamma_n[:-1]
             self.xiBar_n = self.xi_n * gamma_n[:-1]
             self.piBar_in = pension.compute_piBar_in(
@@ -6330,6 +6491,7 @@ class Plan:
             "withMedicare",
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
+            "withEarningsTest",  # SSA earnings test on the SS streams (fork, Phase 5); off by default
             "withDuals",  # Re-solve final LP with binaries fixed to extract shadow prices
             "withdrawalOrder",  # "optimal" (default) or "taxable_first" (naive ordering gates)
             "mipStrategy",  # "branch-and-bound" (default) or "local-search" for the optimize modes
@@ -6497,6 +6659,7 @@ class Plan:
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
+        self._warnEarningsTest(myoptions)
         # Fork: mortgage interest and the budget feed the itemized deduction's columns, so debts and
         # fixed assets are processed before the variable map is built (upstream: after).
         self.processDebtsAndFixedAssets()
@@ -6634,6 +6797,9 @@ class Plan:
         self._ssaCheckPastAges()
         free = [i for i in sorted(chosen) if not self._ssaAgeIsFixed(i)]
         fixed_opts = dict(options, withSSAges="fixed")
+        # Once per solve, before the candidates: the searched ages are still open here, so
+        # the warning covers every year the test could reach (plan §5 step 3).
+        self._warnEarningsTest(options)
 
         def _set(plan, ages):
             plan.setSocialSecurity(
@@ -6688,7 +6854,11 @@ class Plan:
                 f"best of {len(values)} fixed-age solve(s)."
             )
         _set(self, best)
-        self.solve(objective, fixed_opts)
+        self._etWarned = True  # the search warned above, with the earliest open ages
+        try:
+            self.solve(objective, fixed_opts)
+        finally:
+            self._etWarned = False
         self.solverOptions = dict(options)
         self._ssa_optimize_set = chosen
         return None
@@ -6743,6 +6913,8 @@ class Plan:
                 self._localSearchSeeding = False
 
         run_loop()
+        # Once per solve: the seeding solves above are nested, and skipped inside.
+        self._warnEarningsTest(myoptions)
         if self.caseStatus != "solved":
             self.mylog.print("Local search: the self-consistent loop found no plan to start from.", tag="WARNING")
             self.solverOptions = myoptions

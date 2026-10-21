@@ -594,3 +594,91 @@ def test_local_search_warns_once():
     warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
     assert len(warned) == 1
     assert "Pat" in warned[0]
+
+
+# --------------------------------------------------------------------------------------
+# Third review (2026-10-21): a rejected setSocialSecurity, the Summary rows under the
+# switch and a shortened Summary, and the withholding in plan_metrics
+# --------------------------------------------------------------------------------------
+
+
+def _ss_state(p):
+    return (
+        np.array(p.ssecAmounts).copy(),
+        np.array(p.ssecAges).copy(),
+        p.ssecTrimPct,
+        p.ssecTrimYear,
+        p.ssecSurvivorClaimAge,
+        p.zeta_in.copy(),
+    )
+
+
+@pytest.mark.xfail(strict=True, reason="third review: setSocialSecurity assigns before the build")
+@pytest.mark.parametrize("test_on", [False, True])
+def test_rejected_set_social_security_leaves_the_plan_unchanged(test_on):
+    """A call that raises changes nothing (the behaviour before step 3, `d1d1681`): the
+    PIAs, ages, trim and survivor settings and the streams stay those of the last call
+    that succeeded, and the plan still solves. 71 is outside 62-70, refused by the
+    reduction factor while the streams are built."""
+    p = _load("jack+jill")
+    if test_on:
+        p.solverOptions = dict(p.solverOptions or {}, withEarningsTest=True)
+    before = _ss_state(p)
+    with pytest.raises(ValueError, match="71"):
+        p.setSocialSecurity([1000, 1000], [71, 71], trim_pct=10, trim_year=2040, survivor_claim_age="FRA")
+    after = _ss_state(p)
+    assert np.array_equal(after[0], before[0])
+    assert np.array_equal(after[1], before[1])
+    assert after[2:5] == before[2:5]
+    assert np.array_equal(after[5], before[5])
+    _solve(p, test_on=test_on)
+
+
+@pytest.mark.xfail(strict=True, reason="third review: rows only when something is withheld")
+def test_summary_rows_whenever_the_test_is_applied():
+    """With the switch on the two rows are there even when nothing is withheld ($0,
+    'none'), so that the UI's case comparison, which keeps only the rows both cases have,
+    does not drop them between two variants that both apply the test. Off: absent."""
+    p = _load("jack+jill")
+    p.omega_in[:, :] = 0.0
+    p.etEarnings_in[:, :] = 0.0
+    _solve(p, test_on=True)
+    dic = build_summary_dic(p)
+    rows = [k for k in dic if k.startswith("SS withheld by the earnings test")]
+    assert len(rows) == 2
+    assert all(dic[k] == "$0" for k in rows)
+    assert dic["ARF months"] == "none"
+
+
+@pytest.mark.xfail(strict=True, reason="third review: ARF months ignore the Summary's N")
+def test_arf_months_row_follows_the_summary_window():
+    """The ARF is granted at FRA. Jill (born 1966-01-15, FRA 67) reaches FRA in January
+    2033: a Summary over 2026-2032 holds her 2028 withholding but not yet the ARF; one
+    through 2033 holds both."""
+    p = _solve(_load("jack+jill"), test_on=True)
+    assert p.tobs[1] > 2 and p.yobs[1] == 1966 and p.mobs[1] == 1  # FRA month Jan 2033
+    through_2032 = build_summary_dic(p, 2032 - THISYEAR + 1)
+    assert through_2032["SS withheld by the earnings test (nominal)"] != "$0"
+    assert through_2032["ARF months"] == "none"
+    through_2033 = build_summary_dic(p, 2033 - THISYEAR + 1)
+    assert through_2033["ARF months"] == "Jill 11 own"
+
+
+@pytest.mark.xfail(strict=True, reason="third review: plan_metrics has no withholding key")
+def test_plan_metrics_report_the_withholding():
+    """`owlcli compare` and the UI comparison read plan_metrics: the withholding is a key
+    there (0 when the test is off), mapped to its Summary rows. Today's $: 11 withheld
+    months of Jill's benefit (hand number, as above)."""
+    from owlplanner.export import METRICS_COLUMN_MAP, plan_metrics
+
+    on = _solve(_load("jack+jill"), test_on=True)
+    m = plan_metrics(on)
+    assert m["ss_withheld_today"] == pytest.approx(11 * 1642.0 * _factor(59), abs=0.02)
+    assert m["ss_withheld_nominal"] == pytest.approx(float(np.sum(on.ss_withheld_in)))
+    columns = on.summaryDf().columns
+    for key in ("ss_withheld_today", "ss_withheld_nominal"):
+        assert METRICS_COLUMN_MAP[key][0] in columns
+
+    off = plan_metrics(_solve(_load("jack+jill"), test_on=False))
+    assert off["ss_withheld_today"] == 0.0
+    assert off["ss_withheld_nominal"] == 0.0

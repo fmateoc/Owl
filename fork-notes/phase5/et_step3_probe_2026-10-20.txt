@@ -1,0 +1,25 @@
+et_step3_probe.py, 2026-10-20
+
+== What the test changes on the three examples of plan §3
+
+jack+jill: basis    103499.11 ->    103573.94   bequest    400000.00 ->    400000.00
+   Jill: withheld   14301.96 nominal, ARF 11 own / 0 spouse
+   taxable Social Security 2028: 11018.76 -> 0.00
+
+chris+pat: basis    117002.21 ->    116789.02   bequest    400000.00 ->    400000.00
+   Pat: withheld   12319.95 nominal, ARF 11 own / 0 spouse
+   taxable Social Security 2028: 9476.03 -> 0.00
+
+alex+jamie: basis    228368.52 ->    227824.92   bequest         0.00 ->         0.00
+   Jamie: withheld   20611.90 nominal, ARF 24 own / 0 spouse
+   taxable Social Security 2028: 9108.42 -> 9551.57
+
+== Warnings
+chris+pat, switch off: 0 earnings-test warning(s)
+chris+pat, switch on:  1 earnings-test warning(s)
+   'gross earnings' is not given for 'Pat' in year(s) 2028: the SSA earnings test uses 'anticipated wages' there, which leave out payroll deferrals (W-2 box 5 counts them) and those years have a 401k/IRA contribution. Enter 'gross earnings' for them.
+alex+jamie, switch off: 0 earnings-test warning(s)
+alex+jamie, switch on:  1 earnings-test warning(s)
+   All Social Security of Jamie is withheld by the earnings test in 2026-2027; the benefit is raised at FRA by the ARF (24 crediting months). A claiming age that pays nothing before FRA is often a typo or a plan to revisit.
+chris+pat, switch on, withSSAges=['Pat'] (every candidate a solve): 1 warning(s)
+   'gross earnings' is not given for 'Pat' in year(s) 2028: the SSA earnings test uses 'anticipated wages' there, which leave out payroll deferrals (W-2 box 5 counts them) and those years have a 401k/IRA contribution. Enter 'gross earnings' for them.

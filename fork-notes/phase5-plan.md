@@ -450,7 +450,7 @@ and Contributions editor and its column list, the JSON/TOML HFP path, `Documenta
 plan → workbook; absent columns → defaults; `clone` with a new expectancy keeps them; bad values
 (months outside 0-12, negative earnings) refused like other columns.
 
-### Step 3: fixed claiming ages — size M
+### Step 3: fixed claiming ages — size M — **done 2026-10-20**
 
 `Plan._ss_streams(ages)`; rebuild `zeta_in` at solve time (§4.4); the option of D6; outputs and
 warning (§4.4); `export.py` Summary/worksheet rows; `cmd_explain` SS block. Tests: the three
@@ -469,6 +469,39 @@ test that a solve with the switch on warns for jack+jill's Jack only if his year
 (he claims at 70, so not) and that one with the switch off never warns. Remove the "not used
 yet" caveats on the two columns (`Financial_Profile.py` help, `Documentation.py`, `PARAMETERS.md`;
 added 2026-10-20) once the test is applied.
+
+**Landed 2026-10-20** on `claude/phase5-step1` (spec `13c3017`, strict xfail, reviewed; then the
+implementation). `Plan._ss_streams(ages, gamma_n=None)` serves both call sites (`setSocialSecurity`
+and the rebuild where `zetaBar_in` is set in `_adjustParameters`) and stores `zeta_in` (today's
+$), `ss_withheld_in` (nominal) and `ss_arf_months_i` / `ss_arf_months_spousal_i`;
+`Plan._earningsTestResult()` is the same computation without the switch, so `cmd_explain` (and
+the MCP `explain_case`) reports what the test would withhold without solving, with an `applied`
+flag. Earnings are read through `Plan._earnings_test_inputs()` (0 = not given) and deflated
+before `earnings_test`. `solver_options.withEarningsTest` is off in code (`SolverOptions`,
+`Plan.solve`) and on in `Case_us.template.toml` (D6); it round-trips through the UI
+(`SOLVER_UI_PASSTHROUGH_KEYS`), no UI toggle. Two details settled while writing it:
+
+- the "pays nothing before FRA" warning fires when **every** entitlement month before FRA that
+  falls in the plan is withheld (`ss_arf_months_i[i]` equals that count), and names those years:
+  Jamie in alex+jamie gives "2026-2027", the §4.4 example (her payment-year 2026 still carries
+  the December 2025 check, a pre-plan month the test cannot charge, so a payment-year rule would
+  have missed it);
+- the worksheet column is `SS withheld`, next to `social sec` in the per-person Sources sheets.
+  Not the Cash Flow sheet: its rows are tested to sum to zero, and the withholding is not a cash
+  flow (the SS column there is already net of it).
+
+`entitled_from` is as specified above (the year they turn 62 for a searched age), and the warning
+is emitted once per solve from `_ssAgeSearch` (searched ages still open), the main path of `solve`
+and `_localSearchSolve`, with the nested solves and the search's own final solve skipped.
+
+Tests (`tests/ss/test_earnings_test_plan.py`, 30): the §5b properties (switch off or no earnings
+→ streams identical to `compute_social_security_benefits`), the three §3 examples with the test
+on (Jill's 2028 fully withheld with `months worked` 12 and spared with 6; hand ARF numbers from
+the 20 CFR 404.410 rates: 11 crediting months → the factor of 48 reduction months, 0.75, at FRA;
+Jamie's 24 → 35 left, 0.805556; taxes on SS from the net), the no-op objective on the other
+fifteen to the cent, a second solve after editing wages through the UI's table re-read, both
+warnings on and off, and the Summary, worksheet and explain outputs. No recorded value moved:
+the switch is off by default and the examples do not set it.
 
 ### Step 4: `withSSAges` — size S (was M; revised 2026-10-20 after upstream #195)
 

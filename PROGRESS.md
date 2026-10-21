@@ -1717,7 +1717,73 @@ stops. Fixed after the review (docs only): stale MILP references in `phase5-plan
 meant) and a status line on `fork-notes/issue-spousal-start.md` (#198, fixed in `9770116`).
 
 Next: step 3 (fixed claiming ages: wire `earnings_test` into `zeta_in`, inputs from
-`Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3).
+`Plan._earnings_test_inputs`, fallback warning only with the switch on; plan §5 step 3)
+*(done 2026-10-20, below)*.
+
+## Phase 5 step 3: fixed claiming ages (2026-10-20, on `claude/phase5-step1`)
+
+Size M from `phase5-plan.md` §5 step 3. The SSA earnings test is now applied to the plan's
+Social Security streams, behind `solver_options.withEarningsTest` (D6: off in code, on in
+the household template). Test-first per §5b: spec commit `13c3017` (30 strict-xfail tests),
+reviewed, then the implementation (markers removed).
+
+**What landed** (`plan.py`, `export.py`, `cmd_explain.py`, `schema.py`, `ui_bridge.py`):
+
+- `Plan._ss_streams(ages, gamma_n=None)` is the one stream builder: `setSocialSecurity` and
+  the rebuild at solve time (`_adjustParameters`, where `zetaBar_in` is set) both call it.
+  With the switch on it runs `earnings_test` on `Plan._earnings_test_inputs()` (0 = not
+  given; earnings deflated to today's dollars, like the exempt amounts), with the switch
+  off or no earnings it is exactly `compute_social_security_benefits`. Stores `zeta_in`
+  (today's $), `ss_withheld_in` (nominal) and `ss_arf_months_i` / `ss_arf_months_spousal_i`.
+- Outputs: Summary rows *SS withheld by the earnings test* (today's $ / nominal) and *ARF
+  months* (per person, own and spouse record), a *SS withheld* column next to *social sec*
+  in the per-person Sources worksheets, and an `earnings_test` block in the SS entries of
+  `owlcli explain` / the MCP `explain_case` (`applied`, `ss_withheld_total_today`,
+  `arf_months`, `arf_months_spousal`; computed whatever the switch says, so a case can be
+  described without solving). Not on the Cash Flow sheet: its rows are tested to sum to
+  zero, and the withholding is not a cash flow (its SS column is already net of it).
+- Warnings, once per solve and only with the switch on: `_warnGrossEarningsFallback`
+  (only the years the test can reach, from entitlement to the FRA year; the year they turn
+  62 under `withSSAges`), and a fixed claiming age that pays nothing before FRA — every
+  entitlement month before FRA that falls in the plan is withheld. Emitted from
+  `_ssAgeSearch`, the main path of `solve` and `_localSearchSolve`; nested solves (the age
+  candidates, the local search's seeding runs) and the search's own final solve are
+  skipped. Checked: one warning per solve under `withSSAges=["Pat"]` on chris+pat (about
+  40 candidate solves).
+- `withEarningsTest` in `SolverOptions`, in `Plan.solve`'s option list and in
+  `SOLVER_UI_PASSTHROUGH_KEYS` (so the UI round trip keeps it; no UI toggle). The
+  household template sets it (D6). The "not used yet" caveats are gone
+  (`Financial_Profile.py` help, `Documentation.py`, `PARAMETERS.md`, which documents the
+  option), `socialsecurity.py`'s module docstring says what is modeled, CLAUDE.md gotchas
+  updated.
+
+**Tests** (`tests/ss/test_earnings_test_plan.py`, 30): the §5b properties (switch off or no
+earnings → streams identical to `compute_social_security_benefits`); the three §3 examples
+with the test on — Jill's 2028 fully withheld with `months worked` 12 and spared with 6 (5
+checks paid, grace year), hand ARF numbers from the 20 CFR 404.410 rates (11 crediting
+months → the factor of 48 reduction months, 0.75, at FRA; Jamie's 24 → 35 left, 0.805556;
+the one 2026 check is for December 2025, a pre-plan month the test cannot charge); taxes on
+SS from the net (2028 taxable SS 0 with the test on); the no-op objective on the other
+fifteen to the cent; a second solve after editing wages through the UI's table re-read;
+both warnings on and off; Summary, worksheet and explain outputs.
+
+**Recorded values: none moved** (the switch is off by default and no example sets it; the
+suite re-recorded nothing). What the test does move on the three §3 examples with it on
+(2026-10-20, today's date, `basis` in today's $): jack+jill 103,499 → 103,574 (Jill withheld
+\$14,302 nominal, ARF 11; taxable SS 2028 \$11,019 → 0), chris+pat 117,002 → 116,789 (Pat
+\$12,320, ARF 11), alex+jamie 228,369 → 227,825 (Jamie \$20,612, ARF 24; her benefit from
+FRA is higher, so her taxable SS 2028 rises, \$9,108 → \$9,552). The ARF outweighs the
+withholding on jack+jill (step 0's finding) and not on the other two. Measured by
+`fork-notes/phase5/et_step3_probe.py`, output `et_step3_probe_2026-10-20.txt` (which also
+prints the warnings: 0 with the switch off, 1 with it on for chris+pat and alex+jamie, and
+still exactly 1 under `withSSAges=["Pat"]`).
+
+Full suite: 3310 passed / 1 skipped (9:05; 3280 before + the 30 new). flake8 and Ruff: only
+upstream's two. (An earlier run sharing the machine with two probe solves printed native
+access-violation traces at worker teardown and exited 1 while reporting the same 3310
+passed; the clean run above has none.)
+
+Next: step 4 (`withSSAges`: the clones carry the inputs and the switch).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

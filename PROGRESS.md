@@ -1957,9 +1957,10 @@ tests (2 failed, 3 passed).
   \$10,210 nominal). With the test on she claims in January 2029, the month after.
 - **Cost of following the no-test pick**, solved at fixed ages with the test on (section 3 of
   the probe, cross-checked): Pat alone \$179.46 (loop), \$115.45 (local search), \$119.21
-  (exact LP: `withMedicare="none"`, `withSSTaxability=0.85`), spread \$64: **resolved**. Both
-  free \$166.33 / \$78.12 / \$75.91, spread \$90: same sign in all three but **unresolved**
-  by the rule (CLAUDE.md, "Loop noise"). Local search took about 250 s per fixed-age solve here.
+  (exact LP: `withMedicare="none"`, `withSSTaxability=0.85`): local search and the exact LP
+  agree in sign, spread \$3.76: **resolved**. Both free \$166.33 / \$78.12 / \$75.91, spread
+  \$2.21: **resolved** (CLAUDE.md, "Loop noise": the spread is between local search and the
+  exact LP; corrected in the review below). Local search took about 121 s per fixed-age solve.
 - **No cycling** with both ages free: 2-4 rounds of the cap of 5, test on or off (plan §7).
 - The objectives with the test off are of plans SSA would not pay (Pat's 2028), so "off vs
   on" is not the test's value; the fixed-age cost above is. The picks were made under the loop;
@@ -1967,6 +1968,33 @@ tests (2 failed, 3 passed).
 
 Docs: `info/PARAMETERS.md` (`withEarningsTest`: every `withSSAges` candidate is solved with the
 test). Full suite: 3333 passed / 1 skipped (11:14; 3328 + the 5 new tests). flake8 clean; Ruff only upstream's `B905`.
+
+### Review of step 4 (2026-10-21)
+
+Review of `7507116` / `6cd02f8`. Held: the probe's round count (`_ssaOpenAges` is called only in
+the search loop, `plan.py:6881`); Pat's no-test pick with the test on, 9 ARF months (Apr-Dec
+2028), \$8,977.50 withheld in today's \$ = 9 x 1,400 x 0.7125 by hand (\$10,209.71 nominal:
+\$9,024.16 in 2028, \$1,185.55 in 2029); the chris+pat values identical under the tests' frozen
+date (63y0m over 62y3m by \$179.46 with the switch on, \$-84.13 off). Fixed:
+
+1. **The cross-check's verdict used a stricter rule than the documented one.** The first
+   `et_step4_crosscheck.py` took the spread over all three methods, the loop included; CLAUDE.md
+   and plan §5 step 8 take it between local search and the exact LP only (the loop's fixed-point
+   noise is what the rule sets aside). Under the documented rule the both-free pair is
+   **resolved** (\$78.12 vs \$75.91, spread \$2.21), not "unresolved" as `6cd02f8`'s message,
+   this section and the plan said. Script corrected and re-run (same values to the cent; the
+   loop now printed for reference only); text above and the plan corrected; the commit message
+   stays (no history rewrite).
+2. **Timing.** "About 250 s per fixed-age solve" was the time of a pair; about 121 s per solve
+   (the corrected script prints it per solve).
+3. **Test gap: nothing pinned the decision.** Under the mutation where candidates lose the
+   switch, the pick test still passed, as the returned plan is re-solved with the test. New
+   `test_switch_moves_pats_pick` (`3f93c32`): chris+pat, Pat searched over {62y3m, 63y0m}: 62y3m
+   off, 63y0m on, nothing withheld at the pick. A regression pin (values from the plan, the sign
+   agreed by all three methods); it fails under that mutation (3 failed, 3 passed). Passes on
+   arrival, so no xfail marker.
+
+Full suite: 3334 passed / 1 skipped (10:51; 3333 + the new test). flake8 clean; Ruff only upstream's `B905`.
 
 Next: step 9's draft (D8: the upstream issue after step 4, `fork-notes/issue-earnings-test.md`),
 then step 5 (payroll tax).

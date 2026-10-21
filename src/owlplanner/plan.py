@@ -658,6 +658,7 @@ class Plan:
         self.ss_withheld_in = np.zeros((self.N_i, self.N_n))
         self.ss_arf_months_i = np.zeros(self.N_i, dtype=np.int64)
         self.ss_arf_months_spousal_i = np.zeros(self.N_i, dtype=np.int64)
+        self.ss_earnings_test_applied = False
         self.pensionAmounts = np.zeros(self.N_i, dtype=np.int32)
         self.pensionAges = 65 * np.ones(self.N_i, dtype=np.int32)
         self.pensionIsIndexed = [False] * self.N_i
@@ -1403,12 +1404,25 @@ class Plan:
         self.mylog.vprint("SS FRAs(s)", [fras[i] for i in range(self.N_i)])
 
         thisyear = date.today().year
+        # _ss_streams reads the settings from the plan: set them, and put the previous ones
+        # back if the streams cannot be built, so that a rejected call changes nothing.
+        saved = (self.ssecAmounts, self.ssecAges, self.ssecTrimPct, self.ssecTrimYear, self.ssecSurvivorClaimAge)
         self.ssecAmounts = pias
         self.ssecAges = ages
         self.ssecTrimPct = trim_pct
         self.ssecTrimYear = trim_year
         self.ssecSurvivorClaimAge = survivor_claim_age
-        self.zeta_in, ages = self._ss_streams(ages)
+        try:
+            self.zeta_in, ages = self._ss_streams(ages)
+        except Exception:
+            (
+                self.ssecAmounts,
+                self.ssecAges,
+                self.ssecTrimPct,
+                self.ssecTrimYear,
+                self.ssecSurvivorClaimAge,
+            ) = saved
+            raise
 
         for i in range(self.N_i):
             if ages[i] != ages_orig[i]:
@@ -1447,23 +1461,25 @@ class Plan:
         ``(zeta_in, ages)`` with the eligibility reset applied (Phase 5 step 3).
 
         ``setSocialSecurity`` and the rebuild at solve time (``_adjustParameters``, where
-        ``zetaBar_in`` is set) both go through here. The SSA earnings test
-        (``solver_options.withEarningsTest``; off by default, D6) is applied here:
-        ``zeta_in`` follows the PIA and the claiming age alone, and ``setSocialSecurity``
-        can run before the HFP is read, so the test can only bite where the streams are
-        rebuilt at solve time (same pattern as the budget's ``xi_n``). With the switch
-        off, or with no earnings to test, this is exactly
-        ``socsec.compute_social_security_benefits``.
+        ``zetaBar_in`` is set) both go through here, and both apply the SSA earnings test
+        when ``solver_options.withEarningsTest`` is on (off by default, D6). What counts is
+        the rebuild: ``setSocialSecurity`` reads the options and earnings the plan holds
+        at that moment (the previous solve's or the case's options; the HFP may not be read
+        yet), while every solve rebuilds the streams with its own options and the current
+        earnings (same pattern as the budget's ``xi_n``). With the switch off, or with no
+        earnings to test, this is exactly ``socsec.compute_social_security_benefits``.
 
         Stores ``zeta_in`` (today's $) and the earnings-test outputs: ``ss_withheld_in``
-        (nominal $, today's $ until the rates are set) and the ARF crediting months
-        ``ss_arf_months_i`` / ``ss_arf_months_spousal_i``.
+        (nominal $, today's $ until the rates are set), the ARF crediting months
+        ``ss_arf_months_i`` / ``ss_arf_months_spousal_i``, and whether the test was applied
+        (``ss_earnings_test_applied``). Nothing is stored if the build raises.
         """
         thisyear = date.today().year
         if gamma_n is None:
             gamma_n = getattr(self, "gamma_n", None)
         gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
-        if self._earningsTestOn():
+        applied = self._earningsTestOn()
+        if applied:
             res = self._earningsTestResult(ages, gamma)
             zeta_in, ages = res.zeta_in, res.ages
             withheld_in = res.withheld_in
@@ -1490,7 +1506,23 @@ class Plan:
         self.ss_withheld_in = withheld_in * gamma
         self.ss_arf_months_i = arf_i
         self.ss_arf_months_spousal_i = arf_sp_i
+        self.ss_earnings_test_applied = applied
         return zeta_in, ages
+
+    def _ssFRAStartAbs(self):
+        """
+        Absolute month (year*12 + month - 1) of each person's FRA, where entitlement at FRA
+        begins and the earnings test's ARF takes effect (own and spousal records alike).
+        """
+        fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
+        return [
+            socsec._ent_start_abs(
+                int(self.yobs[i]),
+                int(self.mobs[i]),
+                socsec._fra_conventional_age(float(fras[i]), self.tobs[i] <= 2),
+            )
+            for i in range(self.N_i)
+        ]
 
     def _reportSurvivorClaimAge(self, survivor):
         """
@@ -2501,7 +2533,7 @@ class Plan:
         # Fresh from the plan's current ages and earnings, not from the stored outputs:
         # withSSAges warns before any solve has rebuilt the streams (plan §5 step 3).
         res = self._earningsTestResult()
-        fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
+        fra_abs_i = self._ssFRAStartAbs()
         thisyear = int(self.year_n[0])
         for i, iname in enumerate(self.inames):
             if i in searched or int(self.ssecAmounts[i]) <= 0:
@@ -2510,11 +2542,7 @@ class Plan:
             eligible = 62.0 if born_on_first else 62.0 + 1.0 / 12.0
             claim = max(float(self.ssecAges[i]), eligible)
             ent_abs = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim)
-            fra_abs = socsec._ent_start_abs(
-                int(self.yobs[i]),
-                int(self.mobs[i]),
-                socsec._fra_conventional_age(float(fras[i]), born_on_first),
-            )
+            fra_abs = fra_abs_i[i]
             start = max(ent_abs, thisyear * 12)  # first entitlement month in the plan
             end = min(fra_abs, (thisyear + int(self.horizons[i])) * 12)  # FRA, or the horizon
             if end <= start or int(res.arf_months[i]) < end - start:

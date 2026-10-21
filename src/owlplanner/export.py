@@ -514,22 +514,27 @@ def build_summary_dic(plan, N=None):
                 )
 
     # SSA earnings test (Phase 5 step 3): benefits withheld before FRA and returned at
-    # FRA by the ARF. Reported only where the test withheld something.
-    withheld = float(np.sum(plan.ss_withheld_in[:, :N]))
-    if withheld > 0:
+    # FRA by the ARF. Reported whenever the solve applied the test, $0 / "none" included,
+    # so that comparing two cases that both apply it keeps the rows.
+    if getattr(plan, "ss_earnings_test_applied", False):
         _summary_currency_pair(
             dic,
             "SS withheld by the earnings test",
             float(np.sum(plan.ss_withheld_in[:, :N] * inv_gamma)),
-            withheld,
+            float(np.sum(plan.ss_withheld_in[:, :N])),
         )
+        # The ARF takes effect at FRA: counted only where FRA falls within the N years.
+        last_abs = (int(plan.year_n[0]) + N) * 12
+        fra_abs_i = plan._ssFRAStartAbs()
         credited = []
         for i in range(plan.N_i):
+            if fra_abs_i[i] >= last_abs:
+                continue
             own, sp = int(plan.ss_arf_months_i[i]), int(plan.ss_arf_months_spousal_i[i])
             parts = ([f"{own} own"] if own else []) + ([f"{sp} spouse"] if sp else [])
             if parts:
                 credited.append(f"{plan.inames[i]} {' + '.join(parts)}")
-        dic["ARF months"] = ", ".join(credited)
+        dic["ARF months"] = ", ".join(credited) if credited else "none"
 
     totRoth = np.sum(plan.x_in[:, :N], axis=(0, 1))
     totRothNow = np.sum(np.sum(plan.x_in[:, :N], axis=0) / plan.gamma_n[:N], axis=0)
@@ -963,6 +968,9 @@ def plan_metrics(plan, N=None) -> dict:
         "aca_nominal": _s(plan.aca_costs_n[:N]),
         "debt_payments_today": _st(plan.debt_payments_n[:N]),
         "debt_payments_nominal": _s(plan.debt_payments_n[:N]),
+        # Fork (Phase 5): SSA earnings test, 0 when the test is off.
+        "ss_withheld_today": _st(plan.ss_withheld_in[:, :N]),
+        "ss_withheld_nominal": _s(plan.ss_withheld_in[:, :N]),
         "housing_costs_today": _st(budget_spending(plan, N)[1]),
         "housing_costs_nominal": _s(budget_spending(plan, N)[1]),
         # Final bequest
@@ -1035,6 +1043,8 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "aca_nominal": (f"Total ACA premiums paid{_N}", "usd"),
     "debt_payments_today": (f"Total debt payments{_T}", "usd"),
     "debt_payments_nominal": (f"Total debt payments{_N}", "usd"),
+    "ss_withheld_today": (f"SS withheld by the earnings test{_T}", "usd"),
+    "ss_withheld_nominal": (f"SS withheld by the earnings test{_N}", "usd"),
     "housing_costs_today": (f"Total housing costs (in net spending){_T}", "usd"),
     "housing_costs_nominal": (f"Total housing costs (in net spending){_N}", "usd"),
     "final_bequest_today": (f"Total after-tax value of final bequest{_T}", "usd"),

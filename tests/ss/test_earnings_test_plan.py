@@ -191,7 +191,7 @@ def test_jack_jill_2028_is_fully_withheld():
             assert p.zeta_in[1, n] == pytest.approx(from_fra)
 
 
-def test_jack_jill_2028_is_spared_with_six_months():
+def test_jack_jill_2028_is_partly_spared_with_six_months():
     """The grace year (404.435): with `months worked` 6 the months after June are
     non-service months and are paid whatever the annual excess. The five worked months of
     her entitlement (Feb-Jun) are still withheld."""
@@ -347,7 +347,9 @@ def test_warning_when_a_claiming_age_pays_nothing_before_fra():
 # --------------------------------------------------------------------------------------
 
 
-def test_summary_rows_appear_only_with_withholding():
+def test_summary_rows_appear_only_with_the_switch_on():
+    """The Summary rows follow the switch (with nothing withheld they read $0 / 'none',
+    see test_summary_rows_whenever_the_test_is_applied)."""
     on = _solve(_load("jack+jill"), test_on=True)
     dic = build_summary_dic(on)
     assert any(k.startswith("SS withheld by the earnings test") for k in dic)
@@ -613,7 +615,6 @@ def _ss_state(p):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="third review: setSocialSecurity assigns before the build")
 @pytest.mark.parametrize("test_on", [False, True])
 def test_rejected_set_social_security_leaves_the_plan_unchanged(test_on):
     """A call that raises changes nothing (the behaviour before step 3, `d1d1681`): the
@@ -634,7 +635,6 @@ def test_rejected_set_social_security_leaves_the_plan_unchanged(test_on):
     _solve(p, test_on=test_on)
 
 
-@pytest.mark.xfail(strict=True, reason="third review: rows only when something is withheld")
 def test_summary_rows_whenever_the_test_is_applied():
     """With the switch on the two rows are there even when nothing is withheld ($0,
     'none'), so that the UI's case comparison, which keeps only the rows both cases have,
@@ -650,7 +650,6 @@ def test_summary_rows_whenever_the_test_is_applied():
     assert dic["ARF months"] == "none"
 
 
-@pytest.mark.xfail(strict=True, reason="third review: ARF months ignore the Summary's N")
 def test_arf_months_row_follows_the_summary_window():
     """The ARF is granted at FRA. Jill (born 1966-01-15, FRA 67) reaches FRA in January
     2033: a Summary over 2026-2032 holds her 2028 withholding but not yet the ARF; one
@@ -664,7 +663,6 @@ def test_arf_months_row_follows_the_summary_window():
     assert through_2033["ARF months"] == "Jill 11 own"
 
 
-@pytest.mark.xfail(strict=True, reason="third review: plan_metrics has no withholding key")
 def test_plan_metrics_report_the_withholding():
     """`owlcli compare` and the UI comparison read plan_metrics: the withholding is a key
     there (0 when the test is off), mapped to its Summary rows. Today's $: 11 withheld

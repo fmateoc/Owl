@@ -1746,10 +1746,10 @@ reviewed, then the implementation (markers removed).
   (only the years the test can reach, from entitlement to the FRA year; the year they turn
   62 under `withSSAges`), and a fixed claiming age that pays nothing before FRA — every
   entitlement month before FRA that falls in the plan is withheld. Emitted from
-  `_ssAgeSearch`, the main path of `solve` and `_localSearchSolve`; nested solves (the age
-  candidates, the local search's seeding runs) and the search's own final solve are
-  skipped. Checked: one warning per solve under `withSSAges=["Pat"]` on chris+pat (about
-  40 candidate solves).
+  `_ssAgeSearch`, the main path of `solve` and `_localSearchSolve`; of the nested solves,
+  the age candidates print to their clones' discarded logs, while the local search's
+  seeding runs and the search's own final solve are skipped by flag. Checked: one warning
+  per solve under `withSSAges=["Pat"]` on chris+pat (about 100 candidate solves).
 - `withEarningsTest` in `SolverOptions`, in `Plan.solve`'s option list and in
   `SOLVER_UI_PASSTHROUGH_KEYS` (so the UI round trip keeps it; no UI toggle). The
   household template sets it (D6). The "not used yet" caveats are gone
@@ -1842,6 +1842,46 @@ today's dollars until the rates are set (a pre-solve read only; noted in its doc
 
 Full suite after the fixes: 3320 passed / 1 skipped (9:33; 3310 + the 10 new tests). flake8
 clean; Ruff only upstream's `B905`.
+
+### Second review of the fixes (2026-10-21)
+
+Fresh reviewer over `6217d10e` / `132fb5bc` / `f0dea029` (read-only probes): one bug in the
+fix round itself, two doc inaccuracies, and untested paths. Spec `71debdf6` (strict xfail
+on the one failing property), then the fix.
+
+1. **The strict parsing was its own inconsistency.** `_earningsTestOn` refused what the case
+   schema coerces (`"y"`/`"n"`/`"t"`/`"f"`, numpy scalars) and accepted what the schema
+   refuses (`2`, `0.5`): one value read differently through `owlcli` (schema-coerced) and
+   through a script or the UI's run options (`ui/owlbridge.py` passes
+   `getSolveParameters()` through unchecked). Fixed with **one parser**,
+   `utils.parse_switch`, used by `Plan._earningsTestOn` and by `SolverOptions` (a
+   `mode="before"` validator), and applied at `solve()`'s door next to
+   `normalize_mode_options` — the review's second finding: the refusal used to happen
+   mid-solve, so "the same contract as the mode options" was only half true.
+2. **Docs.** PROGRESS said "about 40 candidate solves" for `withSSAges=["Pat"]`: the search
+   runs 96 candidates (its own log: "best of 96 fixed-age solve(s)"; a counter saw 98
+   solves). And it described the age candidates as "skipped", which is not the mechanism:
+   each runs the full warning on its clone and prints into that clone's discarded `StringIO`
+   logger; only the local search's seeding runs and the search's own final solve are
+   skipped, by flag. Reworded here and in `phase5-plan.md`.
+3. **Tests pinned** (`71debdf6` and the fix, 43 tests in the file now): the switch's
+   spellings against `parse_solver_options` in both directions (15 accepted values, numpy
+   scalars among them; 5 refused by both), the UI run path (`getSolveParameters`, issue
+   #156's shape — before, the option was only round tripped through `config_to_ui` /
+   `ui_to_config`), the local-search path's one warning across its two nested solves
+   (`localSearchTime=2` keeps it quick), and a fresh plan warning like a re-solved one (the
+   second half of the stale-inputs bug).
+
+Everything else the reviewer probed held: the three original bugs fixed on every path
+(plain, `withSSAges`, local search, `resolve()`, two solves), the hand numbers exact
+(11 x 1,642 x 0.7041667 = 12,718.66 today's $ = the withheld total; 36 / 11 / 0 crediting
+months on the spousal case; 10 checks = 11,562.42 in the grace-year case), the xfail→pass
+transition of the three regression tests real (the old behaviour monkeypatched back in
+fails each key assertion), and `info/PARAMETERS.md`'s table contiguous with its technical
+claims matching `earnings_test`.
+
+Full suite: 3323 passed / 1 skipped (9:30; 3320 + the 3 new tests). flake8 clean; Ruff only
+upstream's `B905`.
 
 Next: step 4 (`withSSAges`: the clones carry the inputs and the switch).
 

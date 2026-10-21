@@ -492,9 +492,10 @@ before `earnings_test`. `solver_options.withEarningsTest` is off in code (`Solve
 
 `entitled_from` is as specified above (the year they turn 62 for a searched age), and the warning
 is emitted once per solve from `_ssAgeSearch` (searched ages still open), the main path of `solve`
-and `_localSearchSolve`, with the nested solves and the search's own final solve skipped.
+and `_localSearchSolve`; of the nested solves, the age candidates print to their clones' discarded
+logs, while the seeding runs and the search's own final solve are skipped by flag.
 
-Tests (`tests/ss/test_earnings_test_plan.py`, 30): the §5b properties (switch off or no earnings
+Tests (`tests/ss/test_earnings_test_plan.py`, 30 at the step, 43 after the two review rounds): the §5b properties (switch off or no earnings
 → streams identical to `compute_social_security_benefits`), the three §3 examples with the test
 on (Jill's 2028 fully withheld with `months worked` 12 and spared with 6; hand ARF numbers from
 the 20 CFR 404.410 rates: 11 crediting months → the factor of 48 reduction months, 0.75, at FRA;

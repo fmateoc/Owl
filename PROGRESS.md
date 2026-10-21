@@ -1923,6 +1923,54 @@ upstream's `B905`.
 
 Next: step 4 (`withSSAges`: the clones carry the inputs and the switch).
 
+## Phase 5 step 4: `withSSAges` (2026-10-21, on `claude/phase5-step1`)
+
+Size S (`phase5-plan.md` §5 step 4). Since upstream #195 every `withSSAges` candidate is a
+fixed-age solve on a `clone(self)` (a deepcopy: `etEarnings_in`, `etMonths_in` travel) with the
+search's options less `withSSAges` (so `withEarningsTest` travels), and each reaches step 3's
+path. **No code change.**
+
+**Tests** (`tests/ss/test_earnings_test_ssages.py`, 5, `7507116`): jack+jill with Jill's age
+searched over five of her open months (`_ssaOpenAges` patched: 62y1m, 63, 64, 67, 70; the
+candidates recorded through `_objectiveValue`): every candidate equals a freshly loaded plan
+solved at the same ages (objective, ARF months, amount withheld), switch on and off; the 62y1m
+candidate has 2028 withheld (11 ARF months) on and nothing off, the later ones are equal either
+way; the pick is the best of the independent solves and the returned plan carries its streams
+and outputs. They passed on arrival, so no xfail spec commit (§5b). Instead, two mutations, run
+by hand and reverted: clones losing `months worked` (`etMonths_in = 6` in `plan_bridge.clone`)
+and candidates losing the switch (`_earningsTestOn` false on clones) each fail the first two
+tests (2 failed, 3 passed).
+
+**Measured** (`fork-notes/phase5/et_step4_probe.py` and `et_step4_crosscheck.py`, outputs
+`*_2026-10-21.txt`; today's date, default loop unless stated; basis in today's \$/yr):
+
+| Case | Search | Test off | Test on | Rounds / solves (on) |
+|---|---|---|---|---|
+| jack+jill | Jill | 65y11m, 104,586.81 | 65y11m, 104,586.81 (also with `months worked` 6) | 1 / 96 |
+| chris+pat | Pat | 62y3m, 117,069.62 | 63y0m, 116,985.49 | 1 / 96 |
+| alex+jamie | Alex | 70y0m, 229,007.15 | 70y0m, 228,245.39 (Jamie withheld \$20,612, ARF 24) | 1 / 40 |
+| jack+jill | both | 69y1m / 65y11m, 104,703.63 | same | 3 / 340 |
+| chris+pat | both | 68y9m / 62y1m, 117,319.78 | 69y4m / 63y0m, 117,288.64 | 4 / 507 (off: 2 / 171) |
+
+- Jill's best age is after her work, so the test does not touch her pick. Pat's no-test pick is
+  a claim in 2028, the year she earns \$85k: Owl pays it, SSA would withhold it (Apr-Dec,
+  \$10,210 nominal). With the test on she claims in January 2029, the month after.
+- **Cost of following the no-test pick**, solved at fixed ages with the test on (section 3 of
+  the probe, cross-checked): Pat alone \$179.46 (loop), \$115.45 (local search), \$119.21
+  (exact LP: `withMedicare="none"`, `withSSTaxability=0.85`), spread \$64: **resolved**. Both
+  free \$166.33 / \$78.12 / \$75.91, spread \$90: same sign in all three but **unresolved**
+  by the rule (CLAUDE.md, "Loop noise"). Local search took about 250 s per fixed-age solve here.
+- **No cycling** with both ages free: 2-4 rounds of the cap of 5, test on or off (plan §7).
+- The objectives with the test off are of plans SSA would not pay (Pat's 2028), so "off vs
+  on" is not the test's value; the fixed-age cost above is. The picks were made under the loop;
+  local search or the exact LP might pick other ages (step 8).
+
+Docs: `info/PARAMETERS.md` (`withEarningsTest`: every `withSSAges` candidate is solved with the
+test). Full suite: 3333 passed / 1 skipped (11:14; 3328 + the 5 new tests). flake8 clean; Ruff only upstream's `B905`.
+
+Next: step 9's draft (D8: the upstream issue after step 4, `fork-notes/issue-earnings-test.md`),
+then step 5 (payroll tax).
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

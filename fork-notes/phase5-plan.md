@@ -508,7 +508,7 @@ Third review (2026-10-21, PROGRESS.md): a rejected `setSocialSecurity` changes n
 the Summary rows appear whenever the test is applied (\$0 / "none"), the ARF months only where
 FRA falls in the summarized years; `plan_metrics` gains `ss_withheld_today` / `_nominal`.
 
-### Step 4: `withSSAges` — size S (was M; revised 2026-10-20 after upstream #195)
+### Step 4: `withSSAges` — size S (was M; revised 2026-10-20 after upstream #195) — **done 2026-10-21**
 
 Upstream replaced the claiming-month MILP (`zssa`, `B_own`/`B_cross`, spousal offset,
 `build_own_benefit_table`) with a search over fixed-age solves (`_ssAgeSearch`, clones solved in
@@ -520,6 +520,27 @@ jack+jill with `withSSAges` on Jill, test on vs off, `months worked` 12 vs 6 in 
 the picks and objectives (no expected value is known before the run). Scenario runs hold the plan's ages (upstream
 `ad79391`), so they need nothing. `_ssAgeSearch` clones with `clone(self)`, a deepcopy when the
 horizon is unchanged, so the earnings arrays travel with each candidate (read in code 2026-10-20).
+
+**Landed 2026-10-21** on `claude/phase5-step1` (PROGRESS.md "Phase 5 step 4"). No code change:
+`tests/ss/test_earnings_test_ssages.py` (5 tests) passed on arrival, so there is no xfail spec
+commit (§5b); two mutations (clones losing `months worked`, candidates losing the switch) each
+fail two of them. Measured (`et_step4_probe.py`, `et_step4_crosscheck.py`, outputs of
+2026-10-21; loop, today's date):
+
+- jack+jill, Jill searched: 65y11m with the test off, on, and on with `months worked` 6 — her
+  best age is after her work anyway, so the test changes nothing there.
+- chris+pat, Pat searched: 62y3m off (a claim in the year she earns \$85k, which Owl pays and
+  SSA would withhold), 63y0m on (the January after her last work year). Following the no-test
+  pick costs \$179/yr of basis with the test on; local search \$115, exact LP \$119, all the
+  same sign, above their spread (\$64): resolved.
+- Both ages free (`withSSAges="optimize"`): converged in 2-4 rounds of the cap of 5, test on or
+  off, so no cycling (§7). chris+pat: (68y9m, 62y1m) off, (69y4m, 63y0m) on; the no-test pick
+  costs \$166/yr (loop), \$78 (local search), \$76 (exact LP): same sign, but under the spread
+  (\$90), so unresolved by the CLAUDE.md rule. jack+jill: (69y1m, 65y11m) both ways.
+- alex+jamie, Alex searched: 70 both ways; Jamie's fixed claim keeps its \$20,612 withheld.
+
+The picks were made under the loop; whether local search or the exact LP would pick other ages
+is step 8's question.
 
 Upstream checkpoint: after step 4 the fork has a working, measured piece (step 9).
 
@@ -631,7 +652,8 @@ step 4. The table keeps the options as they were put.
   `gross earnings` for the transition years only; everything else is unaffected.
 - **Exempt amounts in real terms.** Held at 2026's level in today's dollars; real wage growth of
   about 1%/yr (recalled) would raise them by under 5% by 2031.
-- **Both ages free.** Family charging across spouses is exact only at convergence (offset), like
+- **Both ages free.** (Measured in step 4, 2026-10-21: 2-4 rounds, no cycling on jack+jill or
+  chris+pat.) Family charging across spouses is exact only at convergence (offset), like
   the spousal amounts today; the loop may need more iterations when withholding switches on and
   off between candidate ages. Measure in step 4; if it cycles, recommend optimizing one spouse at a
   time (as upstream's docs already do).

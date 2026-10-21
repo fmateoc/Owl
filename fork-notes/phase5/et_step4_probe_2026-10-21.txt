@@ -1,0 +1,31 @@
+et_step4_probe.py, 2026-10-21
+
+== 1. One age searched
+jack+jill, withSSAges=['Jill'] (case: Jill 62y1m, $85k in 2028, her last work year)
+  test off                           Jack 70y0m / Jill 65y11m   basis   104,586.81  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   96    63.9s
+  test on                            Jack 70y0m / Jill 65y11m   basis   104,586.81  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   96    60.4s
+  test on, months worked 2028 = 6    Jack 70y0m / Jill 65y11m   basis   104,586.81  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   96    62.7s
+chris+pat, withSSAges=['Pat'] (case: Pat 62y1m, $85k in 2028)
+  test off                           Chris 70y0m / Pat 62y3m    basis   117,069.62  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   96    25.9s
+  test on                            Chris 70y0m / Pat 63y0m    basis   116,985.49  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   96    21.3s
+alex+jamie, withSSAges=['Alex'] (Jamie collecting, $80k in 2026-2027)
+  test off                           Alex 70y0m / Jamie 62y1m   basis   229,007.15  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 1  solves   40     5.0s
+  test on                            Alex 70y0m / Jamie 62y1m   basis   228,245.39  withheld  20,611.90  ARF own+sp 0+0 / 24+0 rounds 1  solves   40     5.4s
+
+== 2. Both ages free (withSSAges='optimize'; alternating search, cap 5 rounds)
+jack+jill
+  test off                           Jack 69y1m / Jill 65y11m   basis   104,703.63  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 3  solves  340   256.8s
+  test on                            Jack 69y1m / Jill 65y11m   basis   104,703.63  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 3  solves  340   249.3s
+chris+pat
+  test off                           Chris 68y9m / Pat 62y1m    basis   117,319.78  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 2  solves  171    45.2s
+  test on                            Chris 69y4m / Pat 63y0m    basis   117,288.64  withheld       0.00  ARF own+sp 0+0 / 0+0 rounds 4  solves  507   141.7s
+
+== 3. Picks that move with the test: the no-test pick, solved at fixed ages with the test on
+chris+pat, withSSAges=['Pat']
+  no-test pick Chris 70y0m / Pat 62y3m    with the test: basis   116,806.03  withheld  10,209.71
+  test-on pick Chris 70y0m / Pat 63y0m    with the test: basis   116,985.49
+  cost of following the no-test pick: 179.46 basis (today's $)
+chris+pat, withSSAges=optimize
+  no-test pick Chris 68y9m / Pat 62y1m    with the test: basis   117,122.31  withheld  12,319.95
+  test-on pick Chris 69y4m / Pat 63y0m    with the test: basis   117,288.64
+  cost of following the no-test pick: 166.33 basis (today's $)

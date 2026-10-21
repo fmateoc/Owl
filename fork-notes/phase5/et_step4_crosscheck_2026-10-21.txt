@@ -1,0 +1,14 @@
+et_step4_crosscheck.py, 2026-10-21
+chris+pat, withEarningsTest on, fixed ages; basis in today's $
+
+withSSAges=['Pat']: no-test pick Chris 70y0m / Pat 62y3m, test-on pick Chris 70y0m / Pat 63y0m
+  loop          no-test pick   116,806.03  test-on pick   116,985.49  difference    179.46  (  1.3s)
+  local search  no-test pick   117,150.73  test-on pick   117,266.18  difference    115.45  (252.3s)
+  exact LP      no-test pick   120,202.34  test-on pick   120,321.55  difference    119.21  (  0.5s)
+  spread 64.01; same sign: True; resolved: True
+
+withSSAges=optimize: no-test pick Chris 68y9m / Pat 62y1m, test-on pick Chris 69y4m / Pat 63y0m
+  loop          no-test pick   117,122.31  test-on pick   117,288.64  difference    166.33  (  1.8s)
+  local search  no-test pick   117,281.29  test-on pick   117,359.41  difference     78.12  (249.1s)
+  exact LP      no-test pick   120,377.28  test-on pick   120,453.19  difference     75.91  (  0.4s)
+  spread 90.42; same sign: True; resolved: False

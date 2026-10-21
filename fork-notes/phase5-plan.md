@@ -588,7 +588,8 @@ from the code under test:
 - **Steps 3-4**: properties that hold whatever the plan's numbers are: switch off or no earnings
   → every example identical to today; Jill's 2028 benefit zero with `months worked` 12 and
   unchanged with a stop before her claim month; her benefit from FRA equal to PIA x the factor
-  for 10 fewer reduction months (hand number); the `withSSAges` MILP equal to the best fixed-age
+  for 11 fewer reduction months (hand number; the first draft said 10: her Feb-2028 claim has
+  11 chargeable entitlement months, Feb-Dec; corrected 2026-10-20); the `withSSAges` MILP equal to the best fixed-age
   solve; a second solve after editing wages uses the new wages.
 - **Step 5**: payroll tax for one year by hand, from the rates step 0 verifies.
 

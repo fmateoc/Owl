@@ -1778,10 +1778,70 @@ withholding on jack+jill (step 0's finding) and not on the other two. Measured b
 prints the warnings: 0 with the switch off, 1 with it on for chris+pat and alex+jamie, and
 still exactly 1 under `withSSAges=["Pat"]`).
 
-Full suite: 3310 passed / 1 skipped (9:05; 3280 before + the 30 new). flake8 and Ruff: only
-upstream's two. (An earlier run sharing the machine with two probe solves printed native
+Full suite: 3310 passed / 1 skipped (9:05; 3280 before + the 30 new). flake8 clean; Ruff
+only upstream's `B905` (`tests/plan/test_roth_maturation_losses.py:49`, theirs). (An earlier
+run sharing the machine with two probe solves printed native
 access-violation traces at worker teardown and exited 1 while reporting the same 3310
 passed; the clean run above has none.)
+
+### Review of step 3 (2026-10-20)
+
+Independent review of `13c30170` / `527227e3` / `a056420d` (fresh session, read-only probes):
+three bugs, two doc problems and a list of untested properties. Each bug reproduced by a
+probe before fixing; spec commit `6217d10e` (strict xfail on the three regressions), then
+the fix.
+
+1. **Warnings read the wrong options dict.** `_earningsTestOn()` read `self.solverOptions`,
+   which `solve()` only assigns after it has branched into `withSSAges` (`_ssAgeSearch`) and
+   the local search (`_localSearchSolve`) — and `owlcli run --solver-opt ...` / the MCP call
+   `plan.solve(objective, opts)` without pre-assigning it. So a switch passed to `solve()`
+   applied the test but silenced the warnings (ran: chris+pat with `withSSAges=["Pat"]`, 0
+   warnings instead of 1). Fixed: `_earningsTestOn(options)` takes the solve's own options,
+   passed by every `_warnEarningsTest` caller.
+2. **The "pays nothing before FRA" warning read stale outputs.** Under `withSSAges` it runs
+   before any solve has rebuilt the streams, so it saw `ss_arf_months_i` of the last build
+   (zeros on a fresh plan): ran alex+jamie with `withSSAges=["Alex"]` — a fresh plan warned
+   nothing while a re-solved one warned (finding reproduced both ways). Fixed: the warning
+   now computes `self._earningsTestResult()` fresh (a pure function of the ages and the
+   earnings columns), instead of reading the stored arrays.
+3. **`_earningsTestOn` mapped unknown strings to on** (`convert_to_bool`'s "unknown string,
+   default to True": `"off"` read as on). Now it is a switch: the standard spellings are
+   read, anything else is refused (`ValueError`), like the mode options. The TOML / CLI /
+   MCP paths were already safe through `parse_solver_options`.
+4. **Docs.** `info/PARAMETERS.md`: the new row landed after a stray blank line, i.e. outside
+   the rendered table — moved next to `withSSAges`, and the blank line removed (it had also
+   left `withdrawalOrder` and `withDuals` outside the table). `phase5-plan.md` §5b kept the
+   first draft's "10 fewer reduction months"; her Feb-2028 claim has 11 chargeable months
+   (Feb-Dec), which is what the tests use.
+5. **Test gaps closed** (`6217d10e` and the fix): §5b's "unchanged with a stop before her
+   claim month" (`months worked` 1: every entitlement month a non-service month of the grace
+   year, 2028 = the no-test 10 checks); the separate spousal record (jack+jill with PIAs
+   2,360/800 and Jill not working: Jack 36 own crediting months, Jill's add-on 11 on the
+   spouse record, her own record untouched and paid throughout — RS 00615.482 B.3, and the
+   "N spouse" form of the Summary row); `ss_withheld_in` nominal (today's $ x `gamma_n`);
+   one warning per solve across two solves; the option's TOML/UI round trip (`parse_solver_options`
+   coercion, `config_to_ui`/`ui_to_config`); `explain`'s `applied` flag on; the switch-off
+   no-op checked on all three examples, not just jack+jill. The probe of the first review
+   (`et_step3_probe.py`) has been run for the `withSSAges` warning count all along; the new
+   tests pin it.
+
+**One finding not upheld.** The reviewer read 20 CFR 404.435 as deducting "the full benefit
+for each service month regardless of the annual excess" in the grace year. Re-read against
+the regulation (eCFR 2026-10-15 text, versioner API — it answered again today after the IP
+block of 2026-10-18): 404.434(a) charges the excess "each month from the beginning of the
+year, **until all of the estimated excess earnings have been charged**", and 404.435(a)(7)
+pays the non-service months of the grace year in full (Example 1: Don keeps May-December
+"even though his earnings have substantially exceeded the annual exempt amount"). So the
+total deduction is capped at the excess and skipped for non-service months — what step 1
+implements. POMS RS 02501.030 (TN 37, read the same day) agrees on the NSM definition ("a
+NSM exists whether or not the beneficiary has excess earnings for the year").
+
+Not changed (nits, recorded): `setSocialSecurity`'s restructure is the conflict magnet that
+`Plan._ss_streams(ages)` in both call sites (plan §4.4) implies; `ss_withheld_in` holds
+today's dollars until the rates are set (a pre-solve read only; noted in its docstring).
+
+Full suite after the fixes: 3320 passed / 1 skipped (9:33; 3310 + the 10 new tests). flake8
+clean; Ruff only upstream's `B905`.
 
 Next: step 4 (`withSSAges`: the clones carry the inputs and the switch).
 

@@ -396,3 +396,45 @@ def test_with_payroll_tax_round_trips(monkeypatch):
     monkeypatch.setattr(kz, "getCaseKey", uidic.get)
     _, run_opts = kz.getSolveParameters()
     assert run_opts["withPayrollTax"] is True
+
+
+# --------------------------------------------------------------------------------------
+# Review of step 5 (2026-10-22): the JSON outputs and the per-year sums
+# --------------------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(strict=True, reason="step 5 review: JSON summary lists its keys by hand")
+def test_json_output_reports_it():
+    """`owlcli run --output-format json` and the MCP's run_case serialize through
+    `plan_to_dict`, whose summary keys are listed by hand: the payroll tax (and the
+    earnings test's withholding, step 3) must be among them, and in each year's row."""
+    from owlplanner.cli.formatters import plan_to_dict
+
+    p = _solve(_load("jack+jill"), on=True, withEarningsTest=True)
+    d = plan_to_dict(p)
+    s = d["summary"]
+    assert s["payroll_tax_nominal"] == round(0.0765 * (180_000 * 2 + 185_000))
+    assert s["payroll_tax_today_dollars"] == round(float(np.sum(p.payroll_tax_n / p.gamma_n[: p.N_n])))
+    assert s["ss_withheld_nominal"] == round(float(np.sum(p.ss_withheld_in)))
+    assert s["ss_withheld_nominal"] > 0  # Jill's 2028
+    assert d["by_year"][_n(p, 2026)]["payroll_tax"] == round(0.0765 * 180_000)
+    assert d["by_year"][_n(p, 2029)]["payroll_tax"] == 0
+
+
+def test_tax_bills_and_csv_carry_it(tmp_path, monkeypatch):
+    """The Income sheet's and the CSV's "Tax bills + Med." include the tax, and the CSV
+    has the Cash Flow sheet's "payroll tax" column (nominal $)."""
+    import glob as _glob
+
+    import pandas as pd
+
+    from owlplanner.export import plan_to_csv
+
+    p = _solve(_load("jack+jill"), on=True)
+    monkeypatch.chdir(tmp_path)  # plan_to_csv writes worksheet_<basename>.csv in the cwd
+    plan_to_csv(p, "jj", p.mylog)
+    df = pd.read_csv(_glob.glob(str(tmp_path / "*.csv"))[0])
+    n = _n(p, 2026)
+    assert df["payroll tax"][n] == pytest.approx(-0.0765 * 180_000)
+    bills = p.T_n + p.U_n + p.medicare_n + p.J_n + p.aca_costs_n + p.st_T_n
+    assert df["Tax bills + Med."][n] == pytest.approx(bills[n] + 0.0765 * 180_000)

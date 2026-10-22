@@ -1,0 +1,8 @@
+et_plan_review_probe.py, 2026-10-22, owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+chris+pat, withEarningsTest on, Pat searched; basis in today's $
+  search under loop     : Chris 70y0m / Pat 63y2m  (  58.5s for the search)
+  search under exact LP : Chris 70y0m / Pat 63y0m  (  11.0s for the search)
+
+Local search at fixed ages (Chris 70y0m):
+  Pat   62y1m:   117,063.81  ( 66.6s)
+  Pat   63y0m:   117,272.77  (148.3s) <- exact-LP pick

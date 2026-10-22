@@ -471,6 +471,15 @@ leave it blank where it does not apply), where:
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
   counts. Where it is 0 or blank, or the column is absent, **Owl** uses 12 in a year with
   earnings.
+- When the solver option *withPayrollTax* is on (off unless the case asks for it), **Owl** also
+  charges the employee's payroll tax on the same earnings (*gross earnings*, else *anticipated
+  wages*), paid from the plan each year: 6.2% social security tax up to the wage base (\\$184,500
+  in 2026, held at that level in today's dollars), 1.45% Medicare tax, and 0.9% Additional
+  Medicare Tax on the household's earnings above \\$250,000 (married filing jointly) or \\$200,000
+  (single), not indexed. It is not deductible, so it lowers what the plan can spend without
+  changing income tax. All of *gross earnings* is taxed as wages: self-employment tax is not
+  modeled. Payroll deferrals are wages for this tax too, so **Owl** warns about the years with
+  wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
   cash flow and ordinary-income tax logic like wages. The Social Security earnings test does not

@@ -1271,6 +1271,51 @@ def computeNIIT(N_i, MAGI_n, I_n, Q_n, n_d, N_n):
     return J_n
 
 
+# Fork (Phase 5 step 5): employee payroll tax on earnings. IRS Pub. 15 (2026), "What's New"
+# and section 9: social security tax 6.2% up to the wage base, Medicare tax 1.45% with no
+# base. Instructions for Form 8959 (2025): Additional Medicare Tax 0.9% of the combined
+# Medicare wages above the filing status's threshold, "not indexed for inflation"
+# (single and qualifying surviving spouse $200,000, MFJ $250,000). Read on irs.gov
+# 2026-10-18 and 2026-10-22. After the last known year the wage base is held at that
+# level in today's dollars (by statute it follows the wage index, like the earnings
+# test's exempt amounts).
+payrollSSRate = 0.062
+payrollMedicareRate = 0.0145
+payrollAddlRate = 0.009
+payrollAddlThreshold = np.array([200_000, 250_000])
+_PAYROLL_WAGE_BASE = {2026: 184_500.0}
+
+
+def payrollTax(earnings_in, gamma_n, n_d, N_n, thisyear):
+    """
+    Employee payroll tax on each person's earnings (nominal $, shape (N_i, N_n)).
+
+    Return ``(ss_in, medicare_in, addl_n)``, nominal: social security tax per person
+    (capped at the wage base), Medicare tax per person, and the household's Additional
+    Medicare Tax, on joint earnings while the couple files jointly (before ``n_d``, as in
+    ``computeNIIT``) and on the survivor's after. Self-employment tax is not modeled:
+    all earnings are taken as wages.
+    """
+    earnings_in = np.maximum(np.asarray(earnings_in, dtype=float)[:, :N_n], 0.0)
+    N_i = earnings_in.shape[0]
+    gamma = np.asarray(gamma_n, dtype=float)[:N_n]
+    last = max(_PAYROLL_WAGE_BASE)
+    first = min(_PAYROLL_WAGE_BASE)
+    base_n = np.array(
+        [_PAYROLL_WAGE_BASE[min(max(thisyear + n, first), last)] for n in range(N_n)]
+    ) * gamma
+    ss_in = payrollSSRate * np.minimum(earnings_in, base_n)
+    medicare_in = payrollMedicareRate * earnings_in
+    addl_n = np.zeros(N_n)
+    status = N_i - 1
+    for n in range(N_n):
+        if status and n == n_d:
+            status -= 1
+        addl_n[n] = payrollAddlRate * max(0.0, np.sum(earnings_in[:, n]) - payrollAddlThreshold[status])
+
+    return ss_in, medicare_in, addl_n
+
+
 def rho_in(yobs, longevity, N_n):
     """
     Return Required Minimum Distribution fractions for each individual.

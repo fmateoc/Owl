@@ -14,7 +14,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from .. import socialsecurity as socsec
 from ..utils import normalize_mode_options, parse_switch
@@ -408,6 +408,7 @@ class SolverOptions(BaseModel):
     withSTAR: Optional[Literal["none", "loop", "optimize"]] = None  # fork: NY STAR credit
     withSSAges: Optional[Union[str, List[str]]] = None
     withEarningsTest: Optional[bool] = None  # fork: SSA earnings test on the SS streams (off by default)
+    withPayrollTax: Optional[bool] = None  # fork: employee payroll tax on earnings (off by default)
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None
     mipStrategy: Optional[Literal["branch-and-bound", "local-search"]] = None
@@ -467,12 +468,13 @@ class SolverOptions(BaseModel):
             raw = normalize_mode_options(dict(raw))
         return raw
 
-    @field_validator("withEarningsTest", mode="before")
+    @field_validator("withEarningsTest", "withPayrollTax", mode="before")
     @classmethod
-    def _parse_switch(cls, value: Any) -> Any:
-        """One parser with `Plan._earningsTestOn` (utils.parse_switch): a switch reads the
-        same whatever path it arrives by, and a value that is not one is refused."""
-        return parse_switch("withEarningsTest", value)
+    def _parse_switch(cls, value: Any, info: ValidationInfo) -> Any:
+        """One parser with `Plan._earningsTestOn` and `Plan._payrollTaxOn` (utils.parse_switch):
+        a switch reads the same whatever path it arrives by, and a value that is not one is
+        refused."""
+        return parse_switch(info.field_name, value)
 
 
 def parse_solver_options(raw: dict) -> dict:

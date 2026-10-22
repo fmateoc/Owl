@@ -572,6 +572,24 @@ def build_summary_dic(plan, N=None):
     taxPaidNow = np.sum(plan.J_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total net investment income tax paid", taxPaidNow, taxPaid)
 
+    # Fork (Phase 5 step 5): employee payroll tax on earnings. Reported whenever the solve
+    # charged it, $0 included, so that comparing two cases that both charge it keeps the rows.
+    if getattr(plan, "payroll_tax_applied", False):
+        _summary_currency_pair(
+            dic,
+            "Total payroll tax paid",
+            np.sum(plan.payroll_tax_n[:N] / plan.gamma_n[:N]),
+            np.sum(plan.payroll_tax_n[:N]),
+        )
+        if np.any(plan.payroll_addl_n[:N] > 0):
+            _summary_currency_pair(
+                dic,
+                "Additional Medicare tax",
+                np.sum(plan.payroll_addl_n[:N] / plan.gamma_n[:N]),
+                np.sum(plan.payroll_addl_n[:N]),
+                prefix="»  ",
+            )
+
     if np.any(plan.st_T_n > 0):
         stTaxPaid = np.sum(plan.st_T_n[:N], axis=0)
         stTaxPaidNow = np.sum(plan.st_T_n[:N] / plan.gamma_n[:N], axis=0)
@@ -958,6 +976,9 @@ def plan_metrics(plan, N=None) -> dict:
         "ltcg_tax_nominal": _s(plan.U_n[:N]),
         "niit_today": _st(plan.J_n[:N]),
         "niit_nominal": _s(plan.J_n[:N]),
+        # Fork (Phase 5 step 5): employee payroll tax, 0 when withPayrollTax is off.
+        "payroll_tax_today": _st(plan.payroll_tax_n[:N]),
+        "payroll_tax_nominal": _s(plan.payroll_tax_n[:N]),
         "state_tax_today": _st(plan.st_T_n[:N]),
         "state_tax_nominal": _s(plan.st_T_n[:N]),
         "state_itemized_today": _st(getattr(plan, "st_item_n", np.zeros(N))[:N]),
@@ -1033,6 +1054,8 @@ METRICS_COLUMN_MAP: dict[str, tuple[str, str]] = {
     "ltcg_tax_nominal": (f"Total tax paid on gains and dividends{_N}", "usd"),
     "niit_today": (f"Total net investment income tax paid{_T}", "usd"),
     "niit_nominal": (f"Total net investment income tax paid{_N}", "usd"),
+    "payroll_tax_today": (f"Total payroll tax paid{_T}", "usd"),
+    "payroll_tax_nominal": (f"Total payroll tax paid{_N}", "usd"),
     "state_tax_today": (f"Total state income tax paid{_T}", "usd"),
     "state_tax_nominal": (f"Total state income tax paid{_N}", "usd"),
     "state_itemized_today": (f"Total state itemized deduction{_T}", "usd"),
@@ -1146,7 +1169,13 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "net spending": plan.g_n,
         "taxable ord. income": plan.G_n,
         "taxable gains + divs": plan.Q_n,
-        "Tax bills + Med.": plan.T_n + plan.U_n + plan.medicare_n + plan.J_n + plan.aca_costs_n + plan.st_T_n,
+        "Tax bills + Med.": plan.T_n
+        + plan.U_n
+        + plan.medicare_n
+        + plan.J_n
+        + plan.aca_costs_n
+        + plan.st_T_n
+        + plan.payroll_tax_n,
     }
     fillsheet(ws, incomeDic, "currency", scale=inv_gamma, sheet_name="Income")
 
@@ -1172,6 +1201,9 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
     }
     if np.any(plan.st_T_n > 0):
         cashFlowDic["state taxes"] = -plan.st_T_n
+    # Fork (Phase 5 step 5): an outflow like the taxes above, so the rows still balance.
+    if np.any(plan.payroll_tax_n > 0):
+        cashFlowDic["payroll tax"] = -plan.payroll_tax_n
     ws = wb.create_sheet("Cash Flow")
     fillsheet(ws, cashFlowDic, "currency", scale=inv_gamma, sheet_name="Cash Flow")
 
@@ -1430,7 +1462,9 @@ def plan_to_csv(plan, basename, mylog):
     planData["net spending"] = plan.g_n
     planData["taxable ord. income"] = plan.G_n
     planData["taxable gains + divs"] = plan.Q_n
-    planData["Tax bills + Med."] = plan.T_n + plan.U_n + plan.medicare_n + plan.J_n + plan.aca_costs_n + plan.st_T_n
+    planData["Tax bills + Med."] = (
+        plan.T_n + plan.U_n + plan.medicare_n + plan.J_n + plan.aca_costs_n + plan.st_T_n + plan.payroll_tax_n
+    )
     planData["all wages"] = np.sum(plan.omega_in, axis=0)
     planData["all other inc"] = np.sum(plan.other_inc_in, axis=0)
     planData["all net inv"] = np.sum(plan.netinv_in, axis=0)
@@ -1450,6 +1484,8 @@ def plan_to_csv(plan, basename, mylog):
     planData["ACA premiums"] = -plan.aca_costs_n
     if np.any(plan.st_T_n > 0):
         planData["state taxes"] = -plan.st_T_n
+    if np.any(plan.payroll_tax_n > 0):
+        planData["payroll tax"] = -plan.payroll_tax_n
     planData["QME"] = plan.other_medical_n
     planData["HSA total wdrwl"] = np.sum(plan.w_ijn[:, 3, :], axis=0)
     planData["HSA→Medicare"] = plan.hsa_medicare_n

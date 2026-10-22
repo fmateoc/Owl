@@ -694,6 +694,12 @@ class Plan:
 
         # Debt payments array (length N_n)
         self.debt_payments_n = np.zeros(self.N_n)
+        # Employee payroll tax on earnings (fork, Phase 5 step 5), nominal $: the household
+        # total paid from the plan, and the Additional Medicare Tax part of it. Built at
+        # solve time when withPayrollTax is on (_payroll_tax).
+        self.payroll_tax_n = np.zeros(self.N_n)
+        self.payroll_addl_n = np.zeros(self.N_n)
+        self.payroll_tax_applied = False
         # Remaining debt balance at the start of each year (length N_n)
         self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
@@ -1194,7 +1200,8 @@ class Plan:
         )
         outflows = {
             "living": float(np.sum(self.g_n * inv_g)),
-            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n) * inv_g)),
+            # Fork: the payroll tax (zero unless withPayrollTax) is a federal tax too.
+            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n + self.payroll_tax_n) * inv_g)),
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
             "debt": float(np.sum(self.debt_payments_n * inv_g)),
@@ -1245,7 +1252,7 @@ class Plan:
         ) * inv_g
         outflows = {
             "living": self.g_n * inv_g,
-            "taxes": (self.T_n + self.U_n + self.J_n) * inv_g,
+            "taxes": (self.T_n + self.U_n + self.J_n + self.payroll_tax_n) * inv_g,
             "state_taxes": self.st_T_n * inv_g,
             "healthcare": (self.medicare_n + self.aca_costs_n) * inv_g,
             "debt": self.debt_payments_n * inv_g,
@@ -2477,6 +2484,58 @@ class Plan:
         opt = ((options if options is not None else self.solverOptions) or {}).get("withEarningsTest", False)
         return u.parse_switch("withEarningsTest", opt) is True
 
+    def _payrollTaxOn(self, options=None):
+        """
+        True when this solve charges the employee payroll tax (Phase 5 step 5, D3: off by
+        default). Read like ``_earningsTestOn``: one parser for the switch options.
+        """
+        opt = ((options if options is not None else self.solverOptions) or {}).get("withPayrollTax", False)
+        return u.parse_switch("withPayrollTax", opt) is True
+
+    def _payroll_tax(self, gamma_n):
+        """
+        Build ``payroll_tax_n`` (nominal $) for this solve: the employee's social security
+        and Medicare taxes on each person's earnings and the household's Additional
+        Medicare Tax (``tax_federal.payrollTax``), or zeros with the switch off.
+
+        Earnings are the earnings test's (``_earnings_test_inputs``: ``gross earnings``
+        where given, else ``anticipated wages``), W-2 box 5 being the base of both. The
+        tax is not deductible, so it is only a constant of the cash-flow row.
+        """
+        self.payroll_tax_applied = self._payrollTaxOn()
+        if not self.payroll_tax_applied:
+            self.payroll_tax_n = np.zeros(self.N_n)
+            self.payroll_addl_n = np.zeros(self.N_n)
+            return
+        earnings, _ = self._earnings_test_inputs()
+        ss_in, med_in, addl_n = tx.payrollTax(earnings, gamma_n, self.n_d, self.N_n, int(self.year_n[0]))
+        self.payroll_addl_n = addl_n
+        self.payroll_tax_n = np.sum(ss_in + med_in, axis=0) + addl_n
+
+    def _warnPayrollFallback(self):
+        """
+        Warn where the payroll tax falls back to ``anticipated wages`` (``gross earnings``
+        not given) in a year with a non-zero 401k/IRA deferral column: payroll deferrals
+        are FICA wages (W-2 boxes 3 and 5) but are not in ``anticipated wages``, so the tax
+        is understated there. The same columns as ``_warnGrossEarningsFallback``, over
+        every plan year, since the tax applies to every year with earnings.
+        """
+        deferrals = self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
+        for i, iname in enumerate(self.inames):
+            flagged = [
+                str(int(self.year_n[n]))
+                for n in range(self.horizons[i])
+                if self.omega_in[i, n] > 0 and self.etEarnings_in[i, n] <= 0 and deferrals[i, n] != 0
+            ]
+            if flagged:
+                self.mylog.print(
+                    f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: the payroll "
+                    f"tax uses 'anticipated wages' there, which leave out payroll deferrals (they are FICA "
+                    f"wages, W-2 boxes 3 and 5) and those years have a 401k/IRA contribution. Enter "
+                    f"'gross earnings' for them.",
+                    tag="WARNING",
+                )
+
     def _earningsTestResult(self, ages=None, gamma_n=None):
         """
         The SSA earnings test on this plan's streams at the given claiming ages (default:
@@ -2538,12 +2597,14 @@ class Plan:
             entitled_from.append(int(year) if year is not None and year <= last else None)
         return entitled_from
 
-    def _warnEarningsTest(self, options):
+    def _warnEarnings(self, options):
         """
-        The earnings-test warnings of one solve (plan §4.4), only where the solve applies
-        the test (``withEarningsTest``, D6).
+        The earnings warnings of one solve: the payroll tax's fallback warning where the
+        solve charges it (``withPayrollTax``, ``_warnPayrollFallback``), and the
+        earnings-test warnings (plan §4.4) where it applies the test (``withEarningsTest``,
+        D6).
 
-        Names the years in which the test falls back to ``anticipated wages`` and that
+        For the test: names the years in which the test falls back to ``anticipated wages`` and that
         understates what it counts (a deferral column is non-zero), and flags a fixed
         claiming age that pays nothing before FRA: every month of entitlement before FRA
         that falls in the plan is withheld, which usually means the age is a typo or a
@@ -2553,6 +2614,8 @@ class Plan:
         """
         if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
             return
+        if self._payrollTaxOn(options):
+            self._warnPayrollFallback()
         if not self._earningsTestOn(options):
             return
         searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
@@ -3045,6 +3108,8 @@ class Plan:
             # earnings test can only be applied here (Phase 5 step 3).
             self._ss_streams(self.ssecAges, gamma_n)
             self.zetaBar_in = self.zeta_in * gamma_n[:-1]
+            # Fork (Phase 5 step 5): the payroll tax on this solve's earnings.
+            self._payroll_tax(gamma_n)
             self.xiBar_n = self.xi_n * gamma_n[:-1]
             self.piBar_in = pension.compute_piBar_in(
                 self.pi_in,
@@ -5046,6 +5111,8 @@ class Plan:
             )
             # Subtract debt payments (negative cash flow)
             rhs -= self.debt_payments_n[n]
+            # Fork: employee payroll tax on earnings (zero unless withPayrollTax).
+            rhs -= self.payroll_tax_n[n]
             row = self.A.newRow({self.vm["g"].idx(n): 1})
             row.addElem(self.vm["s"].idx(n), 1)
             row.addElem(self.vm["m"].idx(n), 1)
@@ -6607,6 +6674,7 @@ class Plan:
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
             "withEarningsTest",  # SSA earnings test on the SS streams (fork, Phase 5); off by default
+            "withPayrollTax",  # employee payroll tax on earnings (fork, Phase 5 step 5); off by default
             "withDuals",  # Re-solve final LP with binaries fixed to extract shadow prices
             "withdrawalOrder",  # "optimal" (default) or "taxable_first" (naive ordering gates)
             "mipStrategy",  # "branch-and-bound" (default) or "local-search" for the optimize modes
@@ -6646,6 +6714,8 @@ class Plan:
         # The same contract for the switch options: refused at the door, not mid-solve.
         if "withEarningsTest" in myoptions:
             myoptions["withEarningsTest"] = self._earningsTestOn(myoptions)
+        if "withPayrollTax" in myoptions:
+            myoptions["withPayrollTax"] = self._payrollTaxOn(myoptions)
 
         # A "budget" profile is evaluated now, on the plan's current horizon and first death. Under
         # maxBequest its first year is the spending level unless a positive netSpending is given (see
@@ -6778,7 +6848,7 @@ class Plan:
 
         # OBBBA 65+ senior-deduction phaseout uses the AGI-basis MAGI (taxable SS only).
         self._adjustParameters(self.gamma_n, self.MAGI_n)
-        self._warnEarningsTest(myoptions)
+        self._warnEarnings(myoptions)
         # Fork: mortgage interest and the budget feed the itemized deduction's columns, so debts and
         # fixed assets are processed before the variable map is built (upstream: after).
         self.processDebtsAndFixedAssets()
@@ -6918,7 +6988,7 @@ class Plan:
         fixed_opts = dict(options, withSSAges="fixed")
         # Once per solve, before the candidates: the searched ages are still open here, so
         # the warning covers every year the test could reach (plan §5 step 3).
-        self._warnEarningsTest(options)
+        self._warnEarnings(options)
 
         def _set(plan, ages):
             plan.setSocialSecurity(
@@ -7033,7 +7103,7 @@ class Plan:
 
         run_loop()
         # Once per solve: the seeding solves above are nested, and skipped inside.
-        self._warnEarningsTest(myoptions)
+        self._warnEarnings(myoptions)
         if self.caseStatus != "solved":
             self.mylog.print("Local search: the self-consistent loop found no plan to start from.", tag="WARNING")
             self.solverOptions = myoptions
@@ -7326,6 +7396,7 @@ class Plan:
             + self.medicare_n
             + self.aca_costs_n
             + self.debt_payments_n
+            + self.payroll_tax_n
         )
         rhs = (
             np.sum(self.omega_in, axis=0)

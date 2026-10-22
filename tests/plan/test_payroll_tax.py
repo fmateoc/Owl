@@ -48,9 +48,8 @@ from owlplanner.config import load_toml
 from owlplanner.export import build_summary_dic
 from owlplanner.mylogging import Logger
 
-# Test-first (phase5-plan.md §5b): the spec commit marks every test xfail(strict=True);
-# the implementation commit removes the marker.
-pytestmark = pytest.mark.xfail(strict=True, reason="Phase 5 step 5 not implemented yet")
+# Step 5 was written test-first (phase5-plan.md §5b): the spec commit marked every test
+# xfail(strict=True); the implementation commit removed the marker.
 
 # Frozen plan start (tests/conftest.py freezes the date; keep this in step with it).
 THISYEAR = 2026

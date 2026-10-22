@@ -69,13 +69,38 @@ exact LP. Three problems, two measured:
    today and the merge changed several rules, so the cause is not isolated). An argmax over 97
    candidates whose values carry loop noise of up to ~1% selects partly on noise.
 3. **The "exact LP" is not exact in ACA years.** The CLAUDE.md recipe (`withMedicare="none"`,
-   `withSSTaxability=0.85`) leaves ACA in the loop (read in code: only `breakpointMethod` sets
-   `withACA="optimize"`, and only when `slcsp_annual > 0`). The household has ACA years
+   `withSSTaxability=0.85`) leaves ACA in the loop unless `withACA="optimize"` is added (read in
+   code: the local-search preset sets it, in `_applyBreakpointOptions`, when `slcsp_annual > 0`;
+   the recipe does not). The household has ACA years
    (`aca_start_year = 2027`, and since #208 the months before each 65th birthday in 2029), and
    part-time earnings put ACA-year MAGI near the 400% cliff, where a loop cannot price the jump.
    chris+pat has no SLCSP, so step 4's cross-check never met this.
 
-*(Probe results pending: `et_plan_review_probe.py` and `et_aca_reference_probe.py` were running when this draft was committed.)*
+**Measured** (`fork-notes/phase5/et_plan_review_probe_2026-10-22.txt`; chris+pat, test on, Chris
+held at 70, Pat searched; the first search ran while the full suite was also running, so its
+time is high):
+
+| Pat's age | Local search basis (today's $) | |
+|---|---:|---|
+| 62y1m | 117,063.81 | |
+| **63y0m** | **117,272.77** | pick of the exact-LP search (11 s) |
+| 63y2m | 117,240.30 | pick of the loop search (58.5 s) |
+| 64y0m | 117,141.91 | |
+| 65y0m | 117,171.27 | |
+| 66y0m | 117,128.01 | |
+| 67y0m | 117,008.06 | |
+| 68y0m | 116,969.41 | |
+| 69y0m | 116,703.19 | |
+| 70y0m | 116,441.90 | |
+
+Local search took 67-177 s per solve. Of the ages it scored, it ranks the exact-LP pick best and
+the loop's pick \$32/yr lower. The ranking is not smooth (65y0m above 64y0m by \$29): local
+search is not a proven optimum, so differences of tens of dollars between neighbouring ages
+are within its own noise. One case and one searched spouse; months other than the two picks
+were not scored under local search. It supports, but does not prove, the exact LP as the
+age-search reference when ACA is not involved.
+
+*(ACA-reference probe `et_aca_reference_probe.py` running when this was committed.)*
 
 **Proposed step 6 method** (replaces "run each with local search and with the exact LP"):
 (a) search the ages with a cheap, noiseless reference: the exact LP **plus `withACA="optimize"`**

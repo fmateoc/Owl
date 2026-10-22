@@ -6,3 +6,12 @@ chris+pat, withEarningsTest on, Pat searched; basis in today's $
 Local search at fixed ages (Chris 70y0m):
   Pat   62y1m:   117,063.81  ( 66.6s)
   Pat   63y0m:   117,272.77  (148.3s) <- exact-LP pick
+  Pat   63y2m:   117,240.30  (107.1s) <- loop pick
+  Pat   64y0m:   117,141.91  (111.1s)
+  Pat   65y0m:   117,171.27  (136.7s)
+  Pat   66y0m:   117,128.01  (128.8s)
+  Pat   67y0m:   117,008.06  (110.1s)
+  Pat   68y0m:   116,969.41  (176.9s)
+  Pat   69y0m:   116,703.19  (134.1s)
+  Pat   70y0m:   116,441.90  (100.7s)
+  best under local search among these: Pat 63y0m at 117,272.77

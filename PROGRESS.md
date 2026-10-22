@@ -2125,7 +2125,10 @@ Decisions R1-R6 for the user (note §5): two-stage step 6 method; whether any va
 spouse on employer coverage alone (Owl has one household `aca_start_year`); keep the spousal-rule
 copy; no Phase 4 code now; Phase 6 folded in; fill the real case before step 6's runs.
 
-Next: the user's answers to R1-R6; then step 9's draft and step 5.
+**Answered 2026-10-22: R1, R3, R4, R5 as recommended; R2 no** (no variant has one spouse on
+employer coverage alone, so no per-person ACA start). R6 (the real case) open.
+
+Next: step 9's draft (`fork-notes/issue-earnings-test.md`), then step 5.
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

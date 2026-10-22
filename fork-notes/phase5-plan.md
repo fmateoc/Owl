@@ -566,7 +566,9 @@ mis-prices the ACA years every household variant has. So: search the ages under 
 whole years 62-70 under local search at fixed ages; local search decides, and differences under
 its own spread between neighbouring ages are unresolved. Variants as generic case/HFP overrides,
 so the script also serves the locality and rent/buy comparisons (Phase 6 folded in). Needs the
-household's real SLCSP. The paragraph below is the original text.
+household's real SLCSP. The paragraph below is the original text. *(Decided by the user
+2026-10-22: R1 (this method), R3-R5 as recommended; R2 no, so one household `aca_start_year`
+is enough.)*
 
 `fork-notes/phase5/work_sweep.py` (fork-notes, not core; the HFP builder belongs to Owl-budget,
 #175): from a base case + HFP and a small JSON of work variants (per person: last work year,

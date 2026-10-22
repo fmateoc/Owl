@@ -212,6 +212,11 @@ depends on them.
 
 ## 5. Decisions for the user
 
+**Answered by the user 2026-10-22: R1, R3, R4, R5 as recommended; R2 no** (no work variant has one
+spouse on employer coverage alone while the other is on the marketplace, so the household
+`aca_start_year` is enough and no per-person ACA start is needed). R6 (fill the real case) not
+answered yet; it stays a precondition of step 6's runs.
+
 | # | Question | Recommendation |
 |---|---|---|
 | R1 | Step 6 method: two-stage (exact-LP age search, with ACA optimized in ACA years; then local search at fixed ages decides) instead of local search inside the age search | Yes (§3.2; measured on chris+pat) |

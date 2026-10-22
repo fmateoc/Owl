@@ -476,8 +476,9 @@ leave it blank where it does not apply), where:
   wages*), paid from the plan each year: 6.2% social security tax up to the wage base (\\$184,500
   in 2026, held at that level in today's dollars), 1.45% Medicare tax, and 0.9% Additional
   Medicare Tax on the household's earnings above \\$250,000 (married filing jointly) or \\$200,000
-  (single), not indexed. It is not deductible, so it lowers what the plan can spend without
-  changing income tax. All of *gross earnings* is taxed as wages: self-employment tax is not
+  (single), not indexed. It is not deductible: no tax computation counts it, but it is cash the
+  plan must pay, so it lowers what the plan can spend (and the withdrawals that pay it are taxed
+  like any other). All of *gross earnings* is taxed as wages: self-employment tax is not
   modeled. Payroll deferrals are wages for this tax too, so **Owl** warns about the years with
   wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.

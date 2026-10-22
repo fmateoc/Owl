@@ -403,7 +403,6 @@ def test_with_payroll_tax_round_trips(monkeypatch):
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="step 5 review: JSON summary lists its keys by hand")
 def test_json_output_reports_it():
     """`owlcli run --output-format json` and the MCP's run_case serialize through
     `plan_to_dict`, whose summary keys are listed by hand: the payroll tax (and the

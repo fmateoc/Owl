@@ -2092,6 +2092,41 @@ changes #207, #208, #212) and the PIA ratio (#211).
 Next: step 9's draft (D8: the upstream issue, `fork-notes/issue-earnings-test.md`; it should say
 the builder mirrors `_add_spousal_benefit`'s #211 rule), then step 5 (payroll tax).
 
+## Plan review after upstream `37afa2a` (2026-10-22, on `claude/phase5-step1`)
+
+`fork-notes/plan-review-2026-10-22.md`. Phase 5's design (a stream-level earnings test, no LP
+piece) still holds and #195 strengthened it; the builder's copy of upstream's spousal rule is the
+weak point the merge exposed (#211), kept and guarded by the grid test. Step 9's evidence is
+unchanged on stock `dev` `37afa2a` (`et_examples_2026-10-22_dev37afa2a.txt`). No payroll tax
+upstream, so step 5 stays.
+
+**Step 6's method changes** (measured on chris+pat, test on, Pat searched; `et_plan_review_probe`,
+`et_aca_reference_probe`, `et_aca_ls_check`, all 2026-10-22):
+- local search costs 67-177 s per solve, so a local-search age search (up to 97 candidates per
+  spouse per round) is hours per variant;
+- the loop's pick moved 63y0m (10-21) → 63y2m (today); local search ranks 63y0m best of 11 ages
+  scored, 63y2m \$32/yr lower, and its own neighbour noise is tens of dollars;
+- the exact LP's search (11 s) picked 63y0m; with a stand-in SLCSP (\$20k/yr from 2029) the exact
+  LP with `withACA="optimize"` (172 s per search) also picks 63y0m, but values getting under the
+  400% cliff at \$528/yr where the case's own model gives \$14 and local search keeps the income
+  (+\$210/yr over that) and pays the full ACA. Local search did not miss a better plan there.
+So: search ages under the exact LP (ACA optimized when there are ACA years), score the picks and
+whole years under local search at fixed ages; local search decides. The CLAUDE.md cross-check
+rule does not apply to plans with ACA years (caveat added to "Loop noise").
+
+Remaining phases: Phase 4 mostly covered upstream now (medical inflation, #199-#202, #208); NY
+community rating has no effect on this household (both spouses are 64-65 in the one year with a
+lone enrollee, so the CMS curve gives 1/2); left: NY Essential Plan, only if a variant's ACA-year
+MAGI is under 200% FPL. Phase 6 folded into step 6 (generic overrides). The real case is still
+not filled (`otherFiles/` has no case); since the merge the birth dates and the SLCSP change
+results directly.
+
+Decisions R1-R6 for the user (note §5): two-stage step 6 method; whether any variant has one
+spouse on employer coverage alone (Owl has one household `aca_start_year`); keep the spousal-rule
+copy; no Phase 4 code now; Phase 6 folded in; fill the real case before step 6's runs.
+
+Next: the user's answers to R1-R6; then step 9's draft and step 5.
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

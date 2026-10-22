@@ -56,7 +56,7 @@ through a batch of 18+ issues filed 2026-10-20/21; a design issue may wait behin
 ### 3.2 Step 6 (work-scenario sweep): the method needs changing
 
 The plan says: for each work variant, `withSSAges` on both, run with local search and with the
-exact LP. Three problems, two measured:
+exact LP. Three problems, each measured below:
 
 1. **A local-search age search is out of reach.** Each candidate is a full solve; local search
    took about 120 s per solve on chris+pat (step 4, `et_step4_crosscheck_2026-10-21.txt`), the
@@ -100,16 +100,42 @@ are within its own noise. One case and one searched spouse; months other than th
 were not scored under local search. It supports, but does not prove, the exact LP as the
 age-search reference when ACA is not involved.
 
-*(ACA-reference probe `et_aca_reference_probe.py` running when this was committed.)*
+**Measured, ACA** (`et_aca_reference_probe_2026-10-22.txt`, `et_aca_ls_check_2026-10-22.txt`):
+chris+pat with a stand-in benchmark, `slcsp_annual = 20` (\$k/yr, not a quote) from 2029, the
+year after Pat's last work year; Chris on Medicare from 2028; ages fixed at 70y0m / 63y0m; test on.
+
+| Method | Basis (today's \$) | Lifetime ACA | Time per solve |
+|---|---:|---:|---:|
+| loop | 115,887.36 | 19,906 | 1.0-1.1 s |
+| case's model, `withACA="optimize"` only (branch-and-bound, the rest in the loop) | 115,901.67 | 1,203 | 7.4 s |
+| local search | **116,111.50** | 19,906 | 125 s |
+| exact LP (ACA in the loop) | 119,175.99 | 19,906 | 0.1 s |
+| exact LP + `withACA="optimize"` | 119,703.69 | 1,203 | 4.4 s |
+
+- In the case's own model, getting under the cliff (ACA MAGI about \$27-29k in 2029-2030
+  instead of \$134-142k, against a 400% line of \$82-86k) is worth only \$14/yr over the loop,
+  and local search does better (+\$210/yr over that) by keeping the 2029-2030 income and paying
+  the full ACA. So local search did not miss a better plan here: nothing like the LTCG blocking
+  of #197.
+- The exact LP misjudges the same trade: with no Medicare costs and Social Security taxability
+  pinned at 85%, it values getting under the cliff at \$528/yr (119,703.69 vs 119,175.99); which
+  of the two simplifications causes it was not isolated. So the exact LP is a fast, noiseless model for
+  *searching*, not a faithful one for *deciding* in ACA years.
+- An age search under the exact LP + `withACA="optimize"` took 172 s (97 candidates, 4 threads)
+  and picked Pat 63y0m, the same as the plain exact LP and as local search's best among the ages
+  scored above.
 
 **Proposed step 6 method** (replaces "run each with local search and with the exact LP"):
-(a) search the ages with a cheap, noiseless reference: the exact LP **plus `withACA="optimize"`**
-when the variant has ACA years (one ACA bracket binary block, only in the ACA years; its cost is
-not measured yet, measure it first on a stand-in with an SLCSP); (b) evaluate the pick, the
-loop's pick and a few neighbours (±6-12 months, whole years) under local search at fixed ages;
-(c) decide differences by the CLAUDE.md rule (local search vs the reference, same sign, above
-their spread). Cost per variant: one cheap search plus a handful of 2-minute local-search
-solves, instead of hours.
+(a) search the ages under the exact LP, with `withACA="optimize"` added when the variant has
+ACA years (11 s and 172 s per one-spouse search on chris+pat); (b) score under local search at
+fixed ages the reference's pick, the loop's pick and the whole years 62-70 of each searched
+spouse (about 10-20 solves of about 2 minutes); the decision is local search's best; (c) compare
+variants by local search. Every household variant has ACA years (2027-2028 at least), so the
+CLAUDE.md cross-check rule (local search against the exact LP, same sign, above their spread)
+does not apply to them: the exact LP mis-prices exactly those years (above). In its place: a
+difference is resolved when it is larger than local search's own spread between neighbouring
+ages (tens of dollars a year on chris+pat). Cost per variant: a few minutes of search plus 20-40
+minutes of local search, instead of hours. CLAUDE.md's "Loop noise" gotcha gets this caveat.
 
 Related template change: `Case_us.template.toml` sets `withSSAges = "optimize"` together with
 `withMedicare = "optimize"`, so every candidate of a direct `owlcli run` is a MIP solved by
@@ -136,8 +162,8 @@ that age searches go through the sweep script's two-stage method.
 - **Step 10 (docs)**: `modeling-capabilities.md` done 2026-10-22 (`59ea495`); left: the
   `socialsecurity.py` module docstring, `Documentation.py`, template comments (§3.2).
 
-**Revised order**: step 9 draft → step 5 → step 6 (method of §3.2; first measure the cost of the
-ACA-optimize reference) → step 8 → step 10. Steps 5 and 9 are independent.
+**Revised order**: step 9 draft → step 5 → step 6 (method of §3.2) → step 8 → step 10. Steps 5
+and 9 are independent. Step 6 needs the household's real SLCSP (§3.3).
 
 ## 4. Remaining phases
 
@@ -168,7 +194,7 @@ NY-specific, so fork-only by lesson 3).
 ### Phase 6, sweep and report: fold into Phase 5 step 6
 
 Upstream still has no general scenario sweep (`owlcli` has `run`, `compare`, `explain`,
-`frontier`; the MCP has `compare_cases` / `compare_to_baseline` and the conversion regret sweep;
+`frontier`, `list`, `serve`; the MCP has `compare_cases` / `compare_to_baseline` and the conversion regret sweep;
 read in code). Phase 5 step 6 is a sweep script over work variants; the residency and housing
 comparisons of Phase 0 (`phase0-scenarios.md` §§3-5) are the same mechanics (a base case plus
 overrides, the two-stage method of §3.2, one table per run). **Recommendation:** write step 6's
@@ -188,7 +214,7 @@ depends on them.
 
 | # | Question | Recommendation |
 |---|---|---|
-| R1 | Step 6 method: two-stage (cheap noiseless age search, then local search at fixed ages) instead of local search inside the age search | Yes (§3.2); measure the ACA-optimize reference cost first |
+| R1 | Step 6 method: two-stage (exact-LP age search, with ACA optimized in ACA years; then local search at fixed ages decides) instead of local search inside the age search | Yes (§3.2; measured on chris+pat) |
 | R2 | Does any work variant have one spouse on employer coverage alone while the other is on the marketplace? | Your facts; if yes, add a per-person ACA start before step 6 |
 | R3 | Keep the builder's copy of the spousal rule, guarded by the grid test (vs refactoring upstream's function) | Keep (§2) |
 | R4 | Phase 4: no code now; decide the NY Essential Plan from step 6's output | Yes |

@@ -4,3 +4,5 @@ chris+pat + slcsp_annual 20 ($k) from 2029, withEarningsTest on; basis and ACA i
   exact LP (ACA loop)      basis   119,175.99  lifetime ACA    19,906  (   0.1s)
   exact LP + ACA optimize  basis   119,703.69  lifetime ACA     1,203  (   4.4s)
   local search             basis   116,111.50  lifetime ACA    19,906  ( 125.2s)
+
+Pat age search under exact LP + ACA optimize: solved, Pat 63y0m, basis 119,703.69  (172.2s for the search)

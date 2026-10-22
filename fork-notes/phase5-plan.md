@@ -558,6 +558,16 @@ constant in the AGI rows. Tests: hand computation for one year; off → no-op on
 
 ### Step 6: scenarios and sweep — size M (D4, D5)
 
+**Method revised 2026-10-22** (`fork-notes/plan-review-2026-10-22.md` §3.2, measured on
+chris+pat): a local-search age search costs hours per variant (about 2 minutes per candidate,
+up to 97 candidates per spouse per round), loop picks move with loop noise, and the exact LP
+mis-prices the ACA years every household variant has. So: search the ages under the exact LP
+(with `withACA="optimize"` when there are ACA years), then score the pick, the loop's pick and the
+whole years 62-70 under local search at fixed ages; local search decides, and differences under
+its own spread between neighbouring ages are unresolved. Variants as generic case/HFP overrides,
+so the script also serves the locality and rent/buy comparisons (Phase 6 folded in). Needs the
+household's real SLCSP. The paragraph below is the original text.
+
 `fork-notes/phase5/work_sweep.py` (fork-notes, not core; the HFP builder belongs to Owl-budget,
 #175): from a base case + HFP and a small JSON of work variants (per person: last work year,
 `months worked` that year, part-time earnings and years, deferral % — real numbers stay in
@@ -595,6 +605,8 @@ user files it. Payroll tax as a separate, later issue if D3 = core. When upstrea
 own design, take theirs and drop ours, as before.
 
 ### Step 10: docs — size S
+
+*(2026-10-22: `modeling-capabilities.md` SS row done, `59ea495`.)*
 
 `socialsecurity.py` module docstring (limitation → what is modeled and the assumptions: even
 spread over `months worked`, exempt amounts at inflation, family charging exact only with one free
@@ -669,5 +681,6 @@ step 4. The table keeps the options as they were put.
 ## 8. Order and size
 
 Step 0 (S) → 1 (M) → 2 (S) → 3 (M) → 4 (M) → [9 upstream draft] → 5 (S) → 6 (M) → 7 (conditional)
-→ 8 (M) → 10 (S). Steps 1-4 are the earnings test itself; 5-8 turn it into answers for the
+→ 8 (M) → 10 (S). *(2026-10-22: steps 0-4 done; next 9 (draft) and 5, then 6 with the revised method, 8, 10;
+7 dropped. `plan-review-2026-10-22.md`.)* Steps 1-4 are the earnings test itself; 5-8 turn it into answers for the
 household. All decisions answered 2026-10-18 (§6); step 7 dropped.

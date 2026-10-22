@@ -2224,6 +2224,9 @@ rate* and `showTaxes` ("Income Tax") stay income taxes only; a public employee o
 Security, or hired before 1986 outside Medicare (both recalled), is taxed as covered (no input
 says otherwise).
 
+Full suite: **3486 passed, 1 skipped** (11:07; 3484 + the 2 review tests). flake8 clean; Ruff only
+upstream's `B905`.
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

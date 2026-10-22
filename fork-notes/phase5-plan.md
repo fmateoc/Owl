@@ -586,6 +586,10 @@ implementation). Rates re-read on irs.gov the same day (Pub. 15 (2026): 6.2% / 1
 Tests: `tests/plan/test_payroll_tax.py`, 19. Off is a no-op by construction (a zero constant)
 and through the recorded values of the full suite, which did not move.
 
+Reviewed the same day (PROGRESS.md "Review of step 5"): the JSON outputs (`owlcli run
+--output-format json`, the MCP `run_case`) now carry the tax and the earnings test's withholding;
+a doc sentence corrected; 21 tests.
+
 ### Step 6: scenarios and sweep — size M (D4, D5)
 
 **Method revised 2026-10-22** (`fork-notes/plan-review-2026-10-22.md` §3.2, measured on

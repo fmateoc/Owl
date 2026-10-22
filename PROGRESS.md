@@ -2191,6 +2191,39 @@ Full suite: **3484 passed, 1 skipped** (11:17; 3465 + 19). flake8 clean; Ruff on
 Next: step 6 (scenarios and sweep, method of `plan-review-2026-10-22.md` §3.2; needs the
 household's real SLCSP), then 8 and 10.
 
+### Review of step 5 (2026-10-22)
+
+Independent pass over `af522c3..80971a3`. Held (checked): the rates and the citation (Pub. 15's
+rates subsection sits under "9. Withholding From Employees' Wages" in the saved page text); the
+filing status (`n_d` = the shorter horizon, so index `n_d` is the first year after the death and
+the death year is joint, as `irmaaStatus` and IRC 6013(a)(2)); the per-person wage base (Pub. 15:
+each employer stops at \$184,500; that a second employer's excess comes back on the return, so
+the year's cash is the capped amount, is recalled, not read here);
+`anticipated wages` is gross minus deferrals, not take-home (`PARAMETERS.md`), so the tax is not
+counted twice; a payroll HSA is out of both the base and `anticipated wages`; the tax is rebuilt
+per solve, so historical and Monte Carlo runs index the base with each scenario's inflation;
+upper bounds that add incomes (`_incomeCeiling`, `_gateCeilings`) stay valid with an outflow;
+`owlcli compare` diffs every `plan_metrics` key, so it reports the tax. Fixed (spec `d5f1ae7`,
+then the fix):
+
+1. **JSON outputs left it out.** `owlcli run --output-format json` and the MCP `run_case`
+   serialize through `cli/formatters.plan_to_dict`, whose summary keys are listed by hand:
+   neither the payroll tax nor the earnings test's withholding (a step-3 gap) was there. Added
+   `payroll_tax_nominal` / `_today_dollars`, `ss_withheld_nominal` / `_today_dollars` and a
+   per-year `payroll_tax`. Test `test_json_output_reports_it` (strict xfail in the spec).
+2. **Doc wording.** `Documentation.py` said the tax lowers spending "without changing income
+   tax"; the withdrawals that pay it are taxed. Reworded.
+3. **Test gap.** Nothing pinned the tax in "Tax bills + Med." or the CSV; new
+   `test_tax_bills_and_csv_carry_it` (passes on arrival, a regression guard).
+
+Left as they are (judgment, not defects): with both switches on, a year without `gross earnings`
+can be named by two warnings (the test's, for the years it reaches, and the payroll tax's, for
+every year; chris+pat's Pat 2028 by both); the deferral check counts IRA contributions, which are
+not payroll deferrals (the message says "401k/IRA", as step 3's); the Summary's *Effective tax
+rate* and `showTaxes` ("Income Tax") stay income taxes only; a public employee outside Social
+Security, or hired before 1986 outside Medicare (both recalled), is taxed as covered (no input
+says otherwise).
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

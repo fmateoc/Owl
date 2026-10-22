@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-21)
+# Owl fork — progress (as of 2026-10-22)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -31,7 +31,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing") |
-| #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | Checked 2026-10-21: no claim found wrong; household-relevant: #200/#201 (ACA 400% line, 2027 table), #208/#199 (2029 Medicare/ACA months), #211 (spousal DRCs, if PIA ratio < 0.5), #207/#212 (born on the 1st). Maintainer will work through them; take theirs on sync. `fork-notes/upstream-199-217/README.md`, section "Upstream issues #199-#217 checked" |
+| #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | **Fixed upstream** (`dev` `37afa2a`, 2026-10-22) except #204 (proposal), #205, #206; #218 (survivor's home-sale exclusion) too. Merged 2026-10-22, theirs; fork adaptations and a review fix in "Upstream `dev` `37afa2a` merged". Checked before the fixes 2026-10-21: no claim found wrong (`fork-notes/upstream-199-217/README.md`) |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md`, **revised after the user's review: drop "convex"** (as an opt-in it is a choice with no signal for when to make it; the warning misses a loop that settles short; dominated by "optimize" when the rest is exact); **PR reworked the same day**: branch `ss-convex-pr` force-pushed (lease on `fb8b10e`) to `e5a9ad5`, one commit on `dev` `7abed19` (the warning only, pointing to `withSSTaxability="optimize"`; `tests/plan/test_ss_residual_warning.py`; upstream suite 2869 passed, 1 skipped); new PR title/text (`pr-193-body.md`) **pasted and reply (`pr-196-reply.md`) posted by the user** (2026-10-17); awaiting the maintainer. The reply promises the local-search LTCG issue (`issue-ls-ltcg.md`) as a separate issue |
 | #197 Local search pins the LTCG regime binaries in step (b) (`fork-notes/issue-ls-ltcg.md`) | **Filed by the user as #197** (2026-10-17). **Patch applied in the fork** the same day; household stand-ins rerun, no decision moves. Stock repro on `dev` `7abed19`: john+sally local-search preset 20,004 vs branch-and-bound 31,778; patch (step (b) leaves `zl` free) gives 31,778, never lower on the 18 examples, 1.53x the time. Section "Local search and the LTCG family" |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
@@ -2026,6 +2026,71 @@ What matters for the household (template: NY, both born 1964, ACA from 2027):
 
 Nothing drafted for upstream (not our issues; every checked claim holds; the maintainer will work
 through them). Before decision runs: real birth dates and the PIA ratio.
+
+## Upstream `dev` `37afa2a` merged (2026-10-22, on `claude/phase5-step1`)
+
+25 upstream commits since `bb52632`: fixes for #199-#203 and #207-#217 (the issues checked on
+2026-10-21, `fork-notes/upstream-199-217/README.md`, now with a status section) and #218 (a
+survivor's home sale more than 2 years after the death gets the \$250,000 exclusion), the
+claiming-age search passing the model to MOSEK in bulk, MCP sweeps holding SS ages, pandas
+`inplace` removal. Not fixed upstream: #204, #205, #206.
+
+Merge (`41eb4a7`). Conflicts in 10 files: `CHANGELOG.md` (fork Unreleased, then upstream's WIP
+and 2026.10.21, kept verbatim: checked by substring), `info/modeling-capabilities.md` (fork rows
+kept, upstream's #203 sentence and the local-search/`withSSAges` sentence carried in),
+`explain.py` (one note string, both sides), `taxes_state.toml` (NY: upstream's
+`roth_conversion = "exemption"` with the fork's recapture and IT-196 keys), `plan.py` (2),
+`socialsecurity.py` (1), `tax_state.py` (4), three test files. Fork adaptations:
+- **#203**: `roth_conversion_eligible` (bool) became `roth_conversion` = `"exemption"` |
+  `"taxed"` | `"excluded"`. `StateTaxParams.conv_ok_n` → `conv_n` (object array of the mode,
+  upstream's dict key), `Plan.st_conv_n` as upstream; `st_schedule` stays typed (upstream's dict
+  version dropped again). `_state_agi_and_ti` now also leaves out conversions in "excluded"
+  years (PA, MS), as the `state_taxable_income` row does; no NY plan changes.
+- **#210**: upstream's widow(er)'s limit after the age reduction takes the fork's
+  `deceased_factor` (the deceased's ARF-adjusted factor) where given.
+- **#211**: mirrored in the earnings-test builder (own DRCs come out of the spousal excess), so
+  it still equals `compute_social_security_benefits` with no earnings.
+- `test_ss_residual_warning`: upstream's \$90k (moved from \$95k by #208's Medicare proration),
+  the fork's `withItemized="none"`.
+- Docs: CHANGELOG/CLAUDE.md names (`conv_n`). Separately (`59ea495`), the SS row of
+  `modeling-capabilities.md` no longer says the earnings test is not modeled.
+
+Full suite on the merge: **3463 passed, 1 skipped** (15:53, with other tests running alongside;
+3334 before; upstream's 20 changed test files add 87 test functions and remove 6, plus
+parametrizations; not accounted test by test). flake8 clean; Ruff only upstream's B905.
+
+Merge review (2026-10-22, `b99990f`):
+- **Found and fixed**: `_setup_itemized` built `item_base_n` (the standard deduction an itemized
+  total is compared with, 65+ additions included) from calendar birth years, while upstream's
+  #207 moved `taxParams` and `seniorBonusSchedule` to `yobs_tax` (a January 1 birthday reaches
+  65 the year before). An itemizer born on January 1 would have had the 65+ addition counted a
+  year late in that comparison. Now `yobs_tax`; new
+  `test_january_first_birthday_counts_65_a_year_early_for_itemizers` (failed before). The other
+  fork call sites of federal age-65 rules already use `yobs_tax` (grep of `tx.` calls). STAR's
+  Enhanced age test keeps calendar years: it is NY's rule, not the IRS's day-before convention
+  (recalled, not checked against RPTL 425).
+- **Test gap closed**: no zero-earnings grid case had a spousal add-on on an own benefit with
+  DRCs. Added one (3000/1000, lower earner at 70). Mutation check: with the #211 mirror removed
+  the builder pays \$2,880/yr more than `compute_social_security_benefits` on it; with the mirror,
+  180 zero-earnings cases (PIA ratios 1/3 to 3, claims 62-70, births on the 1st) agree within
+  \$5e-10.
+- Checked, nothing to change: no new variable blocks for `localsearch.FAMILIES` /
+  `ALWAYS_FREE`; fork calls of the changed Medicare/ACA/IRMAA functions (`mediCosts`,
+  `acaCosts`, `medicareMonths`, `irmaaThresholds`) are upstream's own and pass `mobs`/`tobs`;
+  `_medical_premium_ub` reads `Cbar_nq` (now prorated) and `slcsp_aca_n`, both still upper bounds
+  in the 65th-birthday year, where both premiums can be non-zero; `setContributions` keeps both the
+  fork's `gross earnings`/`months worked` and upstream's HSA proration; `get_fixed_assets_arrays`
+  gets `n_d` (#218); fork-only modules (`star.py`, `budget.py`, `tax_local.py`, `residency.py`,
+  `localsearch.py`, `export.py`, their data) unchanged by the merge; `tax_federal.py` differs
+  from upstream only by additions; no duplicated definitions beyond upstream's own.
+- Full suite on `b99990f`: running when this entry was committed; result in "Test status".
+
+Household effect: the interim checks from 2026-10-21 (ACA-year MAGI against 4 x the prior year's
+guideline) are no longer needed. Before decision runs, still: real birth dates (on or off the 1st
+changes #207, #208, #212) and the PIA ratio (#211).
+
+Next: step 9's draft (D8: the upstream issue, `fork-notes/issue-earnings-test.md`; it should say
+the builder mirrors `_add_spousal_benefit`'s #211 rule), then step 5 (payroll tax).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

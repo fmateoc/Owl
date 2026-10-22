@@ -547,7 +547,7 @@ is step 8's question.
 
 Upstream checkpoint: after step 4 the fork has a working, measured piece (step 9).
 
-### Step 5: payroll tax — size S (D3)
+### Step 5: payroll tax — size S (D3) — **done 2026-10-22**
 
 If D3 = core: `solver_options.withPayrollTax` (default off), from `gross earnings` (or the
 fallback): 6.2% up to the wage base (indexed with inflation after 2026), 1.45%, 0.9% on the
@@ -555,6 +555,36 @@ household's earnings above $250,000 MFJ / $200,000 single (not indexed); self-em
 15.3% x 92.35% with half deductible above the line (only if D3 includes it). A constant outflow
 in the cash-flow row and a Summary line; no LP change except the constant and, for SE, a
 constant in the AGI rows. Tests: hand computation for one year; off → no-op on all examples.
+
+**Landed 2026-10-22** on `claude/phase5-step1` (spec `af522c3`, strict xfail; then the
+implementation). Rates re-read on irs.gov the same day (Pub. 15 (2026): 6.2% / 1.45%, wage base
+\$184,500; Form 8959 instructions: 0.9%, MFJ \$250,000, single and qualifying surviving spouse
+\$200,000, "aren't indexed for inflation"). As built:
+
+- `tax_federal.payrollTax(earnings_in, gamma_n, n_d, N_n, thisyear)` → `(ss_in, medicare_in,
+  addl_n)`, nominal; the wage base is a one-year table held at its 2026 level in today's dollars
+  (the exempt amounts' convention); the Additional Medicare Tax on joint earnings before `n_d`
+  (filing status as `computeNIIT`), the survivor's after.
+- `Plan._payroll_tax(gamma_n)` in `_adjustParameters` (every solve, next to `_ss_streams`), on
+  the earnings test's earnings (`_earnings_test_inputs`: `gross earnings`, else `anticipated
+  wages`); `payroll_tax_n` (household, nominal) is a constant of the cash-flow row and of
+  `_check_cashflow_balance`; `payroll_addl_n` its 0.9% part; `payroll_tax_applied`.
+- `solver_options.withPayrollTax`: off in code, **on in `Case_us.template.toml`** (as
+  `withEarningsTest`); the schema's switch validator now serves both switches
+  (`info.field_name`); UI passthrough.
+- Outputs: Summary *Total payroll tax paid* whenever charged (\$0 included) and *» Additional
+  Medicare tax* where owed; `payroll_tax_today` / `_nominal` in `plan_metrics` and the comparison
+  map; a *payroll tax* column in the Cash Flow sheet and the CSV; in "Tax bills + Med."; in the
+  "taxes" slice of `lifetime_allocation` / `annual_cashflow_mix` (no new chart key).
+- Warning (with the switch on, once per solve, from `_warnEarnings`, renamed from
+  `_warnEarningsTest`): years with wages, no `gross earnings` and a non-zero 401k/IRA column,
+  over every plan year (the tax reads every year with earnings).
+- **Not done** (D3: "self-employment only if a variant has consulting income"; no variant is
+  known here, `otherFiles/` is not in this container): self-employment tax and its half
+  deduction. All of `gross earnings` is taxed as wages. No `cmd_explain` block.
+
+Tests: `tests/plan/test_payroll_tax.py`, 19. Off is a no-op by construction (a zero constant)
+and through the recorded values of the full suite, which did not move.
 
 ### Step 6: scenarios and sweep — size M (D4, D5)
 
@@ -687,5 +717,5 @@ step 4. The table keeps the options as they were put.
 
 Step 0 (S) → 1 (M) → 2 (S) → 3 (M) → 4 (M) → [9 upstream draft] → 5 (S) → 6 (M) → 7 (conditional)
 → 8 (M) → 10 (S). *(2026-10-22: steps 0-4 done; next 9 (draft) and 5, then 6 with the revised method, 8, 10;
-7 dropped. `plan-review-2026-10-22.md`.)* Steps 1-4 are the earnings test itself; 5-8 turn it into answers for the
+7 dropped. `plan-review-2026-10-22.md`. Later the same day: 9 posted as #220, 5 done; next 6.)* Steps 1-4 are the earnings test itself; 5-8 turn it into answers for the
 household. All decisions answered 2026-10-18 (§6); step 7 dropped.

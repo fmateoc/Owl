@@ -1,0 +1,5 @@
+owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+payroll off: Pat 63.1667, basis 117,005.94, payroll total 0.00
+payroll on : Pat 63.0833, basis 114,848.21, payroll total 37,102.50
+fixed at the pick, payroll on: basis 114,848.21
+fixed at the payroll-off pick, payroll on: basis 114,840.43 (cost of that pick with the tax on: 7.78/yr)

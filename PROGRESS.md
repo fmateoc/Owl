@@ -2143,6 +2143,54 @@ Posted by the user as **#220** (2026-10-22).
 
 Next: step 5 (payroll tax); #220's answer when it comes.
 
+## Phase 5 step 5: payroll tax (2026-10-22, on `claude/phase5-step1`)
+
+Size S (`phase5-plan.md` §5 step 5, D3 = core, opt-in). Test-first: spec `af522c3` (19 tests,
+strict xfail), implementation `788e0fa`.
+
+**Rules, verified** on irs.gov the same day (and on 2026-10-18): Pub. 15 (2026), "What's New":
+6.2% social security tax each for employer and employee, wage base \$184,500; Medicare 1.45%
+each, no wage base. Instructions for Form 8959 (2025), threshold chart: MFJ \$250,000, MFS
+\$125,000, single / head of household / qualifying surviving spouse \$200,000, "aren't indexed
+for inflation"; Medicare wages and SE income combined against the threshold.
+
+**As built** (details in the plan): `tax_federal.payrollTax` (pure; filing status as
+`computeNIIT`: joint before `n_d`); `Plan._payroll_tax` at every solve in `_adjustParameters`, on
+`_earnings_test_inputs()` earnings; `payroll_tax_n` a constant of the cash-flow row and of
+`_check_cashflow_balance`; `solver_options.withPayrollTax` off in code, on in
+`Case_us.template.toml`; Summary *Total payroll tax paid* (whenever charged) and *» Additional
+Medicare tax* (where owed); `payroll_tax_today` / `_nominal` in `plan_metrics`; *payroll tax*
+column in the Cash Flow sheet and CSV; inside "Tax bills + Med." and the charts' "taxes" slice;
+fallback warning (wages, no `gross earnings`, non-zero 401k/IRA column, any plan year).
+`_warnEarningsTest` renamed `_warnEarnings` (it now emits both). Not done: self-employment tax
+(D3: only if a variant has consulting income; none known here), employer share, `owlcli explain`.
+
+**Tests** (`tests/plan/test_payroll_tax.py`, 19): the rule by hand (one person below and above
+the base with 10% inflation; couple then survivor; two \$150k earners owe the 0.9%; a plan
+starting in 2030); jack+jill by hand (7.65% of \$180k, \$180k, \$185k; zero after 2028);
+`gross earnings` preferred; jon+jane with Jon at \$300k (base cap + 0.9% of \$130k); paid from
+the plan (lower basis, cash flow balances with it, Cash Flow column); the allocation's "taxes";
+switch toggled between solves; Summary rows (\$0 included); metrics and comparison map; the
+fallback warning (Jack's 2026-2027 named, not 2028, not Jill), none with `gross earnings` or the
+switch off; local search warns once and carries the tax; switch spellings = schema; a bad value
+refused by `solve()`; TOML/UI/run-options round trip. Mutation by hand (reverted): dropping the
+cash-flow constant fails `test_the_tax_is_paid_from_the_plan` (1 failed, 18 passed).
+
+**Measured** (`fork-notes/phase5/pt_ssages_check.py`, output `pt_ssages_check_2026-10-22.txt`;
+frozen date 2026-01-01, loop, earnings test on): chris+pat, Pat searched (`withSSAges`). Tax off:
+63y2m, basis \$117,005.94/yr; on: 63y1m, \$114,848.21, tax \$37,102.50 nominal (= 7.65% x
+\$485,000 of wages, by hand); the returned plan equals a fixed-age solve at its pick (to the
+cent). The pick moved one month: the tax is not a constant shift of the objective (less cash,
+so other withdrawals and taxes); the off-pick costs \$7.78/yr with the tax on, loop only, far
+under the step-4 spreads: immaterial and unresolved. The script's first docstring said the pick
+could not move; corrected before the run was recorded.
+
+Full suite: **3484 passed, 1 skipped** (11:17; 3465 + 19). flake8 clean; Ruff only upstream's
+`B905` (`tests/plan/test_roth_maturation_losses.py:49`). No recorded value moved (switch off).
+
+Next: step 6 (scenarios and sweep, method of `plan-review-2026-10-22.md` §3.2; needs the
+household's real SLCSP), then 8 and 10.
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

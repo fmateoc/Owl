@@ -1,0 +1,8 @@
+et_examples.py on stock upstream dev 37afa2a (worktree, PYTHONPATH to its src), 2026-10-22
+Case_alex+jamie.toml: Jamie born 1961-01, claims at 62.08, FRA 67.00
+    2026  wages    80,000  SS paid by Owl   10,140  (wages - 24,480)/2   27,760
+    2027  wages    80,000  SS paid by Owl   10,140  (wages - 24,480)/2   27,760
+Case_chris+pat.toml: Pat born 1966-01, claims at 62.08, FRA 67.00
+    2028  wages    85,000  SS paid by Owl    9,858  (wages - 24,480)/2   30,260
+Case_jack+jill.toml: Jill born 1966-01, claims at 62.08, FRA 67.00
+    2028  wages    85,000  SS paid by Owl   11,562  (wages - 24,480)/2   30,260

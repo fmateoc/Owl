@@ -2083,7 +2083,7 @@ Merge review (2026-10-22, `b99990f`):
   gets `n_d` (#218); fork-only modules (`star.py`, `budget.py`, `tax_local.py`, `residency.py`,
   `localsearch.py`, `export.py`, their data) unchanged by the merge; `tax_federal.py` differs
   from upstream only by additions; no duplicated definitions beyond upstream's own.
-- Full suite on `b99990f`: running when this entry was committed; result in "Test status".
+- Full suite on `b99990f`: **3465 passed, 1 skipped** (15:02; the merge's 3463 + the 2 new tests).
 
 Household effect: the interim checks from 2026-10-21 (ACA-year MAGI against 4 x the prior year's
 guideline) are no longer needed. Before decision runs, still: real birth dates (on or off the 1st
@@ -2708,6 +2708,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-22, upstream `dev` `37afa2a` merged (`41eb4a7`): **3463 passed, 1 skipped** (15:53); after the merge review fixes (`b99990f`): **3465 passed, 1 skipped** (15:02). flake8 clean; Ruff only upstream's B905.
 
 2026-10-17, after merging upstream `dev` `2b34633`: **3232 passed, 1 skipped** (7:57).
 

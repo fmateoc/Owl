@@ -1,7 +1,7 @@
 # Draft upstream design issue: the SSA earnings test (Phase 5 step 9), for the user to post
 
-Status: draft, 2026-10-22, on `claude/phase5-step1` after merging upstream `dev` `37afa2a`. Not
-posted. Reviewed the same day before posting: units in the table, the grace-year and ARF wording,
+Status: **posted by the user as #220** (2026-10-22). Drafted 2026-10-22 on `claude/phase5-step1` after
+merging upstream `dev` `37afa2a`. Reviewed the same day before posting: units in the table, the grace-year and ARF wording,
 the case's own "works through 2028", `other inc` as upstream documents it, the exempt-amount
 projection, Jill re-measured with itemizing off, and two claims narrowed to what was checked. Concept level (`phase3-plan.md` §2, lessons 2, 3, 7, 8): the problem, the rules, a shape
 and measured stakes, not the fork's code. Federal Social Security only. Decision D8 (plan §6): post

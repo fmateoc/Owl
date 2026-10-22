@@ -181,8 +181,19 @@ def test_both_spouses_65_keep_the_bonus_and_lose_the_additions():
     assert p.itemizing_n[0]
     assert p.e_n[0] == pytest.approx(p.item_n[0] + bonus[0], rel=1e-4)
     # The 65+ additions are inside S_n, so an itemizer loses them.
-    no_bonus = tx.standard_without_bonus(p.yobs, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA)
+    no_bonus = tx.standard_without_bonus(p.yobs_tax, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA)
     assert p.item_base_n[0] == pytest.approx(no_bonus[0], rel=1e-6)
+
+
+def test_january_first_birthday_counts_65_a_year_early_for_itemizers():
+    """Upstream #207 (merged 2026-10-22): a January 1 birthday reaches 65 in the year before, so
+    the standard deduction an itemized total is compared with carries the 65+ addition then too."""
+    p = _solve(_plan(birth=("1962-01-01", "1962-06-01"), mortgage=(600_000.0, 6.5, 30)), withItemized="loop")
+    assert p._sb_count_n[0] == 1  # 65 on 2026-12-31 for the IRS; the other spouse is 64
+    by_tax_age = tx.standard_without_bonus(p.yobs_tax, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA)
+    by_birth_year = tx.standard_without_bonus(p.yobs, p.i_d, p.n_d, p.N_n, p.gamma_n, p.yOBBBA)
+    assert by_tax_age[0] - by_birth_year[0] == pytest.approx(tx.extra65Deduction[1] * p.gamma_n[0])
+    np.testing.assert_allclose(p.item_base_n, by_tax_age)
 
 
 def test_senior_bonus_phase_out_is_not_free_under_itemizing():

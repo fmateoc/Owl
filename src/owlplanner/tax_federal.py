@@ -1215,7 +1215,8 @@ def standard_without_bonus(yobs, i_d, n_d, N_n, gamma_n, yOBBBA=_YEAR_FAR_FUTURE
     The standard deduction per year without the OBBBA senior bonus (65+ additions included).
 
     taxParams folds the bonus into sigmaBar. Itemizers keep the bonus but lose the 65+ additions,
-    so this is the amount an itemized deduction is compared with.
+    so this is the amount an itemized deduction is compared with. Birth years yobs are as returned
+    by taxBirthYears, as for taxParams.
     """
     no_bonus = np.full(N_n, np.inf)
     return taxParams(yobs, i_d, n_d, N_n, gamma_n, no_bonus, yOBBBA)[0]

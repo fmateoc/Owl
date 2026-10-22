@@ -3160,7 +3160,7 @@ class Plan:
         # the bonus is B_n on top of either branch. The standard branch also carries the
         # non-itemizer charity, so S_n = item_base_n + nch_n.
         self.item_base_n = tx.standard_without_bonus(
-            self.yobs, self.i_d, self.n_d, self.N_n, self.gamma_n, self.yOBBBA
+            self.yobs_tax, self.i_d, self.n_d, self.N_n, self.gamma_n, self.yOBBBA
         )
         year_n = np.asarray(self.year_n, dtype=float)
         # OBBBA's own charity rules (the 0.5% floor, the non-itemizer deduction) end with a

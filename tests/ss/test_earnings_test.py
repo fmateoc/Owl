@@ -932,6 +932,9 @@ def _noop_cases():
         cases.append(([3000, 800], [64.0, 62.0], [1962, 1967], [4, 9], [15, 15], [5, 25], 2, 25, kw))
         # Survivor's own benefit larger than the survivor benefit.
         cases.append(([1200, 2600], [67.0, 70.0], [1964, 1965], [6, 2], [15, 1], [12, 24], 2, 24, kw))
+    # Spousal add-on on top of an own benefit with delayed credits: the credits come out of the
+    # excess (upstream #211, merged 2026-10-22); without the builder's mirror it pays $2,880/yr more.
+    cases.append(([3000, 1000], [62.0, 70.0], [1962, 1964], [6, 3], [15, 15], [30, 30], 2, 30, {}))
     return cases
 
 

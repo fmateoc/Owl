@@ -1,0 +1,6 @@
+et_issue_crosscheck.py, 2026-10-22, owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+chris+pat, withItemized='none', test on, Chris 70y0m; basis in today's $
+  loop          Pat 62y6m   116,940.68  Pat 63y2m   117,005.94  difference    65.26  (  1.0s per solve)
+  local search  Pat 62y6m   117,190.19  Pat 63y2m   117,240.30  difference    50.11  (122.7s per solve)
+  exact LP      Pat 62y6m   120,242.07  Pat 63y2m   120,305.38  difference    63.31  (  0.4s per solve)
+  local search vs exact LP: spread 13.20; same sign: True; resolved: True

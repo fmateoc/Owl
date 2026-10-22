@@ -1,0 +1,12 @@
+et_issue_measure.py, 2026-10-22, owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+withItemized='none'; basis in today's $
+
+chris+pat, withSSAges=['Pat']
+  test off                   Chris 70y0m / Pat 62y6m    basis   117,102.91  withheld         0 nominal  ARF months [np.int64(0), np.int64(0)]  ( 41.0s)
+  test on                    Chris 70y0m / Pat 63y2m    basis   117,005.94  withheld         0 nominal  ARF months [np.int64(0), np.int64(0)]  ( 39.3s)
+  test-off pick, test on     Chris 70y0m / Pat 62y6m    basis   116,940.68  withheld     6,945 nominal  ARF months [np.int64(0), np.int64(6)]  (  0.6s)
+  cost of following the test-off pick: 65.26/yr of basis
+
+alex+jamie, case's ages
+  test off                   Alex 69y0m / Jamie 62y1m   basis   228,618.69  withheld         0 nominal  ARF months [np.int64(0), np.int64(0)]  (  0.2s)
+  test on                    Alex 69y0m / Jamie 62y1m   basis   228,076.76  withheld    20,612 nominal  ARF months [np.int64(0), np.int64(24)]  (  0.2s)

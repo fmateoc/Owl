@@ -1,0 +1,11 @@
+owlplanner 2026.10.22 from /tmp/claude-0/-home-user-Owl/fa8f9dce-986e-50ee-89bd-879978074dc2/scratchpad/updev/src/owlplanner
+
+1. SS paid before FRA in a year with wages above $24,480
+  Case_alex+jamie.toml       Jamie  claims at 62y1m  2026  wages   80,000  SS paid  10,140  (wages - 24,480)/2  27,760
+  Case_alex+jamie.toml       Jamie  claims at 62y1m  2027  wages   80,000  SS paid  10,140  (wages - 24,480)/2  27,760
+  Case_chris+pat.toml        Pat    claims at 62y1m  2028  wages   85,000  SS paid   9,858  (wages - 24,480)/2  30,260
+  Case_jack+jill.toml        Jill   claims at 62y1m  2028  wages   85,000  SS paid  11,562  (wages - 24,480)/2  30,260
+
+2. withSSAges on the spouse who works
+  chris+pat: Pat claims at 62y6m (solved, 40s)
+  jack+jill: Jill claims at 65y11m (solved, 68s)

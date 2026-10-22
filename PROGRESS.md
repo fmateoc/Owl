@@ -2128,7 +2128,17 @@ copy; no Phase 4 code now; Phase 6 folded in; fill the real case before step 6's
 **Answered 2026-10-22: R1, R3, R4, R5 as recommended; R2 no** (no variant has one spouse on
 employer coverage alone, so no per-person ACA start). R6 (the real case) open.
 
-Next: step 9's draft (`fork-notes/issue-earnings-test.md`), then step 5.
+**Step 9 drafted 2026-10-22**: `fork-notes/issue-earnings-test.md` (concept level, federal SS
+only; not posted). Evidence from a real run on stock `dev` `37afa2a`
+(`issue-earnings-test-repro.py`, output beside it): the same three examples pay SS before FRA in
+a year with \$80-85k of wages, and `withSSAges=["Pat"]` on chris+pat picks 62y6m (entitlement from
+July 2028, her last work year). Fork measurements with `withItemized="none"`
+(`phase5/et_issue_measure`, `et_issue_crosscheck`, 2026-10-22): the fork's no-test pick equals
+stock's; with the test Pat's pick is 63y2m, and following 62y6m costs \$50/yr (local search) /
+\$63 (exact LP) / \$65 (loop), resolved (spread \$13); alex+jamie −\$542/yr, \$20,612 withheld,
+24 ARF months. Four questions: in core and default, the earnings input, the stop month, survivors.
+
+Next: the user posts the issue (or not); then step 5 (payroll tax).
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

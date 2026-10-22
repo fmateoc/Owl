@@ -123,8 +123,10 @@ SERVER_INSTRUCTIONS = (
     "user workspace. "
     "Scenario sweeps differ widely in cost: total time is roughly the number of solves "
     "(scenarios, or bequest levels x scenarios) times the time per solve, and a solve with "
-    "MILP families (with_medicare/with_aca='optimize', optimize_ss_ages) can take many times "
-    "longer than the default self-consistent loop. When a sweep tool returns "
+    "MILP families (with_medicare/with_aca='optimize') can take many times "
+    "longer than the default self-consistent loop. optimize_ss_ages repeats the plan's solve "
+    "once per open claiming month (up to 97), but scenarios keep the claiming ages, so it adds "
+    "nothing per scenario. When a sweep tool returns "
     "'needs_confirmation', nothing was run beyond one pilot solve: tell the user the "
     "estimated time and the cheaper alternatives, ask 'Do you want to proceed?', and call "
     "again with confirm_long_run=true only if they agree. A time budget the user stated "
@@ -289,7 +291,7 @@ def _scrub_optimized_ss_ages(assumed, opts):
     """Drop the ss_ages assumed-default entry when claiming ages are fully optimized.
 
     The builder flags omitted ss_ages as 'assumed 67', but with
-    withSSAges="optimize" the MIP chooses the ages and 67 is only a starting
+    withSSAges="optimize" the search chooses the ages and 67 is only a starting
     value — the note would be spurious. Partial optimization (a name or list
     of names) keeps the entry, since the default still applies to the
     non-optimized individual(s).
@@ -383,21 +385,37 @@ def _historical_count(plan, ystart, yend):
     return max(0, hi - lo + 1)
 
 
+def _hold_ages(opts):
+    """Copy of opts without withSSAges, as each scenario of a sweep is solved."""
+    o = dict(opts)
+    o.pop("withSSAges", None)
+    return o
+
+
 def _timed_solve(plan, objective, opts):
-    """Solve once and return the wall time in seconds."""
+    """Solve once and return the wall time of one scenario solve, in seconds.
+
+    Scenarios keep the plan's claiming ages. When this solve searched them, its time covers one
+    solve per candidate month, so one solve at the ages chosen is timed on a clone instead.
+    """
     t0 = time.perf_counter()
     plan.solve(objective, opts)
-    return time.perf_counter() - t0
+    seconds = time.perf_counter() - t0
+    if Plan._ssaSelected(opts) and plan.caseStatus == "solved":
+        from owlplanner.config.plan_bridge import clone
+
+        probe = clone(plan, verbose=False)
+        t0 = time.perf_counter()
+        probe.solve(objective, _hold_ages(opts))
+        seconds = time.perf_counter() - t0
+    return seconds
 
 
 def _cost_drivers(opts):
     """Options that make each scenario solve a MIP rather than an LP."""
     o = dict(opts)
     normalize_mode_options(o)
-    drivers = [f"{key}='optimize' (MILP)" for key in _MILP_TAX_MODES if o.get(key) == "optimize"]
-    if o.get("withSSAges") not in (None, False, "fixed", "none"):
-        drivers.append("optimize_ss_ages (MILP)")
-    return drivers
+    return [f"{key}='optimize' (MILP)" for key in _MILP_TAX_MODES if o.get(key) == "optimize"]
 
 
 def _check_run_cost(seconds_per_solve, n_solves, opts, *, parallel, confirm, n_per_level=None):
@@ -423,7 +441,7 @@ def _check_run_cost(seconds_per_solve, n_solves, opts, *, parallel, confirm, n_p
     if drivers:
         alternatives.append(
             "solve the scenarios with the self-consistent loop instead of MILP "
-            "(with_medicare/with_aca='loop', optimize_ss_ages=false); usually much faster"
+            "(with_medicare/with_aca='loop'); usually much faster"
         )
     fit = int(threshold * 60.0 / effective)
     if 0 < fit < n_solves:
@@ -2000,8 +2018,9 @@ async def run_from_params(
                         A single name string (e.g. "Alice") → optimize only that person.
                         A list of names (e.g. ["Alice"]) → optimize those people.
                         None or False → use fixed ss_ages for everyone (default).
-                        Already-claimed individuals are detected automatically (current age >=
-                        ss_ages value) and pinned to their recorded age regardless of this setting.
+                        Do not select anyone whose ss_ages value is already past (current age >
+                        ss_ages value, e.g. already collecting): the solve returns an error naming
+                        them. Leave them out of the selection to keep their recorded age.
                         The plan is solved at each open claiming month and the best is kept, so
                         a search costs up to 97 solves (fewer the closer to 70).
         constrain_mean: If True, each generated rate series is post-processed so its
@@ -2020,7 +2039,8 @@ async def run_from_params(
                         effective when ss_trim_pct > 0.
         ss_survivor_claim_age: When the surviving spouse claims the survivor benefit:
                         'immediate' (default, as soon as eligible), 'FRA' (at their
-                        survivor full retirement age), or an explicit age in [60, 70].
+                        survivor full retirement age), or an explicit age in [60, 70]
+                        (59 11/12 for a survivor born on the 1st).
                         SSA pays the larger of the survivor's own benefit and the
                         survivor benefit, so deferring can pay off when their own
                         benefit is still growing.  Couples only.
@@ -2927,7 +2947,8 @@ async def explain_results(
     withSSTaxability/withLTCG/withNIIT set to "optimize") are downgraded to the
     self-consistent loop for the explanation solve — same shadow prices, a fraction
     of the cost — and a caveat records the downgrade.  withSSAges is honored as
-    given, since loop mode cannot reproduce an optimized claiming age.
+    given: the claiming ages are searched first, and the shadow prices come from
+    the solve at the ages chosen.
 
     Accepts either 'filename' (+ optional overrides) or the same flat parameters as
     run_from_params.  Material defaults assumed for omitted parameters are reported
@@ -3295,6 +3316,9 @@ def _historical_blocking(plan, objective, opts, ystart, yend, augmented, reverse
     """Solve plan across historical year sequences; returns (plan, n_attempted, results)."""
     from itertools import product as iproduct
     from owlplanner.rates import FROM, TO
+    from owlplanner.stresstests import _hold_ss_ages
+
+    opts = _hold_ss_ages(plan, opts, "Historical range")
 
     _ystart = int(ystart) if ystart is not None else FROM
     _yend = int(yend) if yend is not None else TO
@@ -3333,7 +3357,9 @@ def _historical_blocking(plan, objective, opts, ystart, yend, augmented, reverse
 
 def _monte_carlo_blocking(plan, objective, opts, n_scenarios, seed, confirm_long_run=True):
     """Solve plan across Monte Carlo rate draws; returns (plan, n_attempted, results)."""
-    from owlplanner.stresstests import MC_TIME_LIMIT
+    from owlplanner.stresstests import MC_TIME_LIMIT, _hold_ss_ages
+
+    opts = _hold_ss_ages(plan, opts, "Monte Carlo")
 
     if getattr(plan, "rateModel", None) is None or getattr(plan.rateModel, "deterministic", True):
         raise ValueError(
@@ -3560,8 +3586,8 @@ async def run_stochastic(
                               Example: ss_trim_pct=23, ss_trim_year=2033 (SSA trustees baseline).
         ss_trim_year:         Year when the SS benefit reduction begins (e.g. 2033).
         ss_survivor_claim_age: When the surviving spouse claims the survivor benefit:
-                              'immediate' (default), 'FRA', or an age in [60, 70].
-                              Couples only.
+                              'immediate' (default), 'FRA', or an age in [60, 70]
+                              (59 11/12 for a survivor born on the 1st). Couples only.
         obbba_expiration_year: Year OBBBA (2025 Tax Reform) rates sunset to pre-TCJA levels
                               (default 2032).
         dividend_rate:        Annual dividend yield for taxable accounts in % (default 1.8).
@@ -3764,7 +3790,7 @@ def _default_bequest_grid(plan, opts, n_points=5):
     from owlplanner.config.plan_bridge import clone
 
     probe = clone(plan, verbose=False)
-    o = dict(opts)
+    o = _hold_ages(opts)
     o["netSpending"] = 1000.0  # subsistence: leaves as much as the plan can possibly leave
     try:
         probe.solve("maxBequest", o)
@@ -3803,7 +3829,7 @@ def _frontier_blocking(
             )
 
     if not confirm_long_run and scenario_method != "deterministic":
-        pilot = dict(opts)
+        pilot = _hold_ages(opts)
         pilot.setdefault("maxTime", MC_TIME_LIMIT)
         pilot["bequest"] = min(float(b) for b in bequest_grid)
         seconds = _timed_solve(plan, "maxSpending", pilot)
@@ -4941,7 +4967,7 @@ async def run_longevity_stochastic(
                           Example: ss_trim_pct=23, ss_trim_year=2033 (SSA trustees baseline).
         ss_trim_year:     Year when the SS benefit reduction begins (e.g. 2033).
         ss_survivor_claim_age: When the surviving spouse claims the survivor benefit:
-                          'immediate' (default), 'FRA', or an age in [60, 70].
+                          'immediate' (default), 'FRA', or an age in [60, 70] (59 11/12 for a survivor born on the 1st).
                           Couples only.
         obbba_expiration_year: Year OBBBA rates sunset to pre-TCJA levels (default 2032).
         dividend_rate:    Annual dividend yield for taxable accounts in % (default 1.8).
@@ -5255,7 +5281,7 @@ async def run_historical(
                           Example: ss_trim_pct=23, ss_trim_year=2033 (SSA trustees baseline).
         ss_trim_year:     Year when the SS benefit reduction begins (e.g. 2033).
         ss_survivor_claim_age: When the surviving spouse claims the survivor benefit:
-                          'immediate' (default), 'FRA', or an age in [60, 70].
+                          'immediate' (default), 'FRA', or an age in [60, 70] (59 11/12 for a survivor born on the 1st).
                           Couples only.
         obbba_expiration_year: Year OBBBA rates sunset to pre-TCJA levels (default 2032).
         dividend_rate:    Annual dividend yield for taxable accounts in % (default 1.8).
@@ -5619,7 +5645,7 @@ async def run_monte_carlo(
                           Example: ss_trim_pct=23, ss_trim_year=2033 (SSA trustees baseline).
         ss_trim_year:     Year when the SS benefit reduction begins (e.g. 2033).
         ss_survivor_claim_age: When the surviving spouse claims the survivor benefit:
-                          'immediate' (default), 'FRA', or an age in [60, 70].
+                          'immediate' (default), 'FRA', or an age in [60, 70] (59 11/12 for a survivor born on the 1st).
                           Couples only.
         obbba_expiration_year: Year OBBBA rates sunset to pre-TCJA levels (default 2032).
         dividend_rate:    Annual dividend yield for taxable accounts in % (default 1.8).

@@ -448,15 +448,12 @@ def _year0_thresholds(plan):
     # IRMAA: this year's MAGI sets Medicare premiums two years from now.
     n_prem = 2
     if plan.N_n > n_prem:
-        on_medicare = [
-            i
-            for i in range(plan.N_i)
-            if thisyear + n_prem - plan.yobs[i] >= 65 and n_prem < plan.horizons[i]
-        ]
+        months = tx.medicareMonths(plan.yobs, plan.horizons, n_prem + 1, plan.mobs, plan.tobs, thisyear)
+        on_medicare = [i for i in range(plan.N_i) if months[i, n_prem] > 0]
         if on_medicare:
-            status = 1 if (plan.N_i == 2 and plan.n_d > n_prem) else 0
-            thresholds = tx.irmaaThresholds(status, plan.gamma_n, n_prem, thisyear)
-            tier = int(np.sum(magi0 - THRESHOLD_SLACK > thresholds))
+            # The table of this year's return, which sets the premium (#213).
+            thresholds = tx.irmaaThresholds(tx.irmaaStatus(plan.horizons, n_prem), plan.gamma_n, n_prem, thisyear)
+            tier = tx.irmaaTier(magi0, thresholds, THRESHOLD_SLACK)  # the top tier includes its edge (#216)
             entry = {
                 "affects_premium_year": thisyear + n_prem,
                 "current_tier": tier,
@@ -495,10 +492,12 @@ def _irmaa_step(plan, magi_year0, n_prem):
         include_part_d=getattr(plan, "_include_medicare_part_d", True),
         part_d_base_annual_per_person=getattr(plan, "_medicare_part_d_base_annual_per_person", 0.0),
         medical_n=plan._medical_n(g),
+        mobs=plan.mobs,
+        tobs=plan.tobs,
     )
-    magi = np.array(plan.MAGI_n[:N], dtype=float) - THRESHOLD_SLACK
-    now = tx.mediCosts(plan.yobs, plan.horizons, magi, plan.prevMAGI, g, N, **kw)[n_prem]
-    magi[0] = magi_year0
+    magi = np.array(plan.MAGI_n[:N], dtype=float)
+    now = tx.mediCosts(plan.yobs, plan.horizons, magi, plan.prevMAGI, g, N, slack=THRESHOLD_SLACK, **kw)[n_prem]
+    magi[0] = magi_year0  # past the edge already: read as is
     then = tx.mediCosts(plan.yobs, plan.horizons, magi, plan.prevMAGI, g, N, **kw)[n_prem]
     return (then - now) / float(g[n_prem])
 
@@ -506,33 +505,44 @@ def _irmaa_step(plan, magi_year0, n_prem):
 def _aca_cliffs(plan):
     """First-year ACA MAGI against the Medicaid line and the 400% FPL cliff (today's $).
 
-    ACA uses the full-SS MAGI (IRC 36B), not the AGI-basis MAGI of NIIT and IRMAA. Empty when
-    nobody is on the marketplace in the first year (coverage starting later)."""
+    ACA uses the full-SS MAGI (IRC 36B), not the AGI-basis MAGI of NIIT and IRMAA. The Medicaid line
+    is the state's (138% FPL in expansion states, 100% in Wisconsin, none in the other states without
+    the expansion); where it is below 100% FPL, income under 100% is in the coverage gap, with
+    neither Medicaid nor the credit (#202). Empty when nobody is on the marketplace in the first year
+    (coverage starting later)."""
     thisyear = int(plan.year_n[0])
     n_start = max(0, plan.aca_start_year - thisyear) if plan.aca_start_year > 0 else 0
-    eligible = [i for i in range(plan.N_i) if thisyear - plan.yobs[i] < 65 and plan.horizons[i] > 0]
-    if n_start > 0 or not eligible:
+    # The poverty line is the tax household's, whoever is enrolled (#199).
+    family, parts = tx._aca_coverage(plan.yobs, plan.horizons, 1, plan.mobs, plan.tobs, thisyear)
+    if n_start > 0 or not parts[0]:
         return {}
-    fpl_year = thisyear if thisyear in tx._ACA_FPL else max(tx._ACA_FPL)
-    fpl = float(tx._ACA_FPL[fpl_year][min(len(eligible), 2) - 1])
+    fpl = tx._aca_fpl(thisyear, family[0], plan.gamma_n, thisyear)
     magi = float(plan.MAGI_aca_n[0])
-    medicaid, cliff = tx._ACA_MEDICAID_RATIO * fpl, 4.0 * fpl
+    medicaid_ratio = float(plan._medicaid_n()[0])
+    medicaid, cliff = medicaid_ratio * fpl, 4.0 * fpl
+    gap = "exact" if getattr(plan, "_aca_lp", False) else "approx"
 
     def cost(m):
         g = plan.gamma_n[:1]
         return float(
             tx.acaCosts(plan.yobs, plan.horizons, np.array([m]), g, plan.slcsp_annual, 1,
-                        thisyear=thisyear, medical_n=plan._medical_n(g))[0]
+                        thisyear=thisyear, medical_n=plan._medical_n(g), mobs=plan.mobs, tobs=plan.tobs,
+                        medicaid_n=[medicaid_ratio], gap=gap)[0]
         )
 
     out = {
         "aca_magi": _round(magi),
         "fpl_pct": _round(100 * magi / fpl, 1),
-        "medicaid_line": _round(medicaid),
         "subsidy_cliff": _round(cliff),
     }
-    if magi - THRESHOLD_SLACK <= medicaid:
+    if medicaid_ratio > 0:
+        out["medicaid_line"] = _round(medicaid)
+    if medicaid_ratio < 1.0:
+        out["coverage_gap_below"] = _round(fpl)  # no Medicaid, and no credit below 100% FPL
+    if medicaid_ratio > 0 and magi - THRESHOLD_SLACK <= medicaid:
         out["covered_by_medicaid"] = True
+    elif medicaid_ratio < 1.0 and magi + THRESHOLD_SLACK < fpl:
+        out["in_coverage_gap"] = True
     if magi - THRESHOLD_SLACK <= cliff:
         out["headroom_to_subsidy_cliff"] = _round(max(0.0, cliff - magi))
         out["premium_jump_at_cliff"] = _round(cost(cliff + THRESHOLD_SLACK) - cost(cliff - THRESHOLD_SLACK))
@@ -563,6 +573,8 @@ def _health_care(plan):
             include_part_d=getattr(plan, "_include_medicare_part_d", True),
             part_d_base_annual_per_person=getattr(plan, "_medicare_part_d_base_annual_per_person", 0.0),
             medical_n=plan._medical_n(g),
+            mobs=plan.mobs,
+            tobs=plan.tobs,
         )
         surcharge = np.maximum(plan.medicare_n - base, 0) / g
         out["irmaa_surcharges_total"] = _round(float(np.sum(surcharge)))
@@ -932,9 +944,10 @@ def _state_bracket_analysis(plan):
         "starts from gross income, includes capital gains, and takes the state's own standard "
         "deduction and exemptions (Social Security, pensions, retirement income, where the state "
         "allows them). Headroom is absent in the open-ended top bracket. In a year filled to the "
-        "boundary, the next dollar of income, such as a Roth conversion, is taxed at a higher "
-        "state rate. state_tax includes any benefit recapture and local (city) tax, also shown "
-        "separately; inside a recapture phase-in the marginal state rate is above the bracket rate.",
+        "boundary, the next dollar of income, such as a Roth conversion where the state taxes it, is "
+        "taxed at a higher state rate. state_tax includes any benefit recapture and local (city) tax, "
+        "also shown separately; inside a recapture phase-in the marginal state rate is above the "
+        "bracket rate.",
     }
     if getattr(plan, "locality", ""):
         out["locality"] = plan.locality

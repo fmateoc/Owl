@@ -125,7 +125,7 @@ def test_mixed_bracket_counts_pad_with_zero_width_top_rate():
 def test_flags_follow_the_state_in_force():
     """MD does not count conversions; IL exempts retirement income; both vary by year."""
     sched = _params(["MD"] * 10 + ["IL"] * 20)
-    assert not sched.conv_ok_n[:10].any() and sched.conv_ok_n[10:].all()
+    assert np.all(sched.conv_n[:10] == "taxed") and np.all(sched.conv_n[10:] == "exemption")
 
 
 # ---------------------------------------------------------------------------

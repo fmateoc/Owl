@@ -124,6 +124,9 @@ def getHFP(exdir, case, check_exists=True):
 # jack+jill 102_535 -> 103_499 when the smile became age-anchored (fixed 30-year span instead of
 # one period over the plan's length): its 33-year horizon no longer stretches the go-go years.
 # joe (N_n = 31 = SMILE_SPAN + 1) is unchanged by that.
+# kim+sam-bequest 1_944_071 -> 1_946_663 (both solvers 1_946_662.67) when IRMAA started using the
+# filing status of the lookback return (#213): the survivor's first two years are on the joint
+# table, which cuts its lifetime Medicare by $2,297 in today's dollars.
 EXPECTED_OBJECTIVE_VALUES = {
     "Case_john+sally": {
         "net_spending_basis": 145_000,
@@ -143,7 +146,7 @@ EXPECTED_OBJECTIVE_VALUES = {
     },
     "Case_kim+sam-bequest": {
         "net_spending_basis": 145_000,
-        "bequest": 1_944_071,
+        "bequest": 1_946_663,
     },
     "Case_robin": {
         "net_spending_basis": 44_013,

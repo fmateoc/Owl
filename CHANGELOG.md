@@ -178,7 +178,7 @@ per-year state parameters). The fork keeps its own extension of the same model: 
 each optionally naming a `locality` (`moves = [{year = 2032, state = "NJ"}]`, or
 `{year = 2030, state = "NY", locality = "Yonkers"}` for a move within the state), and a move may
 stay in the state if it changes the locality. The residence in force on December 31 governs the
-whole year. Plan attributes, the per-year flags (`st_conv_ok_n`, `st_tax_ss_n`, `st_fed_sd_n`,
+whole year. Plan attributes, the per-year flags (`st_conv_n`, `st_tax_ss_n`, `st_fed_sd_n`,
 `st_senior_bonus_n`, `st_pension_eligible_n`) and `_states_n()` follow upstream's names. The web UI
 uses upstream's move toggle for the first move, with a city selector, and keeps any further moves
 from the case file as they are. The explanation reports the first move as upstream's `move` and,
@@ -198,7 +198,237 @@ takes the new state's credits from its year.
 
 Upstream's nine-element tuple (`st_taxParams`) and dict (`st_schedule`) are replaced by a frozen
 dataclass with named fields, which also carries the fork's recapture and exclusion arrays. Its flag
-fields carry upstream's dict keys (`conv_ok_n`, `tax_ss_n`, ...).
+fields carry upstream's dict keys (`conv_n`, `tax_ss_n`, ...); `conv_n` holds upstream's three-valued
+conversion treatment (`"exemption"`, `"taxed"`, `"excluded"`, #203) per year.
+
+### Version WIP
+
+#### Fixed: ACA premiums in states without the Medicaid expansion
+
+**Owl** treated every state as a Medicaid expansion state, with no premium up to 138% of the poverty
+line. In the states without the expansion there is no Medicaid for most adults, and the premium tax
+credit only starts at 100% (IRC 36B(c)(1)(A)): income below 100% gets neither and owes the full
+benchmark premium. Medicaid now follows the state of residence of each year: 138% in expansion
+states, 100% in Wisconsin (which covers adults to 100% under a waiver), and none in AL, FL, GA, KS,
+MS, SC, TN, TX and WY (KFF, October 2026). With *Solve ACA brackets with MILP*, the coverage gap is
+priced exactly, and so is the applicable-percentage jump at 133%, which only expansion states never
+reach: exactly 100% gets the credit and exactly 133% the higher percentage. The self-consistent loop
+charges the lowest applicable percentage in the gap rather than the full premium, so that the cost
+has no jump to oscillate across, and warns when a year ends there. Thanks to Marco Pignone
+(@rationalpiper) for reporting it, with the references and a proposed design (#202).
+
+#### Fixed: PA and MS no longer tax Roth conversions before 59½, and exempt IRA withdrawals from 59½
+
+Pennsylvania treats a trustee-to-trustee Roth conversion as nontaxable at any age and exempts IRA
+distributions from 59½ (2025 PA-40 instructions, pp. 12–13). Mississippi leaves conversions out of
+gross income (Miss. Code 27-7-15(4)(ff)) and denies its retirement exemption to early distributions
+(35 Miss. Code R. 3-02-07-104). **Owl** gated conversions behind the same age as withdrawals (60 in
+PA) and exempted MS withdrawals at any age: in the reported case, a \$20,000 conversion at 55 paid
+\$614 of PA tax. The state data's `roth_conversion_eligible` flag becomes a three-valued
+`roth_conversion` field: `"exemption"` (counts toward the retirement exemption, with its age; the
+default), `"taxed"` (MD), or `"excluded"` (PA, MS: left out of state income at any age, apart from
+the exemption). PA and MS now exempt withdrawals from 59½. The former flag is still read. Thanks to
+Marco Pignone (@rationalpiper) for reporting it, with the PA references and a fix (#203).
+
+#### Fixed: Roth earnings can no longer be withdrawn before 59½ without tax or penalty
+
+A Roth distribution comes from contributions first, then conversions, and earnings last (IRC
+408A(d)(4)(B)), and before 59½ its earnings part is taxable and carries the 10% additional tax
+(408A(d)(2)(A); Pub. 590-B). **Owl**'s five-year retainer kept only recent conversions in the
+account, so once they had matured the earnings could come out early with neither: in the reported
+case, \$51,506 converted and \$74,387 withdrawn before 59½. Each person's Roth withdrawals before
+59½ are now kept within the starting Roth balance plus the conversions and contributions made
+since, which forbids early earnings rather than taxing them. The starting balance counts entirely
+as contributions and conversions, and the limit ends at the first passing. Thanks to Marco Pignone
+(@rationalpiper) for reporting it, with the legal references and a fix (#209).
+
+#### Fixed: a previous-year MAGI above the year's income ceiling no longer makes optimize mode infeasible
+
+With *Solve Medicare brackets with MILP*, the first two plan years take their IRMAA bracket from the
+previous MAGIs entered, but the top bracket was still capped at the year's income ceiling. A
+previous MAGI above that cap, such as a one-time gain two years back with modest savings now, left
+no feasible plan, reported as a bequest or spending floor set too high, while the loop mode solved
+the same case. The known previous MAGI now fits that bracket, and both modes give the same plan.
+Thanks to Marco Pignone (@rationalpiper) for reporting it, with a fix (#215).
+
+#### Fixed: MAGI of exactly \$500,000 (\$750,000 joint) is the top IRMAA tier
+
+Every IRMAA tier excludes its upper edge except the top one: "More than \$160,000 but less than
+\$500,000" and "At least \$500,000" (42 U.S.C. 1395r(i)(3)(C)(i)(III); 20 CFR 418.1115, "greater than
+or equal to \$500,000", \$750,000 joint). **Owl** charged the tier below at exactly that MAGI, \$48.40 a
+month too little per enrollee. The top tier now includes its edge in the loop and optimize modes,
+in the first two years read from the previous MAGIs, in the check of the loop's fixed point, and in
+the assistant's IRMAA report. Thanks to Marco Pignone (@rationalpiper) for reporting it, with the
+legal references and a fix (#216).
+
+#### Fixed: a spouse's own delayed credits come out of the spousal benefit instead of adding to it
+
+When someone receives their own retirement benefit with delayed credits and a spousal benefit,
+Social Security computes the combined payment without the credits and subtracts the own benefit
+with them to get the spousal part (POMS RS 00615.694; 42 U.S.C. 402(k)(3)(A)). **Owl** added the
+full spousal excess on top of the delayed own benefit. Example: with a \$3,000 PIA for one spouse and
+\$1,000 for the other, who files at 70, the second spouse gets \$1,500 a month, not \$1,740;
+delaying past FRA only pays once one's own benefit exceeds half the other's PIA. The claiming-age
+search no longer sees value in such a delay. Thanks to Marco Pignone (@rationalpiper) for reporting
+it, with the legal references and a fix (#211).
+
+#### Fixed: Part D IRMAA tiers 2 to 4 use the 2026 CMS amounts
+
+The 2026 Part D income-related monthly adjustments are \$14.50, \$37.50, \$60.40, \$83.30 and
+\$91.00 (CMS 2026 fact sheet, Nov 14, 2025; SSA POMS HI 01101.020). **Owl** had the first and last
+right but \$36.30, \$58.10 and \$79.90 for tiers 2 to 4, \$1.20, \$2.30 and \$3.40 a month too
+low per enrollee. Part B amounts were already correct. Examples whose income reaches those tiers pay
+slightly more for Medicare. Thanks to Marco Pignone (@rationalpiper) for reporting it (#214).
+
+#### Fixed: four cells of the joint life expectancy table follow the regulation
+
+The Joint and Last Survivor table used for RMDs when the spouse is the sole beneficiary and more
+than 10 years younger was copied from Pub. 590-B (2025), which prints four cells differently from
+the regulation, 26 CFR 1.401(a)(9)-9(d) as published in T.D. 9930: (90, 76) is 14.7, not 14.8, and
+(112, 102), (112, 103) and (112, 107) are 3.3, 3.2 and 3.0, not 3.2, 3.1 and 2.9. The regulation's
+table is symmetric in those cells and governs. Every other stored cell already matched. Only
+(90, 76) can reach a plan: a 90-year-old with a 76-year-old spouse had an RMD 0.7% too low. Thanks
+to Marco Pignone (@rationalpiper) for reporting it (#217).
+
+#### Fixed: a survivor born on the 1st claims at the survivor FRA a month earlier, and from 59 years 11 months
+
+Someone born on the 1st reaches every age in the month before their birthday (20 CFR 404.102), so a
+survivor born on the 1st reaches 60 and their survivor FRA one month before their conventional age.
+**Owl** resolved the survivor claim age on the conventional ages: *FRA* filed a month after the full
+rate was reached, losing one month of survivor benefit (\$3,000 on a \$3,000 benefit), an explicit
+age was capped a month late, and 59 years 11 months, when they reach 60, was not accepted. The
+claim age now uses those ages in the engine, the log messages, and the survivor claim-age fields,
+which span 59 years 11 months to the month the survivor FRA is reached; a stored age outside that
+window is moved into it. Everyone else is unchanged.
+
+#### Fixed: born on the 1st, delayed credits stop at age 70 and the survivor reduction counts one month less
+
+Social Security counts a person as reaching an age on the day before the birthday (20 CFR 404.102),
+so someone born on the 1st reaches every age in the month before their birth month. **Owl** already
+counted their retirement and spousal reductions on that age, but it did not stop there at 70:
+delayed credits end with the month before age 70 is attained (42 U.S.C. 402(w)(2)(A); POMS
+RS 00615.690), and a claim at a conventional 70 got a 37th credit, 2/3% of the PIA too much for life.
+Their survivor reduction, which is counted in months before the survivor FRA (20 CFR 404.410(c)(1)),
+used the conventional age instead and charged one month too many: 71.5% instead of 71.84% at a
+conventional 60. Thanks to Marco Pignone (@rationalpiper) for reporting it, with the legal
+references and a fix (#212).
+
+#### Fixed: the earliest Social Security claiming age in the interface is the month the engine uses
+
+Benefits start in the first month one is 62 throughout (POMS RS 00201.001): the birth month for
+those born on the 1st or 2nd, the month after for everyone else. The engine already used those
+months, but the claiming-age fields offered one month earlier (61 years 11 months and 62 years), and
+the engine quietly raised such an age. The fields now start at 62 years and 62 years 1 month, and a
+saved age below the minimum is raised to it.
+
+#### Fixed: IRMAA in the survivor's first two years uses the joint table of the lookback return
+
+Medicare's income-related surcharge (IRMAA) is set from the MAGI of the tax year two years before
+the premium year, and from the table of the filing status on that return: the joint ranges apply to
+individuals "who are married and filed a joint tax return for the tax year we use" (20 CFR
+418.1115(c), 418.1135(a)). **Owl** picked the table from the premium year instead, so after a
+death the survivor's first two years paired the couple's joint MAGI with the single thresholds. A
+couple files jointly in the year of the first death, so both of those years look back to joint
+returns, and the single table now starts in the third year, in both Medicare modes and in the
+assistant's IRMAA report. Example: a couple with \$190,000 of MAGI, below the \$218,000 joint edge,
+pays no surcharge, but **Owl** charged the survivor single tier 3 for two years, \$4,592 a year too
+much. A survivor's request to SSA to use a more recent year after the death (20 CFR 418.1205(a)) is
+not modeled. Thanks to Marco Pignone (@rationalpiper) for reporting it, with the legal references
+and a fix (#213).
+
+### Version 2026.10.21
+
+#### Fixed: a January 1 birthday gets the 65+ deductions a year earlier
+
+The additional standard deduction for age 65 (IRC 63(f)) and the OBBBA senior deduction
+(IRC 151(d)(5)(C)(ii)) require having attained age 65 before the end of the tax year, and the IRS
+treats a person as reaching an age on the day before the birthday (2025 Instructions for Form
+1040), hence "born before January 2, 1961" for 2025. **Owl** tested the birth year only, so a
+person born on January 1 got these deductions a year late: a single filer born January 1, 1962,
+had a 2026 deduction of \$16,100 instead of \$24,150. The age test now counts a January 1
+birthday in the year before. Thanks to Marco Pignone (@rationalpiper) for reporting it, with the
+legal references and a fix (#207).
+
+#### Fixed: Medicare and ACA coverage change in the month of the 65th birthday
+
+Medicare starts in the month of the 65th birthday, or in the month before for a birthday on the 1st
+(CMS), and premiums are monthly. **Owl** charged a full year of Part B, Part D, and IRMAA in the year
+of that birthday, and no ACA premium for its months before Medicare: someone born in December paid
+12 months of Medicare for one month of coverage, \$2,232 of Part B alone at the 2026 premium. The
+first Medicare year is now prorated by the months covered, and marketplace coverage runs until
+Medicare starts. The premium tax credit is computed by the month (IRC 36B(b)), and a month with
+Medicare is not a coverage month (36B(c)(2)(B)): each coverage month pays the lesser of its
+benchmark and 1/12 of the expected contribution, and the benchmark follows who is enrolled that
+month (26 CFR 1.36B-3(f), Example 7). Under `withACA = "optimize"`, the year a spouse moves to
+Medicare is priced on the months-weighted benchmark, which keeps one premium cap per year and
+charges slightly more, only for incomes between the two caps (#208).
+
+#### Fixed: the ACA poverty line is the tax household's
+
+For the premium tax credit, family size is the tax household, both spouses on a joint return
+(IRC 36B(d)(1), 26 CFR 1.36B-1(d)), whoever is enrolled. **Owl** used the 1-person poverty line once
+one spouse was on Medicare, which lowered the 400% cliff for 2027 from \$86,560 to \$63,840: at
+\$70,000 of MAGI, a 60-year-old's benchmark of \$9,572 was charged in full instead of \$6,972. The
+benchmark still covers only the spouse enrolled. Thanks to Marco Pignone (@rationalpiper) for
+reporting it, with the legal references and a fix (#199).
+
+#### Fixed: HSA contributions are prorated in the year Medicare starts
+
+The HSA limit is the sum of monthly limits, and the monthly limit is zero from the first month of
+Medicare (IRC 223(b)(2) and (b)(7)). **Owl** dropped the whole contribution in the year of the
+65th birthday. It now keeps the share for the months before Medicare, which starts in the
+birthday month, or the month before for a birthday on the 1st: 5/12 of the entry for a June 15
+birthday, and 11/12 of the year before for a January 1 birthday, which **Owl** used to keep whole.
+
+#### Fixed: the ACA poverty line is the guideline of the year before
+
+The premium tax credit measures income against "the most recently published poverty line as of the
+1st day of the regular enrollment period" (IRC 36B(d)(3)(B); 26 CFR 1.36B-1(h)). Open enrollment
+starts in November, so coverage in 2026 uses the 2025 guideline (\$21,150 for two people), not the
+2026 one (\$21,640). **Owl** used the coverage year's guideline grown by a year of inflation, which
+made the 138%, 150% and 400% lines about 2.3% too generous. Years past the last published guideline
+now grow it by inflation from its own year, which also corrects a plan starting after that year.
+Thanks to Marco Pignone (@rationalpiper) for reporting it, with the legal references (#200).
+
+#### Fixed: ACA uses the 2027 applicable percentage table, and exactly 400% of the poverty line qualifies
+
+Rev. Proc. 2026-26 publishes the 2027 table (2.15% below 133% of the poverty line, up to 10.22%).
+**Owl** applied the 2026 table to every year; the tables are now keyed by year, in both the loop and
+optimize modes, with the latest carried forward. In loop mode, income of exactly 400% of the poverty
+line paid the full benchmark; IRC 36B(c)(1)(A) covers income that "does not exceed 400 percent",
+so it now gets the credit, as it already did in optimize mode. Thanks to Marco Pignone
+(@rationalpiper) for reporting it (#201).
+
+#### Fixed: the 82.5% survivor limit caps the benefit after the survivor's age reduction
+
+When the deceased spouse had claimed early, **Owl** took the greater of their benefit and 82.5% of
+their PIA as the survivor's base and then reduced it for the survivor's age. The law reduces the
+full PIA for the survivor's age first and only then caps it at that greater amount: the limit
+applies to the benefit "after application of subsection (q)" (Social Security Act 202(e)(2)(D);
+POMS RS 00615.320). With a PIA of \$3,000 claimed at 62 and 1 month, a survivor filing at 62 now
+gets \$2,389.29 a month instead of \$1,971.16, and the gain from waiting until the survivor FRA
+drops from \$504 to \$86 a month. Survivors filing at their survivor FRA, and deceased spouses who
+claimed at or after FRA or never claimed, are unchanged. Thanks to Marco Pignone (@rationalpiper)
+for reporting it, with the legal references and a fix (#210).
+
+#### Fixed: a surviving spouse's home sale more than 2 years after the death uses the \$250,000 exclusion
+
+**Owl** chose the primary-residence exclusion once per plan, so a couple's home sold by the survivor
+kept the \$500,000 exclusion however long after the death. The joint amount carries over only for a
+sale "not later than 2 years after the date of death" (IRC 121(b)(4)); after that the limit is
+\$250,000 (121(b)(1)). The exclusion is now chosen by the year of the sale, both for the gain and for
+the balance sheet's estimated disposition cost. With **Owl**'s dates (death on December 31, sale on
+January 1), the survivor keeps \$500,000 for a sale in the two years after the year of the death.
+A \$400,000 gain realized later now has \$150,000 taxed. Thanks to Marco Pignone (@rationalpiper)
+for reporting it, with the legal references and a fix (#218).
+
+#### Fixed: the Social Security claiming-age search is no longer slow with MOSEK
+
+The claiming-age search (*withSSAges*) solves the plan at every open claiming month on parallel
+threads. **Owl** passed each model to MOSEK with one call per row and per bound, tens of thousands
+per solve, and those calls ran no faster on several threads than on one: the search took 89 s on
+Case_jack+jill with MOSEK against 20 s with HiGHS. The model now goes in with a few bulk calls, and
+the same search takes 17 s. The model MOSEK solves is unchanged.
 
 ### Version 2026.10.20
 
@@ -237,7 +467,7 @@ less than the solver's gap, and a single solve took minutes instead of seconds. 
 the plan once for each open claiming month, with the case's own options, and keeps the best, so
 the age chosen is never worse than any age entered. With both spouses selected, each age is
 searched in turn with the other held, until neither moves. The reported case now gets 68 5/12 at
-\$212,236/yr (40 solves, 1.4 s), or 69 2/12 at \$213,464/yr with the tax thresholds solved exactly.
+\$212,236/yr (40 solves, 1.4 s), or 69 6/12 at \$213,350/yr with all tax thresholds solved exactly.
 The claiming-month binaries and their benefit tables are removed from the model. Thanks to
 @sengsational for following up with the hand-entered ages that showed it (#195).
 
@@ -247,7 +477,9 @@ Historical-range, Monte Carlo, spending-optimization, and regret runs passed *Op
 age for...* on to every scenario, which chose the age again knowing that scenario's returns and
 lifespans. A claiming age is decided once, without that knowledge: these runs now hold the ages
 the plan has, chosen by a solve under the life expectancies entered, and say so in the log. In the
-regret sweep, this leaves the first-year conversion as the only decision that varies.
+regret sweep, this leaves the first-year conversion as the only decision that varies. The MCP
+historical-range and Monte Carlo tools, which loop over scenarios themselves, hold the ages too,
+and their run-time estimate now times one solve at the ages chosen rather than the whole search.
 
 ### Version 2026.10.17
 

@@ -45,6 +45,16 @@ this session's GitHub API access covers the fork only).
 
 No claim was found wrong. Not checked: #203's PA law, #215's run, the recalled citations noted above.
 
+## Status after upstream `dev` `37afa2a` (merged 2026-10-22)
+
+Fixed upstream and merged into the fork (commit subjects name the issue): #199, #200, #201,
+#202, #203, #207, #208, #209, #210, #211, #212, #213, #214, #215, #216, #217, and #218 (a
+survivor's home sale more than 2 years after the death gets the \$250,000 exclusion; filed
+after this note). **Not fixed**: #204 (proposal), #205 and #206 (LTCG worksheet). The
+"until upstream fixes it" checks in item 1 above (ACA-year MAGI against 4 x the prior year's
+guideline) are no longer needed. What the merge changed in fork code: PROGRESS.md, "Upstream
+`dev` `37afa2a` merged".
+
 ## Effect on the household plan
 
 Household facts used (template `fork-notes/phase0/Case_us.template.toml`): NY couple, both born

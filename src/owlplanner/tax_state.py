@@ -44,6 +44,30 @@ _LAST_BRACKET_SENTINEL = 5_000_000.0
 # States with zero income tax — stored as single zero-rate bracket for uniformity.
 NO_TAX_STATES = frozenset(["AK", "FL", "NV", "NH", "SD", "TN", "TX", "WA", "WY"])
 
+# Upper income limit of Medicaid for adults under 65, as a multiple of the poverty line (issue #202).
+# Expansion states cover adults to 133% plus the 5% income disregard (42 CFR 435.119, 435.603(d)(4)).
+# Of the states without the expansion (KFF, October 2026), Wisconsin covers adults to 100% under a
+# waiver; the others cover almost no adults without children (Georgia's Pathways requires 80 hours a
+# month of work or similar activity), which leaves a coverage gap below 100%, where the premium tax
+# credit starts (IRC 36B(c)(1)(A)).
+MEDICAID_EXPANSION_LIMIT = 1.38
+MEDICAID_ADULT_LIMIT = {
+    "AL": 0.0, "FL": 0.0, "GA": 0.0, "KS": 0.0, "MS": 0.0, "SC": 0.0, "TN": 0.0, "TX": 0.0, "WY": 0.0,
+    "WI": 1.00,
+}
+
+
+def medicaid_limit(state: str) -> float:
+    """Upper income limit of Medicaid for adults in state, as a multiple of the poverty line.
+
+    Expansion states, and a plan without a state, use MEDICAID_EXPANSION_LIMIT (1.38)."""
+    return MEDICAID_ADULT_LIMIT.get((state or "").upper(), MEDICAID_EXPANSION_LIMIT)
+
+
+# How a state treats Roth conversion income: toward its retirement income exemption (and that
+# exemption's age), never exempt, or left out of state income at any age (issue #203).
+CONVERSION_MODES = ("exemption", "taxed", "excluded")
+
 
 @dataclass(frozen=True)
 class StateItemizedParams:
@@ -98,7 +122,9 @@ class StateTaxParams:
     pe_cap_in      -- shape (N_i, N_n) pension-only exemption cap per individual
                       (0 = pensions count toward re_cap_in instead)
     ss_thresh_n    -- shape (N_n,) AGI threshold below which SS is exempt (0 = not applicable)
-    conv_ok_n      -- shape (N_n,) bool, whether Roth conversion income counts toward re_cap_in
+    conv_n         -- shape (N_n,) str, the state's treatment of Roth conversion income
+                      (CONVERSION_MODES): "exemption" counts toward re_cap_in, "taxed" never
+                      does, "excluded" is left out of state income at any age
     tax_ss_n       -- shape (N_n,) bool, whether the state taxes Social Security benefits
     pension_eligible_n -- shape (N_n,) bool, whether pensions share re_cap_in (no separate pension cap)
     fed_sd_n       -- shape (N_n,) bool, whether the state takes the federal standard deduction
@@ -120,7 +146,7 @@ class StateTaxParams:
     re_cap_in: np.ndarray
     pe_cap_in: np.ndarray
     ss_thresh_n: np.ndarray
-    conv_ok_n: np.ndarray
+    conv_n: np.ndarray
     tax_ss_n: np.ndarray
     pension_eligible_n: np.ndarray
     fed_sd_n: np.ndarray
@@ -227,6 +253,17 @@ def _per_filer(entry: dict, key: str, state: str, *, with_age: bool = False):
     if missing or not isinstance(spec.get("indexed"), bool):
         raise ValueError(f"State '{state}': '{key}' needs {', '.join(required)} (indexed a boolean).")
     return spec
+
+
+def _conversion_mode(entry: dict, state: str) -> str:
+    """The entry's roth_conversion mode; the former boolean roth_conversion_eligible maps to
+    "exemption" (true) or "taxed" (false)."""
+    if "roth_conversion" in entry:
+        mode = entry["roth_conversion"]
+        if mode not in CONVERSION_MODES:
+            raise ValueError(f"State '{state}': roth_conversion must be one of {', '.join(CONVERSION_MODES)}.")
+        return mode
+    return "exemption" if entry.get("roth_conversion_eligible", True) else "taxed"
 
 
 def _filers_alive(N_i: int, n_d: int, i_d, n: int) -> list:
@@ -420,7 +457,7 @@ def st_taxParams(
     pe_raw = entry_single.get("pension_exemption", 0)
     pe_base = np.inf if pe_raw == -1 else float(pe_raw)
 
-    conv_ok = bool(entry_single.get("roth_conversion_eligible", True))
+    conv = _conversion_mode(entry_single, state)
 
     # Age gating is per individual: each spouse qualifies on their own age, and an unused
     # cap cannot be claimed by the other spouse. An individual qualifies in the first year
@@ -458,7 +495,7 @@ def st_taxParams(
         re_cap_in=re_cap_in,
         pe_cap_in=pe_cap_in,
         ss_thresh_n=ss_thresh_n,
-        conv_ok_n=flag(conv_ok),
+        conv_n=np.full(N_n, conv, dtype=object),
         tax_ss_n=flag(tax_ss),
         pension_eligible_n=flag(pe_base == 0),
         fed_sd_n=flag(fed_sd),
@@ -495,8 +532,9 @@ def st_schedule(
     re_cap_in = np.zeros((N_i, N_n))
     pe_cap_in = np.zeros((N_i, N_n))
     ss_thresh_n = np.zeros(N_n)
-    flag_names = ("conv_ok_n", "tax_ss_n", "pension_eligible_n", "fed_sd_n", "senior_bonus_n")
+    flag_names = ("tax_ss_n", "pension_eligible_n", "fed_sd_n", "senior_bonus_n")
     flags = {name: np.zeros(N_n, dtype=bool) for name in flag_names}
+    flags["conv_n"] = np.full(N_n, "exemption", dtype=object)
     credit_n = np.zeros(N_n)
     recap = np.tile(np.array([[np.inf], [1.0], [0.0]]), (1, N_n))
     itemized = StateItemizedParams.empty(N_n)

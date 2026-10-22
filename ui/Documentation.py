@@ -428,6 +428,12 @@ An exact calculation would require to know (and input) the annual rates of retur
 the last five years and asset allocation ratios, and the same for all future years.
 Note that in certain *cases*, constraints on Roth withdrawals can make a zero bequest impossible
 if Roth conversions took place in the five years before passing.
+Before age 59½, Roth earnings cannot come out tax- and penalty-free: a Roth distribution comes from
+contributions first, then conversions, and earnings last (IRC 408A(d)(4)(B)). **Owl** therefore
+keeps each person's Roth withdrawals before 59½ within the starting Roth balance plus the
+conversions and contributions made since, rather than taxing early earnings. The whole starting
+balance counts as contributions and conversions, and the limit stops at the first passing, since a
+surviving spouse can keep the deceased's Roth as an inherited one, free of the 10% additional tax.
 
 In the table above, year 20XX illustrates the last plan year for that person (from life expectancy in the *case*).
 While loading a workbook, missing years or empty cells in the allowed window are filled with zeros; years outside
@@ -485,8 +491,15 @@ leave it blank where it does not apply), where:
   is tracked (every dollar later withdrawn or converted is fully taxable).
 - *HSA ctrb* is HSA contributions in nominal dollars. Like the other *ctrb* columns, subtract them
   from *anticipated wages*; being pre-tax, they are thereby excluded from both cash flow and
-  taxable income. Values are
-  automatically zeroed at Medicare enrollment (~age 65); entries past age 65 are ignored.
+  taxable income. Enter the full annual amount you plan to contribute: **Owl** applies the
+  Medicare cutoff itself. The HSA limit is counted by the month, and no contribution is allowed
+  for a month with Medicare (IRC 223(b)(2) and (b)(7)). Medicare starts in the month of the
+  65th birthday, or in the month before when the birthday falls on the 1st. In the year it
+  starts, **Owl** keeps the share of your entry for the months before Medicare and drops the rest:
+  5/12 of it for a June 15 birthday, 11/12 for a December 15 birthday, and none for a January 15
+  or February 1 birthday. A January 1 birthday starts Medicare in December of the year before, so
+  that earlier year keeps 11/12. Entries for later years are ignored. Your entries are kept as
+  typed in the workbook; the scaling applies only to the plan.
 - *Roth conv* is a Roth conversion amount in nominal dollars. On the five lead-in rows it records a
   conversion you have already performed, which the five-year maturation rule needs. On a plan year it
   is a conversion you are proposing: a figure you have already committed to, or one computed with
@@ -691,8 +704,10 @@ When an asset is disposed of during the plan, its proceeds (the future value net
 into tax-free, ordinary-income, and capital-gains portions according to the asset *type*:
 - *fixed annuity* — any gain over basis is taxed as **ordinary income**; the basis itself is returned tax-free.
 - *residence* — treated as a primary residence: a capital-gains **exclusion of \\$250,000 (single) or
-  \\$500,000 (married)** is applied to the gain. Only the gain above the exclusion is taxed as capital gains,
-  while the basis plus the excluded portion of the gain is tax-free. If the sale is at a loss, the proceeds
+  \\$500,000 (married)** is applied to the gain. A surviving spouse keeps the \\$500,000 exclusion for a
+  sale within 2 years of the death and gets \\$250,000 after that (IRC 121(b)(4)); with **Owl**'s dates,
+  that is a sale in the year after the death or the next one. Only the gain above the exclusion is taxed
+  as capital gains, while the basis plus the excluded portion of the gain is tax-free. If the sale is at a loss, the proceeds
   are entirely tax-free.
 - *real estate*, *collectibles*, *precious metals*, and *stocks* — the gain over basis is taxed as **capital
   gains** and the basis is returned tax-free. If the sale is at a loss, the proceeds are entirely tax-free.
@@ -822,7 +837,7 @@ is treated and where Owl's model diverges from the actual law:
 | Income tax brackets & standard deduction | Inflation-adjusted | Chained CPI-U (≈ CPI-U − 0.2–0.3%/yr) | Small |
 | LTCG & capital gains thresholds | Inflation-adjusted | Chained CPI-U | Small |
 | Medicare IRMAA thresholds | Inflation-adjusted | CPI-U | Negligible |
-| ACA Federal Poverty Level thresholds | Inflation-adjusted | HHS annual update ≈ CPI-U | Negligible |
+| ACA Federal Poverty Level thresholds | Published guideline of the year before; inflation-adjusted past the last one | HHS annual update ≈ CPI-U | Negligible |
 | Medicare premiums, ACA benchmark premium, other medical expenses | Inflation-adjusted, plus the optional *Medical prices above inflation* excess | Medical care CPI, premium growth | Medical prices have historically outpaced CPI; set the excess to model it |
 | SS taxability thresholds (\\$25k/\\$32k, \\$34k/\\$44k) | **Fixed** (not inflation-adjusted) | Fixed by law since 1984 | None — correctly modeled |
 
@@ -870,13 +885,24 @@ according to the age (year and month) when benefits are claimed. Total amount re
 during the first year of benefits (if in the future) is adjusted for situations
 when benefits do not cover the full year.
 This is important for bridging the transition to retirement.
+The earliest claiming age is the first month one is 62 throughout: 62 years for those born on the
+1st or 2nd of a month, who are 62 for all of their birth month, and 62 years 1 month for everyone
+else. Social Security counts a person as reaching an age on the day before the birthday, so someone
+born on the 1st reaches every age in the month before their birth month. **Owl** counts their
+reductions and delayed credits on that age: delayed credits stop when they reach 70, one month
+before their conventional 70, and a survivor benefit claimed before the survivor FRA is reduced
+for one month less.
 Spousal benefits are calculated under the assumption that those benefits
 are claimed at the latest date at which both spouses have claimed benefits.
+A spouse who delays their own benefit past FRA does not add the delayed credits on top of the
+spousal benefit: Social Security computes the combined payment without them and takes them out of
+the spousal part (POMS RS 00615.694), so delaying raises the total only once the spouse's own
+benefit exceeds half of the other spouse's PIA.
 Complex cases involving divorce or deceased spouses are not considered.
 
 **Survivor benefits.** After the first passing, the surviving spouse is entitled to two
-separate benefits: their own, and a survivor benefit worth the larger of the deceased
-spouse's benefit and 82.5% of their PIA. Social Security pays whichever is larger in a
+separate benefits: their own, and a survivor benefit based on the deceased spouse's PIA,
+plus any delayed retirement credits. Social Security pays whichever is larger in a
 given year, never both, and the spousal add-on ends. Because the two have independent
 start dates, a survivor who has not claimed yet keeps their own benefit and can still let
 it grow to age 70.
@@ -886,7 +912,15 @@ retirement credits accrue after death, though the benefit is still inflation-ind
 claiming date changes is the *fraction* of that amount paid, and it is measured against the
 **survivor's own age** when they file. Filing between age 60 and the survivor FRA reduces the
 benefit permanently, linearly from 71.5% at 60 to 100% at that FRA; waiting past it earns nothing
-extra, unlike a retirement benefit.
+extra, unlike a retirement benefit. A survivor born on the 1st of a month reaches both ages a month
+early: 60 at 59 years 11 months, and the survivor FRA a month before their birthday, so *FRA* files
+then, and the age fields span 59 years 11 months to that month.
+
+If the deceased spouse had claimed before their own FRA, the survivor benefit is then capped at
+the larger of the deceased's reduced benefit and 82.5% of their PIA (Social Security Act
+202(e)(2)(D)). The cap applies after the survivor's age reduction, so it is not reduced itself:
+with a PIA of \\$3,000 claimed at 62, a survivor filing at 62 gets the lesser of 79.6% of \\$3,000
+and the 82.5% cap, \\$2,389 a month, and waiting until the survivor FRA raises that only to \\$2,475.
 
 Note that the *survivor* FRA is a different SSA schedule from the *retirement* FRA that governs
 the claiming ages entered above, and can fall up to four months earlier. Both are derived from the
@@ -1634,12 +1668,33 @@ When the older spouse transitions to Medicare, the tool automatically scales the
 remaining spouse's individual plan using the CMS age rating curve (45 CFR 147.102), so no manual
 adjustment is needed. The scaling factor is approximately 37–48% of the couple's combined premium,
 depending on the age gap between spouses.
+Coverage is counted by the month: marketplace coverage ends when Medicare starts, in the month of the
+65th birthday (the month before for a birthday on the 1st), so the year of that birthday is charged
+for the months before it. The subsidy uses the poverty line of the tax household, which for a married
+couple is 2 while both spouses are alive, even when one of them is already on Medicare.
+That poverty line is the HHS guideline in effect when open enrollment begins, in November of the year
+before, so coverage in 2027 is measured against the guideline published in 2026 (IRC 36B(d)(3)(B);
+26 CFR 1.36B-1(h)). Years past the last published guideline grow it by inflation from its own year.
+The share of income expected toward the benchmark follows the IRS applicable percentage table of each
+year: Rev. Proc. 2025-25 for 2026 and Rev. Proc. 2026-26 for 2027, with the latest table carried
+forward. Above 400% of the poverty line there is no subsidy; income of exactly 400% still qualifies.
+Below the subsidy, Medicaid follows the state of residence of each year. In the states that expanded
+Medicaid, adults are covered up to 138% of the poverty line, at no premium. Wisconsin covers adults
+up to 100%. The other states without the expansion (AL, FL, GA, KS, MS, SC, TN, TX, WY, as of October
+2026) cover almost no adults without children, and the subsidy starts at 100%, so income below 100%
+gets neither: this *coverage gap* owes the full benchmark premium. With *Solve ACA brackets with
+MILP*, the optimizer prices the gap exactly and usually keeps income at 100% or above. The default
+loop charges the lowest subsidized share instead, as from 100%, because the cost jumps to the full
+premium below 100% and the loop could oscillate across that jump; it warns when a plan year ends in
+the gap, understating that year's premium. Medicaid's work requirements starting in 2027 are not
+modeled: they count all income, so they only matter below about \\$7,000 a year.
 The **ACA start year** field specifies the calendar year when ACA coverage begins (e.g. the year of
 retirement). Years before that are treated as employer-covered and incur no ACA cost. Leave at 0 for
 ACA to apply from the first year of the plan.
 *Solve ACA brackets with MILP (expert)* in *Advanced options*
 co-optimizes ACA bracket selection within the LP, enabling the optimizer to shift MAGI across ACA brackets
-for improved plan objectives (can be slower; applies 2026 rules only); it only applies when SLCSP > 0.
+for improved plan objectives (can be slower; applies the rules of 2026 on, so a 2025 plan year is priced
+on them too); it only applies when SLCSP > 0.
 
 **Medicare** has a toggle *Medicare and IRMAA calculations* (Part B and Part D).
 When turned off, Medicare premiums are ignored (set to zero); this is the fastest option but least accurate.
@@ -1656,7 +1711,8 @@ of the additional binary variables, and it wants MOSEK.
 Use it for single-case analysis; do not use it for Monte Carlo or multiple scenarios, where a
 solve that takes minutes instead of a fraction of a second is multiplied by every draw.
 
-Medicare premiums start automatically in the year each individual reaches age 65.
+Medicare premiums start automatically in the month each individual reaches age 65 (the month before
+for a birthday on the 1st), so the first year is charged only for the months covered.
 While the *Medicare and IRMAA calculations* toggle is on and anyone in the case is age 64 or older,
 inputs appear for `MAGI for [year] ($k)`
 for the prior 1 or 2 years (nominal thousands). These values are needed for
@@ -1714,7 +1770,7 @@ The *Advanced options* expander contains:
 - *Solve Medicare brackets with MILP (expert)* – chooses the IRMAA bracket inside the
   optimization rather than by iteration; enabled only when Medicare and IRMAA calculations are on.
 - *Solve ACA brackets with MILP (expert)* – chooses the ACA bracket inside the optimization, letting
-  it shift MAGI across brackets deliberately (slower; applies 2026 rules only);
+  it shift MAGI across brackets deliberately (slower; applies the rules of 2026 on);
   enabled only when SLCSP > 0.
 
 These two optimize modes operate on nearly disjoint time ranges — ACA covers pre-65 years,

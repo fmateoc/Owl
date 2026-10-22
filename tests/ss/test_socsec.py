@@ -437,6 +437,25 @@ def test_compute_ss_survivor_deceased_never_claimed(age_now, factor):
     assert zeta_in[1, 15] == pytest.approx(expected_annual, rel=1e-6)
 
 
+@pytest.mark.parametrize(
+    "deceased_claim, survivor_yob, claim, expected",
+    [
+        # #210 repro: own benefit 70.42% of 3,000 = 2,112.50; survivor 62, factor 0.79643.
+        # Law: min(3,000 x 0.79643, max(2,112.50, 2,475)) = 2,389.29, not 2,475 x 0.79643 = 1,971.16.
+        (62 + 1 / 12, 1974, "immediate", 3000 * (1 - 0.285 * 5 / 7)),
+        (62 + 1 / 12, 1976, "immediate", 3000 * 0.715),  # survivor 60: 2,145, under the cap
+        (62 + 1 / 12, 1974, "FRA", 0.825 * 3000),  # at survivor FRA the cap binds: 2,475
+        (70.0, 1974, "immediate", 3000 * 1.24 * (1 - 0.285 * 5 / 7)),  # claimed after FRA: DRCs, no cap
+    ],
+)
+def test_survivor_limit_caps_after_age_reduction(deceased_claim, survivor_yob, claim, expected):
+    """#210: the widow(er)'s limit caps the age-reduced benefit (SSA 202(e)(2)(D)); it is not reduced."""
+    zeta, _ = ss.compute_social_security_benefits(
+        np.array([3000, 0]), np.array([deceased_claim, 67.0]), np.array([1966, survivor_yob]), np.array([1, 1]),
+        np.array([15, 15]), np.array([10, 40]), 2, 40, thisyear=2026, survivor_claim_age=claim)
+    assert zeta[1, 16] / 12 == pytest.approx(expected, rel=1e-9)
+
+
 def test_survivor_min_age_60():
     """Survivor under 60 at death: factor clamped to age-60 floor (71.5%)."""
     # Age 55 is below SSA minimum; factor must equal the age-60 value (0.715).
@@ -887,3 +906,135 @@ def test_survivor_claim_window_upper_bound_is_the_survivor_fra():
     assert window["survivor_idx"] == 1
     assert window["survivor_fra"] == pytest.approx(66 + 8 / 12)  # not 67
     assert ss.getFRAs([1960], [6], [15])[0] == pytest.approx(67.0)
+
+
+# ---------------------------------------------------------------------------
+# Born on the 1st: every age is attained the month before (20 CFR 404.102), #212
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "day, at_69y11m, at_70",
+    [
+        (1, 36, 36),  # attains 70 the month before: 36 credits at most (FRA 67), also at a conventional 70
+        (2, 35, 36),
+        (15, 35, 36),
+    ],
+)
+def test_delayed_credits_stop_at_age_70(day, at_69y11m, at_70):
+    """42 U.S.C. 402(w)(2)(A), POMS RS 00615.690: credits end the month before age 70 is attained."""
+    fra = ss.getFRAs([1964], [3], [day])[0]
+    assert fra == 67
+    for age, credits in ((69 + 11 / 12, at_69y11m), (70.0, at_70)):
+        assert ss.getSelfFactor(fra, age, day == 1) == pytest.approx(1 + credits * 0.08 / 12)
+
+
+def test_survivor_reduction_counts_months_on_the_ssa_age():
+    """20 CFR 404.410(c)(1): born 3/1/1962, survivor FRA 67 attained Feb 2029, age 60 in Feb 2022 (84 months).
+    A claim at a conventional 60 (March 2022) is 83 months early; at 66y11m it is at FRA."""
+    assert ss._survivor_factor(67, 60.0, True) == pytest.approx(1 - 0.285 * 83 / 84)
+    assert ss._survivor_factor(67, 66 + 11 / 12, True) == 1.0
+    assert ss._survivor_factor(67, 60.0) == pytest.approx(0.715)  # born on any other day: unchanged
+    # They reach 60 at a conventional 59y11m; an earlier age is clamped to SSA age 60.
+    assert ss._survivor_factor(67, 59 + 11 / 12, True) == pytest.approx(0.715)
+    assert ss._survivor_factor(67, 59.0, True) == pytest.approx(0.715)
+
+
+def test_survivor_stream_born_on_the_first():
+    """compute_survivor_stream passes the survivor's birth day: born 3/1/1974, the survivor is a
+    conventional 61y10m at the first death (end of 2035), 61 months before survivor FRA, not 62."""
+    zeta, _ = ss.compute_social_security_benefits(
+        np.array([3000, 0]), np.array([70.0, 67.0]), np.array([1966, 1974]), np.array([1, 3]),
+        np.array([15, 1]), np.array([10, 40]), 2, 40, thisyear=2026)
+    expected = 3000 * 1.24 * (1 - 0.285 * 61 / 84)  # deceased claimed at 70: DRCs, no limit (#210)
+    assert zeta[1, 16] / 12 == pytest.approx(expected, rel=1e-9)
+
+
+def test_survivor_claim_limits_born_on_the_first():
+    """Born on the 1st, 60 and the survivor FRA are reached a month before the conventional ages."""
+    assert ss.survivor_claim_limits(67, True) == pytest.approx((59 + 11 / 12, 66 + 11 / 12))
+    assert ss.survivor_claim_limits(67, False) == pytest.approx((60.0, 67.0))
+    assert ss.survivor_claim_limits(66 + 10 / 12, True) == pytest.approx((59 + 11 / 12, 66 + 9 / 12))
+
+
+@pytest.mark.parametrize(
+    "setting, at_death, born_first, expected",
+    [
+        ("FRA", 61.0, True, 66 + 11 / 12),  # already the full rate
+        ("FRA", 61.0, False, 67.0),
+        (67.0, 61.0, True, 66 + 11 / 12),  # capped at the full rate
+        ("immediate", 55.0, True, 59 + 11 / 12),  # 60 is reached at 59y11m
+        ("immediate", 55.0, False, 60.0),
+        (59 + 11 / 12, 55.0, False, 60.0),  # anyone else: raised to 60
+        (59 + 11 / 12, 55.0, True, 59 + 11 / 12),
+    ],
+)
+def test_resolve_survivor_claim_age_born_on_the_first(setting, at_death, born_first, expected):
+    assert ss._resolve_survivor_claim_age(setting, 67.0, at_death, born_first) == pytest.approx(expected)
+
+
+def test_survivor_claim_age_validation_allows_59_11():
+    assert ss.validate_survivor_claim_age(59 + 11 / 12) == pytest.approx(59 + 11 / 12)
+    with pytest.raises(ValueError):
+        ss.validate_survivor_claim_age(59 + 10 / 12)
+
+
+def test_survivor_fra_option_born_on_the_first_pays_the_extra_month():
+    """Survivor born 3/1/1974 reaches survivor FRA (67) in Feb 2041: 'FRA' files then, paid from March
+    (10 months in 2041), not a month later as for someone born on the 15th."""
+    for day, months in ((1, 10), (15, 9)):
+        s = ss.compute_survivor_stream(np.array([3000, 0]), np.array([67.0, 67.0]), np.array([1966, 1974]),
+                                       np.array([1, 3]), np.array([15, day]), np.array([10, 40]), 2, 40,
+                                       survivor_claim_age="FRA", thisyear=2026)
+        assert s.born_first == (day == 1)
+        assert s.annual[2041 - 2026] == pytest.approx(3000 * months)
+        assert s.annual[2042 - 2026] == pytest.approx(3000 * 12)
+
+
+def test_survivor_claim_window_born_on_the_first():
+    """The window the UI bounds its fields with: conventional ages, a month earlier for the 1st."""
+    w1 = ss.survivor_claim_window([1966, 1974], [1, 3], [15, 1], [2035, 2066])
+    w15 = ss.survivor_claim_window([1966, 1974], [1, 3], [15, 15], [2035, 2066])
+    assert (w1["earliest_age"], w1["full_rate_age"]) == pytest.approx((59 + 11 / 12, 66 + 11 / 12))
+    assert (w15["earliest_age"], w15["full_rate_age"]) == pytest.approx((60.0, 67.0))
+    assert w1["survivor_fra"] == w15["survivor_fra"] == 67.0
+
+
+# ---------------------------------------------------------------------------
+# Own delayed credits come out of the spousal excess (POMS RS 00615.694), #211
+# ---------------------------------------------------------------------------
+
+
+def _spouse_benefits(spouse_pia, spouse_age):
+    """Worker born 2/10/1962, PIA $3,000, claims at 67; spouse born 9/10/1962 (FRA 67)."""
+    zeta, _ = ss.compute_social_security_benefits(
+        np.array([3000, spouse_pia]), np.array([67.0, spouse_age]), np.array([1962, 1962]), np.array([2, 9]),
+        np.array([10, 10]), np.array([40, 40]), 2, 40, thisyear=2026)
+    return zeta[1]
+
+
+@pytest.mark.parametrize("spouse_age", [67.0, 68.0, 70.0])
+def test_own_delayed_credits_come_out_of_the_spousal_excess(spouse_age):
+    """Combined payment without the credits, own benefit with them subtracted: $1,000 + $500 at any age
+    from FRA, where the old sum gave $1,580 at 68 and $1,740 at 70."""
+    assert _spouse_benefits(1000, spouse_age)[2036 - 2026] / 12 == pytest.approx(1500.0)
+
+
+def test_own_benefit_above_the_spousal_amount_is_paid_alone():
+    """PIA $1,400 at 70: own $1,736 exceeds $1,400 + $100, so the spousal part is zero."""
+    assert _spouse_benefits(1400, 70.0)[2036 - 2026] / 12 == pytest.approx(1400 * 1.24)
+
+
+def test_spousal_partial_first_year_uses_the_net_amount():
+    """Spouse files at 70 in September 2032: three payments of $1,240 own + $260 spousal that year."""
+    z = _spouse_benefits(1000, 70.0)
+    assert z[2032 - 2026] == pytest.approx(3 * (1240 + 260))
+    assert z[2033 - 2026] == pytest.approx(12 * 1500)
+
+
+def test_early_own_claim_keeps_the_full_spousal_excess():
+    """Without delayed credits nothing is subtracted. Born on the 10th, the spouse's own claim is raised
+    to 62y1m; the spousal excess starts with the worker's claim in Feb 2029, when the spouse is 66y5m."""
+    own = 1000 * ss.getSelfFactor(67, 62 + 1 / 12, False)
+    spousal = 500 * ss.getSpousalFactor(67, 66 + 5 / 12, False)
+    assert _spouse_benefits(1000, 62.0)[2036 - 2026] / 12 == pytest.approx(own + spousal)

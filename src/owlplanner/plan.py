@@ -517,6 +517,8 @@ class Plan:
         self.yOBBBA = 2032
         self.inames = inames
         self.yobs, self.mobs, self.tobs = u.parseDobs(dobs)
+        # Birth years for the federal 65+ deductions: a January 1 birthday counts in the year before.
+        self.yobs_tax = tx.taxBirthYears(self.yobs, self.mobs, self.tobs)
         self.dobs = dobs
         self.expectancy = np.array(expectancy, dtype=np.int32)
         self.sexes = ["M", "F"] if self.N_i == 2 else ["F"]  # default; overridden by setSexes()
@@ -564,7 +566,7 @@ class Plan:
         self.partial_heir_tax_liability = 0.0  # Heir taxes on partial bequest, today's $
         self.eta = (self.N_i - 1) / 2  # Spousal deposit ratio (0 or .5)
         self.phi_j = np.array([1, 1, 1, 1])  # Fractions left to other spouse at death (j=3: HSA)
-        self.n_hsa_i = np.full(self.N_i, self.N_n, dtype=int)  # Year HSA contributions stop (default: never)
+        self._setHSAStop([65] * self.N_i)  # Sets n_hsa_i and hsaFrac_in: HSA contributions end at Medicare
         self.slcsp_annual = 0.0  # Today-dollar annual ACA benchmark Silver plan premium ($)
         self.aca_start_year = 0  # Calendar year ACA coverage begins (0 = plan start)
         self.ACA_n = np.zeros(self.N_n)  # Net ACA cost (after subsidy) per year (plan $)
@@ -635,7 +637,8 @@ class Plan:
         self.N_st = 0  # Number of state tax brackets (0 when no state set)
         self.st_re_cap_in = np.zeros((self.N_i, self.N_n))  # State retirement income exemption caps
         # Per-year state flags (the state of residence can differ by year; see tax_state.st_schedule).
-        self.st_conv_ok_n = np.ones(self.N_n, dtype=bool)  # Roth conversions count toward the exemption
+        # Roth conversions: "exemption", "taxed" or "excluded" (see tax_state.CONVERSION_MODES)
+        self.st_conv_n = np.full(self.N_n, "exemption", dtype=object)
         self.st_tax_ss_n = np.zeros(self.N_n, dtype=bool)  # The state taxes Social Security
         self.st_fed_sd_n = np.zeros(self.N_n, dtype=bool)  # The state follows the federal standard deduction
         self.st_senior_bonus_n = np.zeros(self.N_n, dtype=bool)  # ...including the OBBBA senior bonus
@@ -1373,9 +1376,9 @@ class Plan:
         survivor_claim_age : str or float, optional
             For a couple, when the surviving spouse claims the survivor benefit:
             ``"immediate"`` (default) as soon as eligible, ``"FRA"`` at the survivor
-            full retirement age, or an explicit age in [60, 70]. The survivor's own
-            benefit keeps the claiming age given in ``ages``, and each year the survivor
-            receives the greater of the two, as SSA pays them.
+            full retirement age, or an explicit age in [60, 70] (59 11/12 for a survivor born
+            on the 1st). The survivor's own benefit keeps the claiming age given in ``ages``,
+            and each year the survivor receives the greater of the two, as SSA pays them.
         """
         u.require_list(pias, "pias", self.N_i)
         u.require_list(ages, "ages", self.N_i)
@@ -1532,16 +1535,22 @@ class Plan:
         before age 60, nor before the first passing, and it earns no delayed retirement
         credits past the survivor FRA. A permanent reduction is also worth flagging even
         when nothing was overridden, since the user may not have chosen it deliberately.
+        Ages are conventional: a survivor born on the 1st reaches 60 and the survivor FRA a month
+        earlier (socsec.survivor_claim_limits).
         """
         iname = self.inames[survivor.survivor_idx]
         requested = survivor.requested_age
         claim_age, fra, at_death = survivor.claim_age, survivor.survivor_fra, survivor.age_at_death
+        earliest, full_rate = socsec.survivor_claim_limits(fra, survivor.born_first)
         self.mylog.vprint(f"SS survivor benefit for {iname} claimed at age {claim_age:.2f}.")
 
         if not isinstance(requested, str) and abs(claim_age - requested) > 1e-9:
             reasons = []
-            if requested > fra + 1e-9:
-                reasons.append(f"survivor benefits earn no delayed credits past their survivor FRA of {fra:.2f}")
+            if requested > full_rate + 1e-9:
+                reasons.append(f"survivor benefits earn no delayed credits past their survivor FRA, reached at "
+                               f"{full_rate:.2f}")
+            if requested < earliest - 1e-9:
+                reasons.append(f"a survivor benefit cannot start before age 60, reached at {earliest:.2f}")
             if requested < at_death - 1e-9:
                 reasons.append(f"they are already {at_death:.2f} at the first passing")
             self.mylog.print(
@@ -1551,11 +1560,11 @@ class Plan:
                 tag="WARNING",
             )
 
-        if claim_age < fra - 1e-9:
-            pct = 100 * socsec._survivor_factor(fra, claim_age)
+        if claim_age < full_rate - 1e-9:
+            pct = 100 * socsec._survivor_factor(fra, claim_age, survivor.born_first)
             self.mylog.print(
-                f"Survivor benefit for {iname} starts at age {claim_age:.2f}, below their survivor FRA of "
-                f"{fra:.2f}, so it is permanently reduced to {pct:.1f}% of the full amount. "
+                f"Survivor benefit for {iname} starts at age {claim_age:.2f}, before their survivor FRA, "
+                f"reached at {full_rate:.2f}, so it is permanently reduced to {pct:.1f}% of the full amount. "
                 f"Set the survivor claiming age to 'FRA' to defer it instead."
             )
 
@@ -1953,10 +1962,29 @@ class Plan:
             u.d(np.sum(taxable) + 0.7 * np.sum(taxDeferred) + np.sum(taxFree)),
         )
 
+    def _setHSAStop(self, ages):
+        """
+        Set the share of each year's HSA contribution that the law allows, given Medicare enrollment
+        ages. The HSA limit is the sum of monthly limits (IRC 223(b)(1)-(2)), and the monthly limit is
+        zero from the first month of Medicare entitlement (IRC 223(b)(7)). Medicare starts in the
+        month of the birthday at that age, or the month before for a birthday on the 1st
+        (tx.medicareMonths), so the year it starts keeps the months before it: 5/12 for a June 15
+        birthday. Sets hsaFrac_in (N_i, N_n) and n_hsa_i, the first year that is cut.
+        """
+        months = tx.medicareMonths(
+            self.yobs, [self.N_n] * self.N_i, self.N_n, self.mobs, self.tobs, ages=ages
+        )
+        self.hsaFrac_in = 1.0 - months / 12
+        self.n_hsa_i = np.array(
+            [int(np.argmax(months[i] > 0)) if np.any(months[i] > 0) else self.N_n for i in range(self.N_i)],
+            dtype=int,
+        )
+
     def setHSA(self, balances, medicare_ages=None, units="k"):
         """
         Set HSA (Health Savings Account) initial balances and Medicare enrollment ages.
-        HSA contributions stop when Medicare enrollment begins (~age 65).
+        HSA contributions stop when Medicare enrollment begins (~age 65); the year it begins
+        keeps the contribution for the months before it (see _setHSAStop).
 
         Parameters
         ----------
@@ -1974,11 +2002,7 @@ class Plan:
             hsa=balances,
             units=units,
         )
-        thisyear = date.today().year
-        ages = medicare_ages if medicare_ages is not None else [65] * self.N_i
-        for i in range(self.N_i):
-            n_hsa = self.yobs[i] + ages[i] - thisyear
-            self.n_hsa_i[i] = min(max(0, n_hsa), self.N_n)
+        self._setHSAStop(medicare_ages if medicare_ages is not None else [65] * self.N_i)
         self.mylog.vprint("HSA contribution stop years:", [int(self.n_hsa_i[i]) for i in range(self.N_i)])
 
     def setMedicalExpenses(self, amount, units="k"):
@@ -2025,6 +2049,10 @@ class Plan:
         self.medical_excess = excess / 100
         self.mylog.vprint(f"Medical prices grow {excess:.2f}% a year above inflation.")
         self.caseStatus = "modified"
+
+    def _medicaid_n(self):
+        """Medicaid limit of each plan year, as a multiple of FPL, from the state of residence (#202)."""
+        return np.array([tax_state.medicaid_limit(s) for s in self._states_n()])
 
     def _medical_n(self, gamma_n):
         """Growth factors of medical prices: inflation compounded with the excess of setMedicalInflation."""
@@ -2595,16 +2623,8 @@ class Plan:
             self.kappa_ijn[i, 2, :h] = self.timeLists[iname]["Roth 401k ctrb"][5 : h + 5]
             self.kappa_ijn[i, 2, :h] += self.timeLists[iname]["Roth IRA ctrb"][5 : h + 5]
             self.kappa_ijn[i, 3, :h] = self.timeLists[iname]["HSA ctrb"][5 : h + 5]
-            # Zero HSA contributions after Medicare enrollment year.
-            # If n_hsa_i was never set (still at default N_n), initialize from yobs and age 65
-            # so programmatic plans that bypass config still get correct Medicare cutoff.
-            if self.n_hsa_i[i] >= self.N_n:
-                thisyear = date.today().year
-                n_hsa = self.yobs[i] + 65 - thisyear
-                self.n_hsa_i[i] = min(max(0, n_hsa), self.N_n)
-            n_stop = self.n_hsa_i[i]
-            if n_stop < h:
-                self.kappa_ijn[i, 3, n_stop:h] = 0.0
+            # HSA contributions end at Medicare; the year it starts is prorated (_setHSAStop).
+            self.kappa_ijn[i, 3, :h] *= self.hsaFrac_in[i, :h]
             self.myRothX_in[i, :h] = self.timeLists[iname]["Roth conv"][5 : h + 5]
             self.rothXfixed_in[i, :h] = np.asarray(
                 self.timeLists[iname]["Roth conv fixed"][5 : h + 5], dtype=bool
@@ -2725,7 +2745,7 @@ class Plan:
             filing_status = "married" if self.N_i == 2 else "single"
             (self.fixed_assets_tax_free_n, self.fixed_assets_ordinary_income_n, self.fixed_assets_capital_gains_n) = (
                 fxasst.get_fixed_assets_arrays(
-                    self.houseLists["Fixed Assets"], self.N_n, gamma_n, thisyear, filing_status
+                    self.houseLists["Fixed Assets"], self.N_n, gamma_n, thisyear, filing_status, self.n_d
                 )
             )
             # Calculate bequest value for assets with yod past plan end
@@ -2744,6 +2764,7 @@ class Plan:
                 self.liquidationCapGainsRate,
                 thisyear,
                 filing_status,
+                self.n_d,
             )
         else:
             self.fixed_assets_tax_free_n = np.zeros(self.N_n)
@@ -2892,15 +2913,17 @@ class Plan:
         rebuilt, _ = hfp_io.build_hfp_dataframes(self)
         compare = self.timeLists
         if compare and all(iname in compare for iname in self.inames):
-            # setContributions() zeroes HSA contributions past Medicare enrollment
-            # in the arrays only; apply the same clip to a comparison copy so such
+            # setContributions() prorates and zeroes HSA contributions from Medicare enrollment
+            # in the arrays only; apply the same scaling to a comparison copy so such
             # rows do not flag the time lists as stale.
             compare = {iname: compare[iname].copy() for iname in self.inames}
             for i, iname in enumerate(self.inames):
                 df = compare[iname]
-                n_stop, h = self.n_hsa_i[i], self.horizons[i]
-                if "HSA ctrb" in df.columns and n_stop < h:
-                    df.iloc[5 + n_stop : 5 + h, df.columns.get_loc("HSA ctrb")] = 0.0
+                h = self.horizons[i]
+                if "HSA ctrb" in df.columns:
+                    col = df["HSA ctrb"].to_numpy(dtype=float, copy=True)
+                    col[5 : 5 + h] *= self.hsaFrac_in[i, :h]
+                    df["HSA ctrb"] = col
         if not hfp_io.time_lists_agree(compare, rebuilt):
             self.timeLists = rebuilt
 
@@ -2995,7 +3018,7 @@ class Plan:
             raise RuntimeError("A rate method needs to be first selected using setRates(...).")
 
         self.sigmaBar_n, self.theta_tn, self.Delta_tn = tx.taxParams(
-            self.yobs, self.i_d, self.n_d, self.N_n, gamma_n, MAGI_n, self.yOBBBA
+            self.yobs_tax, self.i_d, self.n_d, self.N_n, gamma_n, MAGI_n, self.yOBBBA
         )
 
         # In a year whose state follows the federal standard deduction, the state deduction is
@@ -3009,7 +3032,8 @@ class Plan:
             if np.any(fed_no_bonus):
                 # Infinite MAGI phases the senior bonus out entirely.
                 no_bonus = np.full(self.N_n, np.inf)
-                sigma_nb = tx.taxParams(self.yobs, self.i_d, self.n_d, self.N_n, gamma_n, no_bonus, self.yOBBBA)[0]
+                sigma_nb = tx.taxParams(self.yobs_tax, self.i_d, self.n_d, self.N_n, gamma_n, no_bonus,
+                                        self.yOBBBA)[0]
                 st_sigma[fed_no_bonus] = sigma_nb[fed_no_bonus]
             self.st_sigmaBar_n = st_sigma
 
@@ -3089,13 +3113,16 @@ class Plan:
                 include_part_d=self._include_medicare_part_d,
                 part_d_base_annual_per_person=self._medicare_part_d_base_annual_per_person,
                 medical_n=self._medical_n(gamma_n),
+                mobs=self.mobs,
+                tobs=self.tobs,
             )
 
             if self.slcsp_annual > 0:
                 n_aca_start = max(0, self.aca_start_year - int(self.year_n[0])) if self.aca_start_year > 0 else 0
                 self.n_aca, self.Lbar_aca_nr, self.tangents_aca_nrk, self.slcsp_aca_n = tx.acaVals(
                     self.yobs, self.horizons, gamma_n, self.slcsp_annual, self.N_n, n_aca_start=n_aca_start,
-                    medical_n=self._medical_n(gamma_n),
+                    medical_n=self._medical_n(gamma_n), mobs=self.mobs, tobs=self.tobs,
+                    medicaid_n=self._medicaid_n(),
                 )
             else:
                 self.n_aca = 0
@@ -3324,7 +3351,7 @@ class Plan:
         niit_lp = options.get("withNIIT", "loop") == "optimize"
         # OBBBA 65+ bonus deduction: in optimize mode its MAGI phase-out is part of the LP, in the
         # years where somebody receives it.
-        self._sb_count_n, self._sb_threshold_n = tx.seniorBonusSchedule(self.yobs, self.i_d, self.n_d, self.N_n)
+        self._sb_count_n, self._sb_threshold_n = tx.seniorBonusSchedule(self.yobs_tax, self.i_d, self.n_d, self.N_n)
         self._sb_years = [n for n in range(self.N_n) if self._sb_count_n[n] > 0]
         sb_lp = options.get("withSeniorBonus", "loop") == "optimize" and bool(self._sb_years)
         self._sb_lp = sb_lp
@@ -3432,6 +3459,7 @@ class Plan:
         self._add_roth_conversion_constraints(options)
         self._add_safety_net(options)
         self._add_roth_maturation_constraints()
+        self._add_roth_early_withdrawal_limits()
         self._add_withdrawal_limits()
         self._add_hsa_medical_cap()
         self._add_withdrawal_ordering(options)
@@ -3496,7 +3524,7 @@ class Plan:
             # The deduction without the senior bonus; _add_senior_bonus_lp adds the bonus less its
             # phase-out as LP terms, so the bound here is the most it can reach.
             no_bonus = np.full(self.N_n, np.inf)
-            self._sb_base_n = tx.taxParams(self.yobs, self.i_d, self.n_d, self.N_n, self.gamma_n, no_bonus,
+            self._sb_base_n = tx.taxParams(self.yobs_tax, self.i_d, self.n_d, self.N_n, self.gamma_n, no_bonus,
                                            self.yOBBBA)[0]
             sigma_n = self._sb_base_n + tx.SENIOR_BONUS * self._sb_count_n
         for n in range(self.N_n):
@@ -4330,6 +4358,7 @@ class Plan:
                     G_n carries -- the tss_n variable under withSSTaxability="optimize",
                     the Psi_n * zetaBar_n parameter otherwise)
                   - pension exemption cap (parameter)
+                  - Roth conversions (x[i,n]) in years whose state leaves them out of income
 
         The LP then subtracts the state standard deduction (st_e) and retirement income
         exemption (st_re), with st_e and st_re bounded to prevent negative state tax.
@@ -4368,6 +4397,9 @@ class Plan:
                 row.addElem(vm["q"].idx(p, n), -1)  # subtract Q_n (capital gains)
             if ss_lp and not self.st_tax_ss_n[n]:
                 row.addElem(vm["tss"].idx(n), 1)  # exclude taxable SS (LP variable)
+            if self.st_conv_n[n] == "excluded":
+                for i in range(self.N_i):
+                    row.addElem(vm["x"].idx(i, n), 1)  # exclude Roth conversions (PA, MS)
             self.A.addRow(row, rhs, rhs, tag=("state_taxable_income", n))
 
         # A personal credit only offsets tax: the credit used stays below the year's state tax,
@@ -4386,7 +4418,7 @@ class Plan:
                 for n in range(self.N_n):
                     row = self.A.newRow({vm["st_re"].idx(i, n): 1})
                     row.addElem(vm["w"].idx(i, 1, n), -1)
-                    if self.st_conv_ok_n[n]:
+                    if self.st_conv_n[n] == "exemption":
                         row.addElem(vm["x"].idx(i, n), -1)
                     rhs = self.piBar_in[i, n] if self.st_pension_eligible_n[n] else 0
                     self.A.addRow(row, -np.inf, rhs, tag=("state_ret_exempt_cap", i, n))
@@ -4421,6 +4453,7 @@ class Plan:
         withdrawals of contribution principal, and of conversions after 59½). This never
         allows a withdrawal that would violate IRS rules; it only restricts some withdrawals that
         would technically be permitted. Exact per-dollar basis tracking is out of scope for an LP.
+        The age condition on earnings is enforced separately, by _add_roth_early_withdrawal_limits.
         """
         # Assume 10% per year for contributions and conversions for past 5 years.
         # Future years will use the assumed returns.
@@ -4455,6 +4488,36 @@ class Plan:
                         rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn] + cgains * self.myRothX_in[i, nn]
 
                 self.A.addRow(row, rhs, np.inf, tag=("roth_maturation", i, n))
+
+    @_fixedAcrossIterations
+    def _add_roth_early_withdrawal_limits(self):
+        """
+        Before 59 1/2, keep Roth withdrawals within what went into the account (#209).
+
+        A Roth IRA distribution comes from contributions first, then conversions oldest first, and
+        earnings last (IRC 408A(d)(4)(B)); before 59 1/2 it is not qualified (408A(d)(2)(A)), so its
+        earnings part is taxable and carries the 10% additional tax (Pub. 590-B). The maturation rows
+        retain only recent conversions, so without this the earnings could come out early with
+        neither. For each individual and year before the 59 1/2 year:
+
+            sum_{m<=n} w[i,2,m] <= b[i,2,0] + sum_{m<=n} (xnet * x[i,m] + kappa[i,2,m]),
+
+        which forbids early earnings rather than taxing them, conservative like the maturation rows.
+
+        Simplifications: the whole starting Roth balance counts as contributions and conversions
+        (Owl has no input for its basis), the rows stop at the first death (a surviving spouse can
+        keep the deceased's Roth as an inherited Roth, exempt from the 10%), and Roth 401(k) money is
+        treated as a Roth IRA's.
+        """
+        for i in range(self.N_i):
+            for n in range(min(int(self.n595[i]), int(self.n_d), int(self.horizons[i]))):
+                row = self.A.newRow()
+                row.addElem(self.vm["b"].idx(i, 2, 0), -1)
+                for m in range(n + 1):
+                    row.addElem(self.vm["w"].idx(i, 2, m), 1)
+                    row.addElem(self.vm["x"].idx(i, m), -self.xnet)
+                rhs = float(np.sum(self.kappa_ijn[i, 2, : n + 1]))
+                self.A.addRow(row, -np.inf, rhs, tag=("roth_early_basis", i, n))
 
     @_fixedAcrossIterations
     def _add_roth_conversion_constraints(self, options):
@@ -5688,11 +5751,7 @@ class Plan:
                 # settles it. Without pre-fixing, the LP relaxation pushes h-values toward low-premium
                 # brackets (maximizer behaviour) so argmax(h) picks the wrong bracket for these
                 # years.
-                magi = self.prevMAGI[n]
-                qsel = 0
-                for q in range(1, self.N_irmaa):
-                    if magi > self.Lbar_nq[nn, q - 1]:
-                        qsel = q
+                qsel = tx.irmaaTier(self.prevMAGI[n], self.Lbar_nq[nn])  # the top tier includes its edge
 
                 for q in range(self.N_irmaa):
                     idx = self.vm["zm"].idx(nn, q)
@@ -5743,22 +5802,30 @@ class Plan:
             self.A.addRow(row, rhs, rhs, tag=("irmaa_magi_def", nn))
 
         # Bracket bounds: L_{q-1} z_q <= mg_q <= L_q z_q, the lower one raised by BRACKET_MARGIN
-        # except in the first two years, whose bracket is pinned from the known MAGI above.
+        # except in the first two years, whose bracket is pinned from the known MAGI above. The top
+        # tier includes its edge ("at least $500,000", tx.irmaaTier, #216): it starts at the edge
+        # itself, and the bracket below stops BRACKET_MARGIN short of it, the mirror of the others.
+        top = self.N_irmaa - 1
         for nn in range(Nmed):
             margin = BRACKET_MARGIN if self.nm + nn >= 2 else 0.0
             for q in range(self.N_irmaa):
                 mg_idx = self.vm["h"].idx(nn, q)
                 zm_idx = self.vm["zm"].idx(nn, q)
 
-                lower = 0 if q == 0 else self.Lbar_nq[nn, q - 1] + margin
+                lower = 0 if q == 0 else self.Lbar_nq[nn, q - 1] + (margin if q < top else 0.0)
                 if lower > 0:
                     self.A.addNewRow({mg_idx: 1, zm_idx: -lower}, 0, np.inf, tag=("irmaa_bracket_lb", nn, q))
 
-                if q < self.N_irmaa - 1:
-                    upper = self.Lbar_nq[nn, q]
+                if q < top:
+                    upper = self.Lbar_nq[nn, q] - (margin if q == top - 1 else 0.0)
                 else:
-                    # Upper bound for last bracket so h_qn = 0 when z_q = 0.
-                    upper = self._ceiling_n[self.nm + nn]  # the year's MAGI ceiling
+                    # Upper bound for last bracket so h_qn = 0 when z_q = 0: the year's MAGI ceiling.
+                    # A pinned year's MAGI is the known previous MAGI, not plan income, and can exceed
+                    # that ceiling (a one-time gain two years back with modest savings now, #215).
+                    n = self.nm + nn
+                    upper = self._ceiling_n[n]
+                    if n < 2:
+                        upper = max(upper, self.prevMAGI[n])
                 self.A.addNewRow({mg_idx: 1, zm_idx: -upper}, -np.inf, 0, tag=("irmaa_bracket_ub", nn, q))
 
     @_fixedAcrossIterations
@@ -5792,7 +5859,8 @@ class Plan:
           c) Bracket bounds (Big-M): MAGI portion in bracket q is within its FPL thresholds.
 
         Note: ACA uses current-year MAGI (no 2-year lag like Medicare IRMAA).
-        Note: MAGI below 138% FPL is bracket 0, Medicaid at no premium, as in loop mode.
+        Note: MAGI below the year's first threshold is bracket 0: Medicaid at no premium up to the
+        state's Medicaid limit (138% FPL in expansion states), or the coverage gap below 100% FPL (#202).
         """
         if not self._aca_lp:
             return
@@ -5848,18 +5916,22 @@ class Plan:
             self.A.addNewRow(row_magi, rhs_magi, rhs_magi, tag=("aca_magi_def", nn))
 
         # c) Bracket bounds: Lbar[nn, r-1]*za[r] <= haca[r] <= Lbar[nn, r]*za[r], the lower one
-        # raised by BRACKET_MARGIN.
+        # raised by BRACKET_MARGIN. An edge that belongs to the bracket above (100% FPL ending a
+        # coverage gap, 133%: tx._aca_lp_from_above) lowers the upper bound below it instead.
+        medicaid_n = self._medicaid_n()
         for nn in range(self.n_aca):
+            shift = BRACKET_MARGIN * tx._aca_lp_from_above(medicaid_n[nn])
+            edge = self.Lbar_aca_nr[nn] - shift
             for r in range(tx.N_ACA_R):
                 haca_idx = self.vm["haca"].idx(nn, r)
                 za_idx = self.vm["za"].idx(nn, r)
 
-                lower = 0 if r == 0 else self.Lbar_aca_nr[nn, r - 1] + BRACKET_MARGIN
+                lower = 0 if r == 0 else edge[r - 1] + BRACKET_MARGIN
                 if lower > 0:
                     self.A.addNewRow({haca_idx: 1, za_idx: -lower}, 0, np.inf, tag=("aca_bracket_lb", nn, r))
 
                 if r < tx.N_ACA_R - 1:
-                    upper = self.Lbar_aca_nr[nn, r]
+                    upper = edge[r]
                     if upper <= lower:
                         # Above the MAGI where the contribution reaches the SLCSP (see
                         # tx._aca_capped_limits): such incomes belong to the full-premium bracket.
@@ -5876,10 +5948,11 @@ class Plan:
         Add ACA cost constraints for the LP/MIP formulation (optimize mode only).
 
         In optimize mode, for each tangent k:
-            maca_n >= sum_{r=1}^{5} (slope_rk * haca[nn,r] + intercept_rk * za[nn,r]) + slcsp_aca_n[nn] * za[nn,6].
+            maca_n >= sum_{r=0}^{6} (slope_rk * haca[nn,r] + intercept_rk * za[nn,r]) + slcsp_aca_n[nn] * za[nn,7].
         Only the selected bracket's terms are nonzero, so row k is that bracket's k-th tangent under
-        its sliding-scale cost pct(MAGI) * MAGI, and maca is their maximum. Bracket 0 (below 138% FPL)
-        is Medicaid, at no cost; bracket 6 (400% and up) pays the full SLCSP. maca is priced slightly
+        its sliding-scale cost pct(MAGI) * MAGI, and maca is their maximum. Bracket 0 (below the year's
+        first threshold) is Medicaid at no cost, or the coverage gap below 100% FPL in a state without
+        Medicaid there, at the full SLCSP (#202); bracket 7 (400% and up) pays the full SLCSP. maca is priced slightly
         in the objective (MIP_TIEBREAK) so it never rises above that maximum where cash has no value.
         In loop mode: maca variable does not exist; ACA_n (SC loop) goes in the cash-flow RHS.
         """
@@ -5891,12 +5964,15 @@ class Plan:
             self.B.setRange(self.vm["maca"].idx(n), 0, 0)
 
         # Cost: maca_n >= each tangent of the selected bracket (sliding scale), or the full SLCSP in
-        # bracket 6 (>400% FPL: no PTC under 2026 rules). Bracket 0 (Medicaid) adds nothing.
+        # bracket 7 (>400% FPL: no PTC under 2026 rules) and in a coverage-gap bracket 0. Bracket 0
+        # under Medicaid adds nothing.
         for nn in range(self.n_aca):
             for k in range(self.tangents_aca_nrk.shape[2]):
                 row = self.A.newRow({self.vm["maca"].idx(nn): 1})
-                for r in range(1, tx.N_ACA_R - 1):
+                for r in range(tx.N_ACA_R - 1):
                     slope, intercept = self.tangents_aca_nrk[nn, r, k]
+                    if r == 0 and intercept == 0:
+                        continue  # Medicaid: no cost
                     row.addElem(self.vm["haca"].idx(nn, r), -slope)
                     row.addElem(self.vm["za"].idx(nn, r), -intercept)
                 row.addElem(self.vm["za"].idx(nn, tx.N_ACA_R - 1), -self.slcsp_aca_n[nn])
@@ -6684,7 +6760,7 @@ class Plan:
             self.st_re_cap_in = sp.re_cap_in
             self.st_pe_cap_in = sp.pe_cap_in
             self.st_credit_n = sp.credit_n
-            self.st_conv_ok_n = sp.conv_ok_n
+            self.st_conv_n = sp.conv_n
             self.st_tax_ss_n = sp.tax_ss_n
             self.st_fed_sd_n = sp.fed_sd_n
             self.st_senior_bonus_n = sp.senior_bonus_n
@@ -6759,7 +6835,7 @@ class Plan:
         if options.get("withNIIT", "loop") == "optimize":
             fams.append("NIIT")
         if options.get("withSeniorBonus", "loop") == "optimize" and np.any(
-            tx.seniorBonusSchedule(self.yobs, self.i_d, self.n_d, self.N_n)[0]
+            tx.seniorBonusSchedule(self.yobs_tax, self.i_d, self.n_d, self.N_n)[0]
         ):
             fams.append("senior bonus")
         if options.get("withSTAR", "loop") == "optimize" and self._star_on:
@@ -7644,6 +7720,7 @@ class Plan:
             self._check_itemizing()
             self._computeFixedPointResidual(includeMedicare)
             self._warnSSResidual(fixed_psi)
+            self._warnACACoverageGap()
             if options.get("withDuals", False):
                 self._computeDuals(xx, options)
             self._timestamp = datetime.now().strftime("%Y-%m-%d at %H:%M:%S")
@@ -7658,15 +7735,17 @@ class Plan:
     def _state_agi_and_ti(self):
         """State AGI and taxable income of the current solution, per year.
 
-        AGI is federal AGI less the Social Security the state exempts, the pension exemption
-        and the retirement income exemption claimed: the same terms the state_taxable_income row uses.
+        AGI is federal AGI less the Social Security the state exempts, the pension exemption,
+        the conversions the state leaves out (PA, MS) and the retirement income exemption claimed:
+        the same terms the state_taxable_income row uses.
         """
         if self.N_st == 0:
             return np.zeros(self.N_n), np.zeros(self.N_n)
         ti = np.sum(self.st_f_tn, axis=0)
         ss_excl = np.where(self.st_tax_ss_n, 0.0, self.Psi_n * np.sum(self.zetaBar_in, axis=0))
         pe_adj = np.sum(np.minimum(self.piBar_in, self.st_pe_cap_in), axis=0)
-        agi = self.G_n + self.e_n + self.Q_n - ss_excl - pe_adj - np.sum(self.st_re_in, axis=0)
+        conv_excl = np.where(self.st_conv_n == "excluded", np.sum(self.x_in, axis=0), 0.0)
+        agi = self.G_n + self.e_n + self.Q_n - ss_excl - pe_adj - conv_excl - np.sum(self.st_re_in, axis=0)
         return agi, ti
 
     def _state_recapture_implied(self):
@@ -7705,6 +7784,34 @@ class Plan:
         self.st_star_n = self._star_received_n()
         self.st_T_n = state + self.lt_T_n - self.st_star_n
 
+    def _warnACACoverageGap(self):
+        """Loop mode: warn about ACA years with MAGI below 100% FPL in a state without Medicaid there.
+
+        Such a year gets neither Medicaid nor the premium tax credit and owes the full benchmark, but
+        the self-consistent loop charges the lowest applicable percentage instead, which has no jump
+        to oscillate across (tx.acaCosts, gap="approx"). Optimize mode prices the gap exactly (#202).
+        """
+        if self.slcsp_annual <= 0 or self._aca_lp:
+            return
+        thisyear = int(self.year_n[0])
+        n_start = max(0, self.aca_start_year - thisyear) if self.aca_start_year > 0 else 0
+        family_n, parts_n = tx._aca_coverage(self.yobs, self.horizons, self.N_n, self.mobs, self.tobs, thisyear)
+        medicaid_n = self._medicaid_n()
+        g = self.gamma_n[:-1]
+        years = [
+            int(self.year_n[n]) for n in range(n_start, self.N_n)
+            if parts_n[n] and medicaid_n[n] < 1.0
+            and self.MAGI_aca_n[n] < tx._aca_fpl(thisyear + n, family_n[n], g, thisyear)
+        ]
+        if years:
+            self.mylog.print(
+                f"ACA MAGI below 100% FPL in {', '.join(map(str, years))}, in a state without Medicaid for "
+                "adults at that income: no Medicaid and no premium tax credit, so the full benchmark premium "
+                "is owed. Loop mode charges the lowest applicable percentage instead; use withACA='optimize' "
+                "to price this coverage gap exactly.",
+                tag="WARNING",
+            )
+
     def _ltcg_tax_implied(self):
         """Capital-gains tax the plan's own ordinary income and gains imply, stacked exactly."""
         Nn = self.N_n
@@ -7722,25 +7829,30 @@ class Plan:
 
         if includeMedicare or np.any(self.medicare_n > 0):
             # A dollar of slack at the thresholds: the optimizer parks income exactly there, and
-            # cent-level rounding would otherwise flip a bracket and show a phantom residual.
+            # cent-level rounding would otherwise flip a bracket and show a phantom residual. The slack
+            # reads MAGI on each edge's own side: below the lower ones, at or above the top one (#216).
             M_true = tx.mediCosts(
-                self.yobs, self.horizons, self.MAGI_n - 1.0, self.prevMAGI, g, Nn,
+                self.yobs, self.horizons, self.MAGI_n, self.prevMAGI, g, Nn,
                 include_part_d=getattr(self, "_include_medicare_part_d", True),
                 part_d_base_annual_per_person=getattr(self, "_medicare_part_d_base_annual_per_person", 0.0),
-                medical_n=self._medical_n(g),
+                medical_n=self._medical_n(g), mobs=self.mobs, tobs=self.tobs, slack=1.0,
             )
             res["IRMAA"] = (self.medicare_n - M_true) / g
 
         if self.slcsp_annual > 0:
-            # Same dollar of slack: an optimizer parks income at the 400% cliff or the 138% line.
+            # Same dollar of slack: an optimizer parks income at the 400% cliff, the Medicaid line, or just
+            # above 100% FPL where a coverage gap ends; each edge is read on its own side (#202).
+            # The coverage gap is priced as each mode prices it (exact in optimize mode only).
             n_aca_start = max(0, self.aca_start_year - int(self.year_n[0])) if self.aca_start_year > 0 else 0
-            ACA_true = tx.acaCosts(self.yobs, self.horizons, self.MAGI_aca_n - 1.0, g, self.slcsp_annual, Nn,
-                                   n_aca_start=n_aca_start, medical_n=self._medical_n(g))
+            ACA_true = tx.acaCosts(self.yobs, self.horizons, self.MAGI_aca_n, g, self.slcsp_annual, Nn,
+                                   n_aca_start=n_aca_start, medical_n=self._medical_n(g),
+                                   mobs=self.mobs, tobs=self.tobs, medicaid_n=self._medicaid_n(),
+                                   gap="exact" if self._aca_lp else "approx", slack=1.0)
             res["ACA"] = (self.aca_costs_n - ACA_true) / g
 
         res["NIIT"] = (self.J_n - tx.computeNIIT(self.N_i, self.MAGI_n, self.I_n, self.Q_n, self.n_d, Nn)) / g
 
-        sigma_true = tx.taxParams(self.yobs, self.i_d, self.n_d, Nn, self.gamma_n, self.MAGI_n, self.yOBBBA)[0]
+        sigma_true = tx.taxParams(self.yobs_tax, self.i_d, self.n_d, Nn, self.gamma_n, self.MAGI_n, self.yOBBBA)[0]
         res["deduction"] = (self.sigmaBar_n - sigma_true) / g
 
         res["LTCG"] = (self.U_n - self._ltcg_tax_implied()) / g
@@ -8213,7 +8325,7 @@ class Plan:
             "up": mosek.boundkey.up,
         }
 
-        Aind, Aval, clb, cub = A.lists()
+        _, _, clb, cub = A.lists()
         ckeys = A.keys()
         vlb, vub = B.arrays()
         vkeys = list(B.keys())  # copy so overrides don't mutate B
@@ -8243,21 +8355,27 @@ class Plan:
         cval = scaling.objective(cind, cval)
         vlb, vub = scaling.col_values(vlb), scaling.col_values(vub)
         clb, cub = scaling.row_values(clb), scaling.row_values(cub)
-        for ii in range(len(cind)):
-            task.putcj(cind[ii], cval[ii])
-        for ii in range(nvars):
-            task.putvarbound(ii, bdic[vkeys[ii]], float(vlb[ii]), float(vub[ii]))
+
+        # The model goes in with a few bulk calls, one per kind of data. One MOSEK call per row and
+        # per bound (tens of thousands per solve) made solves on parallel threads, as in the SS-age
+        # search, slower than running them one after another.
+        # A column set twice in the objective keeps its last value, as putcj and Objective.arrays do.
+        cdict = dict(zip(cind, cval, strict=True))
+        task.putclist(np.fromiter(cdict.keys(), dtype=np.int32, count=len(cdict)),
+                      np.fromiter(cdict.values(), dtype=np.float64, count=len(cdict)))
+        task.putvarboundslice(0, nvars, [bdic[k] for k in vkeys],
+                              np.asarray(vlb, dtype=np.float64), np.asarray(vub, dtype=np.float64))
         if int_vars:
-            for ii in int_vars:
-                task.putvartype(int(ii), mosek.variabletype.type_int)
-        if not scaling.identity:
-            # The scaling works on the whole matrix at once; MOSEK takes it row by row.
-            ends = np.cumsum([len(ind) for ind in Aind])
-            flat = scaling.coefficients(np.concatenate(Aind), np.concatenate(Aval))
-            Aval = np.split(flat, ends[:-1])
-        for i in range(ncons):
-            task.putarow(i, Aind[i], Aval[i])
-            task.putconbound(i, bdic[ckeys[i]], float(clb[i]), float(cub[i]))
+            int_idx = np.asarray(int_vars, dtype=np.int32)
+            task.putvartypelist(int_idx, [mosek.variabletype.type_int] * len(int_idx))
+        if ncons > 0:
+            a_start, a_index, a_value = A.to_csr()
+            a_value = scaling.coefficients(a_index, a_value)
+            ptrb = a_start.astype(np.int64)
+            ptre = np.append(ptrb[1:], len(a_index)).astype(np.int64)
+            task.putarowslice(0, ncons, ptrb, ptre, a_index, np.asarray(a_value, dtype=np.float64))
+            task.putconboundslice(0, ncons, [bdic[k] for k in ckeys],
+                                  np.asarray(clb, dtype=np.float64), np.asarray(cub, dtype=np.float64))
         task.putobjsense(mosek.objsense.minimize)
 
         return task, ncons, nvars
@@ -8641,6 +8759,8 @@ class Plan:
                 include_part_d=include_part_d,
                 part_d_base_annual_per_person=part_d_base,
                 medical_n=self._medical_n(self.gamma_n[:-1]),
+                mobs=self.mobs,
+                tobs=self.tobs,
             )
         # Compute ACA costs through self-consistent loop (uses current-year MAGI, no 2-year lag).
         # In optimize mode (withACA="optimize"), ACA_n stays zero; maca_n carries the cost.
@@ -8655,6 +8775,9 @@ class Plan:
                 self.N_n,
                 n_aca_start=n_aca_start,
                 medical_n=self._medical_n(self.gamma_n[:-1]),
+                mobs=self.mobs,
+                tobs=self.tobs,
+                medicaid_n=self._medicaid_n(),
             )
 
         return None

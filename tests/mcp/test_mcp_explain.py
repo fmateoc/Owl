@@ -383,12 +383,13 @@ def test_irmaa_next_tier_cost_is_one_tier_of_surcharges():
     assert irmaa["next_tier_premium_increase_today"] > 0
 
 
-def _aca_plan():
+def _aca_plan(state="NV"):
+    """NV: an expansion state without income tax (Medicaid to 138% FPL)."""
     plan = _build_plan_from_params(
         names=["Morgan"],
         birth_dates=[f"{THISYEAR - 55}-03-01"],
         life_expectancy=[88],
-        state="TX",
+        state=state,
         taxable=[300_000],
         tax_deferred=[600_000],
         roth=[100_000],
@@ -411,12 +412,32 @@ def test_aca_cliffs_use_the_aca_magi():
 
     plan = _aca_plan()
     aca = build_explanation(plan)["this_year"]["threshold_proximity"]["aca"]
-    fpl_year = THISYEAR if THISYEAR in tx._ACA_FPL else max(tx._ACA_FPL)
-    fpl = float(tx._ACA_FPL[fpl_year][0])
+    fpl = tx._aca_fpl(THISYEAR, 1, plan.gamma_n, THISYEAR)  # the guideline of the year before (#200)
     assert aca["aca_magi"] == pytest.approx(float(plan.MAGI_aca_n[0]), abs=0.01)
     assert aca["subsidy_cliff"] == pytest.approx(4 * fpl, abs=0.01)
     assert aca["medicaid_line"] == pytest.approx(tx._ACA_MEDICAID_RATIO * fpl, abs=0.01)
     assert ("headroom_to_subsidy_cliff" in aca) != ("above_subsidy_cliff_by" in aca)
+    assert "coverage_gap_below" not in aca
+
+
+@pytest.mark.toml
+@pytest.mark.parametrize("state, medicaid", [("TX", False), ("WI", True)])
+def test_aca_cliffs_in_states_without_the_expansion(state, medicaid):
+    """TX: no Medicaid for adults, a coverage gap below 100% FPL; WI: Medicaid to 100%, no gap (#202)."""
+    import owlplanner.tax_federal as tx
+    from owlplanner.assistant.explain import _aca_cliffs
+
+    plan = _aca_plan(state)
+    fpl = tx._aca_fpl(THISYEAR, 1, plan.gamma_n, THISYEAR)
+    edges = _aca_cliffs(plan)
+    if medicaid:
+        assert edges["medicaid_line"] == pytest.approx(fpl, abs=0.01) and "coverage_gap_below" not in edges
+    else:
+        assert "medicaid_line" not in edges and edges["coverage_gap_below"] == pytest.approx(fpl, abs=0.01)
+        plan.MAGI_aca_n[0] = 0.6 * fpl
+        assert _aca_cliffs(plan).get("in_coverage_gap") is True
+        plan.MAGI_aca_n[0] = fpl - 0.0008  # parked on the 100% edge: the credit applies
+        assert "in_coverage_gap" not in _aca_cliffs(plan)
 
 
 def test_caveat_names_aca_premiums():
@@ -448,14 +469,44 @@ def test_irmaa_magi_parked_on_a_threshold_reads_as_below_it():
     import owlplanner.tax_federal as tx
 
     plan = _solved_plan(state="TX")
-    status = 1 if (plan.N_i == 2 and plan.n_d > 2) else 0
-    first = float(plan.gamma_n[2] * tx.irmaaBrackets[status][1])
+    first = float(plan.gamma_n[2] * tx.irmaaBrackets[tx.irmaaStatus(plan.horizons, 2)][1])
     plan.MAGI_n[0] = first + 0.0008
     irmaa = build_explanation(plan)["this_year"]["threshold_proximity"]["irmaa"]
     assert irmaa["current_tier"] == 0
     assert irmaa["headroom_to_next_tier"] == 0
     step = (tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1]) * plan._medical_n(plan.gamma_n)[2] / plan.gamma_n[2]
     assert irmaa["next_tier_premium_increase_today"] == pytest.approx(step, abs=0.01)
+
+
+@pytest.mark.toml
+def test_irmaa_uses_this_years_joint_return_after_a_death():
+    """#213: this year's MAGI sets the premium in 2 years on this year's (joint) table, even when
+    the first death comes before then."""
+    import owlplanner.tax_federal as tx
+
+    plan = _build_plan_from_params(
+        names=["Lee", "Kim"],
+        birth_dates=["1955-07-01", "1956-07-01"],
+        life_expectancy=[THISYEAR - 1955, 92],  # Lee's horizon ends after this year: n_d = 1
+        state="TX",
+        taxable=[300_000, 300_000],
+        tax_deferred=[600_000, 600_000],
+        roth=[100_000, 100_000],
+        hsa=None,
+        cost_basis=None,
+        ss_monthly_pias=[2500, 2000],
+        ss_ages=[70, 70],
+        pension_monthly_amounts=None,
+        pension_ages=None,
+        rate_method="conservative",
+    )
+    plan.solve("maxSpending", {"units": "1", "withDuals": True})
+    assert plan.n_d < 2
+    single, joint = (float(plan.gamma_n[2] * tx.irmaaBrackets[s][1]) for s in (0, 1))
+    plan.MAGI_n[0] = 0.5 * (single + joint)  # above the single edge, below the joint one
+    irmaa = build_explanation(plan)["this_year"]["threshold_proximity"]["irmaa"]
+    assert irmaa["current_tier"] == 0
+    assert irmaa["headroom_to_next_tier"] == pytest.approx(joint - plan.MAGI_n[0], abs=0.01)
 
 
 @pytest.mark.toml

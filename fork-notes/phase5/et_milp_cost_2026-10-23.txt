@@ -1,0 +1,29 @@
+owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py; run 2026-10-23; options {'withItemized': 'none', 'breakpointMethod': 'branch-and-bound'}
+
+chris+pat
+  test off #1: columns 1900 binaries 352 rows 1968;   50.7s, nodes 15, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 117,203.40; withheld 0 nominal
+  test on  #1: columns 1900 binaries 352 rows 1960;   43.7s, nodes 1, gap 2.8e-03; SS streams 1 ms in 1 calls; basis 117,088.45; withheld 12,320 nominal
+  test off #2: columns 1900 binaries 352 rows 1968;   49.8s, nodes 15, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 117,203.40; withheld 0 nominal
+  test on  #2: columns 1900 binaries 352 rows 1960;   42.7s, nodes 1, gap 2.8e-03; SS streams 1 ms in 1 calls; basis 117,088.45; withheld 12,320 nominal
+
+alex+jamie
+  test off #1: columns 1626 binaries 289 rows 1584;  248.9s, nodes 25, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 229,912.91; withheld 0 nominal
+
+(container restarted here; resumed with: alex+jamie --reps=1 --tests=on, then alex+jamie --reps=2, then jack+jill)
+owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py; run 2026-10-23; options {'withItemized': 'none', 'breakpointMethod': 'branch-and-bound'}
+
+alex+jamie
+  test on  #1: columns 1626 binaries 289 rows 1576;  162.9s, nodes 143, gap 3.0e-03; SS streams 1 ms in 1 calls; basis 229,363.80; withheld 20,612 nominal
+owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py; run 2026-10-23; options {'withItemized': 'none', 'breakpointMethod': 'branch-and-bound'}
+
+alex+jamie
+  test off #2: columns 1626 binaries 289 rows 1584;  197.8s, nodes 25, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 229,912.91; withheld 0 nominal
+  test on  #2: columns 1626 binaries 289 rows 1576;  162.2s, nodes 143, gap 3.0e-03; SS streams 1 ms in 1 calls; basis 229,363.80; withheld 20,612 nominal
+owlplanner from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py; run 2026-10-23; options {'withItemized': 'none', 'breakpointMethod': 'branch-and-bound'}
+
+jack+jill
+  test off #1: columns 1900 binaries 352 rows 2001;  312.6s, nodes 267, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 104,251.68; withheld 0 nominal
+  test on  #1: columns 1900 binaries 352 rows 1993;  200.8s, nodes 1077, gap 3.0e-03; SS streams 1 ms in 1 calls; basis 104,324.20; withheld 14,302 nominal
+  test off #2: columns 1900 binaries 352 rows 2001;  308.3s, nodes 267, gap 3.0e-03; SS streams 0 ms in 1 calls; basis 104,251.68; withheld 0 nominal
+  test on  #2: columns 1900 binaries 352 rows 1993;  202.0s, nodes 1077, gap 3.0e-03; SS streams 1 ms in 1 calls; basis 104,324.20; withheld 14,302 nominal
+DONE

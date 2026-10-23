@@ -634,7 +634,7 @@ CLAUDE.md gotcha "Earnings test: not modeled" replaced.
 ### Step 9: upstream — after step 4 (or 8)
 
 **Drafted 2026-10-22**: `fork-notes/issue-earnings-test.md`, evidence rerun on stock `dev` `37afa2a`
-(`issue-earnings-test-repro.py`); **posted by the user as #220** the same day.
+(`issue-earnings-test-repro.py`); **posted by the user as #220** the same day. Maintainer's answer (relayed 2026-10-23): fill the gap our way, on the condition that the full MILP stays affordable; reply draft `fork-notes/issue-220-reply.md` with the measured cost (`phase5/et_milp_cost_2026-10-23.txt`: same columns and binaries, 8 fewer rows, about 1 ms per solve) and a PR offer.
 
 A design issue at the concept level (lesson 8), federal SS only (lesson 3): the limitation
 upstream documents is live in 3 of its 18 examples (§3 table, rerun on stock `dev`); proposal

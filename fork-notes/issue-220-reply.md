@@ -7,11 +7,12 @@ fill the gap that suits you best. The only requirement is that the optimize full
 affordable on today's computer. Otherwise, we are chasing a moving target."
 
 Drafted 2026-10-23 on `claude/phase5-step1` (fork at upstream `dev` `e3592e7`). Revised the same
-day after the user's review: he asked for an implementation, not a choice, so the test is part of
+day after the user's review: the maintainer asked for an implementation, not a choice, so the test is part of
 the model with no switch (the fork removed its `withEarningsTest` switch the same day: its only effect was to
 keep wrong cases wrong), and the reply offers the implementation, not an option. The payroll tax
 is left out of this reply (still opt-in in the fork). The last paragraph promises a PR on stock
-`dev`: post this once the PR exists (or with its link), the user's call.
+`dev`: the PR is built (branch `fmateoc:earnings-test-pr`, `fork-notes/pr-220-body.md`); open it,
+then replace PR_LINK below with its link and post this.
 
 ## What the text rests on
 
@@ -36,7 +37,7 @@ is left out of this reply (still opt-in in the fork). The last paragraph promise
   round at 40-250 s each is upstream's cost with or without the test; not run here).
 
 The text answers his question with what was built, then his one condition with numbers, then
-offers a PR. It does not re-argue the problem (he accepted it). It answers our own four questions
+points to the PR. It does not re-argue the problem (he accepted it). It answers our own four questions
 from #220 as the fork decided them, since he left the design to us.
 
 ---
@@ -65,7 +66,8 @@ pays today.
 **Inputs** (my questions 2 and 3). Two optional per-person columns in Wages and Contributions:
 - *gross earnings*: earnings as SS counts them (W-2 box 5 plus net self-employment earnings).
   Where it is 0 or absent, *anticipated wages* is used, with a warning naming the years where a
-  contribution column is non-zero (those wages leave out 401(k) deferrals, which the test counts).
+  taxable, 401(k) or IRA contribution column is non-zero (those wages are net of contributions,
+  which the test counts).
 - *months worked*: 0-12, months of work at the start of the year. Where it is 0 or absent, it is
   12 in a year with earnings. It decides the grace year and how the FRA-year earnings split
   around the FRA month.
@@ -101,6 +103,6 @@ numbers, as with any change of inputs (here every case solved faster with the te
 took more nodes), but the test adds nothing for the solver to work on. Under `withSSAges` the
 number of candidates does not change, and each candidate is the same fixed-age problem.
 
-I'll send it as a PR on `dev`: the test and the two columns, with tests (POMS examples worked by
-hand, the no-op property on all examples, the `withSSAges` path) and the three examples'
-recorded results updated. It's yours to take or not.
+The PR is PR_LINK, on `dev`: the test and the two columns, with tests (POMS examples worked by
+hand, the no-op property on all examples, the `withSSAges` path) and the recorded results
+updated. It's yours to take or not.

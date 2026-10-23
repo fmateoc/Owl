@@ -2248,6 +2248,53 @@ Chris (claims at 70, out of the test's reach): the payroll tax alone, 2026-2027.
 `test_one_switch_keeps_its_own_warning`; the step-3 and step-2 warning tests pass unchanged.
 Full suite: **3488 passed, 1 skipped** (10:52; 3486 + 2). flake8 clean; Ruff only upstream's `B905`.
 
+## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
+
+**Review** of the earnings-test implementation (rules in `socialsecurity.py`, `Plan._ss_streams`
+and helpers, HFP columns, outputs, warnings), read against upstream's
+`compute_social_security_benefits` / `_add_spousal_benefit` and the rule list of the module.
+Two defects found, both fixed test-first (`103b252` spec, strict xfail; `e82f6bb` fix):
+
+1. `Plan._ssFRAStartAbs` used the eligibility test (`tobs <= 2`) where only a birth on the 1st
+   attains an age a month early (`earnings_test` uses `tobs == 1`). For a birth on the 2nd the
+   plan's FRA month was a month early (run: born 1960-01-02, plan Dec 2026 vs the test's Jan
+   2027). It feeds the Summary's *ARF months* window and the pays-nothing warning (by reading
+   the code, not run: a false warning when all but the last pre-FRA month is withheld); the
+   streams use the test's own FRA month and were not affected.
+2. The `gross earnings` fallback warning counted 401k/IRA/Roth columns but not *taxable ctrb*,
+   although upstream's convention nets *anticipated wages* of every ctrb column (Documentation):
+   a year with wages and only a taxable contribution understated the test's earnings silently.
+   The warning and the docs now say "net of contributions" (IRA and taxable contributions are
+   not payroll deferrals, which the old text called them all).
+
+Also renamed `born_on_first = tobs <= 2` (an eligibility flag) to `first_days` where it gates
+the age-62 reset. Checked and not changed: entitlement grid vs upstream's payment start and
+partial first year, spousal start (`max(ent_abs)` = upstream's latest claim), spousal end at the
+first death, charging order and records, crediting months before each person's FRA, ARF from
+the FRA month, survivor base with the deceased's ARF, trim on both streams, the solve-time
+rebuild under `withSSAges` clones and local search. Not verified against a primary source
+(recalled only): whether SSA also adjusts the reduction factor at a death before FRA for the
+survivor's benefit; the module leaves it out and says so.
+
+Fork tests on the touched files after the fixes: 456 passed (`tests/ss`, the HFP-column tests,
+`test_payroll_tax.py`, `tests/ui`). Full fork suite on `e82f6bb`: **3489 passed, 1 skipped** (10:14; 3485 + the 4 new tests). flake8 clean; Ruff only upstream's `B905`.
+
+**PR on stock `dev`** (branch `earnings-test-pr`, one commit `c6fcedb` on `e3592e7`; text
+`fork-notes/pr-220-body.md`): the earnings test and the two columns only, ported by hand from the
+fork (methods extracted verbatim, then the payroll-tax branches and fork references removed: the
+fallback warning has no payroll path, plan/decision references and "review finding" dates are
+gone from docstrings and tests). Added for upstream: CHANGELOG entry, `papers/owl.tex` (two "not
+modeled" sentences), a JSON-output test (the fork's is in `test_payroll_tax.py`), the template
+workbook's two columns. On stock `dev` the first full run gave 2 failures, both expected:
+the example-workbook header check (exempted the two derived columns, as the fork does) and
+jack+jill's recorded spending: **102,531.46 without the test -> 102,620.63 with it** (frozen
+date, Jill's \$14,302 nominal withheld in 2028, 11 ARF months; same withholding as the fork),
+re-recorded as 102_621. The fifteen other examples equal to the cent (the parametrized test).
+PR suite on `c6fcedb`: **3140 passed, 1 skipped** (8:55); Ruff clean. CI's strict flake8 selection: 0.
+
+The #220 reply draft now points to the PR (placeholder `PR_LINK`) and names the taxable column
+in the warning. The user opens the PR from `fmateoc:earnings-test-pr` and then posts the reply.
+
 ## The earnings test without an option (2026-10-23, on `claude/phase5-step1`)
 
 User's decision on the #220 reply draft: the maintainer asked for an implementation, not a choice,

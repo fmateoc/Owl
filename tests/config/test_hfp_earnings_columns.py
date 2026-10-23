@@ -608,3 +608,20 @@ def test_example_workbooks_feed_the_test_from_wages():
     earnings, months = p._earnings_test_inputs()
     assert earnings[j, n] == pytest.approx(85_000.0)
     assert months[j, n] == 12
+
+
+@pytest.mark.xfail(strict=True, reason="review 2026-10-23: taxable ctrb is netted out of wages too")
+def test_fallback_warning_names_taxable_contribution_years():
+    """Review 2026-10-23: *anticipated wages* are entered net of every *ctrb* column (HFP
+    convention, Documentation), *taxable ctrb* included, and a taxable contribution is paid
+    from W-2 box 5 wages. So a year with wages and only a taxable contribution is one where
+    the fallback understates the test's earnings, and is named like a 401k year."""
+    p = _plan()
+    p.zeroWagesAndContributions()
+    df = p.timeLists["Alice"]
+    df.loc[df.index[5], "anticipated wages"] = 90_000.0
+    df.loc[df.index[5], "taxable ctrb"] = 10_000.0
+    p.setContributions()
+    warn = _fallback_warnings(p, [thisyear])
+    assert len(warn) == 1
+    assert str(thisyear) in warn[0]

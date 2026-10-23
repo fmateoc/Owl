@@ -543,3 +543,22 @@ def test_plan_metrics_report_the_withholding():
     off = plan_metrics(_solve(_load("jack+jill"), test_on=False))
     assert off["ss_withheld_today"] == 0.0
     assert off["ss_withheld_nominal"] == 0.0
+
+
+_SHIFTED = pytest.mark.xfail(strict=True, reason="review 2026-10-23: _ssFRAStartAbs shifts FRA for a birth on the 2nd")
+
+
+@pytest.mark.parametrize(
+    "day, fra_month", [(1, (2032, 11)), pytest.param(2, (2033, 0), marks=_SHIFTED), (3, (2033, 0))]
+)
+def test_fra_month_matches_the_test_for_births_on_the_first_days(day, fra_month):
+    """Review 2026-10-23: only a birth on the 1st attains an age a month early (RS 00615.015,
+    ``socsec._fra_conventional_age``); a birth on the 2nd attains it on the 1st of the birthday
+    month. The plan's FRA month (Summary *ARF months*, the pays-nothing warning) must be the one
+    the earnings test charges up to. Born January 1966, FRA 67 (born on the 1st: the 1965 rule,
+    also 67)."""
+    p = owl.Plan(["Al"], [f"1966-01-{day:02d}"], [90], "fra", verbose=False)
+    fra = ss.getFRAs(p.yobs, p.mobs, p.tobs)[0]
+    expected = ss._ent_start_abs(1966, 1, ss._fra_conventional_age(fra, day == 1))
+    assert divmod(expected, 12) == fra_month
+    assert p._ssFRAStartAbs()[0] == expected

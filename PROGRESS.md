@@ -32,7 +32,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing") |
 | #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | **Fixed upstream** (`dev` `37afa2a`, 2026-10-22) except #204 (proposal), #205, #206; #218 (survivor's home-sale exclusion) too. Merged 2026-10-22, theirs; fork adaptations and a review fix in "Upstream `dev` `37afa2a` merged". Checked before the fixes 2026-10-21: no claim found wrong (`fork-notes/upstream-199-217/README.md`) |
-| #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, PR offered); not posted |
+| #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, a PR on `dev` promised); revised the same day after the user's review: no option, the test is part of the model (fork: `withEarningsTest` retired); not posted |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md`, **revised after the user's review: drop "convex"** (as an opt-in it is a choice with no signal for when to make it; the warning misses a loop that settles short; dominated by "optimize" when the rest is exact); **PR reworked the same day**: branch `ss-convex-pr` force-pushed (lease on `fb8b10e`) to `e5a9ad5`, one commit on `dev` `7abed19` (the warning only, pointing to `withSSTaxability="optimize"`; `tests/plan/test_ss_residual_warning.py`; upstream suite 2869 passed, 1 skipped); new PR title/text (`pr-193-body.md`) **pasted and reply (`pr-196-reply.md`) posted by the user** (2026-10-17); awaiting the maintainer. The reply promises the local-search LTCG issue (`issue-ls-ltcg.md`) as a separate issue |
 | #197 Local search pins the LTCG regime binaries in step (b) (`fork-notes/issue-ls-ltcg.md`) | **Filed by the user as #197** (2026-10-17). **Patch applied in the fork** the same day; household stand-ins rerun, no decision moves. Stock repro on `dev` `7abed19`: john+sally local-search preset 20,004 vs branch-and-bound 31,778; patch (step (b) leaves `zl` free) gives 31,778, never lower on the 18 examples, 1.53x the time. Section "Local search and the LTCG family" |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
@@ -2247,6 +2247,40 @@ Chris (claims at 70, out of the test's reach): the payroll tax alone, 2026-2027.
 `test_one_fallback_warning_per_person_with_both_switches` and
 `test_one_switch_keeps_its_own_warning`; the step-3 and step-2 warning tests pass unchanged.
 Full suite: **3488 passed, 1 skipped** (10:52; 3486 + 2). flake8 clean; Ruff only upstream's `B905`.
+
+## The earnings test without an option (2026-10-23, on `claude/phase5-step1`)
+
+User's decision on the #220 reply draft: the maintainer asked for an implementation, not a choice,
+and `withEarningsTest` had one effect, keeping wrong cases wrong (paying benefits SSA would
+withhold). With the switch off Owl gave no signal that it mattered: `_warnEarnings` returned
+before any earnings-test warning. D6 ("off in code") had been chosen only to keep the fork's
+merges clean (`phase5-plan.md` §6, revised).
+
+Test-first: spec `bb82794` (`tests/ss/test_earnings_test_always.py`, 6 strict xfail + 1 guard that
+passed on arrival), then the implementation:
+
+- every solve applies the test; `withEarningsTest` is in `RETIRED_OPTIONS` (ignored with a
+  warning, any value; the schema keeps it as an unknown key, so old case files load);
+- where the test withholds nothing and credits no ARF month, `_ss_streams` returns
+  `compute_social_security_benefits`' own output (checked with a marker on that function), so the
+  cases the test does not touch follow upstream's builder by construction;
+- Summary rows for a household with earnings in a plan year up to someone's FRA year
+  (`ss_earnings_reachable`), \$0 / "none" included, so two claiming ages of one household compare
+  row by row; none for a household without such earnings;
+- `owlcli explain` drops the `applied` flag; UI passthrough key, schema field and template line
+  removed; docs (PARAMETERS, modeling-capabilities, Documentation, Financial Profile help).
+
+Tests that compared on/off now compare against Owl without the test, i.e. the test run on zero
+earnings (`_without_the_test`; wages still count everywhere else); tests of the switch itself
+(spellings, round trips, "no warning when off") removed. Recorded values: only
+`test_toml_cases.py` moved, jack+jill 103,499 -> 103,578 (103,499.11 with the test on zero
+earnings, frozen date, same solve settings; Jill's \$14,302 withheld in 2028, 11 ARF months).
+Full suite: **3488 passed, 1 skipped** (10:40; 3492 + the 7 new - 11 tests of the switch itself).
+flake8 clean; Ruff only upstream's `B905`.
+
+The #220 reply draft (`fork-notes/issue-220-reply.md`) is revised accordingly: the test is part of
+the model, the 15 untouched examples are unchanged, the three change; it promises a PR on stock
+`dev` and leaves the payroll tax out.
 
 ## #220 answered by the maintainer; reply drafted with the full-MILP cost (2026-10-23, on `claude/phase5-step1`)
 

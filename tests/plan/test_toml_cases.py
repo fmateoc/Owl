@@ -127,13 +127,17 @@ def getHFP(exdir, case, check_exists=True):
 # kim+sam-bequest 1_944_071 -> 1_946_663 (both solvers 1_946_662.67) when IRMAA started using the
 # filing status of the lookback return (#213): the survivor's first two years are on the joint
 # table, which cuts its lifetime Medicare by $2,297 in today's dollars.
+# jack+jill 103_499 -> 103_578 (fork, 2026-10-23) when the SSA earnings test became part of the
+# model: Jill claims at 62y1m in 2028, her last work year at $85k, so that year's $14,302 (nominal)
+# is withheld and its 11 months come back at FRA through the adjustment of the reduction factor,
+# which here outweighs the withholding. 103_499.11 with the test run on zero earnings.
 EXPECTED_OBJECTIVE_VALUES = {
     "Case_john+sally": {
         "net_spending_basis": 145_000,
         "bequest": 16_803,
     },
     "Case_jack+jill": {
-        "net_spending_basis": 103_499,
+        "net_spending_basis": 103_578,
         "bequest": 400_000,
     },
     "Case_joe": {

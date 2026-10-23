@@ -193,7 +193,7 @@ def parse_switch(key, value):
     Return the boolean a switch option carries, or None when it is absent.
 
     One parser for every path a switch arrives by: the case schema coerces with it at
-    load (the TOML, ``owlcli --solver-opt``, the MCP), and ``Plan._earningsTestOn`` with
+    load (the TOML, ``owlcli --solver-opt``, the MCP), and ``Plan._payrollTaxOn`` with
     whatever a caller hands ``solve()`` (the UI's run options, a script). Booleans, the
     numbers 0 and 1 (numpy scalars included), and the spellings a switch takes
     ("true"/"false", "yes"/"no", "y"/"n", "t"/"f", "on"/"off", "1"/"0"). Anything else is

@@ -409,7 +409,7 @@ def test_json_output_reports_it():
     earnings test's withholding, step 3) must be among them, and in each year's row."""
     from owlplanner.cli.formatters import plan_to_dict
 
-    p = _solve(_load("jack+jill"), on=True, withEarningsTest=True)
+    p = _solve(_load("jack+jill"), on=True)
     d = plan_to_dict(p)
     s = d["summary"]
     assert s["payroll_tax_nominal"] == round(0.0765 * (180_000 * 2 + 185_000))
@@ -440,7 +440,7 @@ def test_tax_bills_and_csv_carry_it(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------------------
-# One fallback warning per person with both switches on (2026-10-23)
+# One fallback warning per person for the payroll tax and the earnings test (2026-10-23)
 # --------------------------------------------------------------------------------------
 
 
@@ -448,15 +448,15 @@ def _fallback_lines(buf):
     return [w for w in _warn_lines(buf) if "'gross earnings' is not given" in w]
 
 
-def test_one_fallback_warning_per_person_with_both_switches():
-    """chris+pat, both switches on. Pat has 401k deferrals and no `gross earnings` in
-    2026-2028 and claims in February 2028: the payroll tax reads all three years, the
-    earnings test only 2028. One warning names the three years and both uses, saying
-    which years the test reads. Chris claims at 70, so only the payroll tax reads his
-    2026-2027: one warning, the payroll tax alone."""
+def test_one_fallback_warning_per_person_for_both_uses():
+    """chris+pat with the payroll tax (the earnings test is always applied). Pat has 401k
+    deferrals and no `gross earnings` in 2026-2028 and claims in February 2028: the payroll
+    tax reads all three years, the earnings test only 2028. One warning names the three
+    years and both uses, saying which years the test reads. Chris claims at 70, so only
+    the payroll tax reads his 2026-2027: one warning, the payroll tax alone."""
     p = _load("chris+pat")
     buf = _warn_log(p)
-    _solve(p, on=True, withEarningsTest=True)
+    _solve(p, on=True)
     lines = _fallback_lines(buf)
     assert len(lines) == 2
     pat = [w for w in lines if "'Pat'" in w]
@@ -470,20 +470,13 @@ def test_one_fallback_warning_per_person_with_both_switches():
     assert "earnings test" not in chris[0]
 
 
-def test_one_switch_keeps_its_own_warning():
-    """Either switch alone: the warning names that use only (the earnings test's years
-    are the ones it reaches, Pat's 2028; the payroll tax's are all of them)."""
+def test_without_the_payroll_tax_the_warning_names_the_test():
+    """With the payroll tax off, the warning names the earnings test alone, for the years
+    it reaches (Pat's 2028); Chris, out of its reach, gets none."""
     p = _load("chris+pat")
     buf = _warn_log(p)
-    _solve(p, on=False, withEarningsTest=True)
+    _solve(p, on=False)
     lines = _fallback_lines(buf)
     assert len(lines) == 1
     assert "'Pat'" in lines[0] and "2028" in lines[0] and "2027" not in lines[0]
     assert "earnings test" in lines[0] and "payroll tax" not in lines[0]
-
-    p = _load("chris+pat")
-    buf = _warn_log(p)
-    _solve(p, on=True)
-    lines = _fallback_lines(buf)
-    assert len(lines) == 2
-    assert all("payroll tax" in w and "earnings test" not in w for w in lines)

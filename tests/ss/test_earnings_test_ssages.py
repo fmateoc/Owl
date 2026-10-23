@@ -4,12 +4,13 @@ Tests for the SSA earnings test under ``withSSAges`` (Phase 5 step 4).
 Since upstream #195 the claiming-age search solves the plan at fixed ages for every open
 month, each candidate on a clone of the plan, and keeps the best (phase5-plan.md §5 step
 4). The earnings test then reaches every candidate through the fixed-age path of step 3,
-provided each clone carries the earnings columns and the switch. These tests guard that:
+provided each clone carries the earnings columns. These tests guard that:
 
 - every candidate the search solves equals an independent fixed-age solve of a freshly
   loaded plan at the same ages, with the test on (and the candidate's ARF months show
   the test was applied on the clone);
-- with the switch off the same candidates are the no-test ones;
+- without the test (the test run on zero earnings) the same candidates are the no-test
+  ones;
 - the search keeps the best candidate, and the plan it returns carries that candidate's
   streams and earnings-test outputs.
 
@@ -33,6 +34,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import contextlib
 import io
 import os
 import threading
@@ -41,6 +43,7 @@ import numpy as np
 import pytest
 
 import owlplanner as owl
+from owlplanner import socialsecurity as ss
 from owlplanner.plan import Plan
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
@@ -58,10 +61,28 @@ def _load():
     return p
 
 
-def _opts(p, test_on, **extra):
-    opts = dict(p.solverOptions or {}, **extra)
-    opts["withEarningsTest"] = bool(test_on)
-    return opts
+def _opts(p, **extra):
+    return dict(p.solverOptions or {}, **extra)
+
+
+@contextlib.contextmanager
+def _test(test_on):
+    """With the earnings test (always applied), or without it: the test run on zero
+    earnings withholds nothing, so the plan keeps compute_social_security_benefits'
+    streams."""
+    if test_on:
+        yield
+        return
+    real = ss.earnings_test
+
+    def zero(*a, **k):
+        a = list(a)
+        a[8] = np.zeros_like(np.asarray(a[8], dtype=float))
+        return real(*a, **k)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(ss, "earnings_test", zero)
+        yield
 
 
 def _months(ages):
@@ -89,10 +110,10 @@ def _search(test_on):
         return value
 
     p = _load()
-    with pytest.MonkeyPatch.context() as mp:
+    with pytest.MonkeyPatch.context() as mp, _test(test_on):
         mp.setattr(Plan, "_ssaOpenAges", _open)
         mp.setattr(Plan, "_objectiveValue", _record)
-        p.solve(p.objective, _opts(p, test_on, withSSAges=["Jill"]))
+        p.solve(p.objective, _opts(p, withSSAges=["Jill"]))
     assert p.caseStatus == "solved"
     return p, seen
 
@@ -100,8 +121,9 @@ def _search(test_on):
 def _fixed(ages, test_on):
     """An independent fixed-age solve of a freshly loaded plan."""
     p = _load()
-    p.setSocialSecurity(list(p.ssecAmounts), list(ages))
-    p.solve(p.objective, _opts(p, test_on))
+    with _test(test_on):
+        p.setSocialSecurity(list(p.ssecAmounts), list(ages))
+        p.solve(p.objective, _opts(p))
     assert p.caseStatus == "solved"
     return p
 
@@ -120,7 +142,7 @@ def runs():
 @pytest.mark.parametrize("test_on", [True, False])
 def test_every_candidate_is_the_fixed_age_solve(runs, test_on):
     """Each candidate's objective and earnings-test outputs are those of a fresh plan solved
-    at the same ages with the same switch: the clone carried the earnings and the option."""
+    at the same ages, with or without the test: the clone carried the earnings."""
     searched, seen, fixed = runs[test_on]
     jack = int(round(searched.ssecAges[0] * 12))
     for m in OPEN_MONTHS:
@@ -132,8 +154,8 @@ def test_every_candidate_is_the_fixed_age_solve(runs, test_on):
 
 
 def test_candidates_see_the_test(runs):
-    """The 62y1m candidate has the whole 2028 withheld with the switch on (11 ARF months,
-    step 3), and nothing with it off; the later claims are the same either way."""
+    """The 62y1m candidate has the whole 2028 withheld with the test (11 ARF months,
+    step 3), and nothing without it; the later claims are the same either way."""
     _, on, _ = runs[True]
     searched, off, _ = runs[False]
     jack = int(round(searched.ssecAges[0] * 12))
@@ -164,22 +186,21 @@ def test_search_keeps_the_best_fixed_age_solve(runs, test_on):
     assert np.allclose(searched.zeta_in, ref.zeta_in, rtol=0.0, atol=1e-6)
     assert np.array_equal(searched.ss_arf_months_i, ref.ss_arf_months_i)
     assert np.allclose(searched.ss_withheld_in, ref.ss_withheld_in, rtol=0.0, atol=1e-6)
-    assert searched.ss_earnings_test_applied is test_on
 
 
 # --------------------------------------------------------------------------------------
-# Review of step 4 (2026-10-21): the switch changes the decision
+# Review of step 4 (2026-10-21): the test changes the decision
 # --------------------------------------------------------------------------------------
 
 
-def test_switch_moves_pats_pick():
+def test_the_test_moves_pats_pick():
     """chris+pat: Pat (born 1966-01-15, PIA $1,400) earns $85k in 2028, her last work year.
     Between a claim at 62y3m (April 2028, in that year) and at 63y0m (January 2029, the month
-    after it), the search takes the earlier one with the test off, which Owl pays, and the
-    later one with it on, as SSA would withhold April-December 2028. A regression pin: the
+    after it), the search takes the earlier one without the test, which Owl paid, and the
+    later one with it, as SSA would withhold April-December 2028. A regression pin: the
     values come from the plan (et_step4_probe.py; the sign agrees under the loop, local
     search and the exact LP, et_step4_crosscheck.py), not from a hand rule. Unlike the pick
-    test above, it fails when the candidates lose the switch even though the returned plan is
+    test above, it fails when the candidates lose the earnings even though the returned plan is
     re-solved with it: it checks the decision, not only the plan returned."""
     months = [62 * 12 + 3, 63 * 12]
     open_ages = Plan._ssaOpenAges
@@ -187,9 +208,9 @@ def test_switch_moves_pats_pick():
     for test_on in (False, True):
         p = owl.readConfig(os.path.join(_EXAMPLES, "Case_chris+pat.toml"), verbose=False, logstreams=[io.StringIO()])
         p.readHFP(os.path.join(_EXAMPLES, "HFP_chris+pat.xlsx"))
-        with pytest.MonkeyPatch.context() as mp:
+        with pytest.MonkeyPatch.context() as mp, _test(test_on):
             mp.setattr(Plan, "_ssaOpenAges", lambda self, i: [m / 12 for m in months] if i == 1 else open_ages(self, i))
-            p.solve(p.objective, _opts(p, test_on, withSSAges=["Pat"]))
+            p.solve(p.objective, _opts(p, withSSAges=["Pat"]))
         assert p.caseStatus == "solved"
         picks[test_on] = int(round(p.ssecAges[1] * 12))
         if test_on:

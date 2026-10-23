@@ -119,16 +119,14 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
     # The SSA earnings test is a fixed function of the claiming ages and the earnings
     # columns (phase5-plan.md §4.1), so both of its outputs are described without
     # solving: what it would withhold here (today's $), and the ARF crediting months that
-    # replace it at FRA. "applied" says whether the solve applies the test (D6: off).
+    # replace it at FRA.
     et = plan._earningsTestResult()
-    et_applied = plan._earningsTestOn()
     social_security = [
         {
             "name": plan.inames[i],
             "claiming_age": round(float(plan.ssecAges[i]), 4),
             "monthly_pia": int(plan.ssecAmounts[i]),
             "earnings_test": {
-                "applied": bool(et_applied),
                 "ss_withheld_total_today": int(round(float(et.withheld_in[i].sum()))),
                 "arf_months": int(et.arf_months[i]),
                 "arf_months_spousal": int(et.arf_months_spousal[i]),

@@ -3,16 +3,16 @@ Tests for applying the SSA earnings test to the plan (Phase 5 step 3).
 
 Properties from phase5-plan.md §5 step 3 and §5b, on the shipped examples:
 
-- the switch (``solver_options.withEarningsTest``, off in code, D6) off, or no earnings,
-  leaves every stream exactly as it is today;
+- with no earnings the streams are exactly today's (the test is always applied since
+  ``withEarningsTest`` was retired, 2026-10-23; "without the test" below is the test run
+  on zero earnings, see ``_without_the_test``);
 - the three examples of plan §3 that pay Social Security before FRA in a year with wages
   above the exempt amount (jack+jill and chris+pat in 2028, alex+jamie in 2026-2027) show
   the withholding, the ARF that replaces it at FRA, and taxes on the *net* benefit;
 - the other fifteen are a no-op to the cent;
 - a second solve after editing wages sees the new earnings;
 - the outputs reach the Summary and the worksheet, ``owlcli explain`` reports both of
-  them, and the solve warns (once, and only with the switch on) where the test cannot be
-  right.
+  them, and the solve warns (once) where the test cannot be right.
 
 Expected values are hand numbers from the primary rules — 20 CFR 404.410 reduction rates
 (5/9 of 1% for each of the first 36 months before FRA, 5/12 of 1% beyond) and the 2026
@@ -36,6 +36,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import contextlib
 import glob
 import io
 import os
@@ -45,7 +46,6 @@ import pytest
 
 import owlplanner as owl
 from owlplanner import socialsecurity as ss
-from owlplanner.config import load_toml
 from owlplanner.export import build_summary_dic
 from owlplanner.mylogging import Logger
 
@@ -88,15 +88,27 @@ def _load(case):
     return p
 
 
-def _solve(p, test_on):
-    """Resolve the plan with the earnings test switched on or off (D6: off by default)."""
-    opts = dict(p.solverOptions or {})
-    if test_on:
-        opts["withEarningsTest"] = True
-    else:
-        opts.pop("withEarningsTest", None)
-    p.solverOptions = opts
-    p.resolve()
+@contextlib.contextmanager
+def _without_the_test():
+    """Owl without the earnings test, for comparisons: the test run on zero earnings
+    withholds nothing, so the plan keeps compute_social_security_benefits' streams. Wages
+    still count everywhere else (income, taxes, the payroll tax)."""
+    real = ss.earnings_test
+
+    def zero(*a, **k):
+        a = list(a)
+        a[8] = np.zeros_like(np.asarray(a[8], dtype=float))
+        return real(*a, **k)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(ss, "earnings_test", zero)
+        yield
+
+
+def _solve(p, test_on=True):
+    """Resolve the plan, with the earnings test or (test_on=False) without it."""
+    with contextlib.nullcontext() if test_on else _without_the_test():
+        p.resolve()
     assert p.caseStatus == "solved"
     return p
 
@@ -112,26 +124,12 @@ def _both_alives(p):
 
 
 # --------------------------------------------------------------------------------------
-# No-op: the switch off, or no earnings (§5b)
+# No-op: no earnings (§5b)
 # --------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", THE_THREE)
-def test_switch_off_keeps_todays_streams(case):
-    """With the switch off the streams are exactly ``compute_social_security_benefits``,
-    and nothing is reported as withheld or credited."""
-    p = _solve(_load(case), test_on=False)
-    base, _ = ss.compute_social_security_benefits(
-        p.ssecAmounts, p.ssecAges, p.yobs, p.mobs, p.tobs, p.horizons, p.N_i, p.N_n
-    )
-    assert np.allclose(p.zeta_in, base, rtol=0.0, atol=1e-6)
-    assert np.all(p.ss_withheld_in == 0)
-    assert np.all(p.ss_arf_months_i == 0)
-    assert np.all(p.ss_arf_months_spousal_i == 0)
-
-
-def test_no_earnings_with_the_switch_on_is_a_no_op():
-    """Earnings are what the test reads: with none of them, the switch changes nothing."""
+def test_no_earnings_is_a_no_op():
+    """Earnings are what the test reads: with none of them, it changes nothing."""
     p = _load("jack+jill")
     base, _ = ss.compute_social_security_benefits(
         p.ssecAmounts, p.ssecAges, p.yobs, p.mobs, p.tobs, p.horizons, p.N_i, p.N_n
@@ -273,7 +271,7 @@ def test_second_solve_after_editing_wages():
 
 
 # --------------------------------------------------------------------------------------
-# Warnings (plan §4.4, §5 step 3), once per solve and only with the switch on
+# Warnings (plan §4.4, §5 step 3), once per solve
 # --------------------------------------------------------------------------------------
 
 
@@ -287,18 +285,6 @@ def _warn_log(p):
 def _warn_lines(buf):
     """The WARNING messages logged into buf."""
     return [line.split(" | ", 3)[-1] for line in buf.getvalue().splitlines() if "| WARNING |" in line]
-
-
-def test_no_warnings_with_the_switch_off():
-    """chris+pat falls back to `anticipated wages` in 2028, and alex+jamie is fully
-    withheld before FRA: both warn with the test on, neither with it off."""
-    for case in ("chris+pat", "alex+jamie"):
-        p = _load(case)
-        buf = _warn_log(p)
-        _solve(p, test_on=False)
-        warned = [w for w in _warn_lines(buf) if "gross earnings" in w or "withheld" in w]
-        assert not warned
-        assert np.all(p.ss_withheld_in == 0)  # and the test was not applied
 
 
 def test_fallback_warning_names_only_the_reachable_years():
@@ -330,8 +316,7 @@ def test_no_fallback_warning_for_a_late_claim():
 
 def test_warning_when_a_claiming_age_pays_nothing_before_fra():
     """alex+jamie: every month of Jamie's entitlement before FRA (2026-2027) is withheld,
-    so the early claim buys nothing until the ARF at FRA. The warning names the years and
-    does not fire when the test is off."""
+    so the early claim buys nothing until the ARF at FRA. The warning names the years."""
     p = _load("alex+jamie")
     buf = _warn_log(p)
     _solve(p, test_on=True)
@@ -345,21 +330,6 @@ def test_warning_when_a_claiming_age_pays_nothing_before_fra():
 # --------------------------------------------------------------------------------------
 # Outputs: Summary, worksheet, explain (plan §4.4)
 # --------------------------------------------------------------------------------------
-
-
-def test_summary_rows_appear_only_with_the_switch_on():
-    """The Summary rows follow the switch (with nothing withheld they read $0 / 'none',
-    see test_summary_rows_whenever_the_test_is_applied)."""
-    on = _solve(_load("jack+jill"), test_on=True)
-    dic = build_summary_dic(on)
-    assert any(k.startswith("SS withheld by the earnings test") for k in dic)
-    assert "ARF months" in dic
-    assert "11" in dic["ARF months"]
-
-    off = _solve(_load("jack+jill"), test_on=False)
-    dic = build_summary_dic(off)
-    assert not any(k.startswith("SS withheld by the earnings test") for k in dic)
-    assert "ARF months" not in dic
 
 
 def test_worksheet_column_next_to_ss():
@@ -380,24 +350,19 @@ def test_worksheet_column_next_to_ss():
 
 def test_explain_ss_block_gains_both():
     """`owlcli explain` describes the case without solving: it reports what the earnings
-    test would withhold at the entered claiming ages, and whether the solve applies it."""
+    test would withhold at the entered claiming ages."""
     from owlplanner.cli.cmd_explain import _plan_to_explain
 
     p = _load("jack+jill")
     block = _plan_to_explain(p, "Case_jack+jill.toml", [])["social_security"]
     by_name = {entry["name"]: entry for entry in block}
     jill = by_name["Jill"]["earnings_test"]
-    assert jill["applied"] is False  # D6: off unless the case asks for it
     assert jill["arf_months"] == 11
     assert jill["arf_months_spousal"] == 0
     # Every month of 2028 withheld, one month's benefit each (today's $).
     assert jill["ss_withheld_total_today"] == pytest.approx(11 * 1642 * _factor(59), abs=1.0)
     assert by_name["Jack"]["earnings_test"]["arf_months"] == 0
     assert by_name["Jack"]["earnings_test"]["ss_withheld_total_today"] == 0
-
-    p.solverOptions = dict(p.solverOptions or {}, withEarningsTest=True)
-    block = _plan_to_explain(p, "Case_jack+jill.toml", [])["social_security"]
-    assert {e["name"]: e["earnings_test"]["applied"] for e in block} == {"Jack": True, "Jill": True}
 
 
 # --------------------------------------------------------------------------------------
@@ -406,13 +371,12 @@ def test_explain_ss_block_gains_both():
 # --------------------------------------------------------------------------------------
 
 
-def test_switch_passed_to_solve_warns_under_with_ssages():
-    """The switch can reach `solve()` as an option (owlcli --solver-opt, the MCP), without
-    being pre-assigned to `solverOptions`. Under withSSAges the warning must still fire
-    once: the candidates are many, the user-visible solve is one."""
+def test_warns_once_under_with_ssages():
+    """Under withSSAges the warning fires once: the candidates are many, the user-visible
+    solve is one."""
     p = _load("chris+pat")
     buf = _warn_log(p)
-    p.solve(p.objective, dict(p.solverOptions or {}, withEarningsTest=True, withSSAges=["Pat"]))
+    p.solve(p.objective, dict(p.solverOptions or {}, withSSAges=["Pat"]))
     assert p.caseStatus == "solved"
     warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
     assert len(warned) == 1
@@ -426,25 +390,13 @@ def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
     p = _load("alex+jamie")
     buf = _warn_log(p)
     for _ in range(2):
-        p.solve(p.objective, dict(p.solverOptions or {}, withEarningsTest=True, withSSAges=["Alex"]))
+        p.solve(p.objective, dict(p.solverOptions or {}, withSSAges=["Alex"]))
         assert p.caseStatus == "solved"
     warned = [w for w in _warn_lines(buf) if "withheld" in w]
     assert len(warned) == 2
     for w in warned:
         assert "Jamie" in w
         assert "2026-2027" in w
-
-
-def test_switch_value_parsing():
-    """A switch is a boolean: 'off' is off, and a value that is none of the spellings is
-    refused rather than read as another (the same contract as the mode options)."""
-    p = _load("jack+jill")
-    assert p._earningsTestOn({"withEarningsTest": "off"}) is False
-    assert p._earningsTestOn({"withEarningsTest": "on"}) is True
-    assert p._earningsTestOn({"withEarningsTest": 0}) is False
-    assert p._earningsTestOn({}) is False  # D6: off unless asked for
-    with pytest.raises(ValueError, match="withEarningsTest"):
-        p._earningsTestOn({"withEarningsTest": "sometimes"})
 
 
 def test_jack_jill_2028_is_unchanged_with_a_stop_before_her_claim():
@@ -501,91 +453,20 @@ def test_every_solve_warns_once():
     assert len(warned) == 2
 
 
-def test_with_earnings_test_round_trips():
-    """The UI rebuilds solver options from its own keys: without a passthrough entry the
-    option would be dropped when a case is edited in the UI. The schema coerces the
-    spellings the command line sends, and refuses what is not a switch."""
-    from owlplanner.config.schema import parse_solver_options
-    from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
-
-    assert parse_solver_options({"withEarningsTest": True})["withEarningsTest"] is True
-    assert parse_solver_options({"withEarningsTest": "off"})["withEarningsTest"] is False
-    with pytest.raises(ValueError):
-        parse_solver_options({"withEarningsTest": "sometimes"})
-
-    diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))
-    diconf["solver_options"]["withEarningsTest"] = True
-    uidic = config_to_ui(diconf)
-    assert uidic["withEarningsTest"] is True
-    assert ui_to_config(uidic)["solver_options"]["withEarningsTest"] is True
-
-
-def test_ui_solve_parameters_keep_the_switch(monkeypatch):
-    """The UI run passes the switch to Plan.solve() through getSolveParameters() — the
-    shape of issue #156: a setting handled in one builder and forgotten in the other is
-    ignored by the run."""
-    import ui.sskeys as kz
-
-    from owlplanner.config.ui_bridge import config_to_ui
-
-    diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))
-    diconf["solver_options"]["withEarningsTest"] = True
-    uidic = config_to_ui(diconf)
-    monkeypatch.setattr(kz, "getCaseKey", uidic.get)
-    _, run_opts = kz.getSolveParameters()
-    assert run_opts["withEarningsTest"] is True
-
-
 # --------------------------------------------------------------------------------------
 # Second review of the fixes (2026-10-21)
 # --------------------------------------------------------------------------------------
 
 
-def test_switch_spellings_match_the_schema():
-    """Whatever a caller hands `solve()` must read the way the case schema reads it:
-    `Plan._earningsTestOn` sees raw values (the UI, a script), `parse_solver_options`
-    coerces them at load (the TOML, `owlcli --solver-opt`, the MCP). Booleans and 0/1,
-    numpy scalars included, and the spellings a switch takes; anything else is refused by
-    both, not read as another."""
-    from owlplanner.config.schema import parse_solver_options
-
-    p = _load("jack+jill")
-    for value in (
-        True,
-        False,
-        0,
-        1,
-        "true",
-        "false",
-        "y",
-        "n",
-        "t",
-        "f",
-        "on",
-        "off",
-        np.True_,
-        np.int64(1),
-        np.float64(0.0),
-    ):
-        expected = bool(parse_solver_options({"withEarningsTest": value})["withEarningsTest"])
-        assert p._earningsTestOn({"withEarningsTest": value}) is expected, value
-    for value in (2, 0.5, float("nan"), "sometimes", "loop"):
-        with pytest.raises(ValueError):
-            p._earningsTestOn({"withEarningsTest": value})
-        with pytest.raises(ValueError):
-            parse_solver_options({"withEarningsTest": value})
-
-
 def test_local_search_warns_once():
     """The local search's two nested solves (the seeding loop, the search itself) are one
-    user-visible solve: one warning, whether the switch arrives with `solve()`'s options."""
+    user-visible solve: one warning."""
     p = _load("chris+pat")
     buf = _warn_log(p)
     p.solve(
         p.objective,
         dict(
             p.solverOptions or {},
-            withEarningsTest=True,
             withSSTaxability="optimize",
             mipStrategy="local-search",
             localSearchTime=2,
@@ -599,8 +480,8 @@ def test_local_search_warns_once():
 
 
 # --------------------------------------------------------------------------------------
-# Third review (2026-10-21): a rejected setSocialSecurity, the Summary rows under the
-# switch and a shortened Summary, and the withholding in plan_metrics
+# Third review (2026-10-21): a rejected setSocialSecurity, the Summary rows over a
+# shortened Summary, and the withholding in plan_metrics
 # --------------------------------------------------------------------------------------
 
 
@@ -615,15 +496,12 @@ def _ss_state(p):
     )
 
 
-@pytest.mark.parametrize("test_on", [False, True])
-def test_rejected_set_social_security_leaves_the_plan_unchanged(test_on):
+def test_rejected_set_social_security_leaves_the_plan_unchanged():
     """A call that raises changes nothing (the behaviour before step 3, `d1d1681`): the
     PIAs, ages, trim and survivor settings and the streams stay those of the last call
     that succeeded, and the plan still solves. 71 is outside 62-70, refused by the
     reduction factor while the streams are built."""
     p = _load("jack+jill")
-    if test_on:
-        p.solverOptions = dict(p.solverOptions or {}, withEarningsTest=True)
     before = _ss_state(p)
     with pytest.raises(ValueError, match="71"):
         p.setSocialSecurity([1000, 1000], [71, 71], trim_pct=10, trim_year=2040, survivor_claim_age="FRA")
@@ -632,22 +510,7 @@ def test_rejected_set_social_security_leaves_the_plan_unchanged(test_on):
     assert np.array_equal(after[1], before[1])
     assert after[2:5] == before[2:5]
     assert np.array_equal(after[5], before[5])
-    _solve(p, test_on=test_on)
-
-
-def test_summary_rows_whenever_the_test_is_applied():
-    """With the switch on the two rows are there even when nothing is withheld ($0,
-    'none'), so that the UI's case comparison, which keeps only the rows both cases have,
-    does not drop them between two variants that both apply the test. Off: absent."""
-    p = _load("jack+jill")
-    p.omega_in[:, :] = 0.0
-    p.etEarnings_in[:, :] = 0.0
-    _solve(p, test_on=True)
-    dic = build_summary_dic(p)
-    rows = [k for k in dic if k.startswith("SS withheld by the earnings test")]
-    assert len(rows) == 2
-    assert all(dic[k] == "$0" for k in rows)
-    assert dic["ARF months"] == "none"
+    _solve(p)
 
 
 def test_arf_months_row_follows_the_summary_window():
@@ -665,7 +528,7 @@ def test_arf_months_row_follows_the_summary_window():
 
 def test_plan_metrics_report_the_withholding():
     """`owlcli compare` and the UI comparison read plan_metrics: the withholding is a key
-    there (0 when the test is off), mapped to its Summary rows. Today's $: 11 withheld
+    there (0 without the test), mapped to its Summary rows. Today's $: 11 withheld
     months of Jill's benefit (hand number, as above)."""
     from owlplanner.export import METRICS_COLUMN_MAP, plan_metrics
 

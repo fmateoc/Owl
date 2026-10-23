@@ -46,14 +46,12 @@ timetableHelp = {
         "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
         "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
         "*anticipated wages* alone, which leave out payroll deferrals and anything in *other inc* "
-        "(consulting or other self-employment income must be entered here to count). "
-        "Used when the earnings test is on (solver option *withEarningsTest*)."
+        "(consulting or other self-employment income must be entered here to count)."
     ),
     "months worked": (
         "Months of work at the start of this year (0-12). Earnings are taken as spread "
         "evenly over those months; it decides the grace-year monthly test and the share of "
-        "FRA-year earnings that counts. 0 (or no column) means not given: 12 in a year with earnings. "
-        "Used when the earnings test is on (solver option *withEarningsTest*)."
+        "FRA-year earnings that counts. 0 (or no column) means not given: 12 in a year with earnings."
     ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "

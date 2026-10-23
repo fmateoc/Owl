@@ -453,16 +453,15 @@ leave it blank where it does not apply), where:
   all your ordinary income; for example, interest from your taxable investment accounts is
   calculated automatically based on the assumptions you made for future return rates.
 - *gross earnings* and *months worked* are inputs to the Social Security earnings test, which
-  **Owl** applies when the solver option *withEarningsTest* is on (off unless the case asks for
-  it). Then the benefits a claim before full retirement age would lose to the test are withheld
-  in the earning years, and the withheld months come back at full retirement age through the
+  **Owl** always applies: the benefits a claim before full retirement age would lose to the
+  test are withheld in the earning years, and the withheld months come back at full retirement age through the
   adjustment of the reduction factor.
 - *gross earnings* is the employment income the Social Security earnings test counts: W-2 box 5
   (Medicare wages) plus net self-employment earnings. Those dollars include payroll deferrals that
   are not in *anticipated wages*. Where it is 0 or blank, or the column is absent, **Owl** uses
   *anticipated wages* alone, which leaves out payroll deferrals and everything in *other inc*:
   consulting or other self-employment income counts for the earnings test only if it is entered
-  here. When the earnings test is applied, **Owl** warns about the years it can reach that have
+  here. **Owl** warns about the years the earnings test can reach that have
   wages and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb* (a payroll HSA is not in
   box 5). Fill it in for any year in which someone claims Social Security before full retirement
   age while still working.
@@ -480,8 +479,9 @@ leave it blank where it does not apply), where:
   plan must pay, so it lowers what the plan can spend (and the withdrawals that pay it are taxed
   like any other). All of *gross earnings* is taxed as wages: self-employment tax is not
   modeled. Payroll deferrals are wages for this tax too, so **Owl** warns about the years with
-  wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*. With
-  the earnings test also on, one warning per person names both uses and the years each reads.
+  wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*. Where
+  the earnings test reads some of those years, one warning per person names both uses and the
+  years each reads.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
   cash flow and ordinary-income tax logic like wages. The Social Security earnings test does not

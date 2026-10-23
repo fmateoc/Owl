@@ -98,6 +98,10 @@ _SCLOOP_RETIRED = (
     "phaseout and the cost-basis gain fractions are nonlinear in the solution -- and turning "
     "it off left Medicare out of the budget, overstating spending. Use maxIter to shorten it"
 )
+_EARNINGS_TEST_RETIRED = (
+    "the SSA earnings test is always applied (fork): with no earnings up to a person's FRA year "
+    "it changes nothing, and turning it off only paid benefits SSA would withhold"
+)
 RETIRED_OPTIONS = {
     "amoConstraints": _AMO_RETIRED,
     "amoRoth": _AMO_RETIRED,
@@ -109,6 +113,7 @@ RETIRED_OPTIONS = {
     "bigMniit": _BIGM_RETIRED,
     "withDecomposition": _DECOMP_RETIRED,
     "withSCLoop": _SCLOOP_RETIRED,
+    "withEarningsTest": _EARNINGS_TEST_RETIRED,
 }
 
 # Sentinel distinguishing "argument omitted" from an explicit None, which callers use to
@@ -661,7 +666,7 @@ class Plan:
         self.ss_withheld_in = np.zeros((self.N_i, self.N_n))
         self.ss_arf_months_i = np.zeros(self.N_i, dtype=np.int64)
         self.ss_arf_months_spousal_i = np.zeros(self.N_i, dtype=np.int64)
-        self.ss_earnings_test_applied = False
+        self.ss_earnings_reachable = False
         self.pensionAmounts = np.zeros(self.N_i, dtype=np.int32)
         self.pensionAges = 65 * np.ones(self.N_i, dtype=np.int32)
         self.pensionIsIndexed = [False] * self.N_i
@@ -1472,28 +1477,28 @@ class Plan:
 
         ``setSocialSecurity`` and the rebuild at solve time (``_adjustParameters``, where
         ``zetaBar_in`` is set) both go through here, and both apply the SSA earnings test
-        when ``solver_options.withEarningsTest`` is on (off by default, D6). What counts is
-        the rebuild: ``setSocialSecurity`` reads the options and earnings the plan holds
-        at that moment (the previous solve's or the case's options; the HFP may not be read
-        yet), while every solve rebuilds the streams with its own options and the current
-        earnings (same pattern as the budget's ``xi_n``). With the switch off, or with no
-        earnings to test, this is exactly ``socsec.compute_social_security_benefits``.
+        (always: ``withEarningsTest`` is retired). What counts is the rebuild:
+        ``setSocialSecurity`` reads the earnings the plan holds at that moment (the HFP may
+        not be read yet), while every solve rebuilds the streams with the current earnings
+        (same pattern as the budget's ``xi_n``). Where the test withholds nothing, the
+        streams are ``socsec.compute_social_security_benefits``' own, so a plan the test does
+        not touch does not depend on the test's copy of the stream builder.
 
         Stores ``zeta_in`` (today's $) and the earnings-test outputs: ``ss_withheld_in``
         (nominal $, today's $ until the rates are set), the ARF crediting months
-        ``ss_arf_months_i`` / ``ss_arf_months_spousal_i``, and whether the test was applied
-        (``ss_earnings_test_applied``). Nothing is stored if the build raises.
+        ``ss_arf_months_i`` / ``ss_arf_months_spousal_i``, and whether someone has earnings
+        the test can reach (``ss_earnings_reachable``, which gates the Summary rows).
+        Nothing is stored if the build raises.
         """
         thisyear = date.today().year
         if gamma_n is None:
             gamma_n = getattr(self, "gamma_n", None)
         gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
-        applied = self._earningsTestOn()
-        if applied:
-            res = self._earningsTestResult(ages, gamma)
+        res = self._earningsTestResult(ages, gamma)
+        withheld_in = res.withheld_in
+        arf_i, arf_sp_i = res.arf_months, res.arf_months_spousal
+        if np.any(withheld_in > 0) or np.any(arf_i > 0) or np.any(arf_sp_i > 0):
             zeta_in, ages = res.zeta_in, res.ages
-            withheld_in = res.withheld_in
-            arf_i, arf_sp_i = res.arf_months, res.arf_months_spousal
         else:
             zeta_in, ages = socsec.compute_social_security_benefits(
                 self.ssecAmounts,
@@ -1509,15 +1514,31 @@ class Plan:
                 thisyear=thisyear,
                 survivor_claim_age=self.ssecSurvivorClaimAge,
             )
-            withheld_in = np.zeros((self.N_i, self.N_n))
-            arf_i = np.zeros(self.N_i, dtype=np.int64)
-            arf_sp_i = np.zeros(self.N_i, dtype=np.int64)
+        reachable = self._earningsReachable()
         self.zeta_in = zeta_in
         self.ss_withheld_in = withheld_in * gamma
         self.ss_arf_months_i = arf_i
         self.ss_arf_months_spousal_i = arf_sp_i
-        self.ss_earnings_test_applied = applied
+        self.ss_earnings_reachable = reachable
         return zeta_in, ages
+
+    def _earningsReachable(self):
+        """
+        True when someone with a benefit has earnings in a plan year up to their FRA year,
+        the only years the earnings test reads, whatever their claiming age: the Summary
+        reports the test for such a household, $0 included, so that two claiming ages
+        compare row by row (a household without such earnings gets no rows).
+        """
+        earnings, _ = self._earnings_test_inputs()
+        thisyear = date.today().year
+        fra_abs_i = self._ssFRAStartAbs()
+        for i in range(self.N_i):
+            if int(self.ssecAmounts[i]) <= 0:
+                continue
+            last = min(fra_abs_i[i] // 12 - thisyear, self.N_n - 1)
+            if last >= 0 and np.any(np.asarray(earnings[i][: last + 1], dtype=float) > 0):
+                return True
+        return False
 
     def _ssFRAStartAbs(self):
         """
@@ -2494,23 +2515,16 @@ class Plan:
         months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
         return earnings, months
 
-    def _earningsTestOn(self, options=None):
+    def _payrollTaxOn(self, options=None):
         """
-        True when this solve applies the SSA earnings test (D6: off by default).
+        True when this solve charges the employee payroll tax (Phase 5 step 5, D3: off by
+        default).
 
         ``options`` is the solve's own options dict, and is what the warnings pass:
         ``solve()`` only assigns ``self.solverOptions`` after it has branched into
         ``withSSAges`` and the local search. Parsed like the case schema does
         (``utils.parse_switch``, the one parser): a value that is not a switch is
         refused, not read as another (the same contract as the mode options).
-        """
-        opt = ((options if options is not None else self.solverOptions) or {}).get("withEarningsTest", False)
-        return u.parse_switch("withEarningsTest", opt) is True
-
-    def _payrollTaxOn(self, options=None):
-        """
-        True when this solve charges the employee payroll tax (Phase 5 step 5, D3: off by
-        default). Read like ``_earningsTestOn``: one parser for the switch options.
         """
         opt = ((options if options is not None else self.solverOptions) or {}).get("withPayrollTax", False)
         return u.parse_switch("withPayrollTax", opt) is True
@@ -2601,22 +2615,16 @@ class Plan:
         The earnings warnings of one solve: one fallback warning per person for the years in
         which ``anticipated wages`` stands in for ``gross earnings`` and understates them (a
         deferral column is non-zero), naming the payroll tax where the solve charges it
-        (``withPayrollTax``, D3) and the earnings test where it applies it
-        (``withEarningsTest``, D6; ``_warnGrossEarningsFallback``); and, with the test on,
-        a fixed claiming age that pays nothing before FRA: every month of entitlement before FRA
-        that falls in the plan is withheld, which usually means the age is a typo or a
-        plan to revisit. Called once per solve: the nested solves (the withSSAges
+        (``withPayrollTax``, D3) and the earnings test for the years it can reach
+        (``_warnGrossEarningsFallback``); and a fixed claiming age that pays nothing before
+        FRA: every month of entitlement before FRA that falls in the plan is withheld, which
+        usually means the age is a typo or a plan to revisit. Called once per solve: the nested solves (the withSSAges
         candidates, the local search's seeding runs) and the search's own final solve,
         which the search has already been warned for, are skipped.
         """
         if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
             return
-        test_on = self._earningsTestOn(options)
-        self._warnGrossEarningsFallback(
-            self._ssEntitledFrom(options) if test_on else None, payroll=self._payrollTaxOn(options)
-        )
-        if not test_on:
-            return
+        self._warnGrossEarningsFallback(self._ssEntitledFrom(options), payroll=self._payrollTaxOn(options))
         searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
 
         # Fresh from the plan's current ages and earnings, not from the stored outputs:
@@ -6743,7 +6751,6 @@ class Plan:
             "withMedicare",
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
-            "withEarningsTest",  # SSA earnings test on the SS streams (fork, Phase 5); off by default
             "withPayrollTax",  # employee payroll tax on earnings (fork, Phase 5 step 5); off by default
             "withDuals",  # Re-solve final LP with binaries fixed to extract shadow prices
             "withdrawalOrder",  # "optimal" (default) or "taxable_first" (naive ordering gates)
@@ -6782,8 +6789,6 @@ class Plan:
         u.normalize_mode_options(myoptions)
 
         # The same contract for the switch options: refused at the door, not mid-solve.
-        if "withEarningsTest" in myoptions:
-            myoptions["withEarningsTest"] = self._earningsTestOn(myoptions)
         if "withPayrollTax" in myoptions:
             myoptions["withPayrollTax"] = self._payrollTaxOn(myoptions)
 

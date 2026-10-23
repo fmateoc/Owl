@@ -514,9 +514,9 @@ def build_summary_dic(plan, N=None):
                 )
 
     # SSA earnings test (Phase 5 step 3): benefits withheld before FRA and returned at
-    # FRA by the ARF. Reported whenever the solve applied the test, $0 / "none" included,
-    # so that comparing two cases that both apply it keeps the rows.
-    if getattr(plan, "ss_earnings_test_applied", False):
+    # FRA by the ARF. Reported for a household with earnings the test can reach, $0 /
+    # "none" included, so that two claiming ages of that household compare row by row.
+    if getattr(plan, "ss_earnings_reachable", False):
         _summary_currency_pair(
             dic,
             "SS withheld by the earnings test",

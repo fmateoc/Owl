@@ -18,10 +18,9 @@ Limitations and known omissions:
 
 - Earnings test: the rules are implemented below (``earnings_test`` and its helpers:
   exempt amounts, excess, family charging, grace year, ARF) and applied to the plan's
-  streams by ``Plan._ss_streams`` when the solve asks for it
-  (``solver_options.withEarningsTest``, off by default, Phase 5 D6). Without the
-  switch this tool assumes users are retired with no earned income above the exempt
-  amount, as before. Assumptions of the rule implementation: earnings
+  streams by ``Plan._ss_streams`` in every solve; where it withholds nothing the plan
+  keeps ``compute_social_security_benefits``' streams. Assumptions of the rule
+  implementation: earnings
   are spread evenly over ``months worked``; exempt amounts after 2026 are held at the
   2026 real level (statute indexes them to wages with a two-year lag); years before
   the plan have no earnings (so anyone entitled before the plan has used their grace
@@ -817,7 +816,7 @@ def compute_social_security_benefits(
 
 # --------------------------------------------------------------------------------------
 # SSA earnings test (Phase 5 steps 1-3). Pure rules; Plan._ss_streams applies them to
-# the plan's streams when the solve asks for it (solver_options.withEarningsTest).
+# the plan's streams in every solve.
 #
 # Primary sources (read 2026-10-17/18):
 #   RS 02501.025 D  annual / monthly exempt amounts (TN 55, 11/21/2025)

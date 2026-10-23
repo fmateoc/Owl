@@ -407,7 +407,6 @@ class SolverOptions(BaseModel):
     withItemized: Optional[Literal["none", "loop"]] = None
     withSTAR: Optional[Literal["none", "loop", "optimize"]] = None  # fork: NY STAR credit
     withSSAges: Optional[Union[str, List[str]]] = None
-    withEarningsTest: Optional[bool] = None  # fork: SSA earnings test on the SS streams (off by default)
     withPayrollTax: Optional[bool] = None  # fork: employee payroll tax on earnings (off by default)
     withDuals: Optional[bool] = None
     withdrawalOrder: Optional[Literal["optimal", "taxable_first"]] = None
@@ -468,10 +467,10 @@ class SolverOptions(BaseModel):
             raw = normalize_mode_options(dict(raw))
         return raw
 
-    @field_validator("withEarningsTest", "withPayrollTax", mode="before")
+    @field_validator("withPayrollTax", mode="before")
     @classmethod
     def _parse_switch(cls, value: Any, info: ValidationInfo) -> Any:
-        """One parser with `Plan._earningsTestOn` and `Plan._payrollTaxOn` (utils.parse_switch):
+        """One parser with `Plan._payrollTaxOn` (utils.parse_switch):
         a switch reads the same whatever path it arrives by, and a value that is not one is
         refused."""
         return parse_switch(info.field_name, value)

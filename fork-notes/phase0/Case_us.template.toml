@@ -80,7 +80,6 @@ objective = "maxSpending"
 [solver_options]
 bequest = 0                             # spend down to $0 at 92 (read here, not under optimization_parameters)
 withSSAges = "optimize"                 # co-optimize claiming ages
-withEarningsTest = true                 # SSA earnings test on the work years (Phase 5; off in code, on here)
 withPayrollTax = true                   # employee FICA on earnings (Phase 5 step 5; off in code, on here)
 withMedicare = "optimize"               # IRMAA as endogenous cost
 withACA = "loop"                        # pre-65 marketplace (2027 until each turns 65)

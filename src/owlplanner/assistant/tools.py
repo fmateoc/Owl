@@ -567,8 +567,8 @@ def explain_case(
     Security and pension income, rate method, objective, and solver options.
     Each Social Security entry also carries an 'earnings_test' block: what the
     SSA earnings test would withhold at the entered claiming ages (today's $),
-    the ARF crediting months that replace it at FRA, and whether the solve
-    applies the test (solver option withEarningsTest, off by default).
+    and the ARF crediting months that replace it at FRA (every solve applies
+    the test).
 
     The 'overrides' list uses KEY.PATH=VALUE syntax, e.g.:
       ["basic_info.state=CA", "fixed_income.social_security_ages=[70,68]"]

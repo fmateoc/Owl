@@ -63,7 +63,6 @@ def _n(p, year):
     return int(year) - int(p.year_n[0])
 
 
-@pytest.mark.xfail(strict=True, reason="spec: the earnings test is applied without an option")
 def test_applied_with_no_option():
     """jack+jill as shipped (no option at all): Jill's 2028, her last work year at $85k
     after a claim at 62y1m, is withheld and comes back as 11 ARF months."""
@@ -75,7 +74,6 @@ def test_applied_with_no_option():
     assert p.ss_arf_months_i[1] == 11
 
 
-@pytest.mark.xfail(strict=True, reason="spec: withEarningsTest is retired")
 @pytest.mark.parametrize("value", [True, False, "sometimes"])
 def test_old_switch_is_ignored_with_a_warning(value):
     """A case written while the option existed still solves; the key is ignored with a
@@ -111,7 +109,6 @@ def test_streams_are_upstreams_where_nothing_is_withheld(monkeypatch):
     assert np.all(p.ss_withheld_in == 0)
 
 
-@pytest.mark.xfail(strict=True, reason="spec: Summary rows for households the test can reach")
 def test_summary_rows_where_earnings_can_meet_the_test():
     """jack+jill has wages before both FRAs: the rows are there, and still there ($0,
     'none') when Jill claims at 67, after her work, so the two claiming ages compare row
@@ -136,7 +133,6 @@ def test_summary_rows_where_earnings_can_meet_the_test():
     assert "ARF months" not in dic
 
 
-@pytest.mark.xfail(strict=True, reason="spec: explain has no 'applied' flag")
 def test_explain_block_has_no_applied_flag():
     """`owlcli explain` reports what the test withholds; there is nothing left to say about
     whether it is applied."""

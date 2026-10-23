@@ -4123,7 +4123,7 @@ class Plan:
         vm = self.vm
         terms = self._item_terms()
         base_n = self.item_base_n
-        nch_lo, nch_hi = self._item_nch_lo_n, self._item_nch_hi_n
+        nch_hi = self._item_nch_hi_n
         sb_k = np.zeros(self.N_n)
         if self._sb_lp:
             B_n = np.zeros(self.N_n)
@@ -4151,6 +4151,25 @@ class Plan:
             bound = max(std_ub[n] + nch_hi[n], item_ub + B_n[n] + sb_k[n] * tx.SENIOR_BONUS)
             self.B.setRange(vm["e"].idx(n), 0, float(bound))
 
+        branch = self._federal_item_branches(terms)
+        self._add_federal_itemized_rows(branch, terms, ded_row, raise_e)
+        # Standard years with a non-itemizer charity: e <= S0 + min(cap, charity paid).
+        for n in self._item_nch_years:
+            if branch.get(n, ("std",))[0] != "std":
+                continue
+            self.B.setRange(vm["e"].idx(n), 0, float(std_ub[n] + nch_hi[n]))
+            self._add_nch_rows(n, terms, ded_row)
+
+    def _federal_item_branches(self, terms=None):
+        """{year: (branch, amounts)} for the federal itemized candidate years, "std" or "item".
+
+        A priori where the bounds decide, else the previous iterate's (_item_zi_n). A pure function
+        of the loop parameters, so _configure_ltcg_constraints and _add_federal_itemized agree.
+        """
+        if not self._item_lp:
+            return {}
+        terms = self._item_terms() if terms is None else terms
+        base_n, nch_lo, nch_hi = self.item_base_n, self._item_nch_lo_n, self._item_nch_hi_n
         branch = {}
         for n in self._item_years:
             am = self._itemized_amounts(n, terms, "fed")
@@ -4161,13 +4180,25 @@ class Plan:
             else:
                 b = "item" if self._item_zi_n[n] >= 0.5 else "std"
             branch[n] = (b, am)
-        self._add_federal_itemized_rows(branch, terms, ded_row, raise_e)
-        # Standard years with a non-itemizer charity: e <= S0 + min(cap, charity paid).
-        for n in self._item_nch_years:
-            if branch.get(n, ("std",))[0] != "std":
-                continue
-            self.B.setRange(vm["e"].idx(n), 0, float(std_ub[n] + nch_hi[n]))
-            self._add_nch_rows(n, terms, ded_row)
+        return branch
+
+    def _ltcg_deduction_widens_n(self):
+        """Years whose gains brackets widen by the unused standard deduction, sigma_n - e_n (#205).
+
+        Upstream's rows take sigma_n as the most the deduction e_n can be. Fork itemizing raises
+        that bound in years on the itemized branch and in years with a non-itemizer charity, where
+        sigma_n - e_n would be negative whenever ordinary income fills the deduction and would take
+        room away from the 0% and 15% brackets. Those years keep the brackets unwidened: exact when
+        ordinary income uses the whole deduction, and short of the worksheet's room only when an
+        itemizer's ordinary income is below the deduction.
+        """
+        wide = np.ones(self.N_n, dtype=bool)
+        if self._item_lp:
+            wide[list(self._item_nch_years)] = False
+            for n, (b, _) in self._federal_item_branches().items():
+                if b == "item":
+                    wide[n] = False
+        return wide
 
     def _add_nch_rows(self, n, terms, ded_row):
         """Loop mode, standard year: e <= S0 + cap and e <= S0 + charity paid (no column)."""
@@ -5500,6 +5531,7 @@ class Plan:
         """
         sb_year = {n: j for j, n in enumerate(self._sb_years)} if self._sb_lp else {}
         prev_e_n = getattr(self, "e_n", None)
+        self._ltcg_wide_n = self._ltcg_deduction_widens_n()
         for n in range(self.N_n):
             # Per-year filing status: couple switches to Single at n_d.
             status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
@@ -5517,6 +5549,10 @@ class Plan:
             ded_row = {self.vm["e"].idx(n): 1}
             if n in sb_year:
                 ded_row[self.vm["sbp"].idx(sb_year[n])] = float(self._sb_count_n[n])
+            widen = bool(self._ltcg_wide_n[n])
+            if not widen:
+                # Fork itemizing can raise e_n above sigma_n: the rows as before #205.
+                sigma_n, ded_row = 0.0, {}
 
             if self._ltcg_lp:
                 # =========================================================
@@ -5587,7 +5623,7 @@ class Plan:
                 room15_n = max(0.0, T15_n - self.G_n[n])
                 room20_n = max(0.0, T20_n - self.G_n[n])
                 # Deduction the previous iterate's ordinary income left unused (none before the first).
-                unused_n = 0.0 if prev_e_n is None else sigma_n - self.G_n[n] - prev_e_n[n]
+                unused_n = 0.0 if prev_e_n is None or not widen else sigma_n - self.G_n[n] - prev_e_n[n]
                 unused_n = unused_n if unused_n > 1.0 else 0.0
                 # (1) q[0,n] ≤ room15_n (enforced via variable upper bound)
                 self.B.setRange(q0_idx, 0, room15_n + unused_n)
@@ -7267,19 +7303,25 @@ class Plan:
             # NYIR_n is a rate (the line 46 cut): a change of drho moves the deduction by drho x
             # the itemized total, also in a standard-taken year, where it could flip the branch.
             moves.append(np.sum(np.where(st_n, np.abs(self.NYIR_n - sc_lp["NYIR_n"]) * pot, 0.0) / g_today))
-            floor(med_paid, "STMF_n", st_n)
-            flip("_st_medl_n", med_paid - self.STMF_n, st_n)
+            # The medical floor and its flag move the claim only where a branch itemizes, in the
+            # LP or at this iterate's amounts: a standard year near the floor would flap otherwise.
+            st_item = st_n & ((sc_lp["_st_zi_n"] >= 0.5) | (self._st_zi_n >= 0.5))
+            floor(med_paid, "STMF_n", st_item)
+            flip("_st_medl_n", med_paid - self.STMF_n, st_item)
             flip("_st_zi_n", np.maximum(self.st_sigmaBar_n, (1.0 - self.NYIR_n) * pot), st_n)
         if self._item_lp and self._item_years:
             fed_n = np.zeros(self.N_n, dtype=bool)
             fed_n[self._item_years] = True
             flip("_item_zi_n", np.maximum(self.item_std_n, self.item_n), fed_n)
-            flip("_item_chl_n", ch_paid - self.FEDCF_n, fed_n)
-            flip("_item_medl_n", med_paid - self.FEDMF_n, fed_n)
-            floor(ch_paid, "FEDCF_n", fed_n)
-            floor(med_paid, "FEDMF_n", fed_n)
+            # Floors, their flags and the SALT cap move only an itemized claim (the non-itemizer
+            # charity has no floor): years where a branch itemizes, in the LP or at this iterate.
+            fed_item = fed_n & ((sc_lp["_item_zi_n"] >= 0.5) | (self._item_zi_n >= 0.5))
+            flip("_item_chl_n", ch_paid - self.FEDCF_n, fed_item)
+            flip("_item_medl_n", med_paid - self.FEDMF_n, fed_item)
+            floor(ch_paid, "FEDCF_n", fed_item)
+            floor(med_paid, "FEDMF_n", fed_item)
             # The cap moves the claim only where SALT paid is above the lower of the two caps.
-            floor(np.maximum(0.0, c_pt + k_pt * self.g_n) + self._state_tax_paid_n(xx), "FEDSC_n", fed_n)
+            floor(np.maximum(0.0, c_pt + k_pt * self.g_n) + self._state_tax_paid_n(xx), "FEDSC_n", fed_item)
         return moves
 
     def _new_iteration_trace(self):
@@ -7925,7 +7967,9 @@ class Plan:
         """
         Nn = self.N_n
         gains_n = np.maximum(self.Q_n, 0)
-        taxable_n = np.maximum(0, self.G_n + self.e_n + gains_n - self.sigmaBar_n[:Nn])
+        # Fork: years whose rows do not widen by the unused deduction (itemizing) stack on G_n.
+        ded_n = np.where(getattr(self, "_ltcg_wide_n", True), self.sigmaBar_n[:Nn], self.e_n)
+        taxable_n = np.maximum(0, self.G_n + self.e_n + gains_n - ded_n)
         return tx.capitalGainTax(self.N_i, taxable_n, np.minimum(gains_n, taxable_n), self.gamma_n[:Nn], self.n_d, Nn)
 
     def _fixedPointResidualByYear(self, includeMedicare):

@@ -547,7 +547,6 @@ def _itemizer_with_gains(**extra):
     return _solve(p, withLTCG="optimize", **extra)
 
 
-@pytest.mark.xfail(strict=True, reason="spec: #205's rows take sigma_n as the largest deduction")
 def test_itemizers_gains_brackets_do_not_shrink():
     """Upstream #205 widens the gains brackets by sigma_n - e_n, the standard deduction ordinary
     income leaves unused. An itemizer's e_n is above sigma_n, so in a year where ordinary income
@@ -567,7 +566,6 @@ def test_itemizers_gains_brackets_do_not_shrink():
     np.testing.assert_allclose(p._ltcg_tax_implied()[item], owed[item], atol=1.0)
 
 
-@pytest.mark.xfail(strict=True, reason="spec: #205's rows take sigma_n as the largest deduction")
 def test_itemizers_gains_brackets_cost_no_bequest(monkeypatch):
     """The same couple with upstream's rows in every year (the deduction term in itemized years
     too) leaves less bequest: the LP cuts ordinary income to fit gains into a 0% bracket that the

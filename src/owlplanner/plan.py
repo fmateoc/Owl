@@ -1545,7 +1545,8 @@ class Plan:
             socsec._ent_start_abs(
                 int(self.yobs[i]),
                 int(self.mobs[i]),
-                socsec._fra_conventional_age(float(fras[i]), self.tobs[i] <= 2),
+                # Only a birth on the 1st attains an age a month early (earnings_test's rule).
+                socsec._fra_conventional_age(float(fras[i]), self.tobs[i] == 1),
             )
             for i in range(self.N_i)
         ]
@@ -2436,10 +2437,11 @@ class Plan:
         """
         Warn where ``gross earnings`` is not given (0) and ``anticipated wages`` stands in
         for it, which understates the earnings: years with wages and a non-zero deferral
-        column. Those deferrals are wages for the SSA earnings test (W-2 box 5) and for the
-        payroll tax (FICA wages, boxes 3 and 5) but are not in ``anticipated wages``. HSA
-        contributions are not listed: a payroll HSA is in neither box, so the fallback is
-        right for them.
+        column. ``anticipated wages`` are entered net of every contribution column, but the
+        money contributed was wages for the SSA earnings test (W-2 box 5) and for the payroll
+        tax (FICA wages, boxes 3 and 5), payroll deferrals and after-tax contributions
+        (*taxable*, *IRA*, *Roth IRA ctrb*) alike. HSA contributions are not listed: a payroll
+        HSA is in neither box, so the fallback is right for them.
 
         One warning per person, naming every use that reads those years:
 
@@ -2455,9 +2457,9 @@ class Plan:
         if entitled_from is None and not payroll:
             return
         # The plan arrays the test reads, not the tables: the MCP assistant fills them
-        # directly. kappa_ijn[i, 1] = 401k + IRA, [i, 2] = Roth 401k + Roth IRA
+        # directly. kappa_ijn[i, 0] = taxable, [i, 1] = 401k + IRA, [i, 2] = Roth 401k + Roth IRA
         # (setContributions); [i, 3] (HSA) is left out.
-        deferrals = self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
+        deferrals = self.kappa_ijn[:, 0, :] + self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
         fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
         for i, iname in enumerate(self.inames):
             test_from = entitled_from[i] if entitled_from is not None else None
@@ -2491,8 +2493,8 @@ class Plan:
                 boxes = "W-2 boxes 3 and 5 count them"
             self.mylog.print(
                 f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: {uses}, "
-                f"which leave out payroll deferrals ({boxes}), and those years have a 401k/IRA "
-                f"contribution. Enter 'gross earnings' for them.",
+                f"which are net of contributions ({boxes}), and those years have a taxable, 401k "
+                f"or IRA contribution. Enter 'gross earnings' for them.",
                 tag="WARNING",
             )
 
@@ -2597,8 +2599,8 @@ class Plan:
                 else:
                     # socsec._ent_start_abs: the absolute month (year*12 + month - 1) of
                     # the attained age, which is where entitlement begins.
-                    born_on_first = self.tobs[i] <= 2
-                    eligible = 62.0 if born_on_first else 62.0 + 1.0 / 12.0
+                    first_days = self.tobs[i] <= 2  # born on the 1st or 2nd: eligible at 62
+                    eligible = 62.0 if first_days else 62.0 + 1.0 / 12.0
                     claim = max(float(self.ssecAges[i]), eligible)
                     year = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim) // 12
             last = thisyear + int(self.horizons[i]) - 1
@@ -2609,7 +2611,7 @@ class Plan:
         """
         The earnings warnings of one solve: one fallback warning per person for the years in
         which ``anticipated wages`` stands in for ``gross earnings`` and understates them (a
-        deferral column is non-zero), naming the payroll tax where the solve charges it
+        contribution column is non-zero), naming the payroll tax where the solve charges it
         (``withPayrollTax``, D3) and the earnings test for the years it can reach
         (``_warnGrossEarningsFallback``); and a fixed claiming age that pays nothing before
         FRA: every month of entitlement before FRA that falls in the plan is withheld, which
@@ -2630,8 +2632,8 @@ class Plan:
         for i, iname in enumerate(self.inames):
             if i in searched or int(self.ssecAmounts[i]) <= 0:
                 continue
-            born_on_first = self.tobs[i] <= 2
-            eligible = 62.0 if born_on_first else 62.0 + 1.0 / 12.0
+            first_days = self.tobs[i] <= 2  # born on the 1st or 2nd: eligible at 62
+            eligible = 62.0 if first_days else 62.0 + 1.0 / 12.0
             claim = max(float(self.ssecAges[i]), eligible)
             ent_abs = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim)
             fra_abs = fra_abs_i[i]

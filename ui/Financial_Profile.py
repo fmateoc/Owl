@@ -45,7 +45,7 @@ timetableHelp = {
     "gross earnings": (
         "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
         "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
-        "*anticipated wages* alone, which leave out payroll deferrals and anything in *other inc* "
+        "*anticipated wages* alone, which are net of contributions and leave out anything in *other inc* "
         "(consulting or other self-employment income must be entered here to count)."
     ),
     "months worked": (

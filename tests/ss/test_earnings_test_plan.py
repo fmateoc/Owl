@@ -545,12 +545,7 @@ def test_plan_metrics_report_the_withholding():
     assert off["ss_withheld_nominal"] == 0.0
 
 
-_SHIFTED = pytest.mark.xfail(strict=True, reason="review 2026-10-23: _ssFRAStartAbs shifts FRA for a birth on the 2nd")
-
-
-@pytest.mark.parametrize(
-    "day, fra_month", [(1, (2032, 11)), pytest.param(2, (2033, 0), marks=_SHIFTED), (3, (2033, 0))]
-)
+@pytest.mark.parametrize("day, fra_month", [(1, (2032, 11)), (2, (2033, 0)), (3, (2033, 0))])
 def test_fra_month_matches_the_test_for_births_on_the_first_days(day, fra_month):
     """Review 2026-10-23: only a birth on the 1st attains an age a month early (RS 00615.015,
     ``socsec._fra_conventional_age``); a birth on the 2nd attains it on the 1st of the birthday

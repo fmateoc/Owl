@@ -610,7 +610,6 @@ def test_example_workbooks_feed_the_test_from_wages():
     assert months[j, n] == 12
 
 
-@pytest.mark.xfail(strict=True, reason="review 2026-10-23: taxable ctrb is netted out of wages too")
 def test_fallback_warning_names_taxable_contribution_years():
     """Review 2026-10-23: *anticipated wages* are entered net of every *ctrb* column (HFP
     convention, Documentation), *taxable ctrb* included, and a taxable contribution is paid

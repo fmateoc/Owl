@@ -2259,8 +2259,9 @@ merges clean (`phase5-plan.md` §6, revised).
 Test-first: spec `bb82794` (`tests/ss/test_earnings_test_always.py`, 6 strict xfail + 1 guard that
 passed on arrival), then the implementation:
 
-- every solve applies the test; `withEarningsTest` is in `RETIRED_OPTIONS` (ignored with a
-  warning, any value; the schema keeps it as an unknown key, so old case files load);
+- every solve applies the test; the `withEarningsTest` switch is gone (first kept as a retired
+  option with a deprecation warning; removed outright the same day at the user's review: the key
+  never existed outside the fork and no case of ours had run on it, so nobody needs the warning);
 - where the test withholds nothing and credits no ARF month, `_ss_streams` returns
   `compute_social_security_benefits`' own output (checked with a marker on that function), so the
   cases the test does not touch follow upstream's builder by construction;
@@ -2275,7 +2276,9 @@ earnings (`_without_the_test`; wages still count everywhere else); tests of the 
 (spellings, round trips, "no warning when off") removed. Recorded values: only
 `test_toml_cases.py` moved, jack+jill 103,499 -> 103,578 (103,499.11 with the test on zero
 earnings, frozen date, same solve settings; Jill's \$14,302 withheld in 2028, 11 ARF months).
-Full suite: **3488 passed, 1 skipped** (10:40; 3492 + the 7 new - 11 tests of the switch itself).
+Full suite: **3488 passed, 1 skipped** (10:40; 3492 + the 7 new - 11 tests of the switch itself),
+before the retired-option entry and its 3 tests were removed After that: **3485 passed, 1 skipped**
+(10:31; 3488 - the 3 parametrized cases of the old-key test). flake8 clean; Ruff only upstream's `B905`.
 flake8 clean; Ruff only upstream's `B905`.
 
 The #220 reply draft (`fork-notes/issue-220-reply.md`) is revised accordingly: the test is part of

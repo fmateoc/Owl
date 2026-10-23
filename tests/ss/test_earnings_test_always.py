@@ -1,19 +1,14 @@
 """
-The SSA earnings test is part of the model, not an option (2026-10-23).
+The SSA earnings test is part of the model (2026-10-23):
 
-``withEarningsTest`` had one use: leaving off a rule that only changes cases Owl got wrong
-(benefits paid before FRA in a year with earnings above the exempt amount). It is retired:
-
-- every solve applies the test, with no option;
-- a case that still carries ``withEarningsTest`` loads and solves, with the key ignored
-  and a warning, whatever its value;
+- every solve applies it;
 - where the test withholds nothing, the streams are those of
   ``compute_social_security_benefits`` itself (upstream's builder), not the test's copy of
   it, so a case the test does not touch is unchanged by construction;
 - the Summary rows appear for a household with earnings the test can reach (a year with
   earnings up to the person's FRA year), $0 / "none" included, so comparing two claiming
   ages of one household keeps them; a household without such earnings gets none;
-- ``owlcli explain`` no longer reports whether the test is applied.
+- ``owlcli explain`` reports what the test withholds, with no flag for whether it applies.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -35,12 +30,10 @@ import io
 import os
 
 import numpy as np
-import pytest
 
 import owlplanner as owl
 from owlplanner import socialsecurity as ss
 from owlplanner.export import build_summary_dic
-from owlplanner.mylogging import Logger
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 THISYEAR = 2026  # tests/conftest.py freezes the date
@@ -63,29 +56,12 @@ def _n(p, year):
     return int(year) - int(p.year_n[0])
 
 
-def test_applied_with_no_option():
-    """jack+jill as shipped (no option at all): Jill's 2028, her last work year at $85k
+def test_applied_to_jack_jill_as_shipped():
+    """jack+jill as shipped: Jill's 2028, her last work year at $85k
     after a claim at 62y1m, is withheld and comes back as 11 ARF months."""
-    p = _load("jack+jill")
-    assert "withEarningsTest" not in (p.solverOptions or {})
-    _solve(p)
+    p = _solve(_load("jack+jill"))
     assert p.zeta_in[1, _n(p, 2028)] == 0.0
     assert p.ss_withheld_in[1, _n(p, 2028)] > 0
-    assert p.ss_arf_months_i[1] == 11
-
-
-@pytest.mark.parametrize("value", [True, False, "sometimes"])
-def test_old_switch_is_ignored_with_a_warning(value):
-    """A case written while the option existed still solves; the key is ignored with a
-    warning, and the test is applied whatever it said."""
-    from owlplanner.config.schema import parse_solver_options
-
-    parse_solver_options({"withEarningsTest": value})  # kept as an unknown key, not refused
-    p = _load("jack+jill")
-    buf = io.StringIO()
-    p.mylog = Logger(verbose=False, logstreams=[buf])
-    _solve(p, withEarningsTest=value)
-    assert "Ignoring deprecated solver option 'withEarningsTest'" in buf.getvalue()
     assert p.ss_arf_months_i[1] == 11
 
 
@@ -134,8 +110,7 @@ def test_summary_rows_where_earnings_can_meet_the_test():
 
 
 def test_explain_block_has_no_applied_flag():
-    """`owlcli explain` reports what the test withholds; there is nothing left to say about
-    whether it is applied."""
+    """`owlcli explain` reports what the test withholds; it always applies."""
     from owlplanner.cli.cmd_explain import _plan_to_explain
 
     p = _load("jack+jill")

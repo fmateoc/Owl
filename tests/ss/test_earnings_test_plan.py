@@ -4,8 +4,8 @@ Tests for applying the SSA earnings test to the plan (Phase 5 step 3).
 Properties from phase5-plan.md §5 step 3 and §5b, on the shipped examples:
 
 - with no earnings the streams are exactly today's (the test is always applied since
-  ``withEarningsTest`` was retired, 2026-10-23; "without the test" below is the test run
-  on zero earnings, see ``_without_the_test``);
+  2026-10-23; "without the test" below is the test run on zero earnings, see
+  ``_without_the_test``);
 - the three examples of plan §3 that pay Social Security before FRA in a year with wages
   above the exempt amount (jack+jill and chris+pat in 2028, alex+jamie in 2026-2027) show
   the withholding, the ARF that replaces it at FRA, and taxes on the *net* benefit;

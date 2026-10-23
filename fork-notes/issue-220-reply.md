@@ -8,22 +8,22 @@ affordable on today's computer. Otherwise, we are chasing a moving target."
 
 Drafted 2026-10-23 on `claude/phase5-step1` (fork at upstream `dev` `e3592e7`). Revised the same
 day after the user's review: he asked for an implementation, not a choice, so the test is part of
-the model with no switch (the fork retired `withEarningsTest` the same day: its only effect was to
+the model with no switch (the fork removed its `withEarningsTest` switch the same day: its only effect was to
 keep wrong cases wrong), and the reply offers the implementation, not an option. The payroll tax
 is left out of this reply (still opt-in in the fork). The last paragraph promises a PR on stock
 `dev`: post this once the PR exists (or with its link), the user's call.
 
 ## What the text rests on
 
-- **What the fork does:** `info/PARAMETERS.md` (`gross earnings`, `months worked`, the retired
-  `withEarningsTest`), PROGRESS.md "Phase 5 step 3" / "step 4" / "The earnings test without an
+- **What the fork does:** `info/PARAMETERS.md` (`gross earnings`, `months worked`),
+  `info/modeling-capabilities.md` (Social Security row), PROGRESS.md "Phase 5 step 3" / "step 4" / "The earnings test without an
   option", `phase5-plan.md` §4. Read from the fork's files today, not recalled.
 - **Rules:** as cited in #220 (POMS and 20 CFR 404 subpart E, read 2026-10-17/18); unchanged.
 - **"Nothing withheld = today's streams":** `tests/ss/test_earnings_test_always.py` (where the test
   withholds nothing the streams are `compute_social_security_benefits`' own output, checked with a
   marker on that function) and `tests/ss/test_earnings_test_plan.py` (the 15 examples without SS
   before FRA in a work year solve to the same objective to the cent as without the test).
-- **Full-MILP cost: measured** 2026-10-23, before the switch was retired (off = Owl without the
+- **Full-MILP cost: measured** 2026-10-23, before the switch was removed (off = Owl without the
   test, on = with it; the code path with the test is the one the fork now always runs), `fork-notes/phase5/et_milp_cost.py`, output
   `et_milp_cost_2026-10-23.txt` (today's date; `breakpointMethod="branch-and-bound"`, the fork's
   itemizing off; each case at its own claiming ages; two solves per setting; a container restart interrupted

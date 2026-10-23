@@ -98,10 +98,6 @@ _SCLOOP_RETIRED = (
     "phaseout and the cost-basis gain fractions are nonlinear in the solution -- and turning "
     "it off left Medicare out of the budget, overstating spending. Use maxIter to shorten it"
 )
-_EARNINGS_TEST_RETIRED = (
-    "the SSA earnings test is always applied (fork): with no earnings up to a person's FRA year "
-    "it changes nothing, and turning it off only paid benefits SSA would withhold"
-)
 RETIRED_OPTIONS = {
     "amoConstraints": _AMO_RETIRED,
     "amoRoth": _AMO_RETIRED,
@@ -113,7 +109,6 @@ RETIRED_OPTIONS = {
     "bigMniit": _BIGM_RETIRED,
     "withDecomposition": _DECOMP_RETIRED,
     "withSCLoop": _SCLOOP_RETIRED,
-    "withEarningsTest": _EARNINGS_TEST_RETIRED,
 }
 
 # Sentinel distinguishing "argument omitted" from an explicit None, which callers use to
@@ -1477,7 +1472,7 @@ class Plan:
 
         ``setSocialSecurity`` and the rebuild at solve time (``_adjustParameters``, where
         ``zetaBar_in`` is set) both go through here, and both apply the SSA earnings test
-        (always: ``withEarningsTest`` is retired). What counts is the rebuild:
+        (always). What counts is the rebuild:
         ``setSocialSecurity`` reads the earnings the plan holds at that moment (the HFP may
         not be read yet), while every solve rebuilds the streams with the current earnings
         (same pattern as the budget's ``xi_n``). Where the test withholds nothing, the

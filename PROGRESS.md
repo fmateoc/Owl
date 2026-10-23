@@ -2227,6 +2227,27 @@ says otherwise).
 Full suite: **3486 passed, 1 skipped** (11:07; 3484 + the 2 review tests). flake8 clean; Ruff only
 upstream's `B905`.
 
+### Fallback warnings merged (2026-10-23)
+
+The user asked for one warning instead of two (review of step 5, "left as they are"). The
+earnings test's and the payroll tax's fallback warnings are now one function,
+`_warnGrossEarningsFallback(entitled_from=None, payroll=False)`, called once per solve from
+`_warnEarnings`; `_warnPayrollFallback` is gone. One warning per person, over the union of the
+years each use reads (the test: entitlement to the FRA year; the payroll tax: every year with
+earnings), naming both uses and the test's years where they differ. With one switch on, the
+message names that use only, as before. Spec `c9a11dd` (strict xfail), then the fix. Real
+output, chris+pat, both on (today's date):
+
+> 'gross earnings' is not given for 'Pat' in year(s) 2026, 2027, 2028: the payroll tax uses
+> 'anticipated wages' there (the SSA earnings test too, in 2028), which leave out payroll
+> deferrals (W-2 boxes 3 and 5 count them), and those years have a 401k/IRA contribution.
+> Enter 'gross earnings' for them.
+
+Chris (claims at 70, out of the test's reach): the payroll tax alone, 2026-2027. Tests
+`test_one_fallback_warning_per_person_with_both_switches` and
+`test_one_switch_keeps_its_own_warning`; the step-3 and step-2 warning tests pass unchanged.
+Full suite: **3488 passed, 1 skipped** (10:52; 3486 + 2). flake8 clean; Ruff only upstream's `B905`.
+
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 
 #185 is open; on github.com (WebFetch, 2026-10-17) the only maintainer comment is still the

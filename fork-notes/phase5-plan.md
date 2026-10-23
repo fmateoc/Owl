@@ -578,7 +578,8 @@ implementation). Rates re-read on irs.gov the same day (Pub. 15 (2026): 6.2% / 1
   "taxes" slice of `lifetime_allocation` / `annual_cashflow_mix` (no new chart key).
 - Warning (with the switch on, once per solve, from `_warnEarnings`, renamed from
   `_warnEarningsTest`): years with wages, no `gross earnings` and a non-zero 401k/IRA column,
-  over every plan year (the tax reads every year with earnings).
+  over every plan year (the tax reads every year with earnings). Merged 2026-10-23 with the
+  earnings test's fallback warning: one per person, naming both uses and the test's years.
 - **Not done** (D3: "self-employment only if a variant has consulting income"; no variant is
   known here, `otherFiles/` is not in this container): self-employment tax and its half
   deduction. All of `gross earnings` is taxed as wages. No `cmd_explain` block.

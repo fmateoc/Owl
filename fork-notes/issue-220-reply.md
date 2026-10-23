@@ -11,8 +11,8 @@ day after the user's review: the maintainer asked for an implementation, not a c
 the model with no switch (the fork removed its `withEarningsTest` switch the same day: its only effect was to
 keep wrong cases wrong), and the reply offers the implementation, not an option. The payroll tax
 is left out of this reply (still opt-in in the fork). The last paragraph promises a PR on stock
-`dev`: the PR is built (branch `fmateoc:earnings-test-pr`, `fork-notes/pr-220-body.md`); open it,
-then replace PR_LINK below with its link and post this.
+`dev`: opened by the user as **PR #222** (https://github.com/mdlacasse/Owl/pull/222, branch
+`fmateoc:earnings-test-pr`, text `fork-notes/pr-220-body.md`); the last paragraph links it. Ready to post.
 
 ## What the text rests on
 
@@ -103,6 +103,6 @@ numbers, as with any change of inputs (here every case solved faster with the te
 took more nodes), but the test adds nothing for the solver to work on. Under `withSSAges` the
 number of candidates does not change, and each candidate is the same fixed-age problem.
 
-The PR is PR_LINK, on `dev`: the test and the two columns, with tests (POMS examples worked by
+The PR is #222, on `dev`: the test and the two columns, with tests (POMS examples worked by
 hand, the no-op property on all examples, the `withSSAges` path) and the recorded results
 updated. It's yours to take or not.

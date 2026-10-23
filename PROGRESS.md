@@ -2292,8 +2292,9 @@ date, Jill's \$14,302 nominal withheld in 2028, 11 ARF months; same withholding 
 re-recorded as 102_621. The fifteen other examples equal to the cent (the parametrized test).
 PR suite on `c6fcedb`: **3140 passed, 1 skipped** (8:55); Ruff clean. CI's strict flake8 selection: 0.
 
-The #220 reply draft now points to the PR (placeholder `PR_LINK`) and names the taxable column
-in the warning. The user opens the PR from `fmateoc:earnings-test-pr` and then posts the reply.
+The #220 reply draft points to the PR and names the taxable column in the warning. **Opened by
+the user as PR #222** (https://github.com/mdlacasse/Owl/pull/222, 2026-10-23); the reply links it,
+ready to post.
 
 ## The earnings test without an option (2026-10-23, on `claude/phase5-step1`)
 

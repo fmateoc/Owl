@@ -1,6 +1,7 @@
-# PR for #220: the SSA earnings test, for the user to open
+# PR for #220: the SSA earnings test (opened as PR #222)
 
-Status: drafted 2026-10-23. Branch `fmateoc:earnings-test-pr`, base `mdlacasse/Owl` `dev`
+Status: drafted 2026-10-23; opened by the user the same day as
+https://github.com/mdlacasse/Owl/pull/222. Branch `fmateoc:earnings-test-pr`, base `mdlacasse/Owl` `dev`
 (`e3592e7`), built from stock `dev` by porting the fork's earnings test (`claude/phase5-step1`
 at `e82f6bb`, which includes the two review fixes of 2026-10-23) without the fork's other work:
 no payroll tax (`withPayrollTax`), no itemizing, STAR, budget, local tax or state-move code. The

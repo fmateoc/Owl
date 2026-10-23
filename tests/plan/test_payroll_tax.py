@@ -448,7 +448,6 @@ def _fallback_lines(buf):
     return [w for w in _warn_lines(buf) if "'gross earnings' is not given" in w]
 
 
-@pytest.mark.xfail(strict=True, reason="fallback warnings not merged yet")
 def test_one_fallback_warning_per_person_with_both_switches():
     """chris+pat, both switches on. Pat has 401k deferrals and no `gross earnings` in
     2026-2028 and claims in February 2028: the payroll tax reads all three years, the

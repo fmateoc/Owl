@@ -2416,46 +2416,69 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
-    def _warnGrossEarningsFallback(self, entitled_from):
+    def _warnGrossEarningsFallback(self, entitled_from=None, payroll=False):
         """
-        Warn where the SSA earnings test falls back to ``anticipated wages`` (``gross
-        earnings`` 0, i.e. not given) and that understates what the test counts: years with
-        wages and a non-zero deferral column. Those deferrals are wages for the test (W-2
-        box 5) but are not in ``anticipated wages``. HSA contributions are not listed: a
-        payroll HSA is not in box 5, so the fallback is right for them.
+        Warn where ``gross earnings`` is not given (0) and ``anticipated wages`` stands in
+        for it, which understates the earnings: years with wages and a non-zero deferral
+        column. Those deferrals are wages for the SSA earnings test (W-2 box 5) and for the
+        payroll tax (FICA wages, boxes 3 and 5) but are not in ``anticipated wages``. HSA
+        contributions are not listed: a payroll HSA is in neither box, so the fallback is
+        right for them.
 
-        Only the years the test can reach are named: from ``entitled_from[i]`` (the first
-        calendar year with an entitlement month for person i, or None if none falls in the
-        plan) to that person's FRA year. Called when the earnings test is on (Phase 5
-        step 3), not at HFP read: there most flagged years could not be tested, and the
-        test is off by default (D6).
+        One warning per person, naming every use that reads those years:
+
+        - the earnings test, when ``entitled_from`` is given (the test is on): only the
+          years it can reach, from ``entitled_from[i]`` (the first calendar year with an
+          entitlement month for person i, or None if none falls in the plan) to that
+          person's FRA year;
+        - the payroll tax, when ``payroll`` is true: every plan year with earnings.
+
+        Called once per solve from ``_warnEarnings``, not at HFP read: most flagged years
+        would not be read, and both switches are off by default (D3, D6).
         """
+        if entitled_from is None and not payroll:
+            return
         # The plan arrays the test reads, not the tables: the MCP assistant fills them
         # directly. kappa_ijn[i, 1] = 401k + IRA, [i, 2] = Roth 401k + Roth IRA
         # (setContributions); [i, 3] (HSA) is left out.
         deferrals = self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
         fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
         for i, iname in enumerate(self.inames):
-            if entitled_from[i] is None:
-                continue
+            test_from = entitled_from[i] if entitled_from is not None else None
             fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fras[i]) * 12)) // 12
-            flagged = []
+            flagged, tested = [], []
             for n in range(self.horizons[i]):
+                if self.omega_in[i, n] <= 0 or self.etEarnings_in[i, n] > 0 or deferrals[i, n] == 0:
+                    continue
                 year = int(self.year_n[n])
-                if year < entitled_from[i] or year > fra_year:
-                    continue
-                if self.omega_in[i, n] <= 0 or self.etEarnings_in[i, n] > 0:
-                    continue
-                if deferrals[i, n] != 0:
+                in_test = test_from is not None and test_from <= year <= fra_year
+                if in_test:
+                    tested.append(str(year))
+                if in_test or payroll:
                     flagged.append(str(year))
-            if flagged:
-                self.mylog.print(
-                    f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: the SSA "
-                    f"earnings test uses 'anticipated wages' there, which leave out payroll deferrals "
-                    f"(W-2 box 5 counts them) and those years have a 401k/IRA contribution. Enter "
-                    f"'gross earnings' for them.",
-                    tag="WARNING",
+            if not flagged:
+                continue
+            if not payroll:
+                uses = "the SSA earnings test uses 'anticipated wages' there"
+                boxes = "W-2 box 5 counts them"
+            elif not tested:
+                uses = "the payroll tax uses 'anticipated wages' there"
+                boxes = "they are FICA wages, W-2 boxes 3 and 5"
+            elif tested == flagged:
+                uses = "the payroll tax and the SSA earnings test use 'anticipated wages' there"
+                boxes = "W-2 boxes 3 and 5 count them"
+            else:
+                uses = (
+                    "the payroll tax uses 'anticipated wages' there (the SSA earnings test too, in "
+                    f"{', '.join(tested)})"
                 )
+                boxes = "W-2 boxes 3 and 5 count them"
+            self.mylog.print(
+                f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: {uses}, "
+                f"which leave out payroll deferrals ({boxes}), and those years have a 401k/IRA "
+                f"contribution. Enter 'gross earnings' for them.",
+                tag="WARNING",
+            )
 
     def _earnings_test_inputs(self):
         """
@@ -2511,30 +2534,6 @@ class Plan:
         ss_in, med_in, addl_n = tx.payrollTax(earnings, gamma_n, self.n_d, self.N_n, int(self.year_n[0]))
         self.payroll_addl_n = addl_n
         self.payroll_tax_n = np.sum(ss_in + med_in, axis=0) + addl_n
-
-    def _warnPayrollFallback(self):
-        """
-        Warn where the payroll tax falls back to ``anticipated wages`` (``gross earnings``
-        not given) in a year with a non-zero 401k/IRA deferral column: payroll deferrals
-        are FICA wages (W-2 boxes 3 and 5) but are not in ``anticipated wages``, so the tax
-        is understated there. The same columns as ``_warnGrossEarningsFallback``, over
-        every plan year, since the tax applies to every year with earnings.
-        """
-        deferrals = self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
-        for i, iname in enumerate(self.inames):
-            flagged = [
-                str(int(self.year_n[n]))
-                for n in range(self.horizons[i])
-                if self.omega_in[i, n] > 0 and self.etEarnings_in[i, n] <= 0 and deferrals[i, n] != 0
-            ]
-            if flagged:
-                self.mylog.print(
-                    f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: the payroll "
-                    f"tax uses 'anticipated wages' there, which leave out payroll deferrals (they are FICA "
-                    f"wages, W-2 boxes 3 and 5) and those years have a 401k/IRA contribution. Enter "
-                    f"'gross earnings' for them.",
-                    tag="WARNING",
-                )
 
     def _earningsTestResult(self, ages=None, gamma_n=None):
         """
@@ -2599,14 +2598,12 @@ class Plan:
 
     def _warnEarnings(self, options):
         """
-        The earnings warnings of one solve: the payroll tax's fallback warning where the
-        solve charges it (``withPayrollTax``, ``_warnPayrollFallback``), and the
-        earnings-test warnings (plan §4.4) where it applies the test (``withEarningsTest``,
-        D6).
-
-        For the test: names the years in which the test falls back to ``anticipated wages`` and that
-        understates what it counts (a deferral column is non-zero), and flags a fixed
-        claiming age that pays nothing before FRA: every month of entitlement before FRA
+        The earnings warnings of one solve: one fallback warning per person for the years in
+        which ``anticipated wages`` stands in for ``gross earnings`` and understates them (a
+        deferral column is non-zero), naming the payroll tax where the solve charges it
+        (``withPayrollTax``, D3) and the earnings test where it applies it
+        (``withEarningsTest``, D6; ``_warnGrossEarningsFallback``); and, with the test on,
+        a fixed claiming age that pays nothing before FRA: every month of entitlement before FRA
         that falls in the plan is withheld, which usually means the age is a typo or a
         plan to revisit. Called once per solve: the nested solves (the withSSAges
         candidates, the local search's seeding runs) and the search's own final solve,
@@ -2614,12 +2611,13 @@ class Plan:
         """
         if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
             return
-        if self._payrollTaxOn(options):
-            self._warnPayrollFallback()
-        if not self._earningsTestOn(options):
+        test_on = self._earningsTestOn(options)
+        self._warnGrossEarningsFallback(
+            self._ssEntitledFrom(options) if test_on else None, payroll=self._payrollTaxOn(options)
+        )
+        if not test_on:
             return
         searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
-        self._warnGrossEarningsFallback(self._ssEntitledFrom(options))
 
         # Fresh from the plan's current ages and earnings, not from the stored outputs:
         # withSSAges warns before any solve has rebuilt the streams (plan §5 step 3).

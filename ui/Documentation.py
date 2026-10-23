@@ -480,7 +480,8 @@ leave it blank where it does not apply), where:
   plan must pay, so it lowers what the plan can spend (and the withdrawals that pay it are taxed
   like any other). All of *gross earnings* is taxed as wages: self-employment tax is not
   modeled. Payroll deferrals are wages for this tax too, so **Owl** warns about the years with
-  wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*.
+  wages, no *gross earnings* and a non-zero *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb*. With
+  the earnings test also on, one warning per person names both uses and the years each reads.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
   cash flow and ordinary-income tax logic like wages. The Social Security earnings test does not

@@ -1,0 +1,18 @@
+
+owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+guard on  withLTCG=optimize: bequest today 2,363,527; LTCG tax paid 91,843, worksheet 91,843; in years e > sigma: paid 0, worksheet 0 (5 years)
+  2026: G    77,241 e   44,335 sigma   32,200 Q    21,659 paid       0 worksheet       0
+  2027: G    77,255 e   44,297 sigma   33,102 Q    24,415 paid       0 worksheet       0
+  2028: G    80,010 e   44,243 sigma   34,028 Q    24,506 paid       0 worksheet       0
+guard on  withLTCG=loop: bequest today 2,344,907; LTCG tax paid 101,579, worksheet 101,744; in years e > sigma: paid 11,355, worksheet 11,506 (5 years)
+  2026: G   100,800 e   44,335 sigma   32,200 Q    21,596 paid   3,239 worksheet   3,239
+  2027: G   103,622 e   44,297 sigma   33,102 Q    24,454 paid   3,668 worksheet   3,668
+  2028: G   106,524 e   44,243 sigma   34,028 Q    24,424 paid     792 worksheet   3,664
+guard off withLTCG=optimize: bequest today 2,360,673; LTCG tax paid 91,866, worksheet 91,866; in years e > sigma: paid 0, worksheet 0 (5 years)
+  2026: G    65,091 e   44,335 sigma   32,200 Q    21,674 paid       0 worksheet       0
+  2027: G    66,064 e   44,297 sigma   33,102 Q    24,410 paid       0 worksheet       0
+  2028: G    69,782 e   44,243 sigma   34,028 Q    24,519 paid       0 worksheet       0
+guard off withLTCG=loop: bequest today 2,344,907; LTCG tax paid 101,579, worksheet 101,744; in years e > sigma: paid 11,355, worksheet 11,506 (5 years)
+  2026: G   100,800 e   44,335 sigma   32,200 Q    21,596 paid   3,239 worksheet   3,239
+  2027: G   103,622 e   44,297 sigma   33,102 Q    24,454 paid   3,668 worksheet   3,668
+  2028: G   106,524 e   44,243 sigma   34,028 Q    24,424 paid     792 worksheet   3,664

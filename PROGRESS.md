@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-22)
+# Owl fork — progress (as of 2026-10-23)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -2247,6 +2247,44 @@ Chris (claims at 70, out of the test's reach): the payroll tax alone, 2026-2027.
 `test_one_fallback_warning_per_person_with_both_switches` and
 `test_one_switch_keeps_its_own_warning`; the step-3 and step-2 warning tests pass unchanged.
 Full suite: **3488 passed, 1 skipped** (10:52; 3486 + 2). flake8 clean; Ruff only upstream's `B905`.
+
+## Upstream `dev` `e3592e7` merged (2026-10-23, on `claude/phase5-step1`)
+
+One upstream commit, #205 (not ours): the QDCG worksheet starts from taxable income after the
+deduction, so a standard deduction that ordinary income leaves unused takes gains out of tax.
+Optimize mode: the room15/room20 MILP rows add `e_n` (and `k*p_n` under the optimized senior
+bonus) and widen by `sigma_n`; loop mode: the brackets widen by the previous iterate's unused
+deduction, with rows `ltcg_room15/20_deduction`; `_ltcg_tax_implied` follows the worksheet.
+Merged with no text conflict (`2f18d7b`). On the merge commit alone the full suite gave 3489
+passed, 1 failed (`test_examples_loop_matches_none_unless_a_year_itemizes[Case_robin]`).
+Two fork adaptations (spec `[test]` commit, strict xfail, then the fix):
+
+1. **Itemizers' brackets shrank.** Upstream takes `sigma_n` as the most `e_n` can be. Fork
+   itemizing raises `e_n`'s bound in itemized-branch years and in non-itemizer-charity years,
+   and there `sigma_n - e_n` is negative whenever ordinary income fills the deduction: the 0%
+   room becomes `T15 - G_n - (e_n - sigma_n)` instead of `T15 - G_n`. Measured
+   (`fork-notes/phase5/merge205_itemized_probe.py`, output `_2026-10-23.txt`, frozen date):
+   mortgage couple with pensions, `withLTCG="optimize"`: bequest \$2,363,527 with the fix,
+   \$2,360,673 with upstream's rows in every year (\$2,854 less: the LP cut ordinary income,
+   `G_n` 77k -> 65k in 2026, to fit the gains under a bracket made too narrow); loop mode
+   identical both ways (its unused deduction is clipped at 0 when `G_n > 0`). Fix:
+   `Plan._ltcg_deduction_widens_n()` keeps those years' rows as before #205 (exact when
+   ordinary income fills the deduction, short of the worksheet only when an itemizer's ordinary
+   income is below the deduction), and `_ltcg_tax_implied` stacks gains on `G_n` there. The
+   branch per year is now `_federal_item_branches()`, shared with `_add_federal_itemized`.
+   Exact widening for itemizers would mirror every deduction row into the gains rows; not done.
+2. **Robin's loop ran 3 iterations longer under `withItemized="loop"`.** The LP iterates were
+   the same as under `"none"` (checked array by array for 17 iterations), but #205's rows
+   change which vertex the LP returns at a tie (|dX| 65 vs 3 at the same objective), robin's
+   charity paid sits at the 0.5% floor, and the floor flag `_item_chl_n` flipped each
+   iterate. `_itemized_sc_moves` counted each flip as a \$2.1-2.4k move in years that take
+   the standard deduction, where floors move nothing (the non-itemizer charity has no floor).
+   The federal floors, their flags and the SALT cap, and the state medical floor and its flag,
+   now count only in years where a branch itemizes (in the LP or at the iterate's amounts).
+   Robin is back to the `"none"` plan to the cent.
+
+Full suite: **3492 passed, 1 skipped** (13:47; 3488 + upstream's 2 + the 2 new). flake8 clean;
+Ruff only upstream's `B905`. No recorded value moved.
 
 ## #185 after the changes since filing (2026-10-17, on `claude/intelligent-faraday-pfhera`)
 

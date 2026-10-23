@@ -537,3 +537,48 @@ def test_a_budget_medical_line_replaces_other_medical_expenses():
     b = _solve(p, withItemized="loop")
     assert a.item_med_n.max() > 10_000.0
     np.testing.assert_allclose(b.item_med_n, a.item_med_n, atol=0.01)
+
+
+def _itemizer_with_gains(**extra):
+    """Mortgage couple with pensions (ordinary income above the deduction) and a taxable account."""
+    p = _plan(state="", property_tax=12000.0, core=110000.0, mortgage=(500_000.0, 6.5, 30),
+              taxable=(900, 900), deferred=(100, 100))
+    p.setPension([3000, 2500], [62, 62])
+    return _solve(p, withLTCG="optimize", **extra)
+
+
+@pytest.mark.xfail(strict=True, reason="spec: #205's rows take sigma_n as the largest deduction")
+def test_itemizers_gains_brackets_do_not_shrink():
+    """Upstream #205 widens the gains brackets by sigma_n - e_n, the standard deduction ordinary
+    income leaves unused. An itemizer's e_n is above sigma_n, so in a year where ordinary income
+    fills the deduction that term is negative and would take room from the 0% and 15% brackets:
+    the room there is T15 - G_n (QDCG worksheet: taxable income = G_n + gains). The bracket rows
+    of such years carry no deduction term, and the implied LTCG tax stacks gains on G_n."""
+    p = _itemizer_with_gains()
+    Nn = p.N_n
+    item = np.flatnonzero((p.e_n > p.sigmaBar_n[:Nn] + 1) & (p.G_n > 1) & (p.Q_n > 1))
+    assert item.size >= 3
+    e_cols = {p.vm["e"].idx(n): n for n in item}
+    for ind, tag in zip(p.A.Aind, p.A.tags, strict=True):
+        if tag is not None and tag[0] in ("ltcg_room15_mip", "ltcg_room20_mip") and tag[1] in item:
+            assert not set(ind) & set(e_cols), tag
+    gains = np.maximum(p.Q_n, 0)
+    owed = tx.capitalGainTax(p.N_i, p.G_n + gains, gains, p.gamma_n[:Nn], p.n_d, Nn)
+    np.testing.assert_allclose(p._ltcg_tax_implied()[item], owed[item], atol=1.0)
+
+
+@pytest.mark.xfail(strict=True, reason="spec: #205's rows take sigma_n as the largest deduction")
+def test_itemizers_gains_brackets_cost_no_bequest(monkeypatch):
+    """The same couple with upstream's rows in every year (the deduction term in itemized years
+    too) leaves less bequest: the LP cuts ordinary income to fit gains into a 0% bracket that the
+    negative term made too narrow."""
+    from owlplanner import export
+    from owlplanner.plan import Plan
+
+    def bequest(p):
+        return export._compute_estate(p, p.N_n)[3] / p.gamma_n[p.N_n]
+
+    fork = bequest(_itemizer_with_gains())
+    monkeypatch.setattr(Plan, "_ltcg_deduction_widens_n", lambda self: np.ones(self.N_n, dtype=bool),
+                        raising=False)
+    assert fork > bequest(_itemizer_with_gains()) + 1000

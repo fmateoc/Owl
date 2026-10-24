@@ -12,7 +12,7 @@ the model with no switch (the fork removed its `withEarningsTest` switch the sam
 keep wrong cases wrong), and the reply offers the implementation, not an option. The payroll tax
 is left out of this reply (still opt-in in the fork). The last paragraph promises a PR on stock
 `dev`: opened by the user as **PR #222** (https://github.com/mdlacasse/Owl/pull/222, branch
-`fmateoc:earnings-test-pr`, text `fork-notes/pr-220-body.md`); the last paragraph links it. Ready to post.
+`fmateoc:earnings-test-pr`, text `fork-notes/pr-220-body.md`); the last paragraph links it. **Posted by the user 2026-10-23**; no answer as of 2026-10-24.
 
 ## What the text rests on
 

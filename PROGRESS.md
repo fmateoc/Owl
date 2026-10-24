@@ -2293,8 +2293,14 @@ re-recorded as 102_621. The fifteen other examples equal to the cent (the parame
 PR suite on `c6fcedb`: **3140 passed, 1 skipped** (8:55); Ruff clean. CI's strict flake8 selection: 0.
 
 The #220 reply draft points to the PR and names the taxable column in the warning. **Opened by
-the user as PR #222** (https://github.com/mdlacasse/Owl/pull/222, 2026-10-23); the reply links it,
-ready to post.
+the user as PR #222** (https://github.com/mdlacasse/Owl/pull/222, 2026-10-23); the reply, which
+links it, posted by the user the same day; no maintainer answer as of 2026-10-24.
+
+2026-10-24: upstream `dev` moved to `3444729` (`cd50a0a`: regret sweep can no longer report a
+negative regret; `3444729`: local search relaxes the redundant half of the LTCG links). PR #222
+then conflicted in `CHANGELOG.md` only (both add a *Version WIP* entry at the top); merged
+`upstream/dev` into `earnings-test-pr` locally with both entries kept (`7848cff`); its suite run was interrupted, so the merge is not validated and not pushed. The fork itself
+has not merged `3444729` yet.
 
 ## The earnings test without an option (2026-10-23, on `claude/phase5-step1`)
 

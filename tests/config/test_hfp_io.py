@@ -655,8 +655,8 @@ def test_example_hfp_workbooks_have_required_person_sheet_columns():
     # wrong globs a directory that does not exist, which makes the loop below run zero
     # times and the whole test pass while checking nothing -- hence the assert.
     root = Path(__file__).resolve().parents[2]
-    # Fork: the SS earnings-test columns default to derived values when absent, and the
-    # upstream example workbooks are left without them (binary files; merge cost).
+    # The SS earnings-test columns mean "not given" when absent (taken from other columns),
+    # and only the template carries them.
     required = set(_timeHorizonItems) - set(_derivedTimeHorizonItems)
     paths = sorted((root / "examples").glob("HFP*.xlsx"))
     assert paths, f"no example workbooks found under {root / 'examples'}"

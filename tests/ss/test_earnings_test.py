@@ -1,5 +1,5 @@
 """
-Tests for the SSA earnings-test rules (Phase 5 step 1).
+Tests for the SSA earnings-test rules (``socialsecurity.earnings_test`` and its helpers).
 
 Expected values come from the primary worked examples, not from the code under test.
 Each test names its source. Exempt amounts are passed in so the POMS examples run
@@ -37,9 +37,6 @@ import pytest
 
 from owlplanner import socialsecurity as ss
 
-# Step 1 is test-first (phase5-plan.md §5b). The spec commit carried these tests with
-# pytest.mark.xfail(strict=True); the implementation commit removes the markers.
-#
 # Month indexing (locked API — do not mix them):
 #   charge_excess_months: 0-based month index within the charged span (0 = first month).
 #   is_non_service_month / initial_grace_year: 1-based calendar month (1 = January).
@@ -48,9 +45,7 @@ from owlplanner import socialsecurity as ss
 # Frozen plan start (tests/conftest.py freezes the date; keep this in step with it).
 THISYEAR = 2026
 
-# 2026 statutory amounts (RS 02501.025 D, TN 55). Built lazily so this file collects
-# without the implementation (module-level ExemptAmounts would error at import, and
-# collection errors are not xfail).
+# 2026 statutory amounts (RS 02501.025 D, TN 55).
 _EXEMPT_2026_VALUES = (24_480.0, 65_160.0)
 
 
@@ -80,7 +75,7 @@ def test_excess_fra_year_wage_cut_at_fra_month():
 
     Only $30,000 counts; excess = ($30,000 − $17,000) / 3 = $4,333.
 
-    Owl spreads earnings evenly over ``months worked`` (Phase 5 D2), which matches the
+    Owl spreads earnings evenly over ``months worked``, which matches the
     NESE prorating of B.2.c, not the wages month-by-month shape of B.2.b (the example's
     $30k/$10k split cannot be expressed as an even spread). What must hold: only the
     months *before* the FRA month count, and the FRA-year divisor is 3.
@@ -311,7 +306,7 @@ def test_year_after_entitlement_with_no_earnings_uses_up_grace():
     """404.435(a)(7),(b): claim in 2026 while not working; work above the limit in 2027.
 
     2026 is the initial grace year (all months non-service). 2027 is then the annual
-    test only: no non-service months are spared (plan §5 step 1). Hand pin: claim 62y1m
+    test only: no non-service months are spared. Hand pin: claim 62y1m
     (April 2026), PIA $3,000 → $2,112.50/mo. 2027: ``months worked`` = 3, earnings
     $50,000 → excess ($50,000−$24,480)/2 = $12,760. If 2027 were still a grace year only
     the three service months would be charged (3 × $2,112.50 = $6,337.50). Because the
@@ -355,7 +350,7 @@ def test_year_after_entitlement_with_no_earnings_uses_up_grace():
 
 
 # --------------------------------------------------------------------------------------
-# ARF — RS 00615.480 / .482 / .490 and the §2.2 inference
+# ARF — RS 00615.480 / .482 / .490
 # --------------------------------------------------------------------------------------
 
 
@@ -412,7 +407,7 @@ def test_arf_spousal_factor_matches_own_rule():
 
 
 def _single_worker(pia=3000, claim=62.0, yob=1964, mob=3, tob=15, death_age=89, N_n=28):
-    """Stand-in from fork-notes/phase5/et_stakes.py (born 1964-03-15, FRA 67)."""
+    """One worker born 1964-03-15 (FRA 67)."""
     pias = np.array([pia], dtype=np.int32)
     ages = np.array([claim], dtype=np.float64)
     yobs = np.array([yob], dtype=np.int64)
@@ -531,18 +526,19 @@ def test_nothing_charged_in_fra_year_beyond_the_fra_month():
 
 
 def test_claim_62_while_working_withholds_then_raises_at_fra():
-    """Hand pins from §3c's prototype checks (claim 62y1m, PIA $3,000, $100k through 2031).
+    """Hand pins (claim 62y1m, PIA $3,000, $100k through 2031).
 
     Born 1964-03-15, claim 62.0 resets to 62y1m (April 2026 entitlement, May-Dec
     checks). Monthly = PIA × getSelfFactor(67, 62y1m) = $3,000 × 0.704167 = **$2,112.50**
-    (eight checks in 2026 = $16,900, as in plan §3c).
+    (eight checks in 2026 = $16,900).
 
     Work $100k/yr 2026-2031, 12 months each:
       excess every full year = ($100,000 − $24,480) / 2 = $37,760 > 12 × $2,112.50,
       so every chargeable month is fully withheld (no carry-over: RS 02501.095 B.1).
       2026: Apr-Dec = 9 months. 2027-2030: 12 each. 2031 FRA year: Jan-Feb only,
       countable $100,000×2/12 = $16,667 < $65,160 → excess 0.
-      Crediting months = 9 + 4×12 = **57** (this is the §3c "ARF 9 not 10" guard).
+      Crediting months = 9 + 4×12 = **57** (entitlement months are charged and credited,
+      not check months).
 
     ARF from March 2031: factor of claiming at 62y1m + 57/12 = 66y10m
     = getSelfFactor(67, 66y10m) = 0.988889 → $2,966.67/mo.
@@ -594,7 +590,7 @@ def test_claim_62_while_working_withholds_then_raises_at_fra():
 
 
 def test_grace_year_in_end_to_end_claim_july_months_six():
-    """Grace-year outcomes pinned (plan §5 step 1: 6 → *nothing* withheld; 12 → withheld).
+    """Grace-year outcomes pinned (months worked 6 → *nothing* withheld; 12 → withheld).
 
     Claim 62y4m (July 2026 entitlement). Monthly = $3,000 × getSelfFactor(67, 62y4m)
     = $3,000 × 0.716667 = **$2,150**. 2026 earnings $40,000 → excess ($40,000−$24,480)/2
@@ -784,7 +780,7 @@ def test_family_partial_month_uses_pia_shares():
 
 
 def test_survivor_fold_in_and_deferred_arf():
-    """D7 boundary: survivor streams fold in as the greater of own and survivor;
+    """Survivor boundary: survivor streams fold in as the greater of own and survivor;
     survivor ARF is deferred (RS 00615.580 not applied).
 
     Person 0 (PIA $5,000) dies first at plan year 10; person 1 (PIA $1,000) lives to
@@ -822,7 +818,7 @@ def test_survivor_fold_in_and_deferred_arf():
     assert res.arf_months[1] > 0
     death_n = surv.death_year_n
     assert death_n < N_n
-    # Greater-of fold-in uses the *un-ARF* survivor stream (D7 deferral).
+    # Greater-of fold-in uses the *un-ARF* survivor stream (survivor ARF not modeled).
     assert res.zeta_in[1, death_n:] == pytest.approx(surv.annual[death_n:])
     assert res.zeta_in[1, death_n] > 0
 
@@ -883,7 +879,7 @@ def test_exempt_amounts_table_projection():
 
 
 # --------------------------------------------------------------------------------------
-# Review fixes (2026-10-18)
+# Edge cases: plan start, charge order, records, survivors, FRA month
 # --------------------------------------------------------------------------------------
 
 
@@ -942,8 +938,8 @@ def _noop_cases():
 def test_zero_earnings_matches_today_on_a_grid(case):
     """No-op property on a grid: zero earnings → exactly ``compute_social_security_benefits``.
 
-    Review finding 1 (a claim before the plan start lost the January check) and finding 2
-    (a trim applied twice to survivor years).
+    Covers a claim before the plan start (its January check) and a trim with survivor
+    years (applied once).
     """
     pias, ages, yobs, mobs, tobs, horizons, N_i, N_n, kw = case
     base, res = _both(pias, ages, yobs, mobs, tobs, horizons, N_i, N_n, **kw)
@@ -981,7 +977,7 @@ def _order_couple(worker_index):
 def test_charge_order_does_not_depend_on_person_index(worker_index):
     """RS 02501.095: the worker's excess is charged first, whichever person is listed first.
 
-    Review finding 3. Entitlement June-December 2026; family $2,050 (own $1,400 +
+    Entitlement June-December 2026; family $2,050 (own $1,400 +
     spousal $650). Worker's excess $7,760: June-August in full ($6,150), then $1,610 of
     September; the $440 paid that month splits 2:1 (RS 02501.110) → own $293.33,
     spousal $146.67. Then the auxiliary's own $7,760 against what is left of their
@@ -1014,7 +1010,7 @@ def _dual_couple(ages, earnings):
 
 
 def test_dual_entitled_own_record_not_credited_for_worker_charge():
-    """RS 00615.482 B.3 NOTE: "grant ARFs separately on each record" (review finding 4).
+    """RS 00615.482 B.3 NOTE: "grant ARFs separately on each record".
 
     Worker PIA $3,000, auxiliary PIA $1,000 (spousal add-on $500), both born 1964-06-15
     and claiming at 62 → 62y1m (July 2026). Only the worker works, $80,000 in 2026-2028:
@@ -1041,7 +1037,7 @@ def test_dual_entitled_own_record_not_credited_for_worker_charge():
 
 def test_spousal_record_not_credited_before_spousal_entitlement():
     """Months withheld from the auxiliary's own benefit before the spousal benefit starts
-    do not reduce the spousal reduction (review finding 4; RS 00615.482 B.2-B.3).
+    do not reduce the spousal reduction (RS 00615.482 B.2-B.3).
 
     Auxiliary PIA $800 claims at 62 → 62y1m (July 2026) and works $60,000 in 2026-2027:
     excess $17,760 a year against $563.33 a month → July-December 2026 and all of 2027
@@ -1076,7 +1072,7 @@ def test_spousal_record_not_credited_before_spousal_entitlement():
 
 
 def test_survivor_years_are_not_charged():
-    """Review finding 5: the test is not applied to checks paid from the first death on
+    """The test is not applied to checks paid from the first death on
     (survivor benefits under the test are not modeled; module docstring). What is paid
     there is today's stream, and nothing is reported as withheld.
 
@@ -1121,7 +1117,7 @@ def test_survivor_base_without_arf_when_death_precedes_deceased_fra():
 
 def test_fra_year_monthly_exempt_is_the_fra_amount():
     """RS 02501.025 B.2: the monthly exempt amount is 1/12 of the *applicable* annual
-    amount, $65,160 / 12 = $5,430 in the FRA year (review finding 6). And a non-service
+    amount, $65,160 / 12 = $5,430 in the FRA year. And a non-service
     month must be before FRA (RS 02501.030; 404.435(a)(7)).
 
     FRA June 2031, entitlement January 2031.
@@ -1141,7 +1137,7 @@ def test_fra_year_monthly_exempt_is_the_fra_amount():
 
 
 def test_arf_never_exceeds_full_benefit_born_on_first():
-    """Review finding 7: someone born on the 1st attains FRA a month earlier in calendar
+    """Someone born on the 1st attains FRA a month earlier in calendar
     terms; crediting months bring the factor up to 1.0 and never past it."""
     # Born on the 1st, conventional 62 = SSA 62y1m: 59 reduction months.
     assert ss.arf_self_factor(67, 62.0, 59, True) == pytest.approx(1.0)
@@ -1179,7 +1175,7 @@ def test_born_on_first_fra_month_is_not_charged():
 
 
 # --------------------------------------------------------------------------------------
-# Review of the fixes (2026-10-19)
+# Inputs and records
 # --------------------------------------------------------------------------------------
 
 

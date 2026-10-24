@@ -1,9 +1,9 @@
 """
-The SSA earnings test is part of the model (2026-10-23):
+The SSA earnings test is part of the model:
 
 - every solve applies it;
 - where the test withholds nothing, the streams are those of
-  ``compute_social_security_benefits`` itself (upstream's builder), not the test's copy of
+  ``compute_social_security_benefits`` itself, not the test's copy of
   it, so a case the test does not touch is unchanged by construction;
 - the Summary rows appear for a household with earnings the test can reach (a year with
   earnings up to the person's FRA year), $0 / "none" included, so comparing two claiming
@@ -65,7 +65,7 @@ def test_applied_to_jack_jill_as_shipped():
     assert p.ss_arf_months_i[1] == 11
 
 
-def test_streams_are_upstreams_where_nothing_is_withheld(monkeypatch):
+def test_streams_are_the_builders_where_nothing_is_withheld(monkeypatch):
     """Where the test withholds nothing, the plan's streams come from
     compute_social_security_benefits itself: a marker added to its output shows up in
     zeta_in. Jack+jill with no earnings: nothing to withhold."""
@@ -77,7 +77,6 @@ def test_streams_are_upstreams_where_nothing_is_withheld(monkeypatch):
 
     p = _load("jack+jill")
     p.omega_in[:, :] = 0.0
-    p.etEarnings_in[:, :] = 0.0
     monkeypatch.setattr(ss, "compute_social_security_benefits", marked)
     _solve(p)
     base, _ = real(p.ssecAmounts, p.ssecAges, p.yobs, p.mobs, p.tobs, p.horizons, p.N_i, p.N_n)
@@ -103,7 +102,6 @@ def test_summary_rows_where_earnings_can_meet_the_test():
 
     none = _load("jack+jill")
     none.omega_in[:, :] = 0.0
-    none.etEarnings_in[:, :] = 0.0
     dic = build_summary_dic(_solve(none))
     assert not any(k.startswith("SS withheld by the earnings test") for k in dic)
     assert "ARF months" not in dic

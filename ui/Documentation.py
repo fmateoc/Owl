@@ -179,11 +179,11 @@ This Excel workbook holds year-by-year data that are not stored in the case TOML
 It must contain **one sheet per individual**, with a tab name that **exactly** matches that person in the *case*
 (e.g., *Jack* and *Jill*). Each person sheet is a **Wages and Contributions** table with the following
 headers (they must match exactly, including capitalization; column order may vary):
-`year`, `anticipated wages`, `gross earnings`, `months worked`, `other inc`, `net inv`, `taxable ctrb`, `401k ctrb`, `Roth 401k ctrb`, `IRA ctrb`,
+`year`, `anticipated wages`, `months worked`, `other inc`, `net inv`, `taxable ctrb`, `401k ctrb`, `Roth 401k ctrb`, `IRA ctrb`,
 `Roth IRA ctrb`, `HSA ctrb`, `Roth conv`, `Roth conv fixed`, `QCD`, `big-ticket items`. Only `year` **must be
 present**: enter `0` where a column does not apply, or leave the column out of the workbook entirely and it is
-read as zero for every year, with **Owl** reporting which columns were absent. The two exceptions are
-`gross earnings` and `months worked`, where zero (or an absent column) means *not given* (see below).
+read as zero for every year, with **Owl** reporting which columns were absent. The exception is
+`months worked`, where zero (or an absent column) means *not given* (see below).
 The legacy header `other inc.` is read as `other inc`.
 Numeric cells are **nominal dollars** (not thousands), independent of spending/bequest *units* in the case file.
 On load, the planner keeps rows from five calendar years before the **current** year through each person's
@@ -386,7 +386,7 @@ In the workbook this is a single sheet per person. In the user interface it is s
 tables, the five lead-in years and the plan years, so that *Roth conv fixed* can be disabled
 on the past rows where those conversions have already happened.
 
-|year|anticipated wages|gross earnings|months worked|other inc|net inv|taxable ctrb|401k ctrb|Roth 401k ctrb|IRA ctrb|Roth IRA ctrb|HSA ctrb|Roth conv|Roth conv fixed|QCD|big-ticket items|
+|year|anticipated wages|months worked|other inc|net inv|taxable ctrb|401k ctrb|Roth 401k ctrb|IRA ctrb|Roth IRA ctrb|HSA ctrb|Roth conv|Roth conv fixed|QCD|big-ticket items|
 |--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|--|
 |2021 | | | | | | | | | | | | | | | |
 | ... | | | | | | | | | | | | | | | |
@@ -441,7 +441,7 @@ each person's plan span (plus the five-year lookback) are ignored.
 After loading, each person's table always runs through that individual's final plan year—even if you omitted
 those rows in the file.
 
-The fifteen optional columns are described below, in the order they appear in the table (fill a column with 0 or
+The fifteen columns after *year* are described below, in the order they appear in the table (fill a column with 0 or
 leave it blank where it does not apply), where:
 - *year* is the plan year for that row (see the five-year lookback note above).
 - *anticipated wages* is the annual employment income you anticipate, entered **net of all
@@ -452,41 +452,35 @@ leave it blank where it does not apply), where:
   accounts is therefore not modeled during the working years. This column is not meant to include
   all your ordinary income; for example, interest from your taxable investment accounts is
   calculated automatically based on the assumptions you made for future return rates.
-- *gross earnings* and *months worked* are inputs to the Social Security earnings test, which
-  **Owl** always applies: the benefits a claim before full retirement age would lose to the
-  test are withheld in the earning years, and the withheld months come back at full retirement age through the
-  adjustment of the reduction factor.
-- *gross earnings* is the employment income the Social Security earnings test counts: W-2 box 5
-  (Medicare wages) plus net self-employment earnings. Those dollars include the contributions
-  netted out of *anticipated wages*. Where it is 0 or blank, or the column is absent, **Owl** uses
-  *anticipated wages* alone, which leaves out those contributions and everything in *other inc*:
-  consulting or other self-employment income counts for the earnings test only if it is entered
-  here. **Owl** warns about the years the earnings test can reach that have
-  wages and a non-zero *taxable*, *401k*, *Roth 401k*, *IRA* or *Roth IRA ctrb* (a payroll HSA is
-  not in box 5). Fill it in for any year in which someone claims Social Security before full retirement
-  age while still working.
+- **Owl** always applies the Social Security earnings test: the benefits a claim before full
+  retirement age would lose to it are withheld in the earning years, and the withheld months come
+  back at full retirement age through the adjustment of the reduction factor. The test counts
+  wages before contributions (W-2 box 5), so in a year with *anticipated wages* **Owl** adds back
+  that year's *taxable*, *401k*, *Roth 401k*, *IRA* and *Roth IRA ctrb*, which those wages are net
+  of. Employer contributions included in *401k ctrb* were never wages, so they make the earnings
+  slightly high; HSA contributions are left out, as a payroll HSA is not in box 5. Self-employment
+  earnings count only when entered in *anticipated wages*: the test does not read *other inc*.
 - *months worked* is how many months of that year the person works (a whole number from 0 to 12).
   Earnings are taken as spread evenly over those months. It decides whether a month counts for the
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
   counts. Where it is 0 or blank, or the column is absent, **Owl** uses 12 in a year with
   earnings.
 - When the solver option *withPayrollTax* is on (off unless the case asks for it), **Owl** also
-  charges the employee's payroll tax on the same earnings (*gross earnings*, else *anticipated
-  wages*), paid from the plan each year: 6.2% social security tax up to the wage base (\\$184,500
-  in 2026, held at that level in today's dollars), 1.45% Medicare tax, and 0.9% Additional
-  Medicare Tax on the household's earnings above \\$250,000 (married filing jointly) or \\$200,000
-  (single), not indexed. It is not deductible: no tax computation counts it, but it is cash the
-  plan must pay, so it lowers what the plan can spend (and the withdrawals that pay it are taxed
-  like any other). All of *gross earnings* is taxed as wages: self-employment tax is not
-  modeled. Contributions netted out of *anticipated wages* are wages for this tax too, so **Owl**
-  warns about the years with wages, no *gross earnings* and a non-zero *taxable*, *401k*, *Roth
-  401k*, *IRA* or *Roth IRA ctrb*. Where
-  the earnings test reads some of those years, one warning per person names both uses and the
-  years each reads.
+  charges the employee's payroll tax on the same earnings (*anticipated wages* plus the
+  contributions above, which are FICA wages too), paid from the plan each year: 6.2% social
+  security tax up to the wage base (\\$184,500 in 2026, held at that level in today's dollars),
+  1.45% Medicare tax, and 0.9% Additional Medicare Tax on the household's earnings above
+  \\$250,000 (married filing jointly) or \\$200,000 (single), not indexed. It is not deductible: no
+  tax computation counts it, but it is cash the plan must pay, so it lowers what the plan can spend
+  (and the withdrawals that pay it are taxed like any other). All of those earnings are taxed as
+  wages: self-employment tax is not modeled.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
-  cash flow and ordinary-income tax logic like wages. The Social Security earnings test does not
-  read it: enter net self-employment earnings in *gross earnings* as well.
+  cash flow and ordinary-income tax logic like wages. A **negative** amount is an above-the-line
+  deduction paid from your cash, such as an HSA contribution made without wages (see *HSA ctrb*).
+  A deduction larger than the year's income is lost: taxable income stops at zero. The Social
+  Security earnings test does not read it: enter net self-employment earnings in *anticipated
+  wages* instead for them to count.
 - *net inv* is net investment income such as rent or trust distributions that the model counts as
   ordinary income for cash flow and taxable income, and that also enter the Net Investment Income Tax
   (NIIT, 3.8% surtax) when applicable. Use `0` if you do not model that income separately.
@@ -504,7 +498,9 @@ leave it blank where it does not apply), where:
 - *HSA ctrb* is HSA contributions in nominal dollars. Like the other *ctrb* columns, subtract them
   from *anticipated wages*; being pre-tax, they are thereby excluded from both cash flow and
   taxable income. Enter the full annual amount you plan to contribute: **Owl** applies the
-  Medicare cutoff itself. The HSA limit is counted by the month, and no contribution is allowed
+  Medicare cutoff itself. If you have no wages to net the contribution from (for instance, a
+  retiree or early retiree contributing from savings), enter it in *HSA ctrb* and the same amount
+  as a negative *other inc*: the column alone deposits it without deducting it or paying for it. The HSA limit is counted by the month, and no contribution is allowed
   for a month with Medicare (IRC 223(b)(2) and (b)(7)). Medicare starts in the month of the
   65th birthday, or in the month before when the birthday falls on the 1st. In the year it
   starts, **Owl** keeps the share of your entry for the months before Medicare and drops the rest:
@@ -547,8 +543,8 @@ leave it blank where it does not apply), where:
   negative numbers will potentially generate additional withdrawals and distributions from retirement
   accounts.
 
-*big-ticket items* is the only column that can contain negative numbers; every other amount must be
-positive. *Roth conv fixed* holds a checkbox rather than an amount.
+*big-ticket items* and *other inc* are the only columns that can contain negative numbers; every other
+amount must be zero or positive. *Roth conv fixed* holds a checkbox rather than an amount.
 
 Only the *year* column is required. If your household has no use for a column, you can leave it out of
 the workbook entirely and it is read as zero for every year; **Owl** reports which columns were absent

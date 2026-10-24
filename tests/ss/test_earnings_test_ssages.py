@@ -1,10 +1,10 @@
 """
-Tests for the SSA earnings test under ``withSSAges`` (Phase 5 step 4).
+Tests for the SSA earnings test under ``withSSAges``.
 
-Since upstream #195 the claiming-age search solves the plan at fixed ages for every open
-month, each candidate on a clone of the plan, and keeps the best (phase5-plan.md §5 step
-4). The earnings test then reaches every candidate through the fixed-age path of step 3,
-provided each clone carries the earnings columns. These tests guard that:
+Since #195 the claiming-age search solves the plan at fixed ages for every open month,
+each candidate on a clone of the plan, and keeps the best. The earnings test then reaches
+every candidate through the fixed-age path, provided each clone carries the earnings
+columns. These tests guard that:
 
 - every candidate the search solves equals an independent fixed-age solve of a freshly
   loaded plan at the same ages, with the test on (and the candidate's ARF months show
@@ -189,23 +189,23 @@ def test_search_keeps_the_best_fixed_age_solve(runs, test_on):
 
 
 # --------------------------------------------------------------------------------------
-# Review of step 4 (2026-10-21): the test changes the decision
+# The test changes the decision
 # --------------------------------------------------------------------------------------
 
 
 def test_the_test_moves_pats_pick():
     """chris+pat: Pat (born 1966-01-15, PIA $1,400) earns $85k in 2028, her last work year.
     Between a claim at 62y3m (April 2028, in that year) and at 63y0m (January 2029, the month
-    after it), the search takes the earlier one without the test, which Owl paid, and the
-    later one with it, as SSA would withhold April-December 2028. A regression pin: the
-    values come from the plan (et_step4_probe.py; the sign agrees under the loop, local
-    search and the exact LP, et_step4_crosscheck.py), not from a hand rule. Unlike the pick
-    test above, it fails when the candidates lose the earnings even though the returned plan is
-    re-solved with it: it checks the decision, not only the plan returned."""
+    after it), the search takes the later one with the test, as SSA would withhold
+    April-December 2028: 63y0m is ahead by $147/yr with MOSEK and $161/yr with HiGHS (0.13%).
+    Without the test the two are within the loop's fixed-point noise (-$7/yr with MOSEK,
+    +$53/yr with HiGHS), so that pick is solver-dependent and is not pinned. It checks the
+    decision, not only the plan returned: it fails when the candidates lose the earnings even
+    though the returned plan is re-solved with them."""
     months = [62 * 12 + 3, 63 * 12]
     open_ages = Plan._ssaOpenAges
     picks = {}
-    for test_on in (False, True):
+    for test_on in (True,):
         p = owl.readConfig(os.path.join(_EXAMPLES, "Case_chris+pat.toml"), verbose=False, logstreams=[io.StringIO()])
         p.readHFP(os.path.join(_EXAMPLES, "HFP_chris+pat.xlsx"))
         with pytest.MonkeyPatch.context() as mp, _test(test_on):
@@ -215,4 +215,4 @@ def test_the_test_moves_pats_pick():
         picks[test_on] = int(round(p.ssecAges[1] * 12))
         if test_on:
             assert np.all(p.ss_withheld_in == 0)  # the pick claims after the work year
-    assert picks == {False: 62 * 12 + 3, True: 63 * 12}
+    assert picks == {True: 63 * 12}

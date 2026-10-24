@@ -2269,6 +2269,45 @@ Not measured, inferred from the code only: (b') runs only after a round with no 
 that moves something else defers it to a later round or the next loop iteration. Upstream's test
 covers john+sally only. Worth a test case only if a run shows a plan it misses.
 
+## Upstream `dev` `6ea43a9` merged: our earnings test landed (2026-10-24, on `claude/phase5-step1`)
+
+Upstream since `3444729`: `ccd395a`, `a0d157b`, `e55276a` (#225: a negative `other inc` is an
+above-the-line deduction, e.g. an HSA contribution without wages; new `dl` columns, the part a
+year's income cannot absorb, in the federal and state taxable-income rows, the IRMAA/ACA bottom
+brackets and the reported MAGI; MCP `other_income`), `2bc3148` (MCP HSA contributions stop at
+Medicare) and **`6ea43a9`, PR #222 as landed** ("The SSA earnings test (#220, #222)"). His change
+from the PR, quoted from the commit: the earnings are derived, not entered, "in a year with wages
+the earnings are the wages plus that year's taxable, tax-deferred and Roth contributions
+(kappa_ijn[:, :3]; an employer contribution makes them slightly high, HSA left out). The PR's
+'gross earnings' column, its fallback warning and _ssEntitledFrom are gone; it changed nothing in
+any example". `months worked` stays.
+
+Merge (worktree, branch `merge-6ea43a9`, fast-forwarded into `claude/phase5-step1`): 19 conflicted
+files. Taken from upstream: `socialsecurity.py` (ours differed in fork wording only, checked by
+diff), the five earnings-test test files, the earnings-test parts of `plan.py`, `hfp_io.py`,
+`export.py`, the CLI, UI, docs and the template workbook. Kept from the fork: the payroll tax
+(`_payrollTaxOn`, `_payroll_tax`, its Summary / metrics / JSON keys and docs), the budget and
+itemizing code, the fork's order of `processDebtsAndFixedAssets()` before `_buildOffsetMap`,
+jack+jill's recorded 103_578 (the fork's model; unchanged by the derived earnings, the suite agrees).
+
+**Payroll tax after the merge** reads upstream's derived earnings through
+`_earnings_test_inputs()`: wages + contributions, which are FICA wages too (W-2 boxes 3 and 5),
+so the base is better than the old `anticipated wages` fallback and needs no warning. Tests moved
+with it (hand numbers): jack+jill 2026-2027 \$195,000 (Jack's \$15,000 401k now counts), the
+second-solve test \$205,000, jon+jane's Additional Medicare case \$23,547.00 (Jon \$309,000, Jane
+\$83,000; 6.2% x 184,500 + 1.45% x 309,000 + 7.65% x 83,000 + 0.9% x 142,000, equal to the run);
+the gross-earnings test and the four fallback-warning tests dropped with the warning.
+
+**#225 in the fork's NY rows** (upstream tests PA and CA only): new
+`tests/plan/test_other_inc_deduction_ny.py`, a \$5,400 deduction on a \$30,000 conversion in NY,
+Yonkers and NYC, loop and branch-and-bound: MAGI -\$5,400, federal \$1,420 -> \$850 (hand: 10% to
+\$12,400 and 12% above, on taxable income \$13,900 -> \$8,500 with the recalled \$16,100 single
+deduction), NY and local tax to zero (NY base about \$2,000 before, below zero after; the test
+asserts only the signs and the MAGI drop, not recalled constants).
+
+Full suite on the merge: first run **2 failed, 3489 passed, 1 skipped** (the two payroll hand
+numbers above); after the fixes: **3497 passed, 1 skipped** (10:38; 3489 + the 2 fixed + the 6 new NY tests). flake8 clean; Ruff only upstream's three `B905`s.
+
 ## Local-search speed on the fork, before and after `3444729` (2026-10-24, on `claude/phase5-step1`)
 
 The 18 examples with the local-search preset, HiGHS, today's date, fork code at `047c140` (before
@@ -2319,6 +2358,24 @@ added, `run2.py` / `noitem.tsv`; one run each):
 
 So itemizing explains devon and part of jordan+taylor. It is a model cost, not a search defect: the
 default `"loop"` adds loop parameters (branch, floors, SALT cap) and can take more iterations.
+
+**The rest isolated** (2026-10-24, `run3.py`, one run each, same container; `fork_flat.tsv`,
+`stock_flat.tsv`, `fork_cp.tsv`, `stock6_cp.tsv`):
+
+| Run | jordan+taylor | jordan+taylor-qcd | chris+pat |
+|---|---|---|---|
+| fork, itemizing off, flat profile (60%) | 52.6 s, 1,358,656.18 | 73.4 s, 1,003,632.53 | |
+| stock `3444729`, flat profile (60%) | 51.1 s, 1,358,656.18 | 71.9 s, 1,003,632.53 | |
+| fork, itemizing off | | | 123.2 s, 117,139.65 |
+| stock `6ea43a9` (has the earnings test) | | | 122.5 s, 117,139.65 |
+
+With the fork feature removed, each case equals stock to the cent and to within 2 s:
+jordan+taylor's remaining cost and jordan+taylor-qcd's whole cost are the fork's age-anchored smile
+(`smile_start_age = 66`); chris+pat's is the earnings test, which stock now has too (and the fork's
+result there is upstream's to the cent). **Summary of the fork's 1.21x:** devon = itemizing;
+jordan+taylor = itemizing + smile; jordan+taylor-qcd = smile; chris+pat = earnings test (no longer a
+fork difference after `6ea43a9`). The search itself is no slower on the fork; the fork solves a
+different problem in those cases.
 
 ## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
 

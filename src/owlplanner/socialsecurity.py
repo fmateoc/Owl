@@ -25,7 +25,7 @@ Limitations and known omissions:
   2026 real level (statute indexes them to wages with a two-year lag); years before
   the plan have no earnings (so anyone entitled before the plan has used their grace
   year); the test is not applied to checks paid from the year of the first death on
-  (survivor benefits under the test and the survivor ARF are not modeled, Phase 5 D7),
+  (survivor benefits under the test and the survivor ARF are not modeled),
   but the survivor benefit does start from the deceased's benefit after their ARF.
 
 - Survivor benefit timing: the date at which the survivor claims the survivor benefit
@@ -591,7 +591,7 @@ def compute_survivor_stream(
     This is the same stream ``compute_social_security_benefits`` combines with the
     survivor's own benefit; it is exposed separately so callers can report it on its own.
 
-    ``deceased_factor`` (fork, Phase 5) replaces the deceased's own-benefit factor when
+    ``deceased_factor`` replaces the deceased's own-benefit factor when
     they had claimed, e.g. after an earnings-test ARF raised it (``earnings_test``).
 
     Returns
@@ -815,7 +815,7 @@ def compute_social_security_benefits(
 
 
 # --------------------------------------------------------------------------------------
-# SSA earnings test (Phase 5 steps 1-3). Pure rules; Plan._ss_streams applies them to
+# SSA earnings test. Pure rules; Plan._ss_streams applies them to
 # the plan's streams in every solve.
 #
 # Primary sources (read 2026-10-17/18):
@@ -829,7 +829,7 @@ def compute_social_security_benefits(
 #   20 CFR 404.430, 404.434, 404.435  indexing, charging, grace year
 #
 # Earnings are inputs, so for a given claiming month everything the test does is a
-# fixed function of that month (phase5-plan.md §4.1): no LP piece here.
+# fixed function of that month: no LP piece here.
 # --------------------------------------------------------------------------------------
 
 # POMS RS 02501.025 D (TN 55, 11/21/2025). Annual amounts; monthly = annual / 12.
@@ -892,7 +892,7 @@ def countable_earnings(
 
     Below the FRA year the whole year's earnings count. In the FRA year only the
     months before the FRA month count. Earnings are taken as spread evenly over
-    ``months_worked`` months at the start of the year (Phase 5 D2).
+    ``months_worked`` months at the start of the year.
     """
     if earnings <= 0 or months_worked <= 0:
         return 0.0
@@ -1109,10 +1109,9 @@ def arf_self_factor(fra: float, claim_age: float, crediting_months: int, born_on
     the original reduction factor, which is the same as recomputing at
     ``claim_age + crediting_months/12``, capped at FRA (for someone born on the 1st,
     a month before the conventional age ``fra``), so the factor never exceeds 1.
-    Effective with the month of FRA. This is the §2.2 inference of the Phase 5 plan,
-    confirmed against the RS 00615.490 procedure ("Determine crediting months. Subtract
-    from original reduction factor. Apply result to PIA") — that section has no
-    numeric example.
+    Effective with the month of FRA. This follows the RS 00615.490 procedure ("Determine
+    crediting months. Subtract from original reduction factor. Apply result to PIA"),
+    which has no numeric example.
     """
     if crediting_months <= 0 or claim_age >= _fra_conventional_age(fra, born_on_first):
         return getSelfFactor(fra, claim_age, born_on_first)
@@ -1194,7 +1193,7 @@ def earnings_test(
     survivor_claim_age="immediate",
 ):
     """
-    Apply the SSA earnings test to one- or two-person SS streams (phase5-plan.md §4.3).
+    Apply the SSA earnings test to one- or two-person SS streams.
 
     Builds the same monthly entitlement streams as ``compute_social_security_benefits``
     (own + spousal add-on from the later claim), charges, year by year, each worker's
@@ -1209,7 +1208,7 @@ def earnings_test(
     The survivor benefit is based on the deceased's benefit after their ARF when the
     death comes after the deceased's FRA. The test is **not** applied to checks paid
     from the year of the first death on (survivor benefits under the test, and the
-    survivor ARF of RS 00615.580, are not modeled; Phase 5 D7).
+    survivor ARF of RS 00615.580, are not modeled).
 
     Years before the plan carry no earnings here, so a person entitled before the plan
     has their initial grace year in their (pre-plan) entitlement year and only the

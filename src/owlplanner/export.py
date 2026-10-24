@@ -513,9 +513,9 @@ def build_summary_dic(plan, N=None):
                     prefix="»  ",
                 )
 
-    # SSA earnings test (Phase 5 step 3): benefits withheld before FRA and returned at
-    # FRA by the ARF. Reported for a household with earnings the test can reach, $0 /
-    # "none" included, so that two claiming ages of that household compare row by row.
+    # SSA earnings test: benefits withheld before FRA and returned at FRA by the ARF.
+    # Reported for a household with earnings the test can reach, $0 / "none" included,
+    # so that two claiming ages of that household compare row by row.
     if getattr(plan, "ss_earnings_reachable", False):
         _summary_currency_pair(
             dic,
@@ -989,7 +989,7 @@ def plan_metrics(plan, N=None) -> dict:
         "aca_nominal": _s(plan.aca_costs_n[:N]),
         "debt_payments_today": _st(plan.debt_payments_n[:N]),
         "debt_payments_nominal": _s(plan.debt_payments_n[:N]),
-        # Fork (Phase 5): SSA earnings test, 0 when the test is off.
+        # SSA earnings test: 0 when it withholds nothing.
         "ss_withheld_today": _st(plan.ss_withheld_in[:, :N]),
         "ss_withheld_nominal": _s(plan.ss_withheld_in[:, :N]),
         "housing_costs_today": _st(budget_spending(plan, N)[1]),
@@ -1212,7 +1212,7 @@ def plan_to_excel(plan, overwrite=False, *, basename=None, saveToFile=True, with
         "other inc": plan.sources_in["other inc"],
         "net inv": plan.sources_in["net inv"],
         "social sec": plan.sources_in["ssec"],
-        # SSA earnings-test withholding (Phase 5 step 3), next to the SS it reduces.
+        # SSA earnings-test withholding, next to the SS it reduces.
         **({"SS withheld": plan.ss_withheld_in} if np.any(plan.ss_withheld_in > 0) else {}),
         "pension": plan.sources_in["pension"],
         "txbl acc wdrwl": plan.sources_in["txbl acc wdrwl"],

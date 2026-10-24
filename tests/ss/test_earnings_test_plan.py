@@ -1,12 +1,11 @@
 """
-Tests for applying the SSA earnings test to the plan (Phase 5 step 3).
+Tests for applying the SSA earnings test to the plan.
 
-Properties from phase5-plan.md §5 step 3 and §5b, on the shipped examples:
+Properties, on the shipped examples:
 
-- with no earnings the streams are exactly today's (the test is always applied since
-  2026-10-23; "without the test" below is the test run on zero earnings, see
-  ``_without_the_test``);
-- the three examples of plan §3 that pay Social Security before FRA in a year with wages
+- with no earnings the streams are exactly those without the test ("without the test"
+  below is the test run on zero earnings, see ``_without_the_test``);
+- the three examples that pay Social Security before FRA in a year with wages
   above the exempt amount (jack+jill and chris+pat in 2028, alex+jamie in 2026-2027) show
   the withholding, the ARF that replaces it at FRA, and taxes on the *net* benefit;
 - the other fifteen are a no-op to the cent;
@@ -49,16 +48,12 @@ from owlplanner import socialsecurity as ss
 from owlplanner.export import build_summary_dic
 from owlplanner.mylogging import Logger
 
-# Step 3 was written test-first (phase5-plan.md §5b): the spec commit carried these
-# tests with pytest.mark.xfail(strict=True); the implementation commit removes the
-# markers.
-
 # Frozen plan start (tests/conftest.py freezes the date; keep this in step with it).
 THISYEAR = 2026
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 
-# Plan §3: the three examples that pay SS before FRA in a year with wages above the
+# The three examples that pay SS before FRA in a year with wages above the
 # exempt amount (jack+jill and chris+pat: the second spouse's last work year 2028;
 # alex+jamie: 2026-2027).
 THE_THREE = ["alex+jamie", "chris+pat", "jack+jill"]
@@ -92,7 +87,7 @@ def _load(case):
 def _without_the_test():
     """Owl without the earnings test, for comparisons: the test run on zero earnings
     withholds nothing, so the plan keeps compute_social_security_benefits' streams. Wages
-    still count everywhere else (income, taxes, the payroll tax)."""
+    still count everywhere else (income, taxes)."""
     real = ss.earnings_test
 
     def zero(*a, **k):
@@ -124,7 +119,7 @@ def _both_alives(p):
 
 
 # --------------------------------------------------------------------------------------
-# No-op: no earnings (§5b)
+# No-op: no earnings
 # --------------------------------------------------------------------------------------
 
 
@@ -135,7 +130,6 @@ def test_no_earnings_is_a_no_op():
         p.ssecAmounts, p.ssecAges, p.yobs, p.mobs, p.tobs, p.horizons, p.N_i, p.N_n
     )
     p.omega_in[:, :] = 0.0
-    p.etEarnings_in[:, :] = 0.0
     p.etMonths_in[:, :] = 0.0
     _solve(p, test_on=True)
     assert np.allclose(p.zeta_in, base, rtol=0.0, atol=1e-6)
@@ -154,7 +148,7 @@ def _other_fifteen():
 
 @pytest.mark.parametrize("case", _other_fifteen())
 def test_no_op_objective_on_the_other_fifteen(case):
-    """Plan §5 step 3: no-op on the other fifteen examples, objective identical to the
+    """No-op on the other fifteen examples, objective identical to the
     cent. Nobody there claims before FRA in a year with wages above the exempt amount."""
     off = _solve(_load(case), test_on=False)
     on = _solve(_load(case), test_on=True)
@@ -166,7 +160,7 @@ def test_no_op_objective_on_the_other_fifteen(case):
 
 
 # --------------------------------------------------------------------------------------
-# The three examples of plan §3 with the test on
+# The three examples with the test on
 # --------------------------------------------------------------------------------------
 
 
@@ -250,7 +244,7 @@ def test_alex_jamie_2026_27_are_fully_withheld():
 
 
 # --------------------------------------------------------------------------------------
-# A second solve sees edited wages (§5: "stale streams" risk)
+# A second solve sees edited wages
 # --------------------------------------------------------------------------------------
 
 
@@ -271,7 +265,7 @@ def test_second_solve_after_editing_wages():
 
 
 # --------------------------------------------------------------------------------------
-# Warnings (plan §4.4, §5 step 3), once per solve
+# Warnings, once per solve
 # --------------------------------------------------------------------------------------
 
 
@@ -287,31 +281,32 @@ def _warn_lines(buf):
     return [line.split(" | ", 3)[-1] for line in buf.getvalue().splitlines() if "| WARNING |" in line]
 
 
-def test_fallback_warning_names_only_the_reachable_years():
-    """`gross earnings` is not given for Pat in 2028 (401k deferrals, wages $85k) and Pat
-    claims that year, so the fallback understates what the test counts. Chris claims at
-    70, past the FRA year, and Pat's 2026-2027 are before entitlement: neither is named."""
+def test_earnings_are_the_wages_before_contributions():
+    """The test counts wages before contributions (W-2 box 5), and `anticipated wages` are
+    entered net of every contribution column: in a year with wages, the earnings add back the
+    taxable, tax-deferred and Roth contributions, not the HSA. Without wages, contributions
+    (from savings) are not earnings."""
     p = _load("chris+pat")
-    buf = _warn_log(p)
-    _solve(p, test_on=True)
-    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
-    assert len(warned) == 1
-    assert "Pat" in warned[0]
-    assert "2028" in warned[0]
-    assert "Chris" not in warned[0]
-    assert "2027" not in warned[0]
+    earnings, months = p._earnings_test_inputs()
+    pat, n = 1, int(np.argmax(p.year_n == 2028))
+    contributed = p.kappa_ijn[pat, 0, n] + p.kappa_ijn[pat, 1, n] + p.kappa_ijn[pat, 2, n]
+    assert contributed > 0, "test setup: Pat contributes in 2028"
+    assert earnings[pat, n] == pytest.approx(p.omega_in[pat, n] + contributed)
+    assert months[pat, n] == 12
+    p.kappa_ijn[pat, 3, n] = 5_000.0  # an HSA contribution is not box 5
+    assert p._earnings_test_inputs()[0][pat, n] == pytest.approx(p.omega_in[pat, n] + contributed)
+    p.omega_in[pat, n] = 0.0
+    earnings, months = p._earnings_test_inputs()
+    assert earnings[pat, n] == 0.0 and months[pat, n] == 0
 
 
-def test_no_fallback_warning_for_a_late_claim():
-    """Jack's 2026-2027 carry 401k deferrals, but he claims at 70: no entitlement month
-    before his FRA year, so the test never reads those years (plan §5 step 3). It is
-    applied to Jill all the same (her 2028 is withheld, 11 crediting months)."""
+def test_jill_is_credited_her_withheld_months():
+    """Jill claims at 62y1m and works through 2028: all of 2028 is withheld, and those 11
+    months raise her benefit from FRA. Jack claims at 70, past his FRA year: nothing."""
     p = _load("jack+jill")
-    buf = _warn_log(p)
     _solve(p, test_on=True)
-    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
-    assert not any("Jack" in w for w in warned)
     assert p.ss_arf_months_i[1] == 11
+    assert p.ss_arf_months_i[0] == 0
 
 
 def test_warning_when_a_claiming_age_pays_nothing_before_fra():
@@ -328,7 +323,7 @@ def test_warning_when_a_claiming_age_pays_nothing_before_fra():
 
 
 # --------------------------------------------------------------------------------------
-# Outputs: Summary, worksheet, explain (plan §4.4)
+# Outputs: Summary, worksheet, explain
 # --------------------------------------------------------------------------------------
 
 
@@ -366,21 +361,20 @@ def test_explain_ss_block_gains_both():
 
 
 # --------------------------------------------------------------------------------------
-# Review of step 3 (2026-10-20): warnings under withSSAges, option parsing, and the
-# properties of the step's list that the tests above left open
+# Warnings under withSSAges, a stop before the claim, the spousal record, units
 # --------------------------------------------------------------------------------------
 
 
 def test_warns_once_under_with_ssages():
     """Under withSSAges the warning fires once: the candidates are many, the user-visible
-    solve is one."""
-    p = _load("chris+pat")
+    solve is one. Alex's age is searched; Jamie's fixed claim pays nothing before FRA."""
+    p = _load("alex+jamie")
     buf = _warn_log(p)
-    p.solve(p.objective, dict(p.solverOptions or {}, withSSAges=["Pat"]))
+    p.solve(p.objective, dict(p.solverOptions or {}, withSSAges=["Alex"]))
     assert p.caseStatus == "solved"
-    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
+    warned = [w for w in _warn_lines(buf) if "withheld" in w]
     assert len(warned) == 1
-    assert "Pat" in warned[0]
+    assert "Jamie" in warned[0]
 
 
 def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
@@ -400,7 +394,7 @@ def test_pays_nothing_warning_on_a_fresh_plan_with_a_searched_spouse():
 
 
 def test_jack_jill_2028_is_unchanged_with_a_stop_before_her_claim():
-    """§5b: a stop before the claim month leaves the year alone. Jill claims in Feb 2028
+    """A stop before the claim month leaves the year alone. Jill claims in Feb 2028
     and works January only (`months worked` 1, not 0 — that means 'not given'): every
     month of her entitlement is a non-service month of the grace year, so nothing is
     withheld and the year is the no-test one."""
@@ -433,7 +427,7 @@ def test_spousal_record_is_credited_separately():
 
 
 def test_withheld_amounts_are_nominal():
-    """ss_withheld_in is nominal (plan §4.4): today's dollars scaled by gamma_n, so it
+    """ss_withheld_in is nominal: today's dollars scaled by gamma_n, so it
     drops into the worksheets next to the nominal SS column. The plan total in today's $
     is 11 withheld months of Jill's benefit."""
     p = _solve(_load("jack+jill"), test_on=True)
@@ -445,23 +439,23 @@ def test_withheld_amounts_are_nominal():
 
 def test_every_solve_warns_once():
     """Two solves, two warnings: the skip is per solve, not per plan."""
-    p = _load("chris+pat")
+    p = _load("alex+jamie")
     buf = _warn_log(p)
     for _ in range(2):
         _solve(p, test_on=True)
-    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
+    warned = [w for w in _warn_lines(buf) if "withheld" in w]
     assert len(warned) == 2
 
 
 # --------------------------------------------------------------------------------------
-# Second review of the fixes (2026-10-21)
+# Local search
 # --------------------------------------------------------------------------------------
 
 
 def test_local_search_warns_once():
     """The local search's two nested solves (the seeding loop, the search itself) are one
     user-visible solve: one warning."""
-    p = _load("chris+pat")
+    p = _load("alex+jamie")
     buf = _warn_log(p)
     p.solve(
         p.objective,
@@ -474,14 +468,14 @@ def test_local_search_warns_once():
         ),
     )
     assert p.caseStatus == "solved"
-    warned = [w for w in _warn_lines(buf) if "gross earnings" in w]
+    warned = [w for w in _warn_lines(buf) if "withheld" in w]
     assert len(warned) == 1
-    assert "Pat" in warned[0]
+    assert "Jamie" in warned[0]
 
 
 # --------------------------------------------------------------------------------------
-# Third review (2026-10-21): a rejected setSocialSecurity, the Summary rows over a
-# shortened Summary, and the withholding in plan_metrics
+# A rejected setSocialSecurity, the Summary rows over a shortened Summary, the
+# withholding in plan_metrics and the JSON outputs, the FRA month
 # --------------------------------------------------------------------------------------
 
 
@@ -547,7 +541,7 @@ def test_plan_metrics_report_the_withholding():
 
 @pytest.mark.parametrize("day, fra_month", [(1, (2032, 11)), (2, (2033, 0)), (3, (2033, 0))])
 def test_fra_month_matches_the_test_for_births_on_the_first_days(day, fra_month):
-    """Review 2026-10-23: only a birth on the 1st attains an age a month early (RS 00615.015,
+    """Only a birth on the 1st attains an age a month early (RS 00615.015,
     ``socsec._fra_conventional_age``); a birth on the 2nd attains it on the 1st of the birthday
     month. The plan's FRA month (Summary *ARF months*, the pays-nothing warning) must be the one
     the earnings test charges up to. Born January 1966, FRA 67 (born on the 1st: the 1965 rule,
@@ -557,3 +551,16 @@ def test_fra_month_matches_the_test_for_births_on_the_first_days(day, fra_month)
     expected = ss._ent_start_abs(1966, 1, ss._fra_conventional_age(fra, day == 1))
     assert divmod(expected, 12) == fra_month
     assert p._ssFRAStartAbs()[0] == expected
+
+
+def test_json_output_reports_the_withholding():
+    """`owlcli run --output-format json` and the MCP's run_case serialize through
+    `plan_to_dict`, whose summary keys are listed by hand: the withholding must be among
+    them."""
+    from owlplanner.cli.formatters import plan_to_dict
+
+    p = _solve(_load("jack+jill"), test_on=True)
+    s = plan_to_dict(p)["summary"]
+    assert s["ss_withheld_nominal"] == round(float(np.sum(p.ss_withheld_in)))
+    assert s["ss_withheld_nominal"] > 0  # Jill's 2028
+    assert s["ss_withheld_today_dollars"] == round(float(np.sum(p.ss_withheld_in / p.gamma_n[: p.N_n])))

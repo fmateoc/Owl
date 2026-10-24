@@ -656,8 +656,8 @@ class Plan:
         self.piBar_in = np.zeros((self.N_i, self.N_n))
         self.zeta_in = np.zeros((self.N_i, self.N_n))
         self.zetaBar_in = np.zeros((self.N_i, self.N_n))
-        # SSA earnings-test outputs (Phase 5 step 3): amounts withheld (nominal $), and
-        # the ARF crediting months granted at FRA on each record (RS 00615.482 B.3).
+        # SSA earnings-test outputs: amounts withheld (nominal $), and the ARF crediting
+        # months granted at FRA on each record (RS 00615.482 B.3).
         self.ss_withheld_in = np.zeros((self.N_i, self.N_n))
         self.ss_arf_months_i = np.zeros(self.N_i, dtype=np.int64)
         self.ss_arf_months_spousal_i = np.zeros(self.N_i, dtype=np.int64)
@@ -674,9 +674,8 @@ class Plan:
 
         # Parameters from timeLists initialized to zero.
         self.omega_in = np.zeros((self.N_i, self.N_n))
-        # SS earnings-test inputs (Phase 5): gross earnings (W-2 box 5 + net SE) and
-        # months of work at the start of each year. Filled by setContributions.
-        self.etEarnings_in = np.zeros((self.N_i, self.N_n))
+        # SS earnings-test input: months of work at the start of each year (0: not given).
+        # Filled by setContributions. The earnings it reads are derived (_earnings_test_inputs).
         self.etMonths_in = np.zeros((self.N_i, self.N_n))
         self.other_inc_in = np.zeros((self.N_i, self.N_n))
         self.netinv_in = np.zeros((self.N_i, self.N_n))
@@ -1468,14 +1467,14 @@ class Plan:
     def _ss_streams(self, ages, gamma_n=None):
         """
         Build this plan's Social Security streams at the given claiming ages, and return
-        ``(zeta_in, ages)`` with the eligibility reset applied (Phase 5 step 3).
+        ``(zeta_in, ages)`` with the eligibility reset applied.
 
         ``setSocialSecurity`` and the rebuild at solve time (``_adjustParameters``, where
         ``zetaBar_in`` is set) both go through here, and both apply the SSA earnings test
         (always). What counts is the rebuild:
         ``setSocialSecurity`` reads the earnings the plan holds at that moment (the HFP may
-        not be read yet), while every solve rebuilds the streams with the current earnings
-        (same pattern as the budget's ``xi_n``). Where the test withholds nothing, the
+        not be read yet), while every solve rebuilds the streams with the current earnings.
+        Where the test withholds nothing, the
         streams are ``socsec.compute_social_security_benefits``' own, so a plan the test does
         not touch does not depend on the test's copy of the stream builder.
 
@@ -2351,7 +2350,6 @@ class Plan:
 
                 'year',
                 'anticipated wages',
-                'gross earnings',
                 'months worked',
                 'other inc',
                 'net inv',
@@ -2367,8 +2365,8 @@ class Plan:
 
         in any order. Only 'year' is required: list the columns your household
         actually uses, and any other column that is absent is treated as zero
-        for every year; in 'gross earnings' and 'months worked' zero means not
-        given ('anticipated wages'; 12 months in a year with earnings). A header
+        for every year; in 'months worked' zero means not given (12 months in a
+        year with wages). A header
         differing from a recognized one only by case, spacing, or punctuation is
         rejected as a typo rather than dropped.
         Legacy header 'other inc.' is read as 'other inc'.
@@ -2379,6 +2377,9 @@ class Plan:
         Convention: 'anticipated wages' must be entered net of all
         contribution columns. Contributions are deposited into their
         accounts and are not subtracted from the annual cash flow.
+        Only 'other inc' and 'big-ticket items' may be negative: a negative
+        'other inc' is an above-the-line deduction paid from cash (an HSA
+        contribution without wages), a negative 'big-ticket items' an expense.
 
         Parameters
         ----------
@@ -2433,85 +2434,6 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
-    def _warnGrossEarningsFallback(self, entitled_from=None, payroll=False):
-        """
-        Warn where ``gross earnings`` is not given (0) and ``anticipated wages`` stands in
-        for it, which understates the earnings: years with wages and a non-zero deferral
-        column. ``anticipated wages`` are entered net of every contribution column, but the
-        money contributed was wages for the SSA earnings test (W-2 box 5) and for the payroll
-        tax (FICA wages, boxes 3 and 5), payroll deferrals and after-tax contributions
-        (*taxable*, *IRA*, *Roth IRA ctrb*) alike. HSA contributions are not listed: a payroll
-        HSA is in neither box, so the fallback is right for them.
-
-        One warning per person, naming every use that reads those years:
-
-        - the earnings test, when ``entitled_from`` is given (the test is on): only the
-          years it can reach, from ``entitled_from[i]`` (the first calendar year with an
-          entitlement month for person i, or None if none falls in the plan) to that
-          person's FRA year;
-        - the payroll tax, when ``payroll`` is true: every plan year with earnings.
-
-        Called once per solve from ``_warnEarnings``, not at HFP read: most flagged years
-        would not be read, and both switches are off by default (D3, D6).
-        """
-        if entitled_from is None and not payroll:
-            return
-        # The plan arrays the test reads, not the tables: the MCP assistant fills them
-        # directly. kappa_ijn[i, 0] = taxable, [i, 1] = 401k + IRA, [i, 2] = Roth 401k + Roth IRA
-        # (setContributions); [i, 3] (HSA) is left out.
-        deferrals = self.kappa_ijn[:, 0, :] + self.kappa_ijn[:, 1, :] + self.kappa_ijn[:, 2, :]
-        fras = socsec.getFRAs(self.yobs, self.mobs, self.tobs)
-        for i, iname in enumerate(self.inames):
-            test_from = entitled_from[i] if entitled_from is not None else None
-            fra_year = (int(self.yobs[i]) * 12 + int(self.mobs[i]) - 1 + round(float(fras[i]) * 12)) // 12
-            flagged, tested = [], []
-            for n in range(self.horizons[i]):
-                if self.omega_in[i, n] <= 0 or self.etEarnings_in[i, n] > 0 or deferrals[i, n] == 0:
-                    continue
-                year = int(self.year_n[n])
-                in_test = test_from is not None and test_from <= year <= fra_year
-                if in_test:
-                    tested.append(str(year))
-                if in_test or payroll:
-                    flagged.append(str(year))
-            if not flagged:
-                continue
-            if not payroll:
-                uses = "the SSA earnings test uses 'anticipated wages' there"
-                boxes = "W-2 box 5 counts them"
-            elif not tested:
-                uses = "the payroll tax uses 'anticipated wages' there"
-                boxes = "they are FICA wages, W-2 boxes 3 and 5"
-            elif tested == flagged:
-                uses = "the payroll tax and the SSA earnings test use 'anticipated wages' there"
-                boxes = "W-2 boxes 3 and 5 count them"
-            else:
-                uses = (
-                    "the payroll tax uses 'anticipated wages' there (the SSA earnings test too, in "
-                    f"{', '.join(tested)})"
-                )
-                boxes = "W-2 boxes 3 and 5 count them"
-            self.mylog.print(
-                f"'gross earnings' is not given for {iname!r} in year(s) {', '.join(flagged)}: {uses}, "
-                f"which are net of contributions ({boxes}), and those years have a taxable, 401k "
-                f"or IRA contribution. Enter 'gross earnings' for them.",
-                tag="WARNING",
-            )
-
-    def _earnings_test_inputs(self):
-        """
-        Return the SSA earnings test's inputs, ``(earnings_in, months_in)``, shape
-        (N_i, N_n), earnings in nominal dollars (Phase 5 D1/D2).
-
-        Zero means "not given" in both columns, so the rule holds however the plan got its
-        wages (workbook, UI tables, MCP writing ``omega_in``) and follows later edits:
-        earnings are ``gross earnings`` where positive, else ``anticipated wages``; months
-        are ``months worked`` where positive, else 12 in a year with earnings, else 0.
-        """
-        earnings = np.where(self.etEarnings_in > 0, self.etEarnings_in, self.omega_in)
-        months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
-        return earnings, months
-
     def _payrollTaxOn(self, options=None):
         """
         True when this solve charges the employee payroll tax (Phase 5 step 5, D3: off by
@@ -2532,9 +2454,11 @@ class Plan:
         and Medicare taxes on each person's earnings and the household's Additional
         Medicare Tax (``tax_federal.payrollTax``), or zeros with the switch off.
 
-        Earnings are the earnings test's (``_earnings_test_inputs``: ``gross earnings``
-        where given, else ``anticipated wages``), W-2 box 5 being the base of both. The
-        tax is not deductible, so it is only a constant of the cash-flow row.
+        Earnings are the earnings test's (``_earnings_test_inputs``: in a year with wages,
+        the wages plus that year's taxable, tax-deferred and Roth contributions; an employer
+        contribution makes them slightly high, a payroll HSA is left out), which are also
+        FICA wages (W-2 boxes 3 and 5). The tax is not deductible, so it is only a constant
+        of the cash-flow row.
         """
         self.payroll_tax_applied = self._payrollTaxOn()
         if not self.payroll_tax_applied:
@@ -2546,15 +2470,35 @@ class Plan:
         self.payroll_addl_n = addl_n
         self.payroll_tax_n = np.sum(ss_in + med_in, axis=0) + addl_n
 
+    def _earnings_test_inputs(self):
+        """
+        Return the SSA earnings test's inputs, ``(earnings_in, months_in)``, shape
+        (N_i, N_n), earnings in nominal dollars.
+
+        The test counts wages before contributions (W-2 box 5), while ``anticipated wages``
+        are entered net of every contribution column: in a year with wages, the earnings are
+        the wages plus that year's taxable, tax-deferred and Roth contributions, payroll
+        deferrals and contributions paid from pay alike. An employer contribution was never
+        wages, so a plan whose contributions include one overstates the earnings by it. HSA
+        contributions are left out: a payroll HSA is not in box 5. Read from the plan arrays,
+        which the MCP tools fill directly, so the rule holds however the plan got its wages.
+        Months are ``months worked`` where positive, else 12 in a year with earnings, else 0.
+        """
+        Nn = self.N_n
+        contributed = np.sum(self.kappa_ijn[:, :3, :Nn], axis=1)
+        earnings = np.where(self.omega_in > 0, self.omega_in + contributed, 0.0)
+        months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
+        return earnings, months
+
     def _earningsTestResult(self, ages=None, gamma_n=None):
         """
         The SSA earnings test on this plan's streams at the given claiming ages (default:
         the ones the plan carries), in today's dollars.
 
-        A pure function of the claiming ages, the PIAs and the earnings columns (plan
-        §4.1), so ``owlcli explain`` can report what the test would withhold without
-        solving. Earnings are nominal in the plan and are deflated here, like the exempt
-        amounts the test compares them to.
+        A pure function of the claiming ages, the PIAs and the earnings columns, so
+        ``owlcli explain`` can report what the test would withhold without solving. Earnings
+        are nominal in the plan and are deflated here, like the exempt amounts the test
+        compares them to.
         """
         if ages is None:
             ages = self.ssecAges
@@ -2579,53 +2523,20 @@ class Plan:
             survivor_claim_age=self.ssecSurvivorClaimAge,
         )
 
-    def _ssEntitledFrom(self, options):
-        """
-        First calendar year with a Social Security entitlement month per person, or None
-        where the plan holds none (Phase 5 step 3).
-
-        From the claiming age the plan carries, except for a person whose age this solve
-        searches (``withSSAges``): any open month may be picked, so the earliest one, the
-        year they turn 62, bounds what the earnings test can reach.
-        """
-        searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
-        thisyear = int(self.year_n[0])
-        entitled_from = []
-        for i in range(self.N_i):
-            year = None
-            if int(self.ssecAmounts[i]) > 0:
-                if i in searched:
-                    year = int(self.yobs[i]) + 62
-                else:
-                    # socsec._ent_start_abs: the absolute month (year*12 + month - 1) of
-                    # the attained age, which is where entitlement begins.
-                    first_days = self.tobs[i] <= 2  # born on the 1st or 2nd: eligible at 62
-                    eligible = 62.0 if first_days else 62.0 + 1.0 / 12.0
-                    claim = max(float(self.ssecAges[i]), eligible)
-                    year = socsec._ent_start_abs(int(self.yobs[i]), int(self.mobs[i]), claim) // 12
-            last = thisyear + int(self.horizons[i]) - 1
-            entitled_from.append(int(year) if year is not None and year <= last else None)
-        return entitled_from
-
     def _warnEarnings(self, options):
         """
-        The earnings warnings of one solve: one fallback warning per person for the years in
-        which ``anticipated wages`` stands in for ``gross earnings`` and understates them (a
-        contribution column is non-zero), naming the payroll tax where the solve charges it
-        (``withPayrollTax``, D3) and the earnings test for the years it can reach
-        (``_warnGrossEarningsFallback``); and a fixed claiming age that pays nothing before
+        The earnings warning of one solve: a fixed claiming age that pays nothing before
         FRA: every month of entitlement before FRA that falls in the plan is withheld, which
-        usually means the age is a typo or a plan to revisit. Called once per solve: the nested solves (the withSSAges
-        candidates, the local search's seeding runs) and the search's own final solve,
-        which the search has already been warned for, are skipped.
+        usually means the age is a typo or a plan to revisit. Called once per solve: the
+        nested solves (the withSSAges candidates, the local search's seeding runs) and the
+        search's own final solve, which the search has already been warned for, are skipped.
         """
         if getattr(self, "_localSearchSeeding", False) or getattr(self, "_etWarned", False):
             return
-        self._warnGrossEarningsFallback(self._ssEntitledFrom(options), payroll=self._payrollTaxOn(options))
         searched = self._parseSSAgesOption(options) if self._ssaSelected(options) else set()
 
         # Fresh from the plan's current ages and earnings, not from the stored outputs:
-        # withSSAges warns before any solve has rebuilt the streams (plan §5 step 3).
+        # withSSAges warns before any solve has rebuilt the streams.
         res = self._earningsTestResult()
         fra_abs_i = self._ssFRAStartAbs()
         thisyear = int(self.year_n[0])
@@ -2676,9 +2587,8 @@ class Plan:
             self.Lambda_in[i, :h] = self.timeLists[iname]["big-ticket items"].iloc[5 : 5 + h]
             qcd_in[i, :h] = self.timeLists[iname]["QCD"].iloc[5 : 5 + h]
 
-            # SS earnings-test inputs (Phase 5 §4.2), as entered; zero means "not given"
-            # and is resolved by _earnings_test_inputs (D1: anticipated wages; D2: 12).
-            self.etEarnings_in[i, :h] = self.timeLists[iname]["gross earnings"].iloc[5 : 5 + h]
+            # SS earnings-test input, as entered; zero means "not given" and is resolved by
+            # _earnings_test_inputs (12 months in a year with earnings).
             self.etMonths_in[i, :h] = self.timeLists[iname]["months worked"].iloc[5 : 5 + h]
 
             # Values for last 5 years of Roth conversion and contributions stored at the end
@@ -2980,15 +2890,16 @@ class Plan:
         compare = self.timeLists
         if compare and all(iname in compare for iname in self.inames):
             # setContributions() prorates and zeroes HSA contributions from Medicare enrollment
-            # in the arrays only; apply the same scaling to a comparison copy so such
-            # rows do not flag the time lists as stale.
+            # in the arrays only. The rebuilt lists undo the proration (build_hfp_dataframes) but
+            # cannot recover a year Medicare zeroed: zero those in a comparison copy so such rows
+            # do not flag the time lists as stale.
             compare = {iname: compare[iname].copy() for iname in self.inames}
             for i, iname in enumerate(self.inames):
                 df = compare[iname]
                 h = self.horizons[i]
                 if "HSA ctrb" in df.columns:
                     col = df["HSA ctrb"].to_numpy(dtype=float, copy=True)
-                    col[5 : 5 + h] *= self.hsaFrac_in[i, :h]
+                    col[5 : 5 + h] *= self.hsaFrac_in[i, :h] > 0
                     df["HSA ctrb"] = col
         if not hfp_io.time_lists_agree(compare, rebuilt):
             self.timeLists = rebuilt
@@ -3019,7 +2930,6 @@ class Plan:
 
         # Reset parameters with zeros.
         self.omega_in[:, :] = 0.0
-        self.etEarnings_in[:, :] = 0.0
         self.etMonths_in[:, :] = 0.0
         self.other_inc_in[:, :] = 0.0
         self.netinv_in[:, :] = 0.0
@@ -3106,9 +3016,9 @@ class Plan:
         if not self._adjustedParameters:
             self.mylog.vprint("Adjusting parameters for inflation.")
             self.DeltaBar_tn = self.Delta_tn * gamma_n[:-1]
-            # Social Security at solve time: zeta_in follows the PIA and the claiming age
-            # alone, and setSocialSecurity can run before the HFP is read, so the SSA
-            # earnings test can only be applied here (Phase 5 step 3).
+            # Social Security at solve time: setSocialSecurity can run before the HFP is
+            # read, so the streams are rebuilt here with the current earnings and the SSA
+            # earnings test.
             self._ss_streams(self.ssecAges, gamma_n)
             self.zetaBar_in = self.zeta_in * gamma_n[:-1]
             # Fork (Phase 5 step 5): the payroll tax on this solve's earnings.
@@ -3481,6 +3391,12 @@ class Plan:
         vm.add_if(lt_lp, "lt_f", self.N_lt, self.N_n)  # local bracket allocations
         st_c_lp = st_lp and bool(np.any(self.st_credit_n > 0))
         vm.add_if(st_c_lp, "st_c", self.N_n)  # state personal credit used (<= credit, <= state tax)
+        # A negative "other inc" is an above-the-line deduction (an HSA contribution without wages,
+        # #225). Taxable income cannot go below zero, so the part the year's income cannot absorb
+        # is lost: dl[0, n] in the federal base, dl[1, n] in the state base, each at most the
+        # deduction. Only cases with a negative entry carry the columns.
+        self._other_ded_n = np.sum(np.maximum(0.0, -self.other_inc_in), axis=0)
+        vm.add_if(bool(np.any(self._other_ded_n > 0)), "dl", 2, self.N_n)
         vm.mark_binary_start()
         vm.add_if(medi, "zm", Nmed, self.N_irmaa)  # IRMAA bracket selection binaries
         vm.add_if(ss_lp, "zs", self.N_n, 2)  # z^σ family (2 per year) for SS min() ops
@@ -3598,6 +3514,11 @@ class Plan:
         self._sigma_lp_n = sigma_n  # widens the capital-gains brackets (_configure_ltcg_constraints)
         for n in range(self.N_n):
             self.B.setRange(self.vm["e"].idx(n), 0, sigma_n[n])
+        if "dl" in self.vm:
+            for n in range(self.N_n):
+                self.B.setRange(self.vm["dl"].idx(0, n), 0, self._other_ded_n[n])
+                # The state slack only exists where a state row does.
+                self.B.setRange(self.vm["dl"].idx(1, n), 0, self._other_ded_n[n] if self._st_lp else 0)
 
     def _add_state_tax_bounds(self):
         """Set variable bounds for state income tax LP variables.
@@ -4500,6 +4421,10 @@ class Plan:
             if self.st_conv_n[n] == "excluded":
                 for i in range(self.N_i):
                     row.addElem(vm["x"].idx(i, n), 1)  # exclude Roth conversions (PA, MS)
+            if "dl" in vm:
+                # A deduction can bring the state base below zero where the federal one is not:
+                # PA leaves out a conversion that federal income carries (#225).
+                row.addElem(vm["dl"].idx(1, n), -1)
             self.A.addRow(row, rhs, rhs, tag=("state_taxable_income", n))
 
         # A personal credit only offsets tax: the credit used stays below the year's state tax,
@@ -4972,7 +4897,8 @@ class Plan:
         Nn = self.N_n
         ss_in = self.zetaBar_in
         fixed = (
-            np.sum(self.omega_in + self.other_inc_in + self.netinv_in, axis=0)
+            # A negative "other inc" is a deduction: leaving it out keeps the ceiling an upper bound.
+            np.sum(self.omega_in + np.maximum(self.other_inc_in, 0) + self.netinv_in, axis=0)
             + np.sum(self.piBar_in + self.spiaBar_in + ss_in + self.Lambda_in, axis=0)
             + self.fixed_assets_ordinary_income_n
             + np.maximum(self.fixed_assets_capital_gains_n, 0.0)
@@ -5279,6 +5205,8 @@ class Plan:
                 # t^σ_n = taxable SS LP variable replaces Psi_n*zetaBar_n in the constraint:
                 # e_n - t^σ_n + sum_t(f_tn) = non_SS_ordinary_income
                 row.addElem(self.vm["tss"].idx(n), -1)
+            if "dl" in self.vm:
+                row.addElem(self.vm["dl"].idx(0, n), -1)  # deduction the year's income cannot absorb
             self.A.addRow(row, rhs, rhs, tag=("taxable_income", n))
 
     def _configure_ss_taxability_lp(self, options):
@@ -5957,6 +5885,11 @@ class Plan:
                 lower = 0 if q == 0 else self.Lbar_nq[nn, q - 1] + (margin if q < top else 0.0)
                 if lower > 0:
                     self.A.addNewRow({mg_idx: 1, zm_idx: -lower}, 0, np.inf, tag=("irmaa_bracket_lb", nn, q))
+                elif q == 0 and "dl" in self.vm and self.nm + nn >= 2 and self._other_ded_n[self.nm + nn - 2] > 0:
+                    # A deduction in the lookback year can bring MAGI below zero (#225).
+                    ded = float(self._other_ded_n[self.nm + nn - 2])
+                    self.B.setRange(mg_idx, -ded, np.inf)
+                    self.A.addNewRow({mg_idx: 1, zm_idx: ded}, 0, np.inf, tag=("irmaa_bracket_lb", nn, q))
 
                 if q < top:
                     upper = self.Lbar_nq[nn, q] - (margin if q == top - 1 else 0.0)
@@ -6071,6 +6004,11 @@ class Plan:
                 lower = 0 if r == 0 else edge[r - 1] + BRACKET_MARGIN
                 if lower > 0:
                     self.A.addNewRow({haca_idx: 1, za_idx: -lower}, 0, np.inf, tag=("aca_bracket_lb", nn, r))
+                elif r == 0 and "dl" in self.vm and self._other_ded_n[nn] > 0:
+                    # A deduction can bring MAGI below zero: the bottom bracket reaches down by it.
+                    ded = float(self._other_ded_n[nn])
+                    self.B.setRange(haca_idx, -ded, np.inf)
+                    self.A.addNewRow({haca_idx: 1, za_idx: ded}, 0, np.inf, tag=("aca_bracket_lb", nn, r))
 
                 if r < tx.N_ACA_R - 1:
                     upper = edge[r]
@@ -6155,6 +6093,12 @@ class Plan:
         if "sbp" in self.vm:
             for j, n in enumerate(self._sb_years):
                 c_arr[self.vm["sbp"].idx(j)] += MIP_TIEBREAK / self.gamma_n[n]
+        # A lost deduction is only bounded below too: lose no more of it than the year's income makes
+        # necessary, which would otherwise be arbitrary where the loss costs nothing.
+        if "dl" in self.vm:
+            for k in range(2):
+                for n in range(self.N_n):
+                    c_arr[self.vm["dl"].idx(k, n)] += MIP_TIEBREAK / self.gamma_n[n]
 
         # Turn on epsilon by default to reduce churn and frontload Roth conversions.
         default_epsilon = EPSILON
@@ -7059,7 +7003,7 @@ class Plan:
         free = [i for i in sorted(chosen) if not self._ssaAgeIsFixed(i)]
         fixed_opts = dict(options, withSSAges="fixed")
         # Once per solve, before the candidates: the searched ages are still open here, so
-        # the warning covers every year the test could reach (plan §5 step 3).
+        # the warning covers every year the test could reach.
         self._warnEarnings(options)
 
         def _set(plan, ages):
@@ -9040,6 +8984,10 @@ class Plan:
             self.MAGI_n = vm["magi"].extract(x)
         else:
             self.MAGI_n = self.G_n + self.e_n + self.Q_n
+        if "dl" in vm:
+            # G_n + e_n carries the deduction the year's income could not absorb, since taxable
+            # income stops at zero; AGI does not. Report the MAGI that the ACA and IRMAA rows price.
+            self.MAGI_n = self.MAGI_n - vm["dl"].extract(x)[0]
         if "sbp" in vm:
             # The deduction the LP allowed, bonus and phase-out included (the residual compares it
             # with the one this MAGI implies).

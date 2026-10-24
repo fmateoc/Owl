@@ -117,9 +117,8 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
         }
 
     # The SSA earnings test is a fixed function of the claiming ages and the earnings
-    # columns (phase5-plan.md §4.1), so both of its outputs are described without
-    # solving: what it would withhold here (today's $), and the ARF crediting months that
-    # replace it at FRA.
+    # columns, so both of its outputs are described without solving: what it would
+    # withhold here (today's $), and the ARF crediting months that replace it at FRA.
     et = plan._earningsTestResult()
     social_security = [
         {

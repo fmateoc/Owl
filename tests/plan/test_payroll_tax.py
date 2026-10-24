@@ -10,8 +10,9 @@ payroll tax on each person's earnings as a cash outflow of the year:
 - Additional Medicare Tax, 0.9% of the household's earnings above \\$250,000 while the
   couple files jointly and \\$200,000 single (not indexed).
 
-Earnings are what the SSA earnings test reads (``Plan._earnings_test_inputs``): ``gross
-earnings`` where given, else ``anticipated wages``. The tax is not deductible, so only the
+Earnings are what the SSA earnings test reads (``Plan._earnings_test_inputs``): in a year
+with wages, ``anticipated wages`` plus that year's taxable, tax-deferred and Roth
+contributions, which are FICA wages too (upstream's rule since 6ea43a9). The tax is not deductible, so only the
 cash-flow row changes: no LP column, row or binary.
 
 Expected values are hand numbers from the primary text, not from the code under test:
@@ -165,35 +166,29 @@ def test_switch_off_is_a_no_op():
 
 
 def test_jack_jill_by_hand():
-    """jack+jill: Jack earns \\$100,000 in 2026-2028, Jill \\$80,000 in 2026-2027 and
-    \\$85,000 in 2028 (HFP, nominal). All under the base and the household under
-    \\$250,000: 7.65% of the wages, nothing after 2028."""
+    """jack+jill: Jack earns \\$100,000 in 2026-2028 and puts \\$15,000 in his 401k in
+    2026-2027, Jill earns \\$80,000 in 2026-2027 and \\$85,000 in 2028 (HFP, nominal). The
+    tax reads the earnings test's earnings, the wages plus the contributions they are net of
+    (FICA wages): \\$195,000 in 2026-2027, \\$185,000 in 2028. All under the base and the
+    household under \\$250,000: 7.65% of them, nothing after 2028."""
     p = _solve(_load("jack+jill"), on=True)
     assert p.payroll_tax_applied is True
-    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 180_000.0)
-    assert p.payroll_tax_n[_n(p, 2027)] == pytest.approx(0.0765 * 180_000.0)
+    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 195_000.0)
+    assert p.payroll_tax_n[_n(p, 2027)] == pytest.approx(0.0765 * 195_000.0)
     assert p.payroll_tax_n[_n(p, 2028)] == pytest.approx(0.0765 * 185_000.0)
     assert np.all(p.payroll_tax_n[_n(p, 2029):] == 0)
 
 
-def test_gross_earnings_are_taxed_where_given():
-    """`gross earnings` (W-2 box 5, deferrals included) is what the tax reads where it is
-    given; `anticipated wages` elsewhere."""
-    p = _load("jack+jill")
-    p.etEarnings_in[0, _n(p, 2026)] = 115_000.0  # Jack's \$100k plus his \$15k 401k
-    _solve(p, on=True)
-    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * (115_000.0 + 80_000.0))
-    assert p.payroll_tax_n[_n(p, 2027)] == pytest.approx(0.0765 * 180_000.0)
-
-
 def test_additional_medicare_tax_on_the_plan():
-    """jon+jane with Jon's 2026 wages raised to \\$300,000: his social security tax stops
-    at the base, and the couple owes 0.9% of (\\$300,000 + \\$80,000 - \\$250,000)."""
+    """jon+jane with Jon's 2026 wages raised to \\$300,000. Their 2026 contributions count
+    (HFP: Jon \\$2,000 taxable + \\$7,000 401k, Jane \\$3,000 401k), so the earnings are
+    \\$309,000 and \\$83,000: his social security tax stops at the base, and the couple owes
+    0.9% of (\\$309,000 + \\$83,000 - \\$250,000)."""
     p = _load("jon+jane")
     p.omega_in[0, 0] = 300_000.0
     _solve(p, on=True)
     expected = (
-        SS_RATE * WAGE_BASE_2026 + MEDICARE_RATE * 300_000.0 + 0.0765 * 80_000.0 + ADDL_RATE * 130_000.0
+        SS_RATE * WAGE_BASE_2026 + MEDICARE_RATE * 309_000.0 + 0.0765 * 83_000.0 + ADDL_RATE * 142_000.0
     )
     assert p.payroll_tax_n[0] == pytest.approx(expected)
 
@@ -243,7 +238,8 @@ def test_lifetime_allocation_counts_it_as_tax():
 
 
 def test_a_second_solve_follows_the_switch():
-    """Built at every solve: on, then off, then on again."""
+    """Built at every solve: on, then off, then on again (Jill's 2026 wages edited to \\$90,000;
+    Jack's \\$100,000 plus his \\$15,000 401k)."""
     p = _load("jack+jill")
     _solve(p, on=True)
     assert np.any(p.payroll_tax_n > 0)
@@ -251,7 +247,7 @@ def test_a_second_solve_follows_the_switch():
     assert np.all(p.payroll_tax_n == 0)
     p.omega_in[1, _n(p, 2026)] = 90_000.0
     _solve(p, on=True)
-    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 190_000.0)
+    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 205_000.0)
 
 
 # --------------------------------------------------------------------------------------
@@ -268,7 +264,7 @@ def test_summary_rows_whenever_the_tax_is_applied():
     rows = [k for k in dic if k.startswith("Total payroll tax paid")]
     assert len(rows) == 2
     nominal = float(dic["Total payroll tax paid (nominal)"].lstrip("$").replace(",", ""))
-    assert nominal == pytest.approx(0.0765 * (180_000 * 2 + 185_000), abs=1.0)
+    assert nominal == pytest.approx(0.0765 * (195_000 * 2 + 185_000), abs=1.0)
     assert not any("Additional Medicare" in k for k in dic)
 
     p = _load("jack+jill")
@@ -289,7 +285,7 @@ def test_plan_metrics_report_it():
 
     on = _solve(_load("jack+jill"), on=True)
     m = plan_metrics(on)
-    assert m["payroll_tax_nominal"] == pytest.approx(0.0765 * (180_000 * 2 + 185_000))
+    assert m["payroll_tax_nominal"] == pytest.approx(0.0765 * (195_000 * 2 + 185_000))
     inv_g = 1.0 / on.gamma_n[: on.N_n]
     assert m["payroll_tax_today"] == pytest.approx(float(np.sum(on.payroll_tax_n * inv_g)))
     columns = on.summaryDf().columns
@@ -300,45 +296,9 @@ def test_plan_metrics_report_it():
     assert off["payroll_tax_nominal"] == 0.0
 
 
-# --------------------------------------------------------------------------------------
-# Warnings: the fallback to `anticipated wages` leaves out payroll deferrals
-# --------------------------------------------------------------------------------------
-
-
-def test_fallback_warning_names_the_years_with_deferrals():
-    """Jack's 2026-2027 carry a \\$15,000 401k deferral and no `gross earnings`: the tax
-    reads \\$100,000 where FICA wages are \\$115,000. Jill has no deferral: not named."""
+def test_local_search_charges_it():
+    """The tax is charged in the plan the local search returns."""
     p = _load("jack+jill")
-    buf = _warn_log(p)
-    _solve(p, on=True)
-    warned = [w for w in _warn_lines(buf) if "payroll tax" in w]
-    assert len(warned) == 1
-    assert "Jack" in warned[0]
-    assert "2026" in warned[0] and "2027" in warned[0]
-    assert "2028" not in warned[0]
-    assert "Jill" not in warned[0]
-
-
-def test_no_fallback_warning_where_gross_earnings_are_given_or_switch_off():
-    p = _load("jack+jill")
-    p.etEarnings_in[0, _n(p, 2026)] = 115_000.0
-    p.etEarnings_in[0, _n(p, 2027)] = 115_000.0
-    buf = _warn_log(p)
-    _solve(p, on=True)
-    assert p.payroll_tax_applied is True
-    assert not [w for w in _warn_lines(buf) if "payroll tax" in w]
-
-    p = _load("jack+jill")
-    buf = _warn_log(p)
-    _solve(p, on=False)
-    assert not [w for w in _warn_lines(buf) if "payroll tax" in w]
-
-
-def test_local_search_warns_once():
-    """The local search's nested solves are one user-visible solve: one warning, and the
-    tax is charged in the plan it returns."""
-    p = _load("jack+jill")
-    buf = _warn_log(p)
     p.solve(
         p.objective,
         dict(
@@ -351,8 +311,7 @@ def test_local_search_warns_once():
         ),
     )
     assert p.caseStatus == "solved"
-    assert len([w for w in _warn_lines(buf) if "payroll tax" in w]) == 1
-    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 180_000.0)
+    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 195_000.0)
 
 
 # --------------------------------------------------------------------------------------
@@ -412,11 +371,11 @@ def test_json_output_reports_it():
     p = _solve(_load("jack+jill"), on=True)
     d = plan_to_dict(p)
     s = d["summary"]
-    assert s["payroll_tax_nominal"] == round(0.0765 * (180_000 * 2 + 185_000))
+    assert s["payroll_tax_nominal"] == round(0.0765 * (195_000 * 2 + 185_000))
     assert s["payroll_tax_today_dollars"] == round(float(np.sum(p.payroll_tax_n / p.gamma_n[: p.N_n])))
     assert s["ss_withheld_nominal"] == round(float(np.sum(p.ss_withheld_in)))
     assert s["ss_withheld_nominal"] > 0  # Jill's 2028
-    assert d["by_year"][_n(p, 2026)]["payroll_tax"] == round(0.0765 * 180_000)
+    assert d["by_year"][_n(p, 2026)]["payroll_tax"] == round(0.0765 * 195_000)
     assert d["by_year"][_n(p, 2029)]["payroll_tax"] == 0
 
 
@@ -434,49 +393,6 @@ def test_tax_bills_and_csv_carry_it(tmp_path, monkeypatch):
     plan_to_csv(p, "jj", p.mylog)
     df = pd.read_csv(_glob.glob(str(tmp_path / "*.csv"))[0])
     n = _n(p, 2026)
-    assert df["payroll tax"][n] == pytest.approx(-0.0765 * 180_000)
+    assert df["payroll tax"][n] == pytest.approx(-0.0765 * 195_000)
     bills = p.T_n + p.U_n + p.medicare_n + p.J_n + p.aca_costs_n + p.st_T_n
-    assert df["Tax bills + Med."][n] == pytest.approx(bills[n] + 0.0765 * 180_000)
-
-
-# --------------------------------------------------------------------------------------
-# One fallback warning per person for the payroll tax and the earnings test (2026-10-23)
-# --------------------------------------------------------------------------------------
-
-
-def _fallback_lines(buf):
-    return [w for w in _warn_lines(buf) if "'gross earnings' is not given" in w]
-
-
-def test_one_fallback_warning_per_person_for_both_uses():
-    """chris+pat with the payroll tax (the earnings test is always applied). Pat has 401k
-    deferrals and no `gross earnings` in 2026-2028 and claims in February 2028: the payroll
-    tax reads all three years, the earnings test only 2028. One warning names the three
-    years and both uses, saying which years the test reads. Chris claims at 70, so only
-    the payroll tax reads his 2026-2027: one warning, the payroll tax alone."""
-    p = _load("chris+pat")
-    buf = _warn_log(p)
-    _solve(p, on=True)
-    lines = _fallback_lines(buf)
-    assert len(lines) == 2
-    pat = [w for w in lines if "'Pat'" in w]
-    chris = [w for w in lines if "'Chris'" in w]
-    assert len(pat) == 1 and len(chris) == 1
-    assert "2026, 2027, 2028" in pat[0]
-    assert "payroll tax" in pat[0]
-    assert "earnings test" in pat[0] and "in 2028" in pat[0]
-    assert "2026, 2027" in chris[0] and "2028" not in chris[0]
-    assert "payroll tax" in chris[0]
-    assert "earnings test" not in chris[0]
-
-
-def test_without_the_payroll_tax_the_warning_names_the_test():
-    """With the payroll tax off, the warning names the earnings test alone, for the years
-    it reaches (Pat's 2028); Chris, out of its reach, gets none."""
-    p = _load("chris+pat")
-    buf = _warn_log(p)
-    _solve(p, on=False)
-    lines = _fallback_lines(buf)
-    assert len(lines) == 1
-    assert "'Pat'" in lines[0] and "2028" in lines[0] and "2027" not in lines[0]
-    assert "earnings test" in lines[0] and "payroll tax" not in lines[0]
+    assert df["Tax bills + Med."][n] == pytest.approx(bills[n] + 0.0765 * 195_000)

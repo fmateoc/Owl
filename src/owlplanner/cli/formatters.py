@@ -70,7 +70,7 @@ def _metrics_to_summary(m: dict) -> dict:
         "federal_income_tax_today_dollars": r("federal_income_tax_today"),
         "ltcg_tax_nominal": r("ltcg_tax_nominal"),
         "niit_nominal": r("niit_nominal"),
-        # Fork (Phase 5): payroll tax and earnings-test withholding, 0 when their switches are off.
+        # Fork (Phase 5): payroll tax, 0 when withPayrollTax is off; earnings-test withholding, 0 when none.
         "payroll_tax_nominal": r("payroll_tax_nominal"),
         "payroll_tax_today_dollars": r("payroll_tax_today"),
         "ss_withheld_nominal": r("ss_withheld_nominal"),

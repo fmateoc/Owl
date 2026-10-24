@@ -35,7 +35,6 @@ from .budget import BUDGET_TYPES, is_essential
 _timeHorizonItems = [
     "year",
     "anticipated wages",
-    "gross earnings",
     "months worked",
     "other inc",
     "net inv",
@@ -56,11 +55,10 @@ _timeHorizonItems = [
 _requiredTimeHorizonItems = ["year"]
 _optionalTimeHorizonItems = [c for c in _timeHorizonItems if c not in _requiredTimeHorizonItems]
 
-# Fork (Phase 5): columns where zero means "not given", so a year's value is derived
-# from other columns (Plan._earnings_test_inputs). An absent one is read as zero like
-# any other but not reported as "treated as zero"; the upstream example workbooks do
-# not carry them.
-_derivedTimeHorizonItems = ["gross earnings", "months worked"]
+# Input of the SSA earnings test where zero means "not given", so a year's value is
+# derived from other columns (Plan._earnings_test_inputs). An absent one is read as zero
+# like any other but not reported as "treated as zero": most households have no use for it.
+_derivedTimeHorizonItems = ["months worked"]
 
 # Columns holding a flag rather than an amount. They are excluded from the
 # non-negativity check below and coerced to bool on load.
@@ -180,7 +178,8 @@ def read(finput, inames, horizons, mylog, filename=None, houseTables=True):
     rejected as a typo rather than silently dropped.
     Legacy header "other inc." is accepted as "other inc".
     "anticipated wages" is expected net of all contribution columns
-    (see Plan.readHFP).
+    (see Plan.readHFP). Only "other inc" (a deduction) and "big-ticket
+    items" (an expense) may be negative.
     Supports xls, xlsx, xlsm, xlsb, odf, ods, and odt file extensions.
     Return the input handle, the time lists by individual's name, the household
     tables, the raw sheet dictionary, and the absent optional columns per
@@ -378,7 +377,9 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
                             )
                         continue
                     if val < 0:
-                        if item == "big-ticket items":
+                        # A negative big-ticket item is an expense; a negative "other inc" is an
+                        # above-the-line deduction, such as an HSA contribution without wages.
+                        if item in ("big-ticket items", "other inc"):
                             continue
                         if item == "Roth conv":
                             # A negative amount used to mean "force no conversion this
@@ -709,7 +710,6 @@ def build_hfp_dataframes(plan):
         for n in range(h):
             row = lead_in + n
             df.at[row, "anticipated wages"] = float(plan.omega_in[i, n])
-            df.at[row, "gross earnings"] = float(plan.etEarnings_in[i, n])
             df.at[row, "months worked"] = float(plan.etMonths_in[i, n])
             df.at[row, "other inc"] = float(plan.other_inc_in[i, n])
             df.at[row, "net inv"] = float(plan.netinv_in[i, n])
@@ -718,7 +718,11 @@ def build_hfp_dataframes(plan):
             df.at[row, "taxable ctrb"] = float(plan.kappa_ijn[i, 0, n])
             df.at[row, "401k ctrb"] = float(plan.kappa_ijn[i, 1, n])
             df.at[row, "Roth IRA ctrb"] = float(plan.kappa_ijn[i, 2, n])
-            df.at[row, "HSA ctrb"] = float(plan.kappa_ijn[i, 3, n])
+            # The array holds the share of the year before Medicare (Plan._setHSAStop); the workbook
+            # holds the amount entered, which reading it scales again. Nothing is left to recover
+            # once Medicare has started.
+            frac = float(plan.hsaFrac_in[i, n])
+            df.at[row, "HSA ctrb"] = float(plan.kappa_ijn[i, 3, n]) / frac if frac > 0 else 0.0
             df.at[row, "Roth conv"] = float(plan.myRothX_in[i, n])
             df.at[row, "Roth conv fixed"] = bool(plan.rothXfixed_in[i, n])
         # Lead-in years live in the last 5 slots of kappa_ijn and myRothX_in.
@@ -783,7 +787,6 @@ def time_lists_agree(a, b):
     # Carried by the arrays for plan years only (see the note above).
     planOnlyCols = [
         "anticipated wages",
-        "gross earnings",
         "months worked",
         "other inc",
         "net inv",

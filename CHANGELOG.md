@@ -203,6 +203,68 @@ conversion treatment (`"exemption"`, `"taxed"`, `"excluded"`, #203) per year.
 
 ### Version WIP
 
+#### Fixed: HSA contributions entered through the MCP tools stop at Medicare
+
+An HSA contribution read from the HFP stops at Medicare enrollment, the year it starts keeping
+the months before it, but one entered through the MCP tools' `contributions` was deposited every
+year it was listed, Medicare or not. The tools now apply the same cut. A workbook rebuilt from a
+plan's arrays (by `save_case`, or when saving a plan whose arrays were set directly) holds the
+amount entered rather than the share kept, so reading it back applies the cut once.
+
+#### The MCP tools take other income, so an assistant can enter an HSA deduction
+
+Every MCP tool that builds a plan from parameters (`run_from_params`, `save_case`, the
+stochastic and comparison tools) now takes `other_income`, the HFP *other inc* column: signed
+annual amounts, a negative one being an above-the-line deduction paid from cash. Without it an
+assistant could not enter the deduction for an HSA contribution made without wages (#225), nor
+any other ordinary income outside wages. The intake checklist asks about it, and `save_case`
+writes it to the HFP.
+
+#### Fixed: an HSA contribution without wages can now be deducted, by entering a negative *other inc*
+
+An HSA contribution is deducted above the line whether or not there are wages (IRC 223(a),
+62(a)(19)), and since 2026 every bronze exchange plan qualifies, so early retirees on the ACA can
+contribute from savings and lower the MAGI their credit is figured on. **Owl** only deducted a
+contribution netted out of *anticipated wages*: without wages there was nothing to net it from,
+the HFP rejected a negative amount, and the *HSA ctrb* column alone deposited the money without
+deducting it or paying for it. *other inc* now accepts a negative amount, an above-the-line
+deduction paid from cash: enter the contribution in *HSA ctrb* and the same amount as a negative
+*other inc*. A deduction larger than the year's income is lost rather than making the plan
+infeasible: taxable income stops at zero in the federal and state bases (in PA, which leaves
+conversions out of state income, an \$8,000 contribution beside a \$30,000 conversion made every
+mode infeasible), and in optimize mode an ACA or IRMAA MAGI below zero stays in the bottom
+bracket. The reported MAGI is then below zero too, the MAGI those brackets priced, while taxable
+income stays at zero. Cases with no negative entry solve exactly as before. The documentation now says which
+columns may be negative (*other inc* and *big-ticket items*) and how an HSA contribution reaches
+AGI, and no longer says that the year Medicare starts is zeroed: it keeps the months before.
+Thanks to Marco Pignone (@rationalpiper) for reporting it, with the references, and for testing
+the route (#225).
+
+#### New: the Social Security earnings test
+
+**Owl** paid Social Security in full to anyone claiming before full retirement age while still
+working. SSA withholds \$1 for every \$2 of earnings above the annual exempt amount (\$24,480 in
+2026), or \$1 for \$3 above the higher amount (\$65,160) in the months before FRA in the FRA year,
+and pays the withheld months back from FRA by adjusting the reduction factor. The test is now
+applied to the benefit streams before they reach the optimizer: the excess is charged month by
+month against everything paid on the worker's record, the spouse's benefit included, then against
+the spouse's own benefit; non-service months of the initial grace year are paid; and the reduction
+factor is recomputed at FRA on each record. For a given claiming age these are fixed numbers, so
+the model has no new variable, constraint, binary or loop quantity, and `withSSAges` sees the test
+in every candidate. The earnings it counts are the wages before contributions: *anticipated
+wages* plus that year's taxable, tax-deferred and Roth contributions, which those wages are entered
+net of (an employer contribution makes them slightly high; HSA contributions stay out). A new
+optional column, *months worked*, says how much of the year was worked (12 when absent): it decides
+the grace year, the year someone stops working and claims, where the months after work are paid;
+the MCP tools take it as `months_worked`.
+The Summary reports *SS withheld by the earnings test* and *ARF months* for a household with
+earnings the test can reach, the per-person worksheets a *SS withheld* column, and `owlcli explain`
+an `earnings_test` block. Survivor benefits are left out: checks from the year of the first death
+on are paid as before. A case without earnings before someone's FRA is unchanged; of the examples,
+alex+jamie (−0.24%), chris+pat (−0.19%) and jack+jill (+0.08%, the withheld months returning for
+life) change. Thanks to Florin Mateoc (@fmateoc) for raising it with the SSA sources, for the
+design, and for the implementation (#220, #222).
+
 #### Faster local search, keeping the #197 fix
 
 The fix for #197 freed the LTCG binaries in every round of the search's Social Security step,

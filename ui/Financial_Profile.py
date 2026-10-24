@@ -42,12 +42,6 @@ timetableHelp = {
         "contribution column to the right. Employer contributions were never part of your "
         "wages, so do not subtract those."
     ),
-    "gross earnings": (
-        "Earnings as the Social Security earnings test counts them (nominal \\$): W-2 box 5 "
-        "plus net self-employment earnings. 0 (or no column) means not given: Owl then uses "
-        "*anticipated wages* alone, which are net of contributions and leave out anything in *other inc* "
-        "(consulting or other self-employment income must be entered here to count)."
-    ),
     "months worked": (
         "Months of work at the start of this year (0-12). Earnings are taken as spread "
         "evenly over those months; it decides the grace-year monthly test and the share of "
@@ -55,8 +49,9 @@ timetableHelp = {
     ),
     "other inc": (
         "Other ordinary income that is not wages, pension, or Social Security (nominal \\$) — "
-        "e.g. consulting income, alimony, or rents you treat as ordinary. Not seen by the Social "
-        "Security earnings test: add net self-employment earnings to *gross earnings*."
+        "e.g. consulting income, alimony, or rents you treat as ordinary. A negative amount is a "
+        "deduction paid from cash, such as an HSA contribution made without wages. Not seen by "
+        "the Social Security earnings test: enter self-employment earnings as wages for it to count."
     ),
     "net inv": (
         "Net investment income such as rent or trust distributions (nominal \\$). Taxed as "
@@ -71,8 +66,9 @@ timetableHelp = {
     "IRA ctrb": "Contributions to your traditional IRA (nominal \\$), treated as pre-tax",
     "Roth IRA ctrb": "Contributions to your Roth IRA (nominal \\$)",
     "HSA ctrb": (
-        "Contributions to your health savings account (nominal \\$). Zeroed automatically at "
-        "Medicare enrollment (~age 65)."
+        "Contributions to your health savings account (nominal \\$), netted out of your wages. "
+        "Without wages, also enter the same amount as a negative other inc. Stopped automatically "
+        "at Medicare enrollment (~age 65)."
     ),
     "Roth conv": (
         "Roth conversion amount for this year (nominal \\$), never negative. Documentation only "
@@ -108,8 +104,8 @@ timetableHelpPast["Roth conv fixed"] = (
 def timetableColumnConfig(df, helpdic):
     """Column configuration for a Wages and Contributions editor, with bubble help."""
     # Keyed by name, not position: the column list is free to grow.
-    # "big-ticket items" can be an expense; every other amount is >= 0.
-    negativeOK = ("big-ticket items",)
+    # "big-ticket items" can be an expense and "other inc" a deduction; every other amount is >= 0.
+    negativeOK = ("big-ticket items", "other inc")
     formatdic = {"year": st.column_config.NumberColumn(None, help=helpdic.get("year"), format="%d", disabled=True)}
     for col in df.columns:
         if col == "year":
@@ -256,7 +252,7 @@ that has not yet been uploaded.""")
     # to the Logs page. The columns are already in the table by now, so point at
     # saving the workbook rather than asking for them to be added by hand.
     absentCols = kz.getCaseKey("hfpAbsentCols") or {}
-    # Fork (Phase 5): in these columns zero means "taken from other columns", so their
+    # In these columns zero means "taken from other columns", so their
     # absence changes nothing and is not reported.
     derivedCols = derivedTimeHorizonItems()
     reported = {

@@ -2248,6 +2248,27 @@ Chris (claims at 70, out of the test's reach): the payroll tax alone, 2026-2027.
 `test_one_switch_keeps_its_own_warning`; the step-3 and step-2 warning tests pass unchanged.
 Full suite: **3488 passed, 1 skipped** (10:52; 3486 + 2). flake8 clean; Ruff only upstream's `B905`.
 
+## Upstream `dev` `3444729` merged (2026-10-24, on `claude/phase5-step1`)
+
+Two upstream commits: `cd50a0a` (the Roth-conversion regret sweep can no longer report a negative
+regret; `stresstests.py`) and `3444729` (#197 made faster; the maintainer's comment on the closed
+#197 gives his timings, not re-measured here: on the 18 examples with the local-search preset,
+MOSEK 726 -> 396 s, HiGHS 740 -> 695 s, john+sally still 31,778, the others within 0.07%).
+`3444729`: step (b) pins `zl` again; the search relaxes the "zl = 0 => income at or above the
+threshold" half of `ltcg_zl15_link` / `ltcg_zl20_link` in its own copy of the rows; step (b')
+frees `zl` with the SS ball once per loop iteration when a round makes no move; stranded
+binaries are set back to 1 before the repair, polish and dual solves.
+
+Merged with no conflict. The fork's link rows are upstream's (no fork hunk on them; checked by
+diff), so the relaxation finds them by tag as upstream does. Our `tests/plan/test_local_search_ltcg.py`
+then had one test failing by design (`test_ss_step_leaves_ltcg_free`: step (b) pins `zl` again)
+and one duplicating upstream's new john+sally test (both passed on the merged fork: run, 5:46
+for the four tests): file dropped, upstream's two tests kept. Full suite: **3492 passed, 1 skipped** (11:42; 3489 + upstream's 5 new tests - our 2). flake8 clean; Ruff only upstream's `B905`s (two new in `3444729`: `localsearch.py:198`, `test_local_search.py:260`).
+
+Not measured, inferred from the code only: (b') runs only after a round with no move, so a round
+that moves something else defers it to a later round or the next loop iteration. Upstream's test
+covers john+sally only. Worth a test case only if a run shows a plan it misses.
+
 ## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
 
 **Review** of the earnings-test implementation (rules in `socialsecurity.py`, `Plan._ss_streams`
@@ -2299,8 +2320,8 @@ links it, posted by the user the same day; no maintainer answer as of 2026-10-24
 2026-10-24: upstream `dev` moved to `3444729` (`cd50a0a`: regret sweep can no longer report a
 negative regret; `3444729`: local search relaxes the redundant half of the LTCG links). PR #222
 then conflicted in `CHANGELOG.md` only (both add a *Version WIP* entry at the top); merged
-`upstream/dev` into `earnings-test-pr` locally with both entries kept (`7848cff`); its suite run was interrupted, so the merge is not validated and not pushed. The fork itself
-has not merged `3444729` yet.
+`upstream/dev` into `earnings-test-pr` with both entries kept (`7848cff`): full suite **3145 passed, 1 skipped** (10:22; 3140 + upstream's 5 new tests), CI's strict flake8 0; pushed, and the PR merges cleanly onto `dev` again (`git merge-tree`). (The suite run was first reported here as interrupted: only the wait on it was; it finished.) The fork merged it the
+same day (next section).
 
 ## The earnings test without an option (2026-10-23, on `claude/phase5-step1`)
 

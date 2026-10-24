@@ -2286,6 +2286,17 @@ code rather than this machine (no stock-`dev` run here; the maintainer's 740 -> 
 figures are from his machine). His large gain was with MOSEK (726 -> 396 s), which is not
 installed here; HiGHS gained 6% for him.
 
+**Same-machine stock baseline** (same day, stock `3444729` in a worktree, same script; `stock.tsv`):
+stock **1,663 s**, fork **2,010 s** (1.21x). This container is about 2.4x slower than the
+maintainer's machine for stock (his 695 s with HiGHS). The fork's extra time sits in four cases:
+devon 68 -> 234 s (3.43x), jordan+taylor-qcd 66 -> 154 s (2.34x), jordan+taylor 48 -> 93 s
+(1.92x), chris+pat 74 -> 120 s (1.61x); the other 14 are within 0.92-1.15x (bill and cameron
+under a second). These are not the same problem: the fork's model differs (itemizing on by
+default, the age-anchored smile, the earnings test in alex+jamie / chris+pat / jack+jill), and
+the objectives move with it (jordan+taylor-qcd +3.5%, morgan +3.6%, jordan+taylor +2.7%, jack+jill
++1.0%, devon +0.5%, alex+jamie -0.3%, chris+pat -0.14%). Which fork feature costs the time in
+those four is not measured (first check: the four with `withItemized="none"`).
+
 ## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
 
 **Review** of the earnings-test implementation (rules in `socialsecurity.py`, `Plan._ss_streams`

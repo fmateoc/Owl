@@ -50,19 +50,20 @@ def _solve(**extra):
     log = io.StringIO()
     p = _phase_in_couple(log)
     # Fork: upstream's model, the standard deduction. With the fork's default itemizing (the mortgage,
-    # NY IT-196) this couple's loop settles at $95k: SS residual $890 against a $1,550 bar (2026-10-18).
-    options = {"noRothConversions": "None", "netSpending": 90, "withItemized": "none", **extra}
+    # NY IT-196) this couple's loop settled at $95k before #224: SS residual $890 against a $1,550 bar
+    # (2026-10-18).
+    options = {"noRothConversions": "None", "netSpending": 95, "withItemized": "none", **extra}
     p.solve("maxBequest", options=options)
     assert p.caseStatus == "solved"
     return p, log.getvalue()
 
 
 def test_loop_warns_when_ss_does_not_settle():
-    # At $90k the loop ends with thousands of dollars of SS residual under both solvers: the log
-    # points to the exact model. (At $95k and $105k under MOSEK, with the tests' frozen date and the
-    # first Medicare year prorated (#208), the loop's residual stays below the bar although its plan
-    # is short of the exact one: the warning reports a loop that did not settle, not one that
-    # settled short.)
+    # At $95k the loop ends with about $3,000 of SS residual under both solvers (twice the $1,550
+    # bar, with the tests' frozen date): the log points to the exact model. The level is where the
+    # loop happens not to settle, not a threshold: at $90k it settles under MOSEK since the Roth
+    # maturation rows free a conversion in its sixth year (#224), as at $100k-110k; the warning
+    # reports a loop that did not settle, not one that settled short of the exact plan.
     p, log = _solve()
     assert p.fixedPointResidual["SS"]["abs_sum"] > p.N_n * p._residual_tol
     assert WARNING in log

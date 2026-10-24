@@ -197,6 +197,21 @@ _HIGHS_INFEASIBLE_RETRIES = (
     ("presolve_rule_off", 1 << 12, "presolve rule 12 off"),
     ("presolve", "off", "presolve off"),
 )
+# HiGHS's default LP path (presolve, then the dual simplex) can stop on an LP that has no feasible
+# point without a verdict: "Solve error", "Unknown", or no status at all ("Not Set"), and whether it
+# does can turn on rounding in the last digits (https://github.com/ERGO-Code/HiGHS/issues/3418).
+# Such an LP is solved once more with the interior-point method and presolve off, which settles it
+# either way. An LP that ends with a verdict, or with a feasible point, is left as it is; so are
+# limits and interrupts, where solving again would only spend more time.
+_HIGHS_LP_NO_VERDICT = (
+    "kNotset",
+    "kSolveError",
+    "kUnknown",
+    "kPresolveError",
+    "kPostsolveError",
+    "kUnboundedOrInfeasible",
+)
+_HIGHS_LP_FALLBACK = {"solver": "ipm", "presolve": "off"}
 LTCG_CONSISTENCY_MAX_PASSES = 5  # max monolithic re-solves to clear stale LTCG bracket room
 LTCG_CONSISTENCY_TOL = 1.0  # allowed U_n - 0.20*Q_n slack ($) before a re-solve is needed
 
@@ -2374,9 +2389,13 @@ class Plan:
         A template is provided as an example.
         Missing rows (years) are populated with zero values.
 
-        Convention: 'anticipated wages' must be entered net of all
-        contribution columns. Contributions are deposited into their
-        accounts and are not subtracted from the annual cash flow.
+        Convention (#221): 'anticipated wages' are the wages in AGI, that is
+        pay minus pre-tax 401k/403b deferrals and deductible IRA contributions
+        (and payroll HSA contributions). Contributions are deposited into their
+        accounts and are not subtracted from the annual cash flow, so each
+        after-tax contribution paid from pay (Roth 401k, Roth IRA, taxable) is
+        paid for by a negative 'big-ticket items' entry of the same amount.
+        With only pre-tax contributions there is nothing to offset.
         Only 'other inc' and 'big-ticket items' may be negative: a negative
         'other inc' is an above-the-line deduction paid from cash (an HSA
         contribution without wages), a negative 'big-ticket items' an expense.
@@ -2455,9 +2474,9 @@ class Plan:
         Medicare Tax (``tax_federal.payrollTax``), or zeros with the switch off.
 
         Earnings are the earnings test's (``_earnings_test_inputs``: in a year with wages,
-        the wages plus that year's taxable, tax-deferred and Roth contributions; an employer
-        contribution makes them slightly high, a payroll HSA is left out), which are also
-        FICA wages (W-2 boxes 3 and 5). The tax is not deductible, so it is only a constant
+        the wages, as they enter AGI (#221), plus that year's tax-deferred contributions; an
+        employer contribution makes them slightly high, a payroll HSA is left out), which are
+        also FICA wages (W-2 boxes 3 and 5). The tax is not deductible, so it is only a constant
         of the cash-flow row.
         """
         self.payroll_tax_applied = self._payrollTaxOn()
@@ -2475,18 +2494,19 @@ class Plan:
         Return the SSA earnings test's inputs, ``(earnings_in, months_in)``, shape
         (N_i, N_n), earnings in nominal dollars.
 
-        The test counts wages before contributions (W-2 box 5), while ``anticipated wages``
-        are entered net of every contribution column: in a year with wages, the earnings are
-        the wages plus that year's taxable, tax-deferred and Roth contributions, payroll
-        deferrals and contributions paid from pay alike. An employer contribution was never
-        wages, so a plan whose contributions include one overstates the earnings by it. HSA
-        contributions are left out: a payroll HSA is not in box 5. Read from the plan arrays,
-        which the MCP tools fill directly, so the rule holds however the plan got its wages.
+        The test counts wages before pre-tax deferrals (W-2 box 5), while ``anticipated wages``
+        are the wages in AGI, net of the pre-tax 401k and deductible IRA contributions (#221):
+        in a year with wages, the earnings are the wages plus that year's tax-deferred
+        contributions. After-tax contributions (Roth, taxable) are already in the wages. An
+        employer contribution was never wages, so a plan whose 401k column includes one
+        overstates the earnings by it. HSA contributions are left out: a payroll HSA is not in
+        box 5. Read from the plan arrays, which the MCP tools fill directly, so the rule holds
+        however the plan got its wages.
         Months are ``months worked`` where positive, else 12 in a year with earnings, else 0.
         """
         Nn = self.N_n
-        contributed = np.sum(self.kappa_ijn[:, :3, :Nn], axis=1)
-        earnings = np.where(self.omega_in > 0, self.omega_in + contributed, 0.0)
+        deferred = self.kappa_ijn[:, 1, :Nn]  # 401k + IRA (setContributions)
+        earnings = np.where(self.omega_in > 0, self.omega_in + deferred, 0.0)
         months = np.where(self.etMonths_in > 0, self.etMonths_in, np.where(earnings > 0, 12.0, 0.0))
         return earnings, months
 
@@ -4465,14 +4485,19 @@ class Plan:
         - Roth contribution *principal* can be withdrawn tax- and penalty-free at any time.
         - Roth *earnings* on contributions require both (a) account age ≥ 5 years AND
           (b) age ≥ 59½ (or other exception) to be penalty-free.
-        - Each Roth *conversion* carries its own 5-year clock; conversion principal withdrawn
-          within 5 years of conversion is subject to the 10% penalty if the owner is under 59½
-          at the time of the withdrawal. The age that matters is the age at withdrawal, not at
-          conversion: converting at 58 and withdrawing at 61 incurs no penalty.
+        - Each Roth *conversion* carries its own 5-year clock: the 5-taxable-year period that
+          begins with the year of the conversion (IRC 408A(d)(3)(F)), so a conversion made in
+          year m is free from year m+5. Conversion principal withdrawn within it is subject to the
+          10% penalty if the owner is under 59½ at the time of the withdrawal. The age that matters
+          is the age at withdrawal, not at conversion: converting at 58 and withdrawing at 61 incurs
+          no penalty.
 
-        Simplification: This implementation applies a single unified 5-year lookback that retains
-        all recent conversions (at compounded value, losses included) and the gains-only portion of recent
-        contributions as a minimum balance floor, at every age, including after 59½. Contribution
+        Simplification: This implementation keeps a minimum balance floor of recent conversions (at
+        compounded value, losses included) and the gains-only portion of recent contributions, at
+        every age, including after 59½. A year-m conversion enters the balance in year m+1 (the
+        carryover rows) and is held through year m+4, the end of its period (#224). Contribution
+        gains are held five years, as the 5-year period of 408A(d)(2)(B) runs from the first
+        contribution rather than from each one. Contribution
         *principal* is not separately tracked and freed — the constraint treats it as part of the
         5-year retainer. Both choices make it intentionally conservative (preventing some valid
         withdrawals of contribution principal, and of conversions after 59½). This never
@@ -4501,16 +4526,21 @@ class Plan:
                 row.addElem(self.vm["w"].idx(i, 2, n), -1)
                 for dn in range(1, 6):
                     nn = n - dn
+                    # A year-m conversion's period is years m to m+4 (408A(d)(3)(F)): it is free in m+5.
+                    held = dn <= 4
                     if nn >= 0:  # Past of future is now or in the future: use variables or parameters.
                         cgains *= Tau1_in[i, nn]
-                        row.addElem(self.vm["x"].idx(i, nn), -cgains)
+                        if held:
+                            row.addElem(self.vm["x"].idx(i, nn), -cgains)
                         # A contribution is retained for its gains only, and after a loss it has none.
                         rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn]
                     else:  # Past of future is in the past:
                         cgains *= oldTau1
                         # Past years are stored at the end of the contributions and conversions
                         # arrays, accessed via negative indexing.
-                        rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn] + cgains * self.myRothX_in[i, nn]
+                        rhs += max(0.0, cgains - 1) * self.kappa_ijn[i, 2, nn]
+                        if held:
+                            rhs += cgains * self.myRothX_in[i, nn]
 
                 self.A.addRow(row, rhs, np.inf, tag=("roth_maturation", i, n))
 
@@ -4525,9 +4555,14 @@ class Plan:
         retain only recent conversions, so without this the earnings could come out early with
         neither. For each individual and year before the 59 1/2 year:
 
-            sum_{m<=n} w[i,2,m] <= b[i,2,0] + sum_{m<=n} (xnet * x[i,m] + kappa[i,2,m]),
+            sum_{m<=n} w[i,2,m] <= b[i,2,0] + sum_{m<=n} kappa[i,2,m] + sum_{m<=n-5} xnet * x[i,m],
 
         which forbids early earnings rather than taxing them, conservative like the maturation rows.
+        Only matured conversions count (#223): a conversion within its 5-taxable-year period, the
+        year's own included, is charged the 10% when it comes out before 59 1/2 (408A(d)(3)(F)), and
+        by the ordering rules it is what a withdrawal beyond the matured ones takes first. Counting
+        it let a year convert X and withdraw X from a Roth holding only earnings, charged nothing.
+        The m <= n-5 timing matches the maturation rows, which free a year-m conversion in m+5.
 
         Simplifications: the whole starting Roth balance counts as contributions and conversions
         (Owl has no input for its basis), the rows stop at the first death (a surviving spouse can
@@ -4540,7 +4575,8 @@ class Plan:
                 row.addElem(self.vm["b"].idx(i, 2, 0), -1)
                 for m in range(n + 1):
                     row.addElem(self.vm["w"].idx(i, 2, m), 1)
-                    row.addElem(self.vm["x"].idx(i, m), -self.xnet)
+                    if m <= n - 5:  # matured conversions only (#223)
+                        row.addElem(self.vm["x"].idx(i, m), -self.xnet)
                 rhs = float(np.sum(self.kappa_ijn[i, 2, : n + 1]))
                 self.A.addRow(row, -np.inf, rhs, tag=("roth_early_basis", i, n))
 
@@ -8308,6 +8344,21 @@ class Plan:
                 ms = h.getModelStatus()
                 if ms != highspy.HighsModelStatus.kInfeasible:
                     break
+        no_verdict = tuple(getattr(highspy.HighsModelStatus, name) for name in _HIGHS_LP_NO_VERDICT)
+        if (
+            not is_mip
+            and ms in no_verdict
+            and h.getInfoValue("primal_solution_status")[1] != highspy.kSolutionStatusFeasible
+        ):
+            self.mylog.vprint(
+                f"HiGHS ended the LP with status '{h.modelStatusToString(ms)}'; "
+                "solving it again with the interior-point method, presolve off."
+            )
+            h.clearSolver()
+            for option, value in _HIGHS_LP_FALLBACK.items():
+                h.setOptionValue(option, value)
+            h.run()
+            ms = h.getModelStatus()
         self._lastMipNodes = nodes
 
         _, pstatus = h.getInfoValue("primal_solution_status")

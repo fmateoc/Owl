@@ -11,8 +11,8 @@ payroll tax on each person's earnings as a cash outflow of the year:
   couple files jointly and \\$200,000 single (not indexed).
 
 Earnings are what the SSA earnings test reads (``Plan._earnings_test_inputs``): in a year
-with wages, ``anticipated wages`` plus that year's taxable, tax-deferred and Roth
-contributions, which are FICA wages too (upstream's rule since 6ea43a9). The tax is not deductible, so only the
+with wages, ``anticipated wages`` (the wages in AGI) plus that year's tax-deferred
+contributions, which are FICA wages too (upstream's rule since ccc4d46, #221). The tax is not deductible, so only the
 cash-flow row changes: no LP column, row or binary.
 
 Expected values are hand numbers from the primary text, not from the code under test:
@@ -180,15 +180,16 @@ def test_jack_jill_by_hand():
 
 
 def test_additional_medicare_tax_on_the_plan():
-    """jon+jane with Jon's 2026 wages raised to \\$300,000. Their 2026 contributions count
-    (HFP: Jon \\$2,000 taxable + \\$7,000 401k, Jane \\$3,000 401k), so the earnings are
-    \\$309,000 and \\$83,000: his social security tax stops at the base, and the couple owes
-    0.9% of (\\$309,000 + \\$83,000 - \\$250,000)."""
+    """jon+jane with Jon's 2026 wages raised to \\$300,000. Their 2026 tax-deferred
+    contributions count (HFP: Jon \\$7,000 401k, Jane \\$3,000 401k; Jon's \\$2,000 taxable
+    contribution is already in his wages since #221), so the earnings are \\$307,000 and
+    \\$83,000: his social security tax stops at the base, and the couple owes 0.9% of
+    (\\$307,000 + \\$83,000 - \\$250,000)."""
     p = _load("jon+jane")
     p.omega_in[0, 0] = 300_000.0
     _solve(p, on=True)
     expected = (
-        SS_RATE * WAGE_BASE_2026 + MEDICARE_RATE * 309_000.0 + 0.0765 * 83_000.0 + ADDL_RATE * 142_000.0
+        SS_RATE * WAGE_BASE_2026 + MEDICARE_RATE * 307_000.0 + 0.0765 * 83_000.0 + ADDL_RATE * 140_000.0
     )
     assert p.payroll_tax_n[0] == pytest.approx(expected)
 

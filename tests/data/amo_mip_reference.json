@@ -4955,12 +4955,12 @@
   },
   "Case_morgan": {
    "HiGHS": {
-    "_rerecorded": "2026-10-10 from Owl.dev LP (fork) after the smile became anchored to its start (one cosine period over spending.SMILE_SPAN = 30 years instead of the plan's length); MOSEK entry removed, not re-recordable here",
+    "_rerecorded": "2026-10-24 basis only (fork, HiGHS, frozen test date), after upstream d51b89c: the Roth maturation rows free a conversion in its sixth taxable year (#224) and only matured conversions count as basis before 59 1/2 (#223); 42,245.26 -> 42,715.56, the same +1.1% upstream recorded for its build (40,888.8 -> 41,340.55), which it attributes to the oscillating loop's fixed point. Earlier: 2026-10-10 from Owl.dev LP (fork) after the smile became anchored to its start (one cosine period over spending.SMILE_SPAN = 30 years instead of the plan's length); MOSEK entry removed, not re-recordable here",
     "amo_violations": {
      "roth": 0,
      "surplus": 0
     },
-    "basis": 42245.26,
+    "basis": 42715.56,
     "bequest": 75000.0,
     "conversions_n": [
      50000.0,

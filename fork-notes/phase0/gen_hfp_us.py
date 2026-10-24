@@ -12,7 +12,9 @@ Columns per person sheet (exact headers, order may vary; only 'year' is required
   taxable ctrb, 401k ctrb, IRA ctrb, Roth 401k ctrb, Roth IRA ctrb, HSA ctrb,
   Roth conv, Roth conv fixed, QCD, big-ticket items
 
-'anticipated wages' must be net of all contribution columns.
+'anticipated wages' are the wages in AGI: pay minus pre-tax 401k, deductible IRA and payroll
+HSA contributions (upstream #221). An after-tax contribution paid from pay (Roth 401k, Roth IRA,
+taxable) stays in the wages and is paid by a negative 'big-ticket items' entry of the same amount.
 'big-ticket items' is the only signed column (negative = outflow).
 """
 

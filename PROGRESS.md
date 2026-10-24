@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-23)
+# Owl fork — progress (as of 2026-10-24)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -32,7 +32,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing") |
 | #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | **Fixed upstream** (`dev` `37afa2a`, 2026-10-22) except #204 (proposal), #205, #206; #218 (survivor's home-sale exclusion) too. Merged 2026-10-22, theirs; fork adaptations and a review fix in "Upstream `dev` `37afa2a` merged". Checked before the fixes 2026-10-21: no claim found wrong (`fork-notes/upstream-199-217/README.md`) |
-| #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, a PR on `dev` promised); revised the same day after the user's review: no option, the test is part of the model (fork: `withEarningsTest` retired); not posted |
+| #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, a PR on `dev` promised); revised the same day after the user's review: no option, the test is part of the model (fork: `withEarningsTest` retired); posted 2026-10-23. **PR #222 landed as `6ea43a9` (2026-10-24)**, squashed, the user co-author, `gross earnings` dropped for derived earnings; the maintainer closed PR #222 and #220 by hand (relayed 2026-10-24; section "Upstream `dev` `4e55b36` merged") |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md`, **revised after the user's review: drop "convex"** (as an opt-in it is a choice with no signal for when to make it; the warning misses a loop that settles short; dominated by "optimize" when the rest is exact); **PR reworked the same day**: branch `ss-convex-pr` force-pushed (lease on `fb8b10e`) to `e5a9ad5`, one commit on `dev` `7abed19` (the warning only, pointing to `withSSTaxability="optimize"`; `tests/plan/test_ss_residual_warning.py`; upstream suite 2869 passed, 1 skipped); new PR title/text (`pr-193-body.md`) **pasted and reply (`pr-196-reply.md`) posted by the user** (2026-10-17); awaiting the maintainer. The reply promises the local-search LTCG issue (`issue-ls-ltcg.md`) as a separate issue |
 | #197 Local search pins the LTCG regime binaries in step (b) (`fork-notes/issue-ls-ltcg.md`) | **Filed by the user as #197** (2026-10-17). **Patch applied in the fork** the same day; household stand-ins rerun, no decision moves. Stock repro on `dev` `7abed19`: john+sally local-search preset 20,004 vs branch-and-bound 31,778; patch (step (b) leaves `zl` free) gives 31,778, never lower on the 18 examples, 1.53x the time. Section "Local search and the LTCG family" |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
@@ -2308,6 +2308,61 @@ asserts only the signs and the MAGI drop, not recalled constants).
 Full suite on the merge: first run **2 failed, 3489 passed, 1 skipped** (the two payroll hand
 numbers above); after the fixes: **3497 passed, 1 skipped** (10:38; 3489 + the 2 fixed + the 6 new NY tests). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Upstream `dev` `4e55b36` merged (2026-10-24, on `claude/phase5-step1`, pushed as `claude/eager-hawking-scp4gw`)
+
+Upstream since `6ea43a9` (all 2026-10-24): `d51b89c` (#223, #224: a year-m Roth conversion is free
+from year m+5, not m+6; before 59 1/2 only matured conversions count as basis), `717d96f` (version,
+package upgrades), `ccc4d46` (#221: `anticipated wages` are the wages in AGI, pay minus pre-tax
+401k, deductible IRA and payroll HSA contributions; an after-tax contribution paid from pay is paid
+by a negative big-ticket item; the earnings test now adds back only the tax-deferred contributions,
+`kappa_ijn[:, 1]`; `HFP_jon+jane.xlsx` wages +2,000 and big-ticket -2,000 in 2026-2030), `9625beb`
+(#206 documented, not modeled: worksheet line 25, at most \$57/yr joint), `241175c` (linux/win32
+BEQUEST1 pins), `4e55b36` (#226: a HiGHS LP ending without a verdict is solved again with IPM,
+presolve off).
+
+Maintainer's comment on our PR #222 (relayed by the user 2026-10-24; the facts below are his, not
+re-checked on GitHub): landed squashed as `6ea43a9` with the user as co-author; `gross earnings`
+dropped (burden on the user; a plan looks forward, W-2 box 5 is a look-back input; "model a tax
+rule exactly when it changes a decision the household faces soon"); `months worked` kept (the grace
+year) and exposed to the MCP tools as `months_worked`; `test_the_test_moves_pats_pick` no longer
+pins the pick made without the test (within loop noise: -\$7/yr MOSEK, +\$53/yr HiGHS); the merge
+sits on #225; PR #222 and #220 closed by hand.
+
+Merge: 3 conflicts. `info/modeling-capabilities.md`: the fork's Debts, Budget, Ordinary income,
+Itemized, State and STAR rows kept; upstream's Wages row (#221 sentence) and LTCG row (#206
+limitation) taken. `tests/plan/test_ss_residual_warning.py`: upstream's \$95k (at \$90k the loop now
+settles under MOSEK, #224) with the fork's `withItemized="none"`. `tests/data/amo_mip_reference.json`:
+the fork's entries kept (upstream's Case_morgan MOSEK entry stays removed, no MOSEK here).
+
+**Payroll tax follows #221 with no code change**: `_payroll_tax` reads `_earnings_test_inputs()`,
+now AGI wages + tax-deferred contributions, which is W-2 box 3/5 under the new convention (a
+401(k) deferral is FICA wages; a payroll HSA under a cafeteria plan is not, and is left out).
+Recalled, not re-read this session: the box 3/5 treatment of 401(k) deferrals and section 125 HSA
+contributions. Under the old convention the base also added after-tax contributions back; now
+they are already in the wages, so a case that follows the new convention gets the same base, and
+an old-convention case (wages net of Roth/taxable contributions) is now short by them.
+Docstring, `modeling-capabilities.md` and `PARAMETERS.md` rows, and the test docstring updated.
+`gen_hfp_us.py` and `phase0-scenarios.md` (the household checklist) now state the #221
+convention: **the household HFP in `otherFiles/` must enter wages that way** (not in this
+container; not checked).
+
+Tests moved (hand numbers):
+- `test_additional_medicare_tax_on_the_plan`: Jon \$300,000 + \$7,000 401k = \$307,000 (his \$2,000
+  taxable contribution no longer added), Jane \$83,000: 6.2% x 184,500 + 1.45% x 307,000 + 7.65% x
+  83,000 + 0.9% x 140,000 = **\$23,500.00**, equal to the run (was \$23,547.00).
+- AMO reference Case_morgan (fork, HiGHS, frozen date): basis 42,245.26 -> **42,715.56** (+1.1%,
+  outside the 0.6% bar), the same relative move upstream recorded for its build (40,888.8 ->
+  41,340.55; per his commit, the oscillating loop's fixed point, the exact MILP moving -\$70/yr).
+  Re-recorded basis only, as upstream did; its per-year flows in the fixture are stale (the test
+  reads basis and bequest only).
+
+Phase 5 status unchanged: next is step 6 (work sweep), which needs the household's real SLCSP and
+HFP (`otherFiles/` is empty in this container).
+
+Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19 new tests: 16 in
+`test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
+(targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
+
 ## Local-search speed on the fork, before and after `3444729` (2026-10-24, on `claude/phase5-step1`)
 
 The 18 examples with the local-search preset, HiGHS, today's date, fork code at `047c140` (before
@@ -3152,6 +3207,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-24, upstream `dev` `4e55b36` merged: **3516 passed, 1 skipped** (10:59). flake8 clean; Ruff only upstream's three B905.
 
 2026-10-22, upstream `dev` `37afa2a` merged (`41eb4a7`): **3463 passed, 1 skipped** (15:53); after the merge review fixes (`b99990f`): **3465 passed, 1 skipped** (15:02). flake8 clean; Ruff only upstream's B905.
 

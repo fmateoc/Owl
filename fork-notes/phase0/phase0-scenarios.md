@@ -288,7 +288,7 @@ needs the Phase 6 sweep.
 
 - [ ] Fill in `otherFiles/Case_us.toml` TODOs (names, dates of birth, balances as of `start_date`, basis, PIAs, SLCSP)
 - [ ] Keep `basic_info.names` and the HFP sheet names identical
-- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages net of contributions, Budget lines)
+- [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages as they enter AGI: pay minus pre-tax 401k, deductible IRA and payroll HSA contributions, each after-tax contribution from pay offset by a negative big-ticket item, upstream #221; Budget lines)
 - [ ] Fill in `otherFiles/HFP_us_2027.xlsx` for the work-one-more-year variant
 - [ ] Fill in `otherFiles/HFP_us_rent.xlsx`, `HFP_us_buy_cash.xlsx` and `HFP_us_buy_mortgage.xlsx`, and make `otherFiles/Case_us_housing.toml` (section 5)
 - [ ] Record the rate method, window or seed with every output

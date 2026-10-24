@@ -203,6 +203,69 @@ conversion treatment (`"exemption"`, `"taxed"`, `"excluded"`, #203) per year.
 
 ### Version WIP
 
+#### Documented: the stacked capital-gains tax can exceed the worksheet's line 25 by up to \$57 a year
+
+The Qualified Dividends and Capital Gain Tax Worksheet ends with the lesser of the stacked tax
+and the regular tax on all taxable income (line 25, IRC 1(h)(1)). **Owl** keeps the stacked tax.
+They differ only for gains between the 0% breakpoint and the top of the 12% bracket, which pay
+15% there instead of 12%: at most \$28.50 (single) or \$57 (joint) a year, and \$0 in every one of
+the 18 examples. The limitation is now documented. Taking the minimum exactly would need a binary
+per year, at a solve-time cost out of proportion with the stakes. Thanks to Marco Pignone
+(@rationalpiper) for pointing it out, with the worksheet and the bound (#206).
+
+#### Fixed: an LP that HiGHS ends without a verdict is solved again before it is called a solver failure
+
+HiGHS's default LP path (presolve, then the dual simplex) can stop on an LP that has no feasible
+point with "Solve error", "Unknown" or no status at all ("Not Set"), instead of "Infeasible".
+**Owl** then reported a solver error for a plan that simply cannot be paid for. On LPs that SCIP's
+exact (rational) mode proves infeasible, HiGHS 1.15.1 and its `latest` branch gave a verdict on 2
+of 62 (https://github.com/ERGO-Code/HiGHS/issues/3418). Such an LP is now solved once more with
+the interior-point method and presolve off, which said "Infeasible" on all 62. The re-solve runs
+only for a pure LP that ends with one of those statuses and without a feasible point, so every LP
+that solves today comes out the same; MIPs, limits and interrupts are untouched. It replaces the
+fallback of #184 (reverted), whose primal-simplex step could call a feasible LP infeasible, and
+takes in #188. Thanks to Dmitry Fink (@finik) for tracking the failures down to HiGHS, with SCIP's
+exact verdicts, the upstream report and the fix (#184, #188, #226).
+
+#### Fixed: wages are entered as they enter AGI, and an after-tax contribution is paid for by a big-ticket item
+
+**Owl** asked for *anticipated wages* net of every contribution column, because contributions are
+deposited without leaving the cash flow. But the same wages are the taxable wages, and an
+after-tax contribution paid from pay (Roth 401k, Roth IRA, taxable) is still income: netting it
+out dropped it from AGI, from federal and state tax, and from the MAGI used for IRMAA, the ACA
+and Social Security taxation, by the full contribution (\$4,400 of federal tax on \$20,000 of Roth
+401k out of \$100,000 of pay). PARAMETERS.md meanwhile described a third convention. All the
+documentation now gives the one that gets both tax and cash right: *anticipated wages* are the
+wages in AGI, pay minus pre-tax 401k/403b, deductible IRA and payroll HSA contributions; each
+contribution goes in its column; and each after-tax contribution paid from pay is paid for by a
+negative *big-ticket items* entry of the same amount. With only pre-tax contributions nothing
+changes. The SSA earnings test, which counts wages before pre-tax deferrals, now adds back only
+the tax-deferred contributions. The MCP tools and the intake checklist say the same. Of the
+examples, only jon+jane had an after-tax contribution from pay, \$2,000 a year into taxable
+savings in 2026-2030: its workbook now enters \$122,000 of wages and \$-2,000 of big-ticket items
+in those years, which adds \$1,993 to the 2026 MAGI and \$440 to that year's federal tax, and
+lowers spending by \$148 a year (0.09%). Thanks to Marco Pignone (@rationalpiper) for the report
+and for the convention (#221).
+
+#### Fixed: a Roth conversion is free from the fifth year after it, and its own year cannot release earnings
+
+A conversion's 5-year period is five taxable years starting with the year of the conversion (IRC
+408A(d)(3)(F)), so a 2026 conversion can be withdrawn without the 10% from 2031. **Owl** held it
+back a year more, through 2031, so a conversion ladder reached each rung a year late and paid the
+10% on tax-deferred withdrawals in the meantime (#224). The early-withdrawal rows of #209, on the
+other hand, counted every conversion made so far as withdrawable before 59½, the year's own
+included: a plan could convert an amount and withdraw the same amount from a Roth holding only
+earnings, which the ordering rules (conversions oldest first, then earnings, 408A(d)(4)(B)) charge
+the 10%, and **Owl** charged nothing (#223). Both now follow the rules: a conversion is held through
+the year of the conversion and the four after it, and before 59½ only conversions past that period
+count toward what can be withdrawn. In the reported ladder, the 10% paid before 59½ falls by
+\$2,113 and spending rises by \$79 a year, with nothing the law charges left uncharged; in the
+reported recapture case, the \$748 of 10% that went uncharged is gone. Of the examples, jack+jill's
+bequest rises by \$57; Case_morgan used the same-year route (\$567 of 10% uncharged) and no longer
+does, at a cost of \$70 a year of spending when solved exactly (its self-consistent loop lands
+elsewhere, 1.1% higher). Thanks to Marco Pignone (@rationalpiper) for both reports, with the
+statute, the Form 5329 instructions, the repros and the fixes (#223, #224).
+
 #### Fixed: HSA contributions entered through the MCP tools stop at Medicare
 
 An HSA contribution read from the HFP stops at Medicare enrollment, the year it starts keeping
@@ -251,9 +314,9 @@ month against everything paid on the worker's record, the spouse's benefit inclu
 the spouse's own benefit; non-service months of the initial grace year are paid; and the reduction
 factor is recomputed at FRA on each record. For a given claiming age these are fixed numbers, so
 the model has no new variable, constraint, binary or loop quantity, and `withSSAges` sees the test
-in every candidate. The earnings it counts are the wages before contributions: *anticipated
-wages* plus that year's taxable, tax-deferred and Roth contributions, which those wages are entered
-net of (an employer contribution makes them slightly high; HSA contributions stay out). A new
+in every candidate. The earnings it counts are the wages before pre-tax deferrals: *anticipated
+wages* plus that year's tax-deferred contributions, which those wages are entered net of (an
+employer contribution makes them slightly high; HSA contributions stay out). A new
 optional column, *months worked*, says how much of the year was worked (12 when absent): it decides
 the grace year, the year someone stops working and claims, where the months after work are paid;
 the MCP tools take it as `months_worked`.

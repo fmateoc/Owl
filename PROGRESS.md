@@ -2269,6 +2269,23 @@ Not measured, inferred from the code only: (b') runs only after a round with no 
 that moves something else defers it to a later round or the next loop iteration. Upstream's test
 covers john+sally only. Worth a test case only if a run shows a plan it misses.
 
+## Local-search speed on the fork, before and after `3444729` (2026-10-24, on `claude/phase5-step1`)
+
+The 18 examples with the local-search preset, HiGHS, today's date, fork code at `047c140` (before
+the merge) and `6a3fe6a` (after), run one after the other on this container
+(`fork-notes/local-search/speed-3444729/`: `run.py`, `before.tsv`, `after.tsv`; one run each).
+Total **1,965 s -> 2,010 s (+2%)**: no speed-up on the fork with HiGHS. Per case from 0.66x
+(kim+sam-spending, dana) to 2.25x (chris+pat) and 1.63x (jordan+taylor-qcd, the case the
+maintainer says needs the full link rows under branch-and-bound). Objectives: john+sally
+31,778.17 both ways; everything else within 0.05% (kim+sam-bequest -0.051%, chris+pat +0.030%,
+morgan +0.018%), close to the maintainer's 0.07% band. Same method label in every case.
+
+Not established: run-to-run noise on this container (one run per version; full-suite wall times
+here have varied 8:55-10:22 on similar trees), and how much of the fork's time is the fork's
+code rather than this machine (no stock-`dev` run here; the maintainer's 740 -> 695 s HiGHS
+figures are from his machine). His large gain was with MOSEK (726 -> 396 s), which is not
+installed here; HiGHS gained 6% for him.
+
 ## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
 
 **Review** of the earnings-test implementation (rules in `socialsecurity.py`, `Plan._ss_streams`

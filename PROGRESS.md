@@ -2297,6 +2297,29 @@ the objectives move with it (jordan+taylor-qcd +3.5%, morgan +3.6%, jordan+taylo
 +1.0%, devon +0.5%, alex+jamie -0.3%, chris+pat -0.14%). Which fork feature costs the time in
 those four is not measured (first check: the four with `withItemized="none"`).
 
+**The four with `withItemized="none"`** (fork `6a3fe6a`, same day, same script with the option
+added, `run2.py` / `noitem.tsv`; one run each):
+
+| Case | stock | fork, itemizing (default) | fork, `"none"` | objective: stock / fork default / fork `"none"` |
+|---|---:|---:|---:|---|
+| devon | 68 s | 234 s | 71 s | 248,576.00 / 249,877.18 / 248,576.00 |
+| jordan+taylor | 48 s | 93 s | 56 s | 1,559,325.13 / 1,600,971.47 / 1,600,636.90 |
+| jordan+taylor-qcd | 66 s | 154 s | 148 s | 1,206,372.88 / 1,248,802.27 / 1,248,802.27 |
+| chris+pat | 74 s | 120 s | 122 s | 117,308.95 / 117,139.65 / 117,139.65 |
+
+- devon: itemizing is the whole difference, time and objective (`"none"` = stock to the cent).
+- jordan+taylor: itemizing costs 37 s and \$335 of bequest; the rest of the +2.65% gap to stock
+  is not itemizing. Both jordan+taylor cases use the smile with `smile_start_age = 66`, so the
+  fork's age-anchored smile is the likely cause; not run.
+- jordan+taylor-qcd: itemizing changes neither time nor objective; the 2.2x and the +3.5% are
+  something else in the fork (the smile, likely, as above; not run).
+- chris+pat: itemizing changes nothing; the case is one of the three the earnings test touches,
+  and stock `3444729` has no earnings test, so its time and objective there are not comparable
+  (a stock run at `6ea43a9`, which has the test, would be).
+
+So itemizing explains devon and part of jordan+taylor. It is a model cost, not a search defect: the
+default `"loop"` adds loop parameters (branch, floors, SALT cap) and can take more iterations.
+
 ## #220: earnings test reviewed; PR built on stock `dev` (2026-10-23, on `claude/phase5-step1`)
 
 **Review** of the earnings-test implementation (rules in `socialsecurity.py`, `Plan._ss_streams`

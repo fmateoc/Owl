@@ -41,8 +41,6 @@ from owlplanner.mylogging import Logger
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 
-SPEC = pytest.mark.xfail(strict=True, reason="spec: the payroll tax without an option")
-
 
 def _load(case):
     p = owl.readConfig(os.path.join(_EXAMPLES, f"Case_{case}.toml"), verbose=False, logstreams=[io.StringIO()])
@@ -56,7 +54,6 @@ def _solve(p, **extra):
     return p
 
 
-@SPEC
 def test_charged_with_no_option():
     p = _load("jack+jill")
     assert "withPayrollTax" not in (p.solverOptions or {})
@@ -64,7 +61,6 @@ def test_charged_with_no_option():
     assert p.payroll_tax_n[0] == pytest.approx(0.0765 * 195_000.0)
 
 
-@SPEC
 def test_the_old_key_is_deprecated_and_changes_nothing():
     p = _load("jack+jill")
     buf = io.StringIO()
@@ -86,7 +82,6 @@ def test_a_saved_case_with_the_key_still_loads():
     assert opts["withPayrollTax"] is True  # kept as an unknown key (extra="allow"), not coerced
 
 
-@SPEC
 def test_rows_only_for_a_household_with_earnings():
     p = _solve(_load("jack+jill"))
     dic = build_summary_dic(p)
@@ -102,7 +97,6 @@ def test_rows_only_for_a_household_with_earnings():
     assert "payroll tax" not in [cell.value for cell in ws[1]]
 
 
-@SPEC
 def test_the_switch_attribute_is_gone():
     p = _solve(_load("jack+jill"))
     assert not hasattr(p, "_payrollTaxOn")

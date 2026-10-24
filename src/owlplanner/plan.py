@@ -98,6 +98,9 @@ _SCLOOP_RETIRED = (
     "phaseout and the cost-basis gain fractions are nonlinear in the solution -- and turning "
     "it off left Medicare out of the budget, overstating spending. Use maxIter to shorten it"
 )
+# Fork: the employee payroll tax was an opt-in switch (Phase 5, D3) until 2026-10-24; the household
+# template carried the key, so a case saved from it is told why the key does nothing.
+_PAYROLL_RETIRED = "the employee payroll tax on earnings is now always charged (fork)"
 RETIRED_OPTIONS = {
     "amoConstraints": _AMO_RETIRED,
     "amoRoth": _AMO_RETIRED,
@@ -109,6 +112,7 @@ RETIRED_OPTIONS = {
     "bigMniit": _BIGM_RETIRED,
     "withDecomposition": _DECOMP_RETIRED,
     "withSCLoop": _SCLOOP_RETIRED,
+    "withPayrollTax": _PAYROLL_RETIRED,
 }
 
 # Sentinel distinguishing "argument omitted" from an explicit None, which callers use to
@@ -710,10 +714,9 @@ class Plan:
         self.debt_payments_n = np.zeros(self.N_n)
         # Employee payroll tax on earnings (fork, Phase 5 step 5), nominal $: the household
         # total paid from the plan, and the Additional Medicare Tax part of it. Built at
-        # solve time when withPayrollTax is on (_payroll_tax).
+        # every solve (_payroll_tax).
         self.payroll_tax_n = np.zeros(self.N_n)
         self.payroll_addl_n = np.zeros(self.N_n)
-        self.payroll_tax_applied = False
         # Remaining debt balance at the start of each year (length N_n)
         self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
@@ -1214,7 +1217,7 @@ class Plan:
         )
         outflows = {
             "living": float(np.sum(self.g_n * inv_g)),
-            # Fork: the payroll tax (zero unless withPayrollTax) is a federal tax too.
+            # Fork: the payroll tax (zero without earnings) is a federal tax too.
             "taxes": float(np.sum((self.T_n + self.U_n + self.J_n + self.payroll_tax_n) * inv_g)),
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
@@ -2453,25 +2456,12 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
-    def _payrollTaxOn(self, options=None):
-        """
-        True when this solve charges the employee payroll tax (Phase 5 step 5, D3: off by
-        default).
-
-        ``options`` is the solve's own options dict, and is what the warnings pass:
-        ``solve()`` only assigns ``self.solverOptions`` after it has branched into
-        ``withSSAges`` and the local search. Parsed like the case schema does
-        (``utils.parse_switch``, the one parser): a value that is not a switch is
-        refused, not read as another (the same contract as the mode options).
-        """
-        opt = ((options if options is not None else self.solverOptions) or {}).get("withPayrollTax", False)
-        return u.parse_switch("withPayrollTax", opt) is True
-
     def _payroll_tax(self, gamma_n):
         """
         Build ``payroll_tax_n`` (nominal $) for this solve: the employee's social security
         and Medicare taxes on each person's earnings and the household's Additional
-        Medicare Tax (``tax_federal.payrollTax``), or zeros with the switch off.
+        Medicare Tax (``tax_federal.payrollTax``). Always charged (until 2026-10-24 the
+        opt-in ``withPayrollTax``): it needs no input and adds nothing to the solve.
 
         Earnings are the earnings test's (``_earnings_test_inputs``: in a year with wages,
         the wages, as they enter AGI (#221), plus that year's tax-deferred contributions; an
@@ -2479,11 +2469,6 @@ class Plan:
         also FICA wages (W-2 boxes 3 and 5). The tax is not deductible, so it is only a constant
         of the cash-flow row.
         """
-        self.payroll_tax_applied = self._payrollTaxOn()
-        if not self.payroll_tax_applied:
-            self.payroll_tax_n = np.zeros(self.N_n)
-            self.payroll_addl_n = np.zeros(self.N_n)
-            return
         earnings, _ = self._earnings_test_inputs()
         ss_in, med_in, addl_n = tx.payrollTax(earnings, gamma_n, self.n_d, self.N_n, int(self.year_n[0]))
         self.payroll_addl_n = addl_n
@@ -5110,7 +5095,7 @@ class Plan:
             )
             # Subtract debt payments (negative cash flow)
             rhs -= self.debt_payments_n[n]
-            # Fork: employee payroll tax on earnings (zero unless withPayrollTax).
+            # Fork: employee payroll tax on earnings (zero without earnings).
             rhs -= self.payroll_tax_n[n]
             row = self.A.newRow({self.vm["g"].idx(n): 1})
             row.addElem(self.vm["s"].idx(n), 1)
@@ -6730,7 +6715,6 @@ class Plan:
             "withMedicare",
             "withSSTaxability",
             "withSSAges",  # SS claiming age: "fixed" (default) or "optimize"
-            "withPayrollTax",  # employee payroll tax on earnings (fork, Phase 5 step 5); off by default
             "withDuals",  # Re-solve final LP with binaries fixed to extract shadow prices
             "withdrawalOrder",  # "optimal" (default) or "taxable_first" (naive ordering gates)
             "mipStrategy",  # "branch-and-bound" (default) or "local-search" for the optimize modes
@@ -6766,10 +6750,6 @@ class Plan:
 
         # Canonical mode names; a value that is none of them is refused, not solved as another.
         u.normalize_mode_options(myoptions)
-
-        # The same contract for the switch options: refused at the door, not mid-solve.
-        if "withPayrollTax" in myoptions:
-            myoptions["withPayrollTax"] = self._payrollTaxOn(myoptions)
 
         # A "budget" profile is evaluated now, on the plan's current horizon and first death. Under
         # maxBequest its first year is the spending level unless a positive netSpending is given (see

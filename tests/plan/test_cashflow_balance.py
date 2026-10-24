@@ -43,6 +43,7 @@ def _assert_cashflow_balance(p, atol=1.0):
 
     """
     lhs = p.g_n + p.s_n + p.T_n + p.st_T_n + p.U_n + p.J_n + p.m_n + p.M_n + p.aca_costs_n + p.debt_payments_n
+    lhs = lhs + p.payroll_tax_n  # fork: the employee payroll tax on wages, paid from the plan
     rhs = (
         np.sum(p.omega_in, axis=0)
         + np.sum(p.other_inc_in, axis=0)

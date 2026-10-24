@@ -1,0 +1,9 @@
+owlplanner from <stock dev 4e55b36 worktree>/src/owlplanner/__init__.py
+case         objective   wage years   earnings     FICA   as shipped    with FICA  difference
+alex+jamie   maxSpending 2026-2028     575,000   43,988      228,077      225,077      -3,000 (-1.32%)
+chris+pat    maxSpending 2026-2028     626,900   48,084      116,837      114,043      -2,794 (-2.39%)
+jack+jill    maxSpending 2026-2028     575,000   43,988      102,572      100,669      -1,903 (-1.86%)
+joe          maxSpending 2026-2028     330,000   25,245       92,574       91,276      -1,298 (-1.40%)
+john+sally   maxBequest  2026          115,000    8,798       16,803           21     -16,782 (-99.88%)
+jon+jane     maxSpending 2026-2033   1,309,000  100,138      160,611      155,455      -5,156 (-3.21%)
+1 passed in 10.05s

@@ -22,9 +22,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
+import numpy as np
 import pytest
 
 import owlplanner as owl
+from owlplanner import tax_federal
 
 pytestmark = pytest.mark.toml
 
@@ -159,7 +161,20 @@ EXPECTED_OBJECTIVE_VALUES = {
 }
 
 
-def test_reproducibility():
+@pytest.fixture
+def upstream_model_without_payroll_tax(monkeypatch):
+    """Fork: john+sally's and joe's values are upstream's, and jack+jill's the fork's earlier
+    model, all without a payroll tax. The fork's payroll tax (always charged on wages since
+    2026-10-24) is taken out here so the values keep checking that the fork equals upstream
+    elsewhere; it is tested in tests/plan/test_payroll_tax.py and test_payroll_tax_always.py,
+    and the fork's own model with it is pinned by tests/data/amo_mip_reference.json."""
+    def nothing(earnings, gamma_n, n_d, N_n, thisyear):
+        return np.zeros_like(earnings), np.zeros_like(earnings), np.zeros(N_n)
+
+    monkeypatch.setattr(tax_federal, "payrollTax", nothing)
+
+
+def test_reproducibility(upstream_model_without_payroll_tax):
     """
     Test that all example cases produce reproducible objective function values.
 

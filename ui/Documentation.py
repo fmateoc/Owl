@@ -469,8 +469,7 @@ leave it blank where it does not apply), where:
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
   counts. Where it is 0 or blank, or the column is absent, **Owl** uses 12 in a year with
   earnings.
-- When the solver option *withPayrollTax* is on (off unless the case asks for it), **Owl** also
-  charges the employee's payroll tax on the same earnings (*anticipated wages* plus the
+- **Owl** also charges the employee's payroll tax on the same earnings (*anticipated wages* plus the
   contributions above, which are FICA wages too), paid from the plan each year: 6.2% social
   security tax up to the wage base (\\$184,500 in 2026, held at that level in today's dollars),
   1.45% Medicare tax, and 0.9% Additional Medicare Tax on the household's earnings above

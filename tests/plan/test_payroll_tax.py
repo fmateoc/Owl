@@ -1,8 +1,9 @@
 """
 Tests for the employee payroll tax on earnings (fork, Phase 5 step 5, decision D3).
 
-``solver_options.withPayrollTax`` (off by default) charges the employee's share of the
-payroll tax on each person's earnings as a cash outflow of the year:
+Every solve charges the employee's share of the payroll tax on each person's earnings as a
+cash outflow of the year (until 2026-10-24 the opt-in ``withPayrollTax``; see
+tests/plan/test_payroll_tax_always.py):
 
 - social security tax, 6.2% of earnings up to the wage base (\\$184,500 in 2026, held at
   that level in today's dollars afterwards, like the earnings test's exempt amounts);
@@ -45,7 +46,6 @@ import pytest
 
 import owlplanner as owl
 from owlplanner import tax_federal as tx
-from owlplanner.config import load_toml
 from owlplanner.export import build_summary_dic
 from owlplanner.mylogging import Logger
 
@@ -74,17 +74,22 @@ def _load(case):
     return p
 
 
-def _solve(p, on, **extra):
-    """Resolve the plan with the payroll tax switched on or off (D3: off by default)."""
-    opts = dict(p.solverOptions or {}, **extra)
-    if on:
-        opts["withPayrollTax"] = True
-    else:
-        opts.pop("withPayrollTax", None)
-    p.solverOptions = opts
+def _solve(p, **extra):
+    p.solverOptions = dict(p.solverOptions or {}, **extra)
     p.resolve()
     assert p.caseStatus == "solved"
     return p
+
+
+def _without_the_tax(monkeypatch, p):
+    """Solve as Owl without the payroll tax: the same plan with the rule returning nothing."""
+    def nothing(earnings, gamma_n, n_d, N_n, thisyear):
+        z = np.zeros_like(earnings)
+        return z, z, np.zeros(N_n)
+
+    with monkeypatch.context() as m:
+        m.setattr(tx, "payrollTax", nothing)
+        return _solve(p)
 
 
 def _n(p, year):
@@ -154,25 +159,13 @@ def test_wage_base_after_the_last_known_year():
 # --------------------------------------------------------------------------------------
 
 
-def test_switch_off_is_a_no_op():
-    """Off (the default): nothing is charged, no Summary row, no Cash Flow column."""
-    p = _solve(_load("jack+jill"), on=False)
-    assert np.all(p.payroll_tax_n == 0)
-    assert p.payroll_tax_applied is False
-    assert not any(k.startswith("Total payroll tax paid") for k in build_summary_dic(p))
-    wb = p.saveWorkbook(saveToFile=False)
-    ws = next(w for w in wb.worksheets if w.title == "Cash Flow")
-    assert "payroll tax" not in [cell.value for cell in ws[1]]
-
-
 def test_jack_jill_by_hand():
     """jack+jill: Jack earns \\$100,000 in 2026-2028 and puts \\$15,000 in his 401k in
     2026-2027, Jill earns \\$80,000 in 2026-2027 and \\$85,000 in 2028 (HFP, nominal). The
     tax reads the earnings test's earnings, the wages plus the contributions they are net of
     (FICA wages): \\$195,000 in 2026-2027, \\$185,000 in 2028. All under the base and the
     household under \\$250,000: 7.65% of them, nothing after 2028."""
-    p = _solve(_load("jack+jill"), on=True)
-    assert p.payroll_tax_applied is True
+    p = _solve(_load("jack+jill"))
     assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 195_000.0)
     assert p.payroll_tax_n[_n(p, 2027)] == pytest.approx(0.0765 * 195_000.0)
     assert p.payroll_tax_n[_n(p, 2028)] == pytest.approx(0.0765 * 185_000.0)
@@ -187,20 +180,20 @@ def test_additional_medicare_tax_on_the_plan():
     (\\$307,000 + \\$83,000 - \\$250,000)."""
     p = _load("jon+jane")
     p.omega_in[0, 0] = 300_000.0
-    _solve(p, on=True)
+    _solve(p)
     expected = (
         SS_RATE * WAGE_BASE_2026 + MEDICARE_RATE * 307_000.0 + 0.0765 * 83_000.0 + ADDL_RATE * 140_000.0
     )
     assert p.payroll_tax_n[0] == pytest.approx(expected)
 
 
-def test_the_tax_is_paid_from_the_plan():
+def test_the_tax_is_paid_from_the_plan(monkeypatch):
     """A cash outflow: the plan spends less with it (maxSpending), the cash flow still
     balances, and the Cash Flow sheet carries it so that its rows still sum to zero."""
-    off = _solve(_load("jack+jill"), on=False)
+    off = _without_the_tax(monkeypatch, _load("jack+jill"))
     p = _load("jack+jill")
     buf = _warn_log(p)
-    _solve(p, on=True)
+    _solve(p)
     assert p.basis < off.basis
     assert not [w for w in _warn_lines(buf) if "Cash flow balance" in w]
     lhs = (
@@ -230,7 +223,7 @@ def test_the_tax_is_paid_from_the_plan():
 
 
 def test_lifetime_allocation_counts_it_as_tax():
-    p = _solve(_load("jack+jill"), on=True)
+    p = _solve(_load("jack+jill"))
     inv_g = 1.0 / p.gamma_n[: p.N_n]
     expected = float(np.sum((p.T_n + p.U_n + p.J_n + p.payroll_tax_n) * inv_g))
     assert p.lifetime_allocation()["outflows"]["taxes"] == pytest.approx(expected)
@@ -238,16 +231,14 @@ def test_lifetime_allocation_counts_it_as_tax():
     assert p.annual_cashflow_mix()["outflows"]["taxes"] == pytest.approx(expected_n)
 
 
-def test_a_second_solve_follows_the_switch():
-    """Built at every solve: on, then off, then on again (Jill's 2026 wages edited to \\$90,000;
-    Jack's \\$100,000 plus his \\$15,000 401k)."""
+def test_a_second_solve_follows_the_earnings():
+    """Built at every solve from the earnings the plan holds then (Jill's 2026 wages edited to
+    \\$90,000; Jack's \\$100,000 plus his \\$15,000 401k)."""
     p = _load("jack+jill")
-    _solve(p, on=True)
-    assert np.any(p.payroll_tax_n > 0)
-    _solve(p, on=False)
-    assert np.all(p.payroll_tax_n == 0)
+    _solve(p)
+    assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 195_000.0)
     p.omega_in[1, _n(p, 2026)] = 90_000.0
-    _solve(p, on=True)
+    _solve(p)
     assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 205_000.0)
 
 
@@ -256,11 +247,10 @@ def test_a_second_solve_follows_the_switch():
 # --------------------------------------------------------------------------------------
 
 
-def test_summary_rows_whenever_the_tax_is_applied():
-    """'Total payroll tax paid' whenever the switch is on (\\$0 included, so the UI's case
-    comparison keeps the row between two variants that both apply it); the Additional
-    Medicare Tax only where it is owed."""
-    p = _solve(_load("jack+jill"), on=True)
+def test_summary_rows_for_a_household_with_earnings():
+    """'Total payroll tax paid' for a household with earnings in the plan (none without:
+    tests/plan/test_payroll_tax_always.py); the Additional Medicare Tax only where it is owed."""
+    p = _solve(_load("jack+jill"))
     dic = build_summary_dic(p)
     rows = [k for k in dic if k.startswith("Total payroll tax paid")]
     assert len(rows) == 2
@@ -268,15 +258,9 @@ def test_summary_rows_whenever_the_tax_is_applied():
     assert nominal == pytest.approx(0.0765 * (195_000 * 2 + 185_000), abs=1.0)
     assert not any("Additional Medicare" in k for k in dic)
 
-    p = _load("jack+jill")
-    p.omega_in[:, :] = 0.0
-    _solve(p, on=True)
-    dic = build_summary_dic(p)
-    assert all(dic[k] == "$0" for k in dic if k.startswith("Total payroll tax paid"))
-
     p = _load("jon+jane")
     p.omega_in[0, 0] = 300_000.0
-    _solve(p, on=True)
+    _solve(p)
     dic = build_summary_dic(p)
     assert any(k.startswith("»  Additional Medicare tax") for k in dic)
 
@@ -284,7 +268,7 @@ def test_summary_rows_whenever_the_tax_is_applied():
 def test_plan_metrics_report_it():
     from owlplanner.export import METRICS_COLUMN_MAP, plan_metrics
 
-    on = _solve(_load("jack+jill"), on=True)
+    on = _solve(_load("jack+jill"))
     m = plan_metrics(on)
     assert m["payroll_tax_nominal"] == pytest.approx(0.0765 * (195_000 * 2 + 185_000))
     inv_g = 1.0 / on.gamma_n[: on.N_n]
@@ -293,8 +277,9 @@ def test_plan_metrics_report_it():
     for key in ("payroll_tax_today", "payroll_tax_nominal"):
         assert METRICS_COLUMN_MAP[key][0] in columns
 
-    off = plan_metrics(_solve(_load("jack+jill"), on=False))
-    assert off["payroll_tax_nominal"] == 0.0
+    q = _load("jack+jill")
+    q.omega_in[:, :] = 0.0
+    assert plan_metrics(_solve(q))["payroll_tax_nominal"] == 0.0
 
 
 def test_local_search_charges_it():
@@ -304,7 +289,6 @@ def test_local_search_charges_it():
         p.objective,
         dict(
             p.solverOptions or {},
-            withPayrollTax=True,
             withSSTaxability="optimize",
             mipStrategy="local-search",
             localSearchTime=2,
@@ -313,49 +297,6 @@ def test_local_search_charges_it():
     )
     assert p.caseStatus == "solved"
     assert p.payroll_tax_n[_n(p, 2026)] == pytest.approx(0.0765 * 195_000.0)
-
-
-# --------------------------------------------------------------------------------------
-# The switch: parsing and round trips
-# --------------------------------------------------------------------------------------
-
-
-def test_switch_spellings_match_the_schema():
-    from owlplanner.config.schema import parse_solver_options
-
-    p = _load("jack+jill")
-    for value in (True, False, 0, 1, "on", "off", "yes", "no", np.True_, np.int64(0)):
-        expected = bool(parse_solver_options({"withPayrollTax": value})["withPayrollTax"])
-        assert p._payrollTaxOn({"withPayrollTax": value}) is expected, value
-    assert p._payrollTaxOn({}) is False  # D3: opt-in
-    for value in (2, 0.5, "sometimes", "loop"):
-        with pytest.raises(ValueError, match="withPayrollTax"):
-            p._payrollTaxOn({"withPayrollTax": value})
-        with pytest.raises(ValueError, match="withPayrollTax"):
-            parse_solver_options({"withPayrollTax": value})
-
-
-def test_solve_refuses_a_bad_switch_value():
-    p = _load("jack+jill")
-    with pytest.raises(ValueError, match="withPayrollTax"):
-        p.solve(p.objective, dict(p.solverOptions or {}, withPayrollTax="sometimes"))
-
-
-def test_with_payroll_tax_round_trips(monkeypatch):
-    """Through the case file, the UI's flat keys and the UI's run options (#156's shape:
-    a setting one builder forgets is ignored by the run)."""
-    import ui.sskeys as kz
-
-    from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
-
-    diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))
-    diconf["solver_options"]["withPayrollTax"] = True
-    uidic = config_to_ui(diconf)
-    assert uidic["withPayrollTax"] is True
-    assert ui_to_config(uidic)["solver_options"]["withPayrollTax"] is True
-    monkeypatch.setattr(kz, "getCaseKey", uidic.get)
-    _, run_opts = kz.getSolveParameters()
-    assert run_opts["withPayrollTax"] is True
 
 
 # --------------------------------------------------------------------------------------
@@ -369,7 +310,7 @@ def test_json_output_reports_it():
     earnings test's withholding, step 3) must be among them, and in each year's row."""
     from owlplanner.cli.formatters import plan_to_dict
 
-    p = _solve(_load("jack+jill"), on=True)
+    p = _solve(_load("jack+jill"))
     d = plan_to_dict(p)
     s = d["summary"]
     assert s["payroll_tax_nominal"] == round(0.0765 * (195_000 * 2 + 185_000))
@@ -389,7 +330,7 @@ def test_tax_bills_and_csv_carry_it(tmp_path, monkeypatch):
 
     from owlplanner.export import plan_to_csv
 
-    p = _solve(_load("jack+jill"), on=True)
+    p = _solve(_load("jack+jill"))
     monkeypatch.chdir(tmp_path)  # plan_to_csv writes worksheet_<basename>.csv in the cwd
     plan_to_csv(p, "jj", p.mylog)
     df = pd.read_csv(_glob.glob(str(tmp_path / "*.csv"))[0])

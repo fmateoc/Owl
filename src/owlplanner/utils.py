@@ -188,34 +188,6 @@ def normalize_mode_options(options):
     return options
 
 
-def parse_switch(key, value):
-    """
-    Return the boolean a switch option carries, or None when it is absent.
-
-    One parser for every path a switch arrives by: the case schema coerces with it at
-    load (the TOML, ``owlcli --solver-opt``, the MCP), and ``Plan._payrollTaxOn`` with
-    whatever a caller hands ``solve()`` (the UI's run options, a script). Booleans, the
-    numbers 0 and 1 (numpy scalars included), and the spellings a switch takes
-    ("true"/"false", "yes"/"no", "y"/"n", "t"/"f", "on"/"off", "1"/"0"). Anything else is
-    refused: a switch must not read as another (the same contract as the mode options).
-    """
-    if value is None:
-        return None
-    if hasattr(value, "item") and not isinstance(value, (str, bytes)):
-        value = value.item()  # numpy scalars
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and value in (0, 1):
-        return bool(value)
-    if isinstance(value, str):
-        name = value.strip().lower()
-        if name in ("true", "yes", "y", "t", "1", "on"):
-            return True
-        if name in ("false", "no", "n", "f", "0", "off"):
-            return False
-    raise ValueError(f"{key} {value!r} must be a boolean.")
-
-
 def get_numeric_option(options, key, default, *, min_value=None) -> float:
     value = options.get(key, default)
     if not isinstance(value, (int, float)):

@@ -572,9 +572,9 @@ def build_summary_dic(plan, N=None):
     taxPaidNow = np.sum(plan.J_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total net investment income tax paid", taxPaidNow, taxPaid)
 
-    # Fork (Phase 5 step 5): employee payroll tax on earnings. Reported whenever the solve
-    # charged it, $0 included, so that comparing two cases that both charge it keeps the rows.
-    if getattr(plan, "payroll_tax_applied", False):
+    # Fork (Phase 5 step 5): employee payroll tax on earnings, for a household with earnings
+    # in the plan (any earnings are taxed, so the tax is then positive).
+    if np.any(plan.payroll_tax_n[:N] > 0):
         _summary_currency_pair(
             dic,
             "Total payroll tax paid",
@@ -976,7 +976,7 @@ def plan_metrics(plan, N=None) -> dict:
         "ltcg_tax_nominal": _s(plan.U_n[:N]),
         "niit_today": _st(plan.J_n[:N]),
         "niit_nominal": _s(plan.J_n[:N]),
-        # Fork (Phase 5 step 5): employee payroll tax, 0 when withPayrollTax is off.
+        # Fork (Phase 5 step 5): employee payroll tax, 0 without earnings.
         "payroll_tax_today": _st(plan.payroll_tax_n[:N]),
         "payroll_tax_nominal": _s(plan.payroll_tax_n[:N]),
         "state_tax_today": _st(plan.st_T_n[:N]),

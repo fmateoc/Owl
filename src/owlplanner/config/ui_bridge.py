@@ -91,7 +91,6 @@ SOLVER_UI_PASSTHROUGH_KEYS = [
     "withSeniorBonus",
     "withItemized",
     "withSTAR",  # fork: NY STAR credit
-    "withPayrollTax",  # fork: employee payroll tax on earnings (off by default)
     "previousSTARIncomes",
 ]
 

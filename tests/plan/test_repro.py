@@ -26,7 +26,22 @@ from sys import platform
 from datetime import date
 from io import StringIO
 
+import numpy as np
+
 import owlplanner as owl
+from owlplanner import tax_federal
+
+
+@pytest.fixture(autouse=True)
+def _upstream_model_without_payroll_tax(monkeypatch):
+    """Fork: these recorded values are upstream's, for upstream's model, which charges no payroll
+    tax. The fork's payroll tax (always charged on wages) is taken out here so the values keep
+    checking that the fork equals upstream everywhere else; it is tested in
+    tests/plan/test_payroll_tax.py and test_payroll_tax_always.py."""
+    def nothing(earnings, gamma_n, n_d, N_n, thisyear):
+        return np.zeros_like(earnings), np.zeros_like(earnings), np.zeros(N_n)
+
+    monkeypatch.setattr(tax_federal, "payrollTax", nothing)
 
 
 # Updated after HFP dollar conversion ($ not $k) in update_hfp_coverage.py

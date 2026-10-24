@@ -2363,6 +2363,56 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Payroll tax always on; upstream issue drafted (2026-10-24, on `claude/phase5-step1`)
+
+User's decision after the merge review: the payroll tax is part of the model, as the earnings test
+is (no option), and an upstream design issue is drafted.
+
+Test-first: spec `31bea3a` (`tests/plan/test_payroll_tax_always.py`: 4 strict xfail + 1 guard that
+passed on arrival), then the implementation:
+
+- `_payroll_tax` charges the tax at every solve; `_payrollTaxOn`, `payroll_tax_applied`, the
+  schema field and its validator, `utils.parse_switch` (fork-only, used by nothing else; `utils.py`
+  now differs from upstream only by the fork's two mode options) and the UI passthrough key are gone.
+- `withPayrollTax` is a `RETIRED_OPTIONS` key ("now always charged"): unlike `withEarningsTest`,
+  the household template carried it, so a case saved from it (`otherFiles/Case_us.toml`, not in this
+  container) gets a deprecation warning, not "unknown option"; remove the line there. The template
+  line is removed.
+- Summary rows and the Cash Flow column for a household with earnings in the plan (the tax is then
+  positive), none without.
+- Docs: `modeling-capabilities.md` row, `Documentation.py`, the `PARAMETERS.md` row removed (as for
+  `withEarningsTest`), `phase5-plan.md` step 5 and D3 marked revised, CLAUDE.md.
+
+Recorded values. Upstream's own pins stay upstream's: `test_repro.py` (autouse), `test_toml_cases.py
+::test_reproducibility` and the john+sally local-search test take the tax out with a `payrollTax`
+monkeypatch fixture, so they keep checking that the fork equals upstream elsewhere and upstream's
+future pin changes merge cleanly. Measured first that local search still reaches branch-and-bound
+on john+sally with the tax (both 14,013.49 bequest; 9 s vs 44 s). The fork's model with the tax is
+pinned in the AMO fixture (HiGHS, frozen date, basis and bequest only; MOSEK entries removed, as in
+2026-10-10): alex+jamie 228,132.48 -> 225,076.85, jack+jill 103,502.74 -> 101,611.96, joe
+93,043.84 -> 91,275.84, john+sally bequest 16,802.68 -> 21.00, jon+jane 160,677.41 -> 155,455.03.
+Two hand-written cash-flow identities in upstream tests (`test_export.py::test_cash_flow_sheet_
+balances_to_zero`, `test_cashflow_balance.py::_assert_cashflow_balance`) gained the tax term.
+`test_payroll_tax.py`: switch tests removed; "without the tax" comparisons use a monkeypatched rule
+(`_without_the_tax`); hand numbers unchanged.
+
+First full run after the implementation: 16 failed (the pins and identities above), 3501 passed.
+
+**Upstream issue** `fork-notes/issue-payroll-tax.md` (not posted), repro
+`issue-payroll-tax-repro.py`, output `issue-payroll-tax-repro-output.txt` (stock `dev` `4e55b36`,
+frozen date): FICA entered as a negative big-ticket item, which is how a non-deductible cash
+outflow enters Owl, on the six examples with wages: spending -1.3% to -3.2% a year (alex+jamie
+-3,000, chris+pat -2,794, jack+jill -1,903, joe -1,298, jon+jane -5,156), john+sally's bequest
+16,803 -> 21. Cross-check: the fork's charged totals equal the script's hand FICA, and where the
+fork's model otherwise equals upstream's (alex+jamie, joe, john+sally, jon+jane) the fork's objective
+equals the script's "with FICA" within \$0.16. Upstream mentions no payroll tax: case-insensitive
+search of its 296 `.md`/`.py`/`.tex`/`.toml` files on `4e55b36` (`\bfica\b`, `payroll tax`,
+`0.0765`, `wage base`, `medicare tax` not after "additional", `social security tax\b`,
+`self-employment tax`): one hit, digits in `data/mortality_tables.py:370`.
+
+Full suite after the fixes: **3517 passed, 1 skipped** (11:56; 3516 + 5 new - 4 tests of the switch). flake8 clean;
+Ruff only upstream's three `B905`s.
+
 ## Review of the merges after step 5 (2026-10-24, on `claude/phase5-step1`)
 
 The user asked for a check of `2f18d7b` (`e3592e7`, #205), `8f99a4c` (`3444729`), `8f90118`
@@ -2416,7 +2466,7 @@ Fixed here:
 4. **#185 status.** The previous session's reply said #185 was still open with the maintainer; per
    the user it was dropped (upstream table row and CLAUDE.md updated; not checked on GitHub).
 
-Open, the user's call: **the payroll tax is an opt-in switch** (`withPayrollTax`, off in code, D3
+Open, the user's call (decided the same day: always on, issue drafted; next section): **the payroll tax is an opt-in switch** (`withPayrollTax`, off in code, D3
 "core, opt-in", 2026-10-18), which is the pattern upstream and the user have since rejected: the
 earnings test landed with no option (the fork retired `withEarningsTest` for the same reason), and
 the user dropped "convex" because an opt-in with no signal for when to use it is a burden. The
@@ -3273,6 +3323,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-24, payroll tax always on: **3517 passed, 1 skipped** (11:56). flake8 clean; Ruff only upstream's three B905.
 
 2026-10-24, upstream `dev` `4e55b36` merged: **3516 passed, 1 skipped** (10:59). flake8 clean; Ruff only upstream's three B905.
 

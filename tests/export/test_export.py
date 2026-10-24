@@ -570,6 +570,7 @@ def test_cash_flow_sheet_balances_to_zero(joe_plan):
         - p.U_n  # div taxes (negative flow)
         - p.m_n
         - p.M_n  # Medicare (negative flow)
+        - p.payroll_tax_n  # fork: employee payroll tax on wages (negative flow)
     )
     np.testing.assert_allclose(
         inflows, p.g_n, atol=1.0, err_msg="Cash Flow sheet does not balance: sum of columns != net spending"

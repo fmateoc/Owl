@@ -4135,8 +4135,10 @@ class Plan:
         that bound in years on the itemized branch and in years with a non-itemizer charity, where
         sigma_n - e_n would be negative whenever ordinary income fills the deduction and would take
         room away from the 0% and 15% brackets. Those years keep the brackets unwidened: exact when
-        ordinary income uses the whole deduction, and short of the worksheet's room only when an
-        itemizer's ordinary income is below the deduction.
+        ordinary income uses the whole deduction, and short of the worksheet's room only when
+        ordinary income is below the deduction (itemized or standard plus charity) and the gains
+        reach past the 0% bracket; loop mode, whose widening is clipped at zero, is unaffected
+        (fork-notes/merge-review/nch205_probe.py).
         """
         wide = np.ones(self.N_n, dtype=bool)
         if self._item_lp:

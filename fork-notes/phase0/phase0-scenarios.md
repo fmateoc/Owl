@@ -139,9 +139,10 @@ What each setting does:
   premiums start the year after. Owl keeps one start year for the household, which matches family
   coverage.
 - `withSSAges=["SpouseA"]`: the optimizer chooses A's claiming age (62.0 is only the starting point)
-  and keeps B's fixed. Owl does not model the earnings test yet (Phase 5), so letting it optimize B
-  while B earns above the limit ($24,480 in 2026) could pick an early claim that SSA would partly
-  withhold. Keep B at 67 (FRA) or later while working, or under the limit.
+  and keeps B's fixed. Since upstream `6ea43a9` (2026-10-24) Owl applies the SSA earnings test to
+  every claim before FRA, earnings derived from B's wages, so `withSSAges="optimize"` may search B
+  too (Phase 5 step 4: candidates carry the test). Enter `months worked` in B's last work year:
+  it decides the grace year. (Before the test, the advice was to keep B at FRA while working.)
 - Spousal benefits on B's record start only once both have claimed, as SSA requires. So A's spousal
   top-up, if any, waits for B's claim.
 

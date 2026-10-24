@@ -8,14 +8,18 @@ Run from the repository root:
 It refuses to overwrite an existing workbook, so a filled-in one is never lost.
 
 Columns per person sheet (exact headers, order may vary; only 'year' is required):
-  year, anticipated wages, other inc, net inv,
-  taxable ctrb, 401k ctrb, IRA ctrb, Roth 401k ctrb, Roth IRA ctrb, HSA ctrb,
+  year, anticipated wages, months worked, other inc, net inv,
+  taxable ctrb, 401k ctrb, Roth 401k ctrb, IRA ctrb, Roth IRA ctrb, HSA ctrb,
   Roth conv, Roth conv fixed, QCD, big-ticket items
+(upstream's order, hfp_io._timeHorizonItems)
 
 'anticipated wages' are the wages in AGI: pay minus pre-tax 401k, deductible IRA and payroll
 HSA contributions (upstream #221). An after-tax contribution paid from pay (Roth 401k, Roth IRA,
 taxable) stays in the wages and is paid by a negative 'big-ticket items' entry of the same amount.
-'big-ticket items' is the only signed column (negative = outflow).
+'months worked' (0-12) is read by the SSA earnings test: enter it in the year a spouse stops
+working (the grace year); 0 or blank means 12 in a year with wages.
+'big-ticket items' (negative = outflow) and 'other inc' (negative = an above-the-line deduction,
+e.g. an HSA contribution without wages, upstream #225) are the only signed columns.
 """
 
 import sys
@@ -26,8 +30,8 @@ import openpyxl
 NAMES = ("SpouseA", "SpouseB")  # must match basic_info.names in the case file
 YEARS = list(range(2026, 2057))  # through the year both reach 92 (born 1964)
 COLUMNS = [
-    "year", "anticipated wages", "other inc", "net inv",
-    "taxable ctrb", "401k ctrb", "IRA ctrb", "Roth 401k ctrb", "Roth IRA ctrb", "HSA ctrb",
+    "year", "anticipated wages", "months worked", "other inc", "net inv",
+    "taxable ctrb", "401k ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb", "HSA ctrb",
     "Roth conv", "Roth conv fixed", "QCD", "big-ticket items",
 ]
 # Household sheets, headers only (rows are added per scenario; see phase0-scenarios.md, section 5).
@@ -54,7 +58,7 @@ for sheet, columns in HOUSE_SHEETS.items():
 wb.save(out)
 
 print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
-print("Fill in: anticipated wages (net of contributions) for the working years;")
+print("Fill in: anticipated wages (as in AGI, upstream #221) and months worked (the year work stops) for the working years;")
 print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
 print("         Budget sheet (spending_profile = \"budget\"): core spending plus rent / property tax / insurance /")
 print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")

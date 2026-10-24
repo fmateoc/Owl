@@ -30,7 +30,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | Loop anomaly (NY→FL at year 5) | Not filed (no repro beyond loop noise) |
 | #175 Housing ledger + NJ property tax deduction (design) | **Answered 2026-10-08**: no more state-tax plumbing upstream (NJ deduction stays in the fork); budgeting belongs outside the optimizer, as a module that builds the spending profile ("envelope") the optimizer consumes. Checked: rent inside a custom profile gives the same plan as our ledger under `maxBequest` to the dollar (`envelope_vs_ledger.py`). Plan `phase2b-budget-plan.md`; the user agreed to its 3 decisions and **posted** `issue-175-reply.md` (2026-10-08). **Implemented as Phase 2b** (below). Second answer (2026-10-08): budgeting as a **separate project, "Owl-budget"** (JSON, past five years for extrapolation, rent vs buy, health costs from the literature, HFP filling, Owl's look, files exchanged between two tabs); requirements first. Our input drafted: `owl-budget-requirements.md`, condensed reply `issue-175-reply-2.md`, **posted** by the user (#175 is now a GitHub Discussion). Third answer (2026-10-09): he owns Owl-budget for now; Owl's side of the contract goes in core ("hooks almost all there"); shape-only vs fixed lines open ("how the profile interacts with longevity"); JSON and Excel both, MCP on both sides for ladders of budgets; sources from a web search (BLS CE, HRS, EBRI, Vanguard, Fidelity); the budget must cover ~10 years before retirement; **cost function**: split core from discretionary spending. Answered first with the essential-lines prototype and measurements (`issue-175-reply-3-measured.md`, superseded: the maintainer keeps the discussion at the brainstorming level); restarted by the user as a conceptual reply, `issue-175-reply-3.md` (lines tied to the clock that causes them, calendar / age / household event, instead of Owl's plan-length-stretched smile; one series per household state as the time-series contract; priority tiers instead of utility weights, bequest as a possible tier; one risk tolerance per tier in stochastic spending; own history for the level, literature for change with age), **posted 2026-10-09** (Discussion #177). Maintainer's reply (relayed by the user 2026-10-15): "Sorry for the delay. Give me a day to digest all the good info you provided. I mean really good info. The soft part of discretionary spending expressed as a slack variable is a total novelty in modeling deccumulation." A deferral, no decision yet; nothing to answer until he does |
 | #176 HFP rates below 1 read as 100x (0.5% real growth -> 50%) | Found 2026-10-08 while building the Budget sheet; repro on `dev` `156d812`: a home's end value $2.07M -> $509 billion, loan payment $15k -> $360k after save and reload. **Fixed upstream** (`ec6a5e0`, credited): only percent-formatted cells converted, each matched to its row by value and position. Merged 2026-10-09, ours dropped (their 6 tests cover our 4); the fork's Budget sheet keeps its rates as typed |
-| #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing") |
+| #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing"). **Dropped upstream** (relayed by the user 2026-10-24): the maintainer's reluctance stood ("Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence"); apart from the SS-taxability problems found while measuring (#193, fixed upstream), the issue was dropped/closed. Not checked on GitHub (no API access to upstream from this session). Itemizing stays fork-only |
 | #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | **Fixed upstream** (`dev` `37afa2a`, 2026-10-22) except #204 (proposal), #205, #206; #218 (survivor's home-sale exclusion) too. Merged 2026-10-22, theirs; fork adaptations and a review fix in "Upstream `dev` `37afa2a` merged". Checked before the fixes 2026-10-21: no claim found wrong (`fork-notes/upstream-199-217/README.md`) |
 | #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, a PR on `dev` promised); revised the same day after the user's review: no option, the test is part of the model (fork: `withEarningsTest` retired); posted 2026-10-23. **PR #222 landed as `6ea43a9` (2026-10-24)**, squashed, the user co-author, `gross earnings` dropped for derived earnings; the maintainer closed PR #222 and #220 by hand (relayed 2026-10-24; section "Upstream `dev` `4e55b36` merged") |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md`, **revised after the user's review: drop "convex"** (as an opt-in it is a choice with no signal for when to make it; the warning misses a loop that settles short; dominated by "optimize" when the rest is exact); **PR reworked the same day**: branch `ss-convex-pr` force-pushed (lease on `fb8b10e`) to `e5a9ad5`, one commit on `dev` `7abed19` (the warning only, pointing to `withSSTaxability="optimize"`; `tests/plan/test_ss_residual_warning.py`; upstream suite 2869 passed, 1 skipped); new PR title/text (`pr-193-body.md`) **pasted and reply (`pr-196-reply.md`) posted by the user** (2026-10-17); awaiting the maintainer. The reply promises the local-search LTCG issue (`issue-ls-ltcg.md`) as a separate issue |
@@ -2362,6 +2362,72 @@ HFP (`otherFiles/` is empty in this container).
 Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19 new tests: 16 in
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
+
+## Review of the merges after step 5 (2026-10-24, on `claude/phase5-step1`)
+
+The user asked for a check of `2f18d7b` (`e3592e7`, #205), `8f99a4c` (`3444729`), `8f90118`
+(`6ea43a9`, earnings test as landed, #225) and `14fcdc2` (`4e55b36`, #221/#223/#224/#226): technically
+correct, and consistent with upstream's approach. The standard used, from the maintainer's own
+words: model a rule exactly when it changes a decision the household faces soon, without making
+the planner harder to use (inputs, options) or slower to solve; derive inputs from what the plan
+already holds rather than add columns; no new loop quantities (#185); take upstream's version of
+anything it lands.
+
+Held (checked):
+- **Take theirs.** `3444729`: our #197 test dropped for upstream's. `6ea43a9`: upstream's earnings
+  test, tests and docs taken; no remnant of the fork's version (`gross earnings`, `withEarningsTest`,
+  `_warnGrossEarningsFallback`, `_ssEntitledFrom`: grep over `src ui tests info examples
+  fork-notes/phase0` finds only upstream's two asserts that the column is absent).
+- **#205 guard (`e3592e7`)** adds no column and no binary (upstream's own commit avoids even an inert
+  column), and leaves an approximation in place rather than a binary per year, as upstream chose for
+  #206. Its residual change (floors count only in years that itemize) measures what the LP sees.
+- **#225 in fork code.** The fork's AGI-based quantities (federal floors, SALT phase-down, NY
+  medical floor, STAR income) read `MAGI_n`, which carries upstream's `dl` correction.
+  `_state_agi_and_ti` starts from `G_n + e_n + Q_n` without it; probed: with a \$20,000 deduction on
+  \$30,000 of income the LP lowers `e_n` (G 0, e 10,000, MAGI 10,000, NY AGI 8,000 = MAGI less the
+  \$2,000 exemption), so `dl` is positive only when the deduction exceeds all income, where NY AGI
+  is near zero and its only readers (recapture from \$107,650, the line 46 cut from \$200,000) cannot
+  be reached. No code.
+- **#226** reaches every fork solve: the fork calls HiGHS only through `_run_highs`, and
+  `_run_highs_lp_with_duals` is upstream's.
+- **#221 in the payroll tax**: same base as the earnings test (merge `14fcdc2`).
+
+Fixed here:
+1. **The #205 guard's limitation was undocumented and misdescribed.** PROGRESS, CLAUDE.md and the
+   docstring said the guard is short of the worksheet "only when an itemizer's ordinary income is
+   below the deduction"; it also covers non-itemizer charity years. Probed
+   (`fork-notes/merge-review/nch205_probe.py`, output `_2026-10-24.txt`, frozen date, FL, \$3,000
+   charity line): in a \$4M-taxable couple with or without a mortgage, ordinary income filled the
+   deduction in every year (G > 0), where the guard is exact; with no tax-deferred balance, 8
+   years had G = 0 but gains (~\$12.8k) stayed in the 0% bracket: cost \$0. Under
+   `withLTCG="optimize"` the guard left more bequest than upstream's rows in every year in all
+   three cases (\$2,302, \$3,885, \$209). It can cost only when ordinary
+   income is below the deduction and gains pass the 0% bracket's top (\$98,900 MFJ in 2026), only
+   under `withLTCG="optimize"` / local search (loop mode: identical plans with and without the guard
+   in all three cases). Not worth code; now a stated limitation in `modeling-capabilities.md`'s
+   itemized row, as upstream states #206, and the docstring and gotcha corrected.
+2. **Household inputs behind upstream.** `gen_hfp_us.py` lacked `months worked` (the column that
+   decides the grace year, the case the maintainer calls the one where the test matters most) and
+   said `big-ticket items` is the only signed column (#225 made `other inc` signed too); it now
+   writes upstream's columns in upstream's order and states #221/#225. `phase0-scenarios.md` §4b
+   still said the earnings test is not modeled and to keep the worker at FRA; corrected (the full
+   §4/§4b rewrite stays with step 6).
+3. **CLAUDE.md gotchas** still described the pre-#221 earnings (`kappa_ijn[:, :3]`); corrected.
+4. **#185 status.** The previous session's reply said #185 was still open with the maintainer; per
+   the user it was dropped (upstream table row and CLAUDE.md updated; not checked on GitHub).
+
+Open, the user's call: **the payroll tax is an opt-in switch** (`withPayrollTax`, off in code, D3
+"core, opt-in", 2026-10-18), which is the pattern upstream and the user have since rejected: the
+earnings test landed with no option (the fork retired `withEarningsTest` for the same reason), and
+the user dropped "convex" because an opt-in with no signal for when to use it is a burden. The
+payroll tax meets the maintainer's test as well as the earnings test does: it changes a near-term
+decision (an extra year of work, part time), needs no input (it reads the derived earnings), and
+costs nothing to solve (a constant of the cash-flow row). Upstream does not model it: since #221
+`anticipated wages` are the AGI wages and are counted as cash, so a working year's cash is
+overstated by 7.65% of wages (plus 0.9% above the Additional Medicare threshold); upstream's docs
+do not mention payroll tax or FICA (grep over its `.md`, `.py`, `.tex` on `4e55b36`: no hit).
+Options: (a) on by default with no switch, moving the fork's recorded values for cases with wages;
+(b) a design issue upstream at the concept level, as #220 was; (c) leave as is.
 
 ## Local-search speed on the fork, before and after `3444729` (2026-10-24, on `claude/phase5-step1`)
 

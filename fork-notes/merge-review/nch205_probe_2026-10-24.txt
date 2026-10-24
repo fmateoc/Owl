@@ -1,0 +1,24 @@
+owlplanner from /home/user/Owl/src/owlplanner/__init__.py
+[charity only] withLTCG=optimize none        : bequest today 5,816,286; LTCG tax 268,533 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[charity only] withLTCG=optimize loop guard  : bequest today 5,826,847; LTCG tax 266,777 (years unwidened 31, of them G_n = 0: 0, LTCG tax there 0)
+[charity only] withLTCG=optimize loop no guard: bequest today 5,824,545; LTCG tax 268,923 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[charity only] withLTCG=loop none        : bequest today 5,805,754; LTCG tax 274,105 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[charity only] withLTCG=loop loop guard  : bequest today 5,816,276; LTCG tax 272,351 (years unwidened 31, of them G_n = 0: 0, LTCG tax there 0)
+[charity only] withLTCG=loop loop no guard: bequest today 5,816,276; LTCG tax 272,351 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=optimize none        : bequest today 5,139,368; LTCG tax 250,215 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=optimize loop guard  : bequest today 5,153,589; LTCG tax 247,178 (years unwidened 31, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=optimize loop no guard: bequest today 5,149,704; LTCG tax 251,043 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=loop none        : bequest today 5,126,517; LTCG tax 256,588 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=loop loop guard  : bequest today 5,142,555; LTCG tax 252,510 (years unwidened 31, of them G_n = 0: 0, LTCG tax there 0)
+[mortgage] withLTCG=loop loop no guard: bequest today 5,142,556; LTCG tax 252,509 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[no tax-deferred] withLTCG=optimize none        : bequest today 1,962,682; LTCG tax 12,345 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[no tax-deferred] withLTCG=optimize loop guard  : bequest today 1,967,056; LTCG tax 12,001 (years unwidened 31, of them G_n = 0: 8, LTCG tax there 0)
+  2026: G        0 e   17,415 sigma   32,200 Q    12,851 LTCG tax       0
+  2027: G        0 e   17,284 sigma   33,102 Q    12,812 LTCG tax       0
+[no tax-deferred] withLTCG=optimize loop no guard: bequest today 1,966,847; LTCG tax 12,448 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[no tax-deferred] withLTCG=loop none        : bequest today 1,962,681; LTCG tax 12,345 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+[no tax-deferred] withLTCG=loop loop guard  : bequest today 1,967,056; LTCG tax 12,001 (years unwidened 31, of them G_n = 0: 8, LTCG tax there 0)
+  2026: G        0 e   17,415 sigma   32,200 Q    12,851 LTCG tax       0
+  2027: G        0 e   17,284 sigma   33,102 Q    12,812 LTCG tax       0
+[no tax-deferred] withLTCG=loop loop no guard: bequest today 1,967,056; LTCG tax 12,001 (years unwidened 0, of them G_n = 0: 0, LTCG tax there 0)
+1 passed in 237.47s (0:03:57)

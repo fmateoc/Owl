@@ -26,22 +26,7 @@ from sys import platform
 from datetime import date
 from io import StringIO
 
-import numpy as np
-
 import owlplanner as owl
-from owlplanner import tax_federal
-
-
-@pytest.fixture(autouse=True)
-def _upstream_model_without_payroll_tax(monkeypatch):
-    """Fork: these recorded values are upstream's, for upstream's model, which charges no payroll
-    tax. The fork's payroll tax (always charged on wages) is taken out here so the values keep
-    checking that the fork equals upstream everywhere else; it is tested in
-    tests/plan/test_payroll_tax.py and test_payroll_tax_always.py."""
-    def nothing(earnings, gamma_n, n_d, N_n, thisyear):
-        return np.zeros_like(earnings), np.zeros_like(earnings), np.zeros(N_n)
-
-    monkeypatch.setattr(tax_federal, "payrollTax", nothing)
 
 
 # Updated after HFP dollar conversion ($ not $k) in update_hfp_coverage.py
@@ -65,23 +50,28 @@ def _upstream_model_without_payroll_tax(monkeypatch):
 # 408A(d)(3)(F) does, rather than its seventh (#224): BEQUEST1 959_420 -> 959_477, the same with HiGHS
 # and MOSEK (recorded on darwin; CI's linux gives the same 959_476.71, win32 assumed the same, not
 # rerun there). Jack and Jill are past 59 1/2, so #223's basis rows do not apply.
+# Updated when the employee's payroll tax started being paid on wages (#227): the HFP's wages pay
+# $43,988 of it in 2026-2028. SPENDING1 89_154 -> 87_226, BEQUEST1 959_477 -> 859_316 (linear in
+# the tax: $2.28 of bequest per dollar of it, at half the tax and at all of it, on 1969 returns),
+# SPENDING2 99_246 -> 97_199, SPENDING1_FIXED 93_255 -> 90_852 (recorded with HiGHS on linux;
+# darwin and win32 take the same, not rerun there).
 if platform == "darwin":
-    SPENDING1 = 89_154
-    BEQUEST1 = 959_477
-    SPENDING2 = 99_246
-    SPENDING1_FIXED = 93_255
+    SPENDING1 = 87_226
+    BEQUEST1 = 859_316
+    SPENDING2 = 97_199
+    SPENDING1_FIXED = 90_852
     BEQUEST1_FIXED = 500_000
 elif platform == "linux":
-    SPENDING1 = 89_154
-    BEQUEST1 = 959_477
-    SPENDING2 = 99_246
-    SPENDING1_FIXED = 93_255
+    SPENDING1 = 87_226
+    BEQUEST1 = 859_316
+    SPENDING2 = 97_199
+    SPENDING1_FIXED = 90_852
     BEQUEST1_FIXED = 500_000
 elif platform in "win32":
-    SPENDING1 = 89_154
-    BEQUEST1 = 959_477
-    SPENDING2 = 99_246
-    SPENDING1_FIXED = 93_255
+    SPENDING1 = 87_226
+    BEQUEST1 = 859_316
+    SPENDING2 = 97_199
+    SPENDING1_FIXED = 90_852
     BEQUEST1_FIXED = 500_000
 else:
     raise RuntimeError(f"Unknown platform {platform!r}: no reference reproducibility values defined")

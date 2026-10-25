@@ -1,5 +1,55 @@
 ### Version WIP
 
+#### Fixed: a mixed-integer plan can no longer pay a lower IRMAA tier than its MAGI
+
+A solver accepts a binary within its integrality tolerance of 0 or 1, about one millionth. Times
+a bracket's big-M, the year's income ceiling in the tens of millions, that let a few dollars into
+a bracket whose binary counted as off: in Case_jordan+taylor under local search, IRMAA's top tier
+held \$17 to \$287 of MAGI, so years a few dollars past a tier edge paid the tier below, and the
+plan's premiums were \$2,300 to \$3,470 a year lower than its own MAGI implies (\$63,522 of IRMAA
+residual over the plan). After every mixed-integer solve (branch-and-bound, local search, and
+the solves around them, with either solver), the binaries are now rounded and the plan re-solved
+as an LP with them pinned, which closes every such bracket exactly; the re-solve is skipped when
+the binaries are already exact. Across the 19 examples under local search, jordan+taylor's
+residual goes to \$0 for \$66 less bequest (0.004%), three others lose a few dollars of hidden
+residual, and the other 15 are unchanged, at the same run time. Under branch-and-bound,
+jordan+taylor's \$4,593 residual goes too, and both methods now give the same plan.
+
+#### New: Case_riley+casey, bridging to Medicare on the ACA in Georgia
+
+A married couple, 62 and 54, in a state without the Medicaid expansion, with most of their savings
+in high-basis taxable accounts. It gathers rules no other example reaches: the Social Security
+earnings test's grace year (Riley claims in July after six months of part-time work, so nothing is
+withheld; without *months worked*, \$9,876 would be), Roth 401(k) contributions paid from pay with
+their big-ticket offset (#221), an HSA contribution from savings deducted through a negative
+*other inc* (#225), and ACA pricing with the coverage gap and the 400% cliff (#202). It ships in
+loop mode, like the other examples, and costs about a second in the test suite. In loop mode it
+spends \$116,758 a year and pays the full benchmark in 2026-2028; local search prices the cliff
+exactly and spends 2% more for \$58k less in premiums. The docs now also say that in the year
+Medicare starts, an HSA deduction entered as a negative *other inc* covers only the months before
+it, the share of the contribution **Owl** keeps.
+
+#### Tests: slow quality checks run on demand
+
+A `deep` marker holds checks of solution quality that take minutes, left out of the default run,
+CI included (`pytest.ini`): run them with `pytest -m deep` or `make tests-deep` when changing an
+algorithm or a feature they cover. They are the riley+casey comparison of loop and local search,
+the two-spouse claiming-age search, the #197 reach of local search, and local search through the
+MCP tools. The local-search fixture of `test_local_search.py` now runs with a 30 s budget: its
+tests hold whatever the search reaches, and with HiGHS it spent the whole 300 s default.
+
+#### Fixed: falling back on an earlier iterate takes the most settled one, not the richest
+
+When an iterate of the self-consistent loop cannot be solved even with a shortened parameter
+step, the loop falls back on an earlier one. It took the one with the best objective. On a tight
+case the costs the loop feeds back (premiums, ACA costs, NIIT, the taxable part of Social Security,
+LTCG bracket room) start at nothing and catch up pass by pass, so the best objective belongs to the
+iterate least charged for what its own income brings: a case heading from \$6.6M down to a few
+thousand dollars reported \$1.1M, and a lower spending floor could report less left at the end
+than a higher one. The fallback now takes the iterate whose own income moves its parameters least,
+the latest of those tied, and every iterate's residual is kept in the trace. Thanks to Dmitry
+Fink (@finik) for the diagnosis and the fix (#186).
+
 #### Documented: the stacked capital-gains tax can exceed the worksheet's line 25 by up to \$57 a year
 
 The Qualified Dividends and Capital Gain Tax Worksheet ends with the lesser of the stacked tax

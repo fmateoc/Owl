@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 import owlplanner as owl
-from owlplanner import localsearch, tax_federal
+from owlplanner import localsearch
 from owlplanner.config import config_to_ui, ui_to_config, load_toml
 
 _EXAMPLES = pathlib.Path(__file__).resolve().parents[2] / "examples"
@@ -50,7 +50,10 @@ def jack_jill_pair():
     loop = _load()
     loop.solve(loop.objective, options=_loop_options(loop))
     ls = _load()
-    ls.solve(ls.objective, options={**ls.solverOptions, "breakpointMethod": "local-search"})
+    # A 30 s budget: what these tests check (never worse than the loop, no full MILP, the Summary label,
+    # the restored LTCG binaries) holds whatever the search reaches, and HiGHS otherwise spends the
+    # whole 300 s default here.
+    ls.solve(ls.objective, options={**ls.solverOptions, "breakpointMethod": "local-search", "localSearchTime": 30})
     return loop, ls
 
 
@@ -232,30 +235,19 @@ def test_repeated_problem_is_not_searched_again():
     assert log[-1]["steps"] == [], log[-1]
 
 
-@pytest.fixture
-def upstream_model_without_payroll_tax(monkeypatch):
-    """Fork: this recorded value is upstream's, for upstream's model, which charges no payroll
-    tax. The fork's payroll tax (always charged on wages) is taken out here so the value keeps
-    checking the search on upstream's problem; it is tested in tests/plan/test_payroll_tax.py
-    and test_payroll_tax_always.py."""
-    def nothing(earnings, gamma_n, n_d, N_n, thisyear):
-        return np.zeros_like(earnings), np.zeros_like(earnings), np.zeros(N_n)
-
-    monkeypatch.setattr(tax_federal, "payrollTax", nothing)
-
-
 @pytest.mark.toml
-def test_moves_that_cross_an_ltcg_threshold_with_ss_taxability(upstream_model_without_payroll_tax):
+@pytest.mark.deep
+def test_moves_that_cross_an_ltcg_threshold_with_ss_taxability():
     """#197: the better plan moves ordinary income across T15 in the same years as it changes SS
     taxability. Step (b) pins the LTCG binaries, but the search relaxes the half of their link
     rows that held income above a threshold, and (b') frees them with the SS ball once the rounds
-    stall, so it reaches the branch-and-bound plan (bequest 31,778; 20,004 when blocked).
-    Fork: with the payroll tax (Sally's 2026 wages) both give 14,013.49 (2026-10-24)."""
+    stall, so it reaches the branch-and-bound plan (bequest 31,778; 20,004 when blocked). With the
+    payroll tax on John's 2026 wages (#227), both give 14,013.49."""
     p = _load("Case_john+sally.toml")
     p.solve(p.objective, options={**p.solverOptions, "breakpointMethod": "local-search"})
     assert p.caseStatus == "solved"
     assert "->" not in p.breakpointMethodUsed, p.breakpointMethodUsed
-    assert p.bequest > 31_000.0, p.bequest
+    assert p.bequest > 14_000.0, p.bequest
 
 
 def test_returned_ltcg_binaries_satisfy_the_full_rows(jack_jill_pair):

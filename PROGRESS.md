@@ -33,7 +33,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #185 Federal itemized deductions (design; `fork-notes/issue-federal-itemized.md`) | Posted by the user. Maintainer's reply (relayed 2026-10-15): "I'll need to look more deeply into it. Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence. I'll run a few tests and get back to you." Measured the same day against that concern (section "Itemizing and loop convergence"); data comment `fork-notes/issue-185-reply.md` posted by the user (relayed 2026-10-16). The NY + mortgage failure it mentioned was traced to upstream's SS loop and filed as #193 (2026-10-16); pointer comment linking #193 posted by the user (2026-10-16). Rechecked 2026-10-17 after the NJ removal: conclusions hold; the NJ stakes rise on upstream's NJ (section "#185 after the changes since filing"). **Dropped upstream** (relayed by the user 2026-10-24): the maintainer's reluctance stood ("Adding more stuff to the recursion loop is what causes cycling and prevents monotonic convergence"); apart from the SS-taxability problems found while measuring (#193, fixed upstream), the issue was dropped/closed. Not checked on GitHub (no API access to upstream from this session). Itemizing stays fork-only |
 | #199-#217 (not ours; filed 2026-10-20/21, 17 by `rationalpiper`, #208 by the maintainer) | **Fixed upstream** (`dev` `37afa2a`, 2026-10-22) except #204 (proposal), #205, #206; #218 (survivor's home-sale exclusion) too. Merged 2026-10-22, theirs; fork adaptations and a review fix in "Upstream `dev` `37afa2a` merged". Checked before the fixes 2026-10-21: no claim found wrong (`fork-notes/upstream-199-217/README.md`) |
 | #220 SSA earnings test (design issue, ours) | **Posted by the user 2026-10-22** (`fork-notes/issue-earnings-test.md`, Phase 5 step 9): stock-`dev` `37afa2a` evidence (three examples pay SS before FRA in a work year; `withSSAges` picks Pat 62y6m inside her last work year), fork stakes, four questions (core and default, the earnings input, the stop month, survivors). **Maintainer (relayed 2026-10-23):** overlooked; "What did you end up doing?"; he trusts our judgement to fill the gap; only requirement: "the optimize full MILP is still affordable". Reply draft `fork-notes/issue-220-reply.md` (what the fork built, full-MILP cost measured, a PR on `dev` promised); revised the same day after the user's review: no option, the test is part of the model (fork: `withEarningsTest` retired); posted 2026-10-23. **PR #222 landed as `6ea43a9` (2026-10-24)**, squashed, the user co-author, `gross earnings` dropped for derived earnings; the maintainer closed PR #222 and #220 by hand (relayed 2026-10-24; section "Upstream `dev` `4e55b36` merged") |
-| #227 Employee payroll tax on wages (design issue, ours; `fork-notes/issue-payroll-tax.md`) | **Posted by the user 2026-10-25**, PR offer kept. Stock-`dev` `4e55b36` evidence (`issue-payroll-tax-repro.py`): wages are cash with no FICA; the six examples with wages overstated, spending 1.3-3.2%/yr, john+sally's bequest 16,803 -> 21. Three choices left to him: wage-base indexing after 2026, SE tax (SE earnings entered as wages would pay about half), default on. The fork charges the tax with no option (2026-10-24) and has no `withPayrollTax` key (2026-10-25). If he lands his own version, take his and drop ours (keeping the fork's upstream-pin fixtures only while upstream's model differs) |
+| #227 Employee payroll tax on wages (design issue, ours; `fork-notes/issue-payroll-tax.md`) | **Posted by the user 2026-10-25; answered the same day: PR requested** in a shape he set (no option, `payroll_n` a cash-flow constant, Summary line for every case, re-pins). **PR built** 2026-10-25: branch `payroll-tax-pr` (`55b49ba` on `dev` `22ce72b`), text `fork-notes/pr-227-body.md`, for the user to open. john+sally's \$21: the loop's plan at the zero-bequest edge, \$374 short on IRMAA (PROGRESS.md "PR for #227"). The fork's payroll code equals the PR's. When it lands, take upstream's version |
 | PR #196 (#193: `"convex"` + Summary label + SS-residual warning) | Opened by the user 2026-10-17 at the maintainer's request ("bundle both points above in a single PR and I'll test and push"). Head `fmateoc:ss-convex-pr` (`fb8b10e`: upstream `ss-convex` + `dev` `2b34633` merged + our commit), base `dev`. Upstream suite 2871 passed, 1 skipped. Text `fork-notes/pr-193-body.md`. If he pushes to the branch or merges it under new hashes, compare trees before the next sync. **Maintainer on the PR (2026-10-17, relayed):** "Are you sure you want to keep the ss-convex implementation? My tests were mixed. I am not sure this adds much. Your call." Measured the same day (section "PR #196: is 'convex' worth keeping?"); reply draft `fork-notes/pr-196-reply.md`, **revised after the user's review: drop "convex"** (as an opt-in it is a choice with no signal for when to make it; the warning misses a loop that settles short; dominated by "optimize" when the rest is exact); **PR reworked the same day**: branch `ss-convex-pr` force-pushed (lease on `fb8b10e`) to `e5a9ad5`, one commit on `dev` `7abed19` (the warning only, pointing to `withSSTaxability="optimize"`; `tests/plan/test_ss_residual_warning.py`; upstream suite 2869 passed, 1 skipped); new PR title/text (`pr-193-body.md`) **pasted and reply (`pr-196-reply.md`) posted by the user** (2026-10-17); awaiting the maintainer. The reply promises the local-search LTCG issue (`issue-ls-ltcg.md`) as a separate issue |
 | #197 Local search pins the LTCG regime binaries in step (b) (`fork-notes/issue-ls-ltcg.md`) | **Filed by the user as #197** (2026-10-17). **Patch applied in the fork** the same day; household stand-ins rerun, no decision moves. Stock repro on `dev` `7abed19`: john+sally local-search preset 20,004 vs branch-and-bound 31,778; patch (step (b) leaves `zl` free) gives 31,778, never lower on the 18 examples, 1.53x the time. Section "Local search and the LTCG family" |
 | #193 SS-taxability loop short of the exact model, stuck at the cap on LP ties (`fork-notes/issue-ss-loop.md`) | **Filed by the user 2026-10-16.** Stock repro `issue-ss-loop-repro.py` (output from `dev` `10b9f72`): loop $33.7k-48.6k below `withSSTaxability="optimize"` on the NY + mortgage couple, cap on ties, Summary error bar +-$358 on a plan $38k short, local search right. Questions: residual in the Summary; re-solve or recommend exact SS on a large SS residual. Maintainer (2026-10-16): how does it compare with `mipStrategy="local-search"`? Measured: local search on SS = branch-and-bound to the dollar; presets +$270-524; reply `issue-193-reply.md` **posted by the user**, with a correction (exact SS takes 14-21 s, not "a few seconds"). **Fixed upstream the same day** (`6b02671`, `83a580b`: `withSSTaxability="convex"`, opt-in), merged in `ae1fb9d`; then moved by the maintainer to branch `ss-convex` with `c22f46d` (cheaper cap probe), merged in `bb00250`; checked with the repro at `c22f46d` (equals `"optimize"` to the dollar, 0.8-1.2 s); confirmation `issue-193-reply-2.md` (at the branch tip) **posted by the user**; experiment branch `ss-binaries` (`abd39b4`, fewer SS binaries) measured, not merged: exact, 3.6-6.3x the nodes on the repro; the maintainer concluded it and deleted the branch, our comment draft not posted |
@@ -2364,6 +2364,72 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## PR for #227 built on stock `dev`; upstream `dev` `22ce72b` merged; fork aligned (2026-10-25, on `claude/lucid-gates-uo4kbu`, continued from `claude/phase5-step1`)
+
+**#227 answered** (maintainer, relayed by the user 2026-10-25): "Please go ahead and submit a PR on
+`dev`, as with #222." His repro check on `dev` `03aaef35`: five rows to the dollar, chris+pat
+within \$6. His shape: wages stay gross; `payroll_n` from a pure function, refreshed at solve time;
+only a constant on the cash-flow RHS next to `debt_payments_n`; not in `T_n` nor the effective
+rate; earnings as the earnings test derives them; wage base \$184,500 in today's dollars; 0.9%
+threshold switching at the first death; on for every case, no option; SE tax a documented
+limitation. Outputs: Cash Flow column beside the taxes (shown when any year has one), `planData`,
+*Tax bills + Med.*, `_check_cashflow_balance`, `lifetime_allocation` taxes, a Summary line for
+every case, the plan metric `owlcli compare` reports. Tests: the pure function, cash-flow balance,
+the twelve examples without wages unchanged to the cent, the ones with wages re-pinned on all
+three platforms. And: check that no floor or constraint binds in john+sally's 16,803 -> 21.
+
+**PR branch** `payroll-tax-pr` (pushed): one commit `55b49ba` on upstream `dev` `22ce72b`, built in
+a worktree of stock `dev` (no fork code). Text for the user to open: `fork-notes/pr-227-body.md`.
+Stock suite: 3205 passed, 1 skipped (7:16); `-m deep`: 4 passed; flake8 clean; Ruff only the
+three B905 already on `dev`. Beyond his list (flagged in the text): `annual_cashflow_mix` taxes
+too, `owlcli run` JSON keys, the paper (`\mathcal{F}_n`).
+
+**Measured** (all 19 examples, `22ce72b` vs the branch, frozen date, HiGHS, real runs): the twelve
+without wages identical to the cent (basis, bequest, federal and state tax); alex+jamie -2,999.91,
+chris+pat -2,794.09, jack+jill -1,902.97, joe -1,298.34, jon+jane -5,156.17, riley+casey -242.14
+(spending \$/yr; riley+casey is new since #227, \$48,000 of wages, \$3,672 of tax), john+sally
+bequest 16,802.68 -> 21.00. Re-pinned (linux only; darwin and win32 tables take the linux values,
+said so in the comment and the PR): `test_toml_cases`, `test_repro` (BEQUEST1 959,477 -> 859,316:
+linear, \$2.28 per dollar of tax at half and full tax), AMO fixture HiGHS for five cases (MOSEK
+records moved by the HiGHS change, marked as estimates: no license here), the deep #197 test's
+bar 31,000 -> 14,000.
+
+**john+sally, answered with measurements** (scaling the tax by s; scripts in the session scratchpad,
+not kept): under the loop the bequest falls a constant \$1.968 per dollar of tax for s = 0..0.97
+with zero fixed-point residual (compounding: 2026 withdrawals all from taxable; real growth to the
+horizon 1.998, every account 60/40). It reaches zero at s = 0.97; past that the zero bound on final
+balances binds and the loop ends on plans that undercharge IRMAA: residual \$67 (0.975), \$117
+(0.98), \$250 (0.99), \$374 (1.0, exit "monotonic"), "unsolvable iterate" at 1.2 (\$2,809). So the
+shipped \$21 is a plan \$374 short on IRMAA. Local search: 31,778.17 / 22,895.83 / 14,013.49 at
+s = 0 / 0.5 / 1 (constant \$2.019 per dollar, no residual); branch-and-bound 14,013.49 at s = 1.
+`withMedicare="optimize"` alone: "unsolvable iterate" at s = 1 (7,238.50, LTCG tax 0), not a
+reference. The PR leaves the example alone and offers three options (keep, pin under local
+search, lower `netSpending`). Corrected an old fork note: the 2026 wages are John's, not Sally's.
+
+**Found on the way** (in the PR text, not changed): on `dev` `22ce72b`, the #197 deep test also
+passes with step (b') switched off (31,778.17 without the tax, 14,013.49 with it), so it no
+longer shows that (b') is needed.
+
+**Upstream `dev` `22ce72b` merged** (from `4e55b36`): `1ccc1cf` (#186, the unsolvable-iterate
+fallback takes the most settled iterate; `trace["residuals"]`), `24666eb` (Case_riley+casey, a
+`deep` marker, `pytest.ini` `-m "not deep"`), `03aaef3` (`_snapBinaries` after every MIP solve, in
+the generic dispatch, so the fork's binaries are covered), `22ce72b` (version). Two conflicts:
+`plan.py` trace keys (the fork builds the `_lp` keys from `_SC_PARAMS`; upstream's `residuals`
+added), `test_local_search.py` (`deep` marker). CHANGELOG.md auto-merged to upstream's.
+
+**Fork aligned with the PR**, so the merge is trivial when upstream lands it: `payroll_tax_n` ->
+`payroll_n`, `payroll_addl_n` and `Plan._payroll_tax` gone, `tx.payrollTax(N_i, earnings_in,
+gamma_n, n_d, N_n)` returns one total per year (the fork's per-year wage-base table went: one
+constant), the Summary row is unconditional and the fork's *Additional Medicare tax* sub-row is
+gone, the Cash Flow and CSV column sit after NIIT. The payroll lines of `tax_federal.py`,
+`plan.py`, `export.py` and `cli/formatters.py` against upstream equal the PR's line for line
+(checked by diffing the two diffs). Tests and docs: the PR's `test_payroll_tax.py`,
+`test_repro.py`, `test_toml_cases.py`, `test_cashflow_balance.py`, `test_export.py`,
+`test_local_search.py` and AMO fixture copied as is (the fork's "upstream model without payroll
+tax" fixtures dropped; the fork passes the PR's pins), `test_payroll_tax_always.py` deleted; the
+PR's doc hunks applied after removing the fork's payroll passages. Fork suite: 3514 passed,
+1 skipped (8:54); flake8 clean; Ruff only upstream's three B905.
+
 ## The fork's smile dropped (2026-10-25, on `claude/phase5-step1`)
 
 User's decision after the review (option A, taken further than the opt-in proposed): the fork's
@@ -3402,6 +3468,7 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
 
 ## Test status
 
+2026-10-25, upstream `dev` `22ce72b` merged and the payroll tax aligned with the #227 PR: **3514 passed, 1 skipped** (8:54; `deep` tests deselected by upstream's `pytest.ini`). flake8 clean; Ruff only upstream's three B905. The PR branch on stock `dev`: 3205 passed, 1 skipped (7:16); `-m deep` 4 passed.
 2026-10-25, the fork's smile dropped: **3492 passed, 1 skipped** (7:14); the 23 fewer are the removed smile tests (15 in `test_smile_start_age.py`, 6 fork tests in `test_spending.py`, 2 schema round-trips of `smile_start_age`), checked by comparing collected test ids.
 2026-10-25, fork review (decorator restored on `_add_defunct_constraints`): **3515 passed, 1 skipped** (7:10).
 2026-10-25, `withPayrollTax` removed: **3515 passed, 1 skipped** (11:39). flake8 clean.

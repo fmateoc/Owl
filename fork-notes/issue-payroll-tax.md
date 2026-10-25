@@ -1,6 +1,6 @@
 # Draft upstream design issue: the employee payroll tax on wages, for the user to post
 
-Status: **posted by the user as #227 (2026-10-25)**, with the PR offer kept. Drafted 2026-10-24, reviewed 2026-10-25 on `claude/phase5-step1` (pushed as `claude/eager-hawking-scp4gw`),
+Status: **posted by the user as #227 (2026-10-25)**, with the PR offer kept. Answered the same day: PR requested; built as `payroll-tax-pr` (`fork-notes/pr-227-body.md`). Drafted 2026-10-24, reviewed 2026-10-25 on `claude/phase5-step1` (pushed as `claude/eager-hawking-scp4gw`),
 after merging upstream `dev` `4e55b36`. Not posted. Concept level, as #220 was: the gap, the rule,
 a shape and measured stakes on upstream's own examples, not the fork's code. The fork charges the
 tax with no option since 2026-10-24 (PROGRESS.md "Payroll tax always on; upstream issue drafted"),

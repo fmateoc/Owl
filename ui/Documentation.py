@@ -464,19 +464,19 @@ leave it blank where it does not apply), where:
   contributions included in *401k ctrb* were never wages, so they make the earnings slightly high;
   HSA contributions are left out, as a payroll HSA is not in box 5. Self-employment
   earnings count only when entered in *anticipated wages*: the test does not read *other inc*.
+- **Owl** also charges the employee's payroll tax on the same earnings, as a cash outflow of the
+  year: 6.2% of each person's earnings up to the Social Security wage base (\\$184,500 in 2026,
+  held at that level in today's dollars), 1.45% Medicare tax on all of them, and the 0.9%
+  Additional Medicare Tax on the household's combined earnings above \\$250,000 (\\$200,000 after
+  the first death). It is not deductible, so it changes no income tax, and it is reported as
+  *Total payroll tax paid* in the Summary and as a *payroll tax* column of the Cash Flow worksheet.
+  Self-employment tax is not modeled: self-employment earnings entered in *anticipated wages* pay
+  only the employee's share.
 - *months worked* is how many months of that year the person works (a whole number from 0 to 12).
   Earnings are taken as spread evenly over those months. It decides whether a month counts for the
   earnings test's monthly grace-year rule and how much of a full-retirement-age year's earnings
   counts. Where it is 0 or blank, or the column is absent, **Owl** uses 12 in a year with
   earnings.
-- **Owl** also charges the employee's payroll tax on the same earnings (*anticipated wages* plus the
-  contributions above, which are FICA wages too), paid from the plan each year: 6.2% social
-  security tax up to the wage base (\\$184,500 in 2026, held at that level in today's dollars),
-  1.45% Medicare tax, and 0.9% Additional Medicare Tax on the household's earnings above
-  \\$250,000 (married filing jointly) or \\$200,000 (single), not indexed. It is not deductible: no
-  tax computation counts it, but it is cash the plan must pay, so it lowers what the plan can spend
-  (and the withdrawals that pay it are taxed like any other). All of those earnings are taxed as
-  wages: self-employment tax is not modeled.
 - *other inc* is other **ordinary** income that is not wages, pension, or Social Security—e.g.
   part-time or consulting income, alimony, or rental flows you treat as ordinary. It is included in
   cash flow and ordinary-income tax logic like wages. A **negative** amount is an above-the-line
@@ -508,7 +508,9 @@ leave it blank where it does not apply), where:
   income. Enter the full annual amount you plan to contribute: **Owl** applies the
   Medicare cutoff itself. If you have no wages to net the contribution from (for instance, a
   retiree or early retiree contributing from savings), enter it in *HSA ctrb* and the same amount
-  as a negative *other inc*: the column alone deposits it without deducting it or paying for it. The HSA limit is counted by the month, and no contribution is allowed
+  as a negative *other inc*: the column alone deposits it without deducting it or paying for it.
+  In the year Medicare starts, enter in *other inc* only the share **Owl** keeps (below), since
+  only that much is contributed and deducted. The HSA limit is counted by the month, and no contribution is allowed
   for a month with Medicare (IRC 223(b)(2) and (b)(7)). Medicare starts in the month of the
   65th birthday, or in the month before when the birthday falls on the 1st. In the year it
   starts, **Owl** keeps the share of your entry for the months before Medicare and drops the rest:

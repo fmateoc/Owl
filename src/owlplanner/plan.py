@@ -708,11 +708,8 @@ class Plan:
 
         # Debt payments array (length N_n)
         self.debt_payments_n = np.zeros(self.N_n)
-        # Employee payroll tax on earnings (fork, Phase 5 step 5), nominal $: the household
-        # total paid from the plan, and the Additional Medicare Tax part of it. Built at
-        # every solve (_payroll_tax).
-        self.payroll_tax_n = np.zeros(self.N_n)
-        self.payroll_addl_n = np.zeros(self.N_n)
+        # Employee payroll tax on earnings (nominal, length N_n), built at solve time.
+        self.payroll_n = np.zeros(self.N_n)
         # Remaining debt balance at the start of each year (length N_n)
         self.fixed_assets_debt_balances_remaining_n = np.zeros(self.N_n)
 
@@ -1198,6 +1195,7 @@ class Plan:
           'income'    — {portfolio, ss, pension, wages, spia, other}
           'total'     — total lifetime outflows (today's $)
 
+        'taxes' is the federal income tax (ordinary, gains, NIIT) plus the payroll tax.
         The portfolio slice = total_outflows - sum(guaranteed income).
         Both dicts sum to 'total'.
         """
@@ -1213,8 +1211,7 @@ class Plan:
         )
         outflows = {
             "living": float(np.sum(self.g_n * inv_g)),
-            # Fork: the payroll tax (zero without earnings) is a federal tax too.
-            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n + self.payroll_tax_n) * inv_g)),
+            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n + self.payroll_n) * inv_g)),
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
             "debt": float(np.sum(self.debt_payments_n * inv_g)),
@@ -1265,7 +1262,7 @@ class Plan:
         ) * inv_g
         outflows = {
             "living": self.g_n * inv_g,
-            "taxes": (self.T_n + self.U_n + self.J_n + self.payroll_tax_n) * inv_g,
+            "taxes": (self.T_n + self.U_n + self.J_n + self.payroll_n) * inv_g,
             "state_taxes": self.st_T_n * inv_g,
             "healthcare": (self.medicare_n + self.aca_costs_n) * inv_g,
             "debt": self.debt_payments_n * inv_g,
@@ -2419,24 +2416,6 @@ class Plan:
                     "at no conversion, enter 0 and tick 'Roth conv fixed' for that year."
                 )
 
-    def _payroll_tax(self, gamma_n):
-        """
-        Build ``payroll_tax_n`` (nominal $) for this solve: the employee's social security
-        and Medicare taxes on each person's earnings and the household's Additional
-        Medicare Tax (``tax_federal.payrollTax``). Always charged: it needs no input and adds
-        nothing to the solve.
-
-        Earnings are the earnings test's (``_earnings_test_inputs``: in a year with wages,
-        the wages, as they enter AGI (#221), plus that year's tax-deferred contributions; an
-        employer contribution makes them slightly high, a payroll HSA is left out), which are
-        also FICA wages (W-2 boxes 3 and 5). The tax is not deductible, so it is only a constant
-        of the cash-flow row.
-        """
-        earnings, _ = self._earnings_test_inputs()
-        ss_in, med_in, addl_n = tx.payrollTax(earnings, gamma_n, self.n_d, self.N_n, int(self.year_n[0]))
-        self.payroll_addl_n = addl_n
-        self.payroll_tax_n = np.sum(ss_in + med_in, axis=0) + addl_n
-
     def _earnings_test_inputs(self):
         """
         Return the SSA earnings test's inputs, ``(earnings_in, months_in)``, shape
@@ -2989,8 +2968,8 @@ class Plan:
             # earnings test.
             self._ss_streams(self.ssecAges, gamma_n)
             self.zetaBar_in = self.zeta_in * gamma_n[:-1]
-            # Fork (Phase 5 step 5): the payroll tax on this solve's earnings.
-            self._payroll_tax(gamma_n)
+            # Payroll tax on the same earnings, rebuilt here for the same reason.
+            self.payroll_n = tx.payrollTax(self.N_i, self._earnings_test_inputs()[0], gamma_n, self.n_d, self.N_n)
             self.xiBar_n = self.xi_n * gamma_n[:-1]
             self.piBar_in = pension.compute_piBar_in(
                 self.pi_in,
@@ -5057,10 +5036,8 @@ class Plan:
                 + self.fixed_assets_ordinary_income_n[n]
                 + self.fixed_assets_capital_gains_n[n]
             )
-            # Subtract debt payments (negative cash flow)
-            rhs -= self.debt_payments_n[n]
-            # Fork: employee payroll tax on earnings (zero without earnings).
-            rhs -= self.payroll_tax_n[n]
+            # Subtract debt payments and the payroll tax (negative cash flow)
+            rhs -= self.debt_payments_n[n] + self.payroll_n[n]
             row = self.A.newRow({self.vm["g"].idx(n): 1})
             row.addElem(self.vm["s"].idx(n), 1)
             row.addElem(self.vm["m"].idx(n), 1)
@@ -7259,6 +7236,7 @@ class Plan:
             "objectives": [],
             "gaps": [],
             "nodes": [],  # branch-and-bound nodes of each iteration's solve (-1 for a pure LP)
+            "residuals": [],  # how far each iterate's own income moves the parameters it was built with
         }
         for name in self._SC_PARAMS:
             trace[f"{name}_lp"] = []
@@ -7268,6 +7246,23 @@ class Plan:
         # Iteration 0 is built from initial guesses (no premiums, LTCG bracket room with no
         # ordinary income, ...), so it undercharges and its objective looks best.
         return 1
+
+    def _pick_settled_valid_index(self, trace, includeMedicare):
+        """The valid iterate to fall back on when the next one cannot be solved: the one whose own
+        income moves its parameters least, the latest of those tied.
+
+        Not the one with the best objective. The costs the loop feeds back start at nothing and
+        catch up pass by pass, so on a tight case each iterate is poorer than the one before, and
+        the best objective belongs to the iterate furthest from its own costs: a plan that has not
+        yet been charged for what its income brings. The most settled iterate is the closest to the
+        fixed point the loop was heading for.
+        """
+        start = self._valid_history_start(includeMedicare)
+        residuals = trace["residuals"][start:]
+        if not residuals:
+            return 0 if trace["scaledObjectives"] and not includeMedicare else None
+        least = min(residuals)
+        return start + max(k for k, r in enumerate(residuals) if r <= least * (1 + 1e-9))
 
     def _pick_best_valid_index(self, scaled_obj_history, includeMedicare):
         start = self._valid_history_start(includeMedicare)
@@ -7400,7 +7395,7 @@ class Plan:
             + self.medicare_n
             + self.aca_costs_n
             + self.debt_payments_n
-            + self.payroll_tax_n
+            + self.payroll_n
         )
         rhs = (
             np.sum(self.omega_in, axis=0)
@@ -7574,7 +7569,7 @@ class Plan:
                 # (|df| shrinking to a few hundred dollars) followed by one bad step used to do.
                 # Mirrors the cycle and stagnation exits, which accept an earlier iterate the
                 # same way.
-                best_idx = self._pick_best_valid_index(trace["scaledObjectives"], includeMedicare)
+                best_idx = self._pick_settled_valid_index(trace, includeMedicare)
                 if best_idx is None:
                     # Nothing ever solved, so the case really is infeasible.
                     self.caseStatus = "infeasible" if self._infeasible else "solver error"
@@ -7645,6 +7640,7 @@ class Plan:
             # gains tax can disagree with the tax this iterate's own income implies.
             moves.append(np.sum(np.abs(self.U_n - self._ltcg_tax_implied()) / g_today))
             scResidual = float(max(moves))
+            trace["residuals"].append(scResidual)
 
             has_prev_obj = len(trace["scaledObjectives"]) > 1
             prev_scaled_obj = trace["scaledObjectives"][-2] if has_prev_obj else scaled_obj
@@ -8640,6 +8636,47 @@ class Plan:
         }
         self.mylog.vprint("Computed constraint duals from binaries-fixed LP re-solve.")
 
+    def _snapBinaries(self, result, options, col_overrides=None, A=None, B=None, c=None, use_mosek=None):
+        """Re-solve a MIP's answer as an LP with its binaries pinned at exactly 0 or 1.
+
+        A solver accepts a binary within its integrality tolerance (~1e-6 to 1e-5) of 0 or 1. Times a
+        big-M in the millions, that lets dollars into a bracket whose binary counts as off: IRMAA's top
+        tier held $17-$287 of MAGI at z = 1e-6 in Case_jordan+taylor, so a year a few dollars past a
+        tier edge paid the tier below ($63,522 of IRMAA residual under local search). Pinning the
+        rounded binaries closes every such bracket exactly; the LP re-solve is skipped when the
+        binaries are already exact. If it fails, the MIP's answer is kept, with a warning.
+        """
+        obj, x, ok, msg, gap = result
+        if not ok or x is None:
+            return result
+        A = self.A if A is None else A
+        B = self.B if B is None else B
+        c = self.c if c is None else c
+        bins = np.nonzero(B.integralityArray())[0]
+        if not len(bins):
+            return result
+        x = np.asarray(x, dtype=float)
+        frac = np.abs(x[bins] - np.round(x[bins]))
+        if frac.max() <= 1e-9:
+            return result
+        ov = dict(col_overrides or {})
+        for j in bins:
+            v = float(np.round(x[j]))
+            ov[int(j)] = (v, v)
+        saved = getattr(self, "_use_mosek", False)
+        if use_mosek is not None:
+            self._use_mosek = use_mosek
+        try:
+            r = self._run_mip(A, B, c, options, lp_relax=True, col_overrides=ov, update_warm=False)
+        finally:
+            self._use_mosek = saved
+        if r[2] and r[1] is not None:
+            self.mylog.vprint(f"Binaries snapped (largest fractional part {frac.max():.1e}); "
+                              f"objective {obj:,.2f} -> {r[0]:,.2f}.")
+            return r[0], np.asarray(r[1]), True, msg, gap
+        self.mylog.print(f"Pinned-binary re-solve failed ({r[3]}); keeping the MIP answer.", tag="WARNING")
+        return result
+
     def _run_mip(self, A, B, c_obj, options, lp_relax=False, col_overrides=None, update_warm=True):
         """
         Dispatcher: MIP (or LP when lp_relax=True) solve for decomposition methods.
@@ -8648,7 +8685,8 @@ class Plan:
         For MOSEK, delegates to _run_mosek_mip (no warm-start management needed).
         """
         if getattr(self, "_use_mosek", False):
-            return self._run_mosek_mip(A, B, c_obj, options, lp_relax=lp_relax, col_overrides=col_overrides)
+            res = self._run_mosek_mip(A, B, c_obj, options, lp_relax=lp_relax, col_overrides=col_overrides)
+            return res if lp_relax else self._snapBinaries(res, options, col_overrides, A, B, c_obj, use_mosek=True)
         # HiGHS path: extract CSR arrays from abcapi objects.
         a_start, a_index, a_value = A.to_csr()
         Lb, Ub = B.arrays()
@@ -8664,6 +8702,8 @@ class Plan:
         if warm is None or len(warm) != A.nvars:
             warm = self._highs_warm_start if update_warm else None
         result = self._run_highs(c, Lb, Ub, lbvec, ubvec, a_start, a_index, a_value, integrality, options, warm_x=warm)
+        if not lp_relax:
+            result = self._snapBinaries(result, options, col_overrides, A, B, c_obj, use_mosek=False)
         if result[2] and update_warm:
             self._highs_warm_start = result[1].copy()
         return result
@@ -8686,6 +8726,7 @@ class Plan:
         result = self._run_highs(
             c, Lb, Ub, lbvec, ubvec, a_start, a_index, a_value, integrality, options, warm_x=self._highs_warm_start
         )
+        result = self._snapBinaries(result, options, use_mosek=False)
         if result[2]:  # success — store for next SC iteration
             self._highs_warm_start = result[1].copy()
         return result
@@ -8754,7 +8795,7 @@ class Plan:
         task.solutionsummary(mosek.streamtype.msg)
         # task.writedata(self._name+'.ptf')
 
-        return solution, xx, solverSuccess, solverMsg, rel_gap
+        return self._snapBinaries((solution, xx, solverSuccess, solverMsg, rel_gap), options, use_mosek=True)
 
     def _update_Psi_n(self):
         """

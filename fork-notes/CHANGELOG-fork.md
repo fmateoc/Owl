@@ -7,6 +7,16 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Changed: the payroll tax takes the shape of the upstream PR for #227
+
+The fork's payroll-tax code is now the PR's (`payroll-tax-pr`, built on upstream `dev` `22ce72b`
+at the maintainer's request): `Plan.payroll_n` (was `payroll_tax_n`), one yearly total from
+`tax_federal.payrollTax(N_i, earnings_in, gamma_n, n_d, N_n)`, the wage base a single constant in
+today's dollars. *Total payroll tax paid* is now in the Summary of every case (\$0 without
+earnings), the fork's *Additional Medicare tax* line under it is gone, and the Cash Flow and CSV
+*payroll tax* column sits after *NIIT*. Rules and amounts unchanged: every pinned case gives the
+PR's values.
+
 ### Removed: the fork's age-anchored smile (back to upstream's smile)
 
 The smile is upstream's again: one cosine period over the plan's length, starting `smile_delay`

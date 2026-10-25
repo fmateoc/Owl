@@ -2398,6 +2398,19 @@ checked against the code. Fixed in `36cdddf` (pushed) and ported to the fork:
 Stock suite: 3232 passed, 1 skipped (8:11); `-m deep` 5 passed. Fork: 3541 passed, 1 skipped
 (10:18). flake8 clean; Ruff only upstream's three B905. PR text updated (`pr-227-body.md`).
 
+**Then all the copies** (`3167318`, pushed). User: one copy of a rule is worth having even without
+vectorizing; vectorize only for a measurable speed gain. `filingStatus_n` now replaces ten copies on
+stock `dev` (`capitalGainTax`, `taxParams`, `seniorBonusSchedule`, `taxBrackets`, `computeNIIT`,
+`compute_social_security_taxability`, `tax_state.st_taxParams`, and the inline ones in the SS, LTCG
+and NIIT rows of `plan.py`; the NIIT rows read `niitThreshold` instead of hard-coded numbers), and
+two more in fork code (the itemizing warning's status array, the non-itemizer charity cap).
+Other rules that look alike stay (`_filers_alive`, `deposit_split`, `irmaaStatus`, the home-sale
+window, the fork's STAR survivor rule and budget survivor share). Vectorizing measured: 9 µs
+(`computeNIIT`) and 100 µs (`payrollTax`) per call; 6 and 14 NIIT calls + 1 payroll call per solve
+(joe 0.07 s, jack+jill 1.28 s): at most 0.2% of a solve, below noise, so both are loops again (reading
+the helper). All 19 examples identical to the cent before and after (basis, bequest, payroll,
+federal and state tax). Stock: 3232 passed, 1 skipped (7:05); `-m deep` 5 passed.
+
 ## PR for #227 built on stock `dev`; upstream `dev` `22ce72b` merged; fork aligned (2026-10-25, on `claude/lucid-gates-uo4kbu`, continued from `claude/phase5-step1`)
 
 **#227 answered** (maintainer, relayed by the user 2026-10-25): "Please go ahead and submit a PR on

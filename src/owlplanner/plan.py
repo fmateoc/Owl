@@ -3873,12 +3873,9 @@ class Plan:
         $1,000 single / $2,000 MFJ, a fixed statutory amount (not indexed); Single after the first
         death. Zero from a pre-TCJA reversion (an OBBBA rule) and in a plan without budget lines.
         """
-        cap = np.zeros(self.N_n)
         if self.budget is None:
-            return cap
-        cap[:] = tx.NONITEMIZER_CHARITY[0 if self.N_i == 1 else 1]
-        if self.N_i == 2:
-            cap[self.n_d :] = tx.NONITEMIZER_CHARITY[0]
+            return np.zeros(self.N_n)
+        cap = tx.NONITEMIZER_CHARITY[tx.filingStatus_n(self.N_i, self.n_d, self.N_n)]
         return np.where(self._item_obbba_n, cap, 0.0)
 
     def _item_standard_n(self, g_n=None):
@@ -4274,7 +4271,7 @@ class Plan:
                 f"{u.d(np.sum(np.abs(dcap) / gam))} in all (today's $).",
                 tag="WARNING",
             )
-        status_n = np.array([0 if (self.N_i == 1 or n >= self.n_d) else 1 for n in range(self.N_n)])
+        status_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
         obbba = year_n < self.yOBBBA
         # 2/37 limit: the 37% bracket starts after the first six widths.
         start37 = np.sum(self.DeltaBar_tn[:6, :], axis=0)
@@ -5192,6 +5189,7 @@ class Plan:
         if options.get("withSSTaxability", "loop") != "optimize":
             return
 
+        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
             zetaBar_n = np.sum(self.zetaBar_in[:, n])
 
@@ -5204,8 +5202,7 @@ class Plan:
                 self.B.setRange(self.vm["zs"].idx(n, 1), 0, 0)
                 continue
 
-            # Per-year filing status: for couple, switch to Single at n_d.
-            status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
+            status_n = filing_n[n]
             ss_lo_n = tx.ssTaxabilityLo[status_n]
             ss_hi_n = tx.ssTaxabilityHi[status_n]
             delta_p_n = ss_hi_n - ss_lo_n
@@ -5429,9 +5426,9 @@ class Plan:
         sb_year = {n: j for j, n in enumerate(self._sb_years)} if self._sb_lp else {}
         prev_e_n = getattr(self, "e_n", None)
         self._ltcg_wide_n = self._ltcg_deduction_widens_n()
+        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
-            # Per-year filing status: couple switches to Single at n_d.
-            status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
+            status_n = filing_n[n]
 
             # Inflation-adjusted bracket thresholds.
             T15_n = self.gamma_n[n] * tx.capGainRates[status_n][0]
@@ -5701,10 +5698,9 @@ class Plan:
 
         fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
 
+        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
-            # Per-year filing status: couple switches to Single at n_d.
-            status_n = 0 if (self.N_i == 2 and n >= self.n_d) else self.N_i - 1
-            T_niit = 200000.0 if status_n == 0 else 250000.0  # NOT inflation-adjusted
+            T_niit = float(tx.niitThreshold[filing_n[n]])  # NOT inflation-adjusted
 
             # Each row is relaxed by at most 3.8% of the year's income: MAGI and NII are both
             # bounded by the income ceiling.

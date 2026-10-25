@@ -1,8 +1,9 @@
 # PR for #227 (payroll tax), for the user to open
 
 Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
-`fmateoc:payroll-tax-pr` (pushed), two commits on upstream `dev` `22ce72b` (the version kick after
-`03aaef3`): `55b49ba` (the feature) and `36cdddf` (review fixes), base `dev`. Built in a worktree
+`fmateoc:payroll-tax-pr` (pushed), three commits on upstream `dev` `22ce72b` (the version kick
+after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes) and `3167318` (one filing-status
+rule), base `dev`. Built in a worktree
 of stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
@@ -20,13 +21,20 @@ Closes #227, in the shape you described.
   year. 6.2% of each person's earnings up to the wage base (`payrollWageBase` = \$184,500 times
   `gamma_n`, i.e. the 2026 base held in today's dollars), 1.45% on all of them, and 0.9% of the
   household's combined earnings above \$250,000 through the year of the first death and \$200,000
-  after (not indexed). Constants next to NIIT's. No loop over years: the filing status of each
-  year comes from a new `filingStatus_n(N_i, n_d, N_n)` (joint while `n < n_d`).
-- `filingStatus_n` also replaces the per-year loop in `computeNIIT`, now vectorized (equal to the
-  old loop to the bit on 20 random cases, `tests/tax/test_filing_status.py`), and the inline copy
-  in `compute_social_security_taxability`. `capitalGainTax`, `taxParams`, `seniorBonusSchedule`,
-  `taxBrackets` and `tax_state` still carry their own copy of the rule inside loops that do more per
-  year; I left them alone here and can convert them in a follow-up if you want.
+  after (not indexed). Constants next to NIIT's. The filing status of each year comes from a new
+  `filingStatus_n(N_i, n_d, N_n)` (joint while `n < n_d`, single after; single throughout for one
+  person).
+- One copy of that rule. `filingStatus_n` replaces the ten copies of it: `capitalGainTax`,
+  `taxParams`, `seniorBonusSchedule`, `taxBrackets`, `computeNIIT`,
+  `compute_social_security_taxability`, `tax_state.st_taxParams`, and the inline ones in the SS
+  taxability, LTCG and NIIT rows of `plan.py` (the NIIT rows also stop hard-coding 200,000 /
+  250,000 and read `niitThreshold`). The loops stay loops: vectorizing `computeNIIT` and the payroll
+  tax saved 9 µs and 100 µs per call (30-year couple), about 0.15 ms of joe's 70 ms solve and
+  0.2 ms of jack+jill's 1.3 s, below run-to-run noise, so it was not worth the change. Every pinned
+  plan is unchanged (full suite), and `computeNIIT` equals the old decrementing loop to the bit on
+  20 random cases (`tests/tax/test_filing_status.py`). Not touched, because they are other rules:
+  `_filers_alive` / `deposit_split` (who is alive), `irmaaStatus` (the return two years back,
+  #213), the home-sale window (two years after the death).
 - `Plan.payroll_n`: zeros in `__init__`, rebuilt at solve time in the `_adjustedParameters` block
   right after `_ss_streams`, from `_earnings_test_inputs()` (wages plus the year's tax-deferred
   contributions, payroll HSA left out). `solve()` resets `_adjustedParameters`, so a change of
@@ -147,7 +155,7 @@ failure mode, so it may be the first value to move on MOSEK or another HiGHS. Op
 call: keep it; pin john+sally under local search; or lower its `netSpending` so the shipped plan
 is not at the edge (the description's numbers would change too). I changed nothing in the example.
 
-**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, 8:11); `pytest -m deep`: 5
+**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, 7:05); `pytest -m deep`: 5
 passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
 `test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
@@ -158,4 +166,4 @@ passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.p
 - Decide whether to keep the john+sally paragraph's three options or name one.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
-- Two commits: squash them if you prefer one (he squashed #222 on landing).
+- Three commits: squash them if you prefer one (he squashed #222 on landing).

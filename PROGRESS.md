@@ -2364,6 +2364,32 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## PR #228 landed; upstream `dev` `b52b766` merged (2026-10-25, on `claude/phase5-step1`)
+
+- Found by the second git check-in (20:30 UTC): PR #228 squashed into `dev` as `3a2dfc33`, tree
+  identical to our head `f98ef3e`; the maintainer closed the PR by hand (it targeted `main`).
+  His comment (pasted by the user): MOSEK records recorded on darwin (`d5dc3ae0`; equal to HiGHS
+  to the cent, john+sally's bequest \$55.53 vs \$21.00, inside the tolerance); the payroll tax
+  its own line in the taxes plot, now "Taxes and Premiums" (`f2831e21`, `4c999efd`); its own
+  `payroll` key, slice and band in `lifetime_allocation` / `annual_cashflow_mix` (`e2c3d197`;
+  `taxes` is the federal income tax again); every Summary row always present (`3c036c1b`).
+  Also `6250a5b0` (branch-and-bound loops: tied binaries stick, `_bbLoop`, residual drops an
+  exact NIIT and adds the gain-fraction mismatch, convergence widened to the solve's gap) and the
+  version kick `b52b766`. Check-ins stopped (it landed).
+- Merge `bad2a987`: 7 conflicts. Taken upstream's: `test_payroll_tax.py` and the AMO fixture (the
+  fork's were the PR's), `modeling-capabilities.md`, `Documentation.py`, the allocation and mix in
+  `plan.py`. Kept the fork's: `tax_state.st_taxParams` (same rule, fork structure), the
+  `_ltcg_wide_n` line. Combined: the loop residual (fork's `sc_lp` / STR / STAR / itemizing moves
+  plus upstream's NIIT exclusion and gain-fraction move) and the Summary's state row (upstream's
+  unconditional row, fork's parts after it). CHANGELOG.md = upstream's.
+- Then upstream's new `test_giving_and_not_giving_have_the_same_rows` failed on the fork's
+  conditional *Total itemized deduction*: the fork's five Summary rows (recapture, local tax,
+  STAR, state and federal itemized) are now always present at \$0, as upstream's are
+  (`test_state_recapture` updated).
+- Full suite 3554 passed / 1 skipped (8:24); `-m deep` 6 passed, 3 skipped (MOSEK-only, as
+  upstream reports for HiGHS). flake8 clean; Ruff only upstream's three B905.
+- `payroll-tax-pr` is done.
+
 ## Upstream `dev` `6371346` merged; #227 PR merged with it and reviewed a last time (2026-10-25, on `claude/phase5-step1`)
 
 - Upstream: `0d30350` (after each branch-and-bound solve, the years whose own income contradicts the

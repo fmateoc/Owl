@@ -167,7 +167,7 @@ is below zero), so a solver that lands the loop higher fails it. I left that tes
 checks the loop path against its record; say if you want john+sally out of it too.
 
 **Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, on the head `5043e98`); `pytest -m deep`:
-6 passed (7:05). flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
+6 passed (6:50, same head). flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
 `test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
 ---

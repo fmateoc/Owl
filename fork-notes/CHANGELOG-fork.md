@@ -7,6 +7,15 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream: the payroll tax is upstream's (#227, PR #228)
+
+PR #228 landed upstream as `3a2dfc33` (2026-10-25), tree identical to the PR head, followed by
+upstream's own changes: MOSEK records for the five re-pinned cases, the payroll tax as its own line
+in the taxes plot ("Taxes and Premiums") and as its own *Payroll tax* slice and band in the
+lifetime allocation and cash-flow mix (the fork had it inside *Taxes*), and a Summary with the same
+rows for every plan. Merged here the same day; the fork's payroll code, tests and fixture are
+upstream's. The entry below is the history before the landing.
+
 ### Changed: the payroll tax takes the shape of the upstream PR for #227
 
 The fork's payroll-tax code is now the PR's (`payroll-tax-pr`, built on upstream `dev` `22ce72b`

@@ -197,8 +197,18 @@ def test_outputs_report_it(tmp_path, monkeypatch):
     for key in ("payroll_tax_today", "payroll_tax_nominal"):
         assert METRICS_COLUMN_MAP[key][0] in columns
 
-    taxes = float(np.sum((p.T_n + p.U_n + p.J_n + p.payroll_n) * inv_g))
-    assert p.lifetime_allocation()["outflows"]["taxes"] == pytest.approx(taxes)
+    # Its own slice and band, beside the federal income tax rather than inside it; both sides balance.
+    alloc = p.lifetime_allocation()
+    assert alloc["outflows"]["taxes"] == pytest.approx(float(np.sum((p.T_n + p.U_n + p.J_n) * inv_g)))
+    assert alloc["outflows"]["payroll"] == pytest.approx(float(np.sum(p.payroll_n * inv_g)))
+    assert sum(alloc["outflows"].values()) == pytest.approx(sum(alloc["income"].values()), abs=1.0)
+    mix = p.annual_cashflow_mix()
+    np.testing.assert_allclose(mix["outflows"]["payroll"], p.payroll_n * inv_g)
+    np.testing.assert_allclose(mix["outflows"]["taxes"], (p.T_n + p.U_n + p.J_n) * inv_g)
+    for backend in ("plotly", "matplotlib"):
+        p.setPlotBackend(backend)
+        assert p.showLifetimeAllocation(figure=True) is not None
+        assert p.showCashFlowMix(figure=True) is not None
 
     bills = p.T_n + p.U_n + p.medicare_n + p.J_n + p.aca_costs_n + p.st_T_n + p.payroll_n
     income = p.saveWorkbook(saveToFile=False)["Income"]
@@ -242,6 +252,42 @@ def test_summary_line_for_every_case():
     wb = q.saveWorkbook(saveToFile=False)
     for sheet in ("Cash Flow", "Taxes"):
         assert "payroll tax" not in [c.value for c in wb[sheet][1]]
+
+
+def _tax_plot_lines(p, backend):
+    """Line labels and today's-dollar values of the taxes plot, for either backend."""
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    matplotlib.use("Agg")
+    p.setPlotBackend(backend)
+    fig = p.showTaxes(value="today", figure=True)
+    if backend == "plotly":
+        assert "Taxes and Premiums" in fig.layout.title.text
+        return {t.name: np.asarray(t.y, dtype=float) * 1000 for t in fig.data}
+    assert "Taxes and Premiums" in fig.axes[0].get_title()
+    # matplotlib plots dollars and formats the axis in $k; plotly plots $k.
+    lines = {ln.get_label(): np.asarray(ln.get_ydata(), dtype=float) for ln in fig.axes[0].get_lines()}
+    plt.close(fig)
+    return lines
+
+
+@pytest.mark.parametrize("backend", ["plotly", "matplotlib"])
+def test_taxes_plot_has_a_payroll_tax_line(backend):
+    """Its own line, in today's dollars, beside the income tax rather than inside it; none for a case
+    without earnings."""
+    p = _solve(_load("jack+jill"))
+    lines = _tax_plot_lines(p, backend)
+    assert "payroll tax" in lines
+    g = p.gamma_n[: p.N_n]
+    for year, amount in JJ_PAYROLL.items():
+        assert lines["payroll tax"][_n(p, year)] == pytest.approx(amount / g[_n(p, year)], rel=1e-3)
+    assert lines["income tax"] == pytest.approx((p.T_n + p.U_n + p.J_n) / g, rel=1e-6, abs=1.0)
+
+    q = _load("jack+jill")
+    q.omega_in[:, :] = 0.0
+    _solve(q)
+    assert "payroll tax" not in _tax_plot_lines(q, backend)
 
 
 def _no_earnings_examples():

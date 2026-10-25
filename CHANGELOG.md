@@ -1,3 +1,75 @@
+### Version WIP
+
+#### Fixed: branch-and-bound loops that never settled, although their parameters had
+
+Branch-and-bound returns any plan within its gap of the optimum, 0.3% when Medicare is solved as
+MILP. When the self-consistent loop changed the problem by a few dollars, MOSEK returned a
+different plan along a direction where the objective is nearly flat (Case_jack+jill: \$3k to
+\$120k of taxable withdrawals moving among 2036-2038 every iteration), and the loop's test, a
+change in objective 60 times finer than the gap, could not be met: jack+jill, avery+quinn and joe
+ran to the 30-iteration limit. The fed-back gain fraction was not the cause; it settles in three
+iterations once the plan stops moving. Each branch-and-bound solve now re-solves the LP with the
+previous iteration's binaries and keeps them when they tie the new plan, within the loop's
+relative tolerance: the noise goes, and nothing worse than the new plan is kept. Convergence is
+judged on what is fed back: the gain fraction joins the residual, an exact NIIT leaves it (it is
+not fed back), and a change in objective below the solve's own gap no longer holds the loop. On
+the 18 examples measured under MOSEK, jack+jill settles in 4 iterations (from 30) and 15 s (from
+105 s) with no residual, joe in 4 (from 30), avery+quinn in 7 (from 30) and 45 s (from 189 s) at
+the same value, alex+jamie gains \$66 in 2 iterations, and the other 14 are unchanged; total
+time 677 s -> 415 s. Under HiGHS these cases already settled in 3 to 5 iterations and stay within
+a few dollars. Local search is not affected.
+
+#### Changed: the Summary has the same rows for every plan, so variants compare row for row
+
+The side-by-side comparison keeps only the rows all its cases share, and several Summary rows were
+reported only when nonzero: *Total fixed income* and each of its lines (Social Security, pension,
+SPIA, wages, other income, fixed assets), *SS withheld by the earnings test* and *ARF months*,
+*Total qualified charitable distributions* and the RMDs it satisfies, *Total state income tax
+paid*, and each person's *SS claiming age*. A row one variant lacked vanished from the comparison
+of all of them: Case_jordan+taylor-qcd, built to be compared with Case_jordan+taylor, lost its QCD
+rows, and retiring now lost *Wages*. They are now always there, at \$0 or "none" (a claiming age
+reads "none" for a person with no benefit of their own and no spousal one). Rows set by the plan's
+shape still vary: the people's names, the partial bequest when the first death falls inside the
+plan, and the final bequest on a summary shorter than the plan.
+
+#### New: the employee's payroll tax is paid on wages
+
+*Anticipated wages* count as cash, and **Owl** charged no payroll tax on them, so each working
+year brought in 7.65% more cash than it does. Every solve now charges the employee's share on the
+earnings the SSA earnings test reads (*anticipated wages* plus the year's 401k and IRA
+contributions): 6.2% social security tax on each person's earnings up to the wage base (\$184,500
+in 2026, held at that level in today's dollars), 1.45% Medicare tax on all of them, and the 0.9%
+Additional Medicare Tax on the household's combined earnings above \$250,000 through the year of
+the first death and \$200,000 after (not indexed). The tax is not deductible: it is a constant of
+the year's cash-flow balance, next to debt payments, with no variable, constraint, or binary, and
+it enters no income-tax computation, `T_n` or the effective tax rate. There is no option. It is
+reported as *Total payroll tax paid* in the Summary (\$0 for a case without earnings, so plans
+compare row for row), a *payroll tax* column of the Cash Flow and Taxes worksheets and the CSV
+export, in *Tax bills + Med.* of the Income worksheet, as `payroll_tax_today` /
+`payroll_tax_nominal` in the plan metrics that `owlcli compare` reports, and on its own, beside
+the income tax rather than inside it: a *payroll tax* line in the taxes plot (now titled *Taxes and
+Premiums*), and a *Payroll tax* slice and band in the lifetime allocation and the annual cash-flow
+mix.
+Self-employment tax is not modeled (a documented limitation). The twelve examples without wages
+are unchanged to the cent. The seven with wages pay \$3,672 to \$100,138 over their working
+years: alex+jamie, chris+pat, jack+jill, joe, jon+jane and riley+casey spend \$242 to \$5,156
+a year less (0.2% to 3.2%), and john+sally's bequest goes from \$16,803 to \$21. That last case
+had little to spare: its \$8,798 of tax, compounded to the horizon, costs \$17,300 of bequest, so
+in loop mode the bequest reaches zero at 97% of the tax, after which the loop ends on a plan that
+undercharges IRMAA by \$374 (its fixed-point residual). Local search gives \$31,778 without the
+tax and \$14,013 with it, both with no residual, so john+sally's reproducibility pin now solves it
+under local search, a `deep` test (\$14,013), instead of pinning the loop's \$21. The tax leaves john+sally no room for the moves
+of #197, so its two local-search tests now solve the case without it: one checks that the search
+reaches the branch-and-bound plan (31,778; 30,823 with the full LTCG link rows), the other that
+step (b') matters on its own (30,823 with the full rows; 20,004 without it either), which the first
+test did not show. The filing status of each year (joint through the year of the first death and
+single after) is now one function, `filingStatusIndex_n`, in place of eight copies of that rule in
+the federal brackets, the gains tax and its rows, the NIIT and its rows, the taxability of Social
+Security and its rows, and the state brackets; the payroll tax reads it too. The standard deduction
+and the senior bonus (`taxParams`, `seniorBonusSchedule`) keep their own, where the same death also
+removes the deceased from the people counted. Every pinned plan is unchanged. Thanks to Florin
+Mateoc (@fmateoc) for the issue and the PR (#227).
+
 ### Version 2026.10.25
 
 #### Fixed: branch-and-bound no longer keeps a plan that charges a cost its own income does not imply

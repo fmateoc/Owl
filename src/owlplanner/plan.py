@@ -1191,11 +1191,12 @@ class Plan:
         Return lifetime cash flow breakdown in today's dollars as two dicts.
 
         Returns a dict with keys:
-          'outflows'  — {living, taxes, state_taxes, healthcare, debt, bequest}
+          'outflows'  — {living, taxes, payroll, state_taxes, healthcare, debt, bequest}
           'income'    — {portfolio, ss, pension, wages, spia, other}
           'total'     — total lifetime outflows (today's $)
 
-        'taxes' is the federal income tax (ordinary, gains, NIIT) plus the payroll tax.
+        'taxes' is the federal income tax (ordinary, gains, NIIT); 'payroll' is the employee's
+        payroll tax, its own slice because it is not an income tax.
         The portfolio slice = total_outflows - sum(guaranteed income).
         Both dicts sum to 'total'.
         """
@@ -1211,7 +1212,8 @@ class Plan:
         )
         outflows = {
             "living": float(np.sum(self.g_n * inv_g)),
-            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n + self.payroll_n) * inv_g)),
+            "taxes": float(np.sum((self.T_n + self.U_n + self.J_n) * inv_g)),
+            "payroll": float(np.sum(self.payroll_n * inv_g)),
             "state_taxes": float(np.sum(self.st_T_n * inv_g)),
             "healthcare": float(np.sum((self.medicare_n + self.aca_costs_n) * inv_g)),
             "debt": float(np.sum(self.debt_payments_n * inv_g)),
@@ -1248,7 +1250,7 @@ class Plan:
         Return year-by-year cash flow breakdown in today's dollars.
 
         Returns a dict with keys:
-          'outflows' — {living, taxes, state_taxes, healthcare, debt}  (arrays of length N_n)
+          'outflows' — {living, taxes, payroll, state_taxes, healthcare, debt}  (arrays of length N_n)
           'income'   — {ss, pension, wages, spia, other, portfolio}  (arrays of length N_n)
           'year_n'   — calendar year array
 
@@ -1262,7 +1264,8 @@ class Plan:
         ) * inv_g
         outflows = {
             "living": self.g_n * inv_g,
-            "taxes": (self.T_n + self.U_n + self.J_n + self.payroll_n) * inv_g,
+            "taxes": (self.T_n + self.U_n + self.J_n) * inv_g,
+            "payroll": self.payroll_n * inv_g,
             "state_taxes": self.st_T_n * inv_g,
             "healthcare": (self.medicare_n + self.aca_costs_n) * inv_g,
             "debt": self.debt_payments_n * inv_g,
@@ -7510,6 +7513,12 @@ class Plan:
 
         self._computeNLstuff(None, includeMedicare, fixedPsi=fixed_psi)
         self._init_gain_fraction()
+        # Branch-and-bound returns any plan inside its gap, so the loop's binaries stick when tied
+        # (_stickyBinaries) and its convergence is judged on the fed-back parameters. Local search
+        # carries no gap and keeps its own plan from one iteration to the next.
+        self._bb_strategy = options.get("mipStrategy", "branch-and-bound") != "local-search"
+        self._stickyPrev = None
+        self._sticky_tol = rel_tol
         self._tax_tiebreak_on = False
         sc_lp = self._snapshot_sc()
         while True:
@@ -7597,6 +7606,7 @@ class Plan:
                 self.mylog.vprint(f"Iteration {it} filled tax brackets out of order; pricing tax from now on.")
 
             self._computeNLstuff(xx, includeMedicare, fixedPsi=fixed_psi)
+            gf_used = None if self.gain_fraction_in is None else self.gain_fraction_in.copy()
             self._update_gain_fraction()
 
             delta = xx - old_x
@@ -7623,7 +7633,9 @@ class Plan:
             )
             moves = [np.sum(np.abs(psi_implied - sc_lp["Psi_n"]) * ss_n / g_today)]
             for _name, _active in (
-                ("J_n", True), ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0),
+                # An exact NIIT under branch-and-bound is not fed back: its change is the plan's.
+                ("J_n", not (self._bbLoop() and "Jn" in self.vm)),
+                ("M_n", includeMedicare), ("ACA_n", self.slcsp_annual > 0),
                 ("STR_n", self._str_active),
                 # NY STAR credit charged by the loop (under "optimize" the MILP sets it, but for
                 # the IT-196 lag and the Basic limit, a few percent of the credit at most).
@@ -7631,6 +7643,10 @@ class Plan:
             ):
                 if _active:
                     moves.append(np.sum(np.abs(getattr(self, _name) - sc_lp[_name]) / g_today))
+            if self._bbLoop() and gf_used is not None:
+                # Realized gains priced at a fraction this iterate's own basis does not imply.
+                a0w = self.alpha_ijkn[:, 0, 0, : self.N_n] * self.w_ijn[:, 0, :]
+                moves.append(float(np.nansum(np.abs(self.gain_fraction_in - gf_used) * a0w / g_today)))
             moves.extend(self._itemized_sc_moves(sc_lp, xx, g_today))
             # LTCG bracket room is set from the previous iterate's ordinary income, so the LP's
             # gains tax can disagree with the tax this iterate's own income implies.
@@ -7650,8 +7666,14 @@ class Plan:
             # since it scales with problem size and can prevent convergence for large cases.
             scale = max(1.0, abs(scaled_obj), abs(prev_scaled_obj))
             tol = max(abs_tol, rel_tol * scale)
+            conv_tol = tol
+            if self._bbLoop() and solgap is not None and solgap > 0:
+                # Below the solve's own gap, a change in objective is not a change in the plan's value.
+                # Only the convergence test widens: the cycle and stagnation tests keep their tolerance.
+                prev_gap = trace["gaps"][-2] if len(trace["gaps"]) > 1 else solgap
+                conv_tol = max(tol, max(solgap, prev_gap if prev_gap and prev_gap > 0 else 0.0) * scale)
             decision = self._check_obj_convergence(
-                it, absObjDiff, tol, includeMedicare, trace["scaledObjectives"], scResidual
+                it, absObjDiff, conv_tol, includeMedicare, trace["scaledObjectives"], scResidual
             )
             if decision is None:
                 decision = self._check_cycle(it, trace["scaledObjectives"], tol)
@@ -8723,6 +8745,7 @@ class Plan:
             c, Lb, Ub, lbvec, ubvec, a_start, a_index, a_value, integrality, options, warm_x=self._highs_warm_start
         )
         result = self._snapBinaries(result, options, use_mosek=False)
+        result = self._stickyBinaries(result, options, use_mosek=False)
         result = self._repairInconsistentYears(result, options, use_mosek=False)
         if result[2]:  # success — store for next SC iteration
             self._highs_warm_start = result[1].copy()
@@ -8793,7 +8816,50 @@ class Plan:
         # task.writedata(self._name+'.ptf')
 
         result = self._snapBinaries((solution, xx, solverSuccess, solverMsg, rel_gap), options, use_mosek=True)
+        result = self._stickyBinaries(result, options, use_mosek=True)
         return self._repairInconsistentYears(result, options, use_mosek=True)
+
+    def _bbLoop(self):
+        """True inside a self-consistent loop whose mixed-integer problems branch-and-bound solves."""
+        return getattr(self, "_bb_strategy", False) and getattr(self, "nbins", 0) > 0
+
+    def _stickyBinaries(self, result, options, use_mosek):
+        """Keep the previous iteration's binaries when they tie the new plan.
+
+        Branch-and-bound returns any plan within its gap of the optimum. When the loop changes the
+        problem by a few dollars, it can return a different one, moved along a direction where the
+        objective is nearly flat (Case_jack+jill: $3k-$120k of taxable withdrawals among 2036-2038 each
+        iteration, at the 3e-3 gap), so the loop never settles although its parameters have. Re-solve
+        the LP with the previous binaries pinned and keep it when its objective is within the loop's
+        relative tolerance of the new plan's: a tie, not anything inside the gap, which would keep
+        worse plans. The plan then moves only with the parameters, and the loop converges.
+        """
+        if not self._bbLoop() or getattr(self, "_localSearchSeeding", False):
+            return result
+        if not result[2] or result[1] is None:
+            return result
+        prev = self._stickyPrev
+        bins = np.nonzero(self.B.integralityArray())[0]
+        chosen = result
+        if prev is not None and len(prev) == self.nvars and not np.array_equal(
+            np.round(prev[bins]), np.round(result[1][bins])
+        ):
+            ov = {int(j): (float(np.round(prev[j])),) * 2 for j in bins}
+            saved = getattr(self, "_use_mosek", False)
+            self._use_mosek = use_mosek
+            try:
+                res = self._run_mip(self.A, self.B, self.c, options, lp_relax=True, col_overrides=ov, update_warm=False)
+            finally:
+                self._use_mosek = saved
+            obj, gap = result[0], result[4]
+            if res[2] and res[0] is not None and res[0] <= obj + self._sticky_tol * abs(obj):
+                if gap is not None and gap >= 0:  # the same bound, against the kept plan
+                    bound = obj - gap * abs(obj)
+                    gap = (res[0] - bound) / max(abs(res[0]), 1e-12)
+                chosen = (res[0], res[1], True, result[3], gap)
+                self.mylog.vprint(f"Kept the previous binaries (objective {res[0] - obj:+.2e} against the new plan).")
+        self._stickyPrev = chosen[1].copy()
+        return chosen
 
     def _repairInconsistentYears(self, result, options, use_mosek):
         """Branch-and-bound only: re-solve the years whose charged costs the plan's own income
@@ -9787,7 +9853,8 @@ class Plan:
     @_checkCaseStatus
     def showTaxes(self, tag="", value=None, figure=False):
         """
-        Plot income tax paid over time.
+        Plot taxes and health premiums paid over time: federal income tax, Medicare, and when
+        present the ACA premium, state income tax and payroll tax, each its own line.
 
         A tag string can be set to add information to the title of the plot.
 
@@ -9795,15 +9862,17 @@ class Plan:
         the default behavior of setDefaultPlots().
         """
         value = self._checkValueType(value)
-        title = self._name + "\nIncome Tax"
+        title = self._name + "\nTaxes and Premiums"
         if tag:
             title += " - " + tag
-        # All taxes: ordinary income, dividends, NIIT, and state income tax.
+        # Federal income tax: ordinary income, dividends and NIIT. State income tax and the
+        # payroll tax get their own lines; the payroll tax is not an income tax.
         allTaxes = self.T_n + self.U_n + self.J_n
         aca_n = self.aca_costs_n if self.slcsp_annual > 0 else None
         st_n = self.st_T_n if any(self._states_n()) else None
         fig = self._plotter.plot_taxes(
-            self.year_n, allTaxes, self.medicare_n, self.gamma_n, value, title, self.inames, A_n=aca_n, ST_n=st_n
+            self.year_n, allTaxes, self.medicare_n, self.gamma_n, value, title, self.inames,
+            A_n=aca_n, ST_n=st_n, P_n=self.payroll_n,
         )
         if figure:
             return fig

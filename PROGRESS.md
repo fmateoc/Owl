@@ -2437,8 +2437,9 @@ chris+pat -2,794.09, jack+jill -1,902.97, joe -1,298.34, jon+jane -5,156.17, ril
 (spending \$/yr; riley+casey is new since #227, \$48,000 of wages, \$3,672 of tax), john+sally
 bequest 16,802.68 -> 21.00. Re-pinned (linux only; darwin and win32 tables take the linux values,
 said so in the comment and the PR): `test_toml_cases`, `test_repro` (BEQUEST1 959,477 -> 859,316:
-linear, \$2.28 per dollar of tax at half and full tax), AMO fixture HiGHS for five cases (MOSEK
-records moved by the HiGHS change, marked as estimates: no license here), the deep #197 test's
+linear, \$2.28 per dollar of tax at half and full tax), AMO fixture HiGHS for five cases (their MOSEK
+records left empty, null: no license here, so not run. They were first shifted by the HiGHS change
+and marked as estimates; the user ruled that out the same day, no numbers that no run produced), the deep #197 test's
 bar 31,000 -> 14,000.
 
 **john+sally, answered with measurements** (scaling the tax by s; scripts in the session scratchpad,

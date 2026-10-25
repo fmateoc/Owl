@@ -1,9 +1,9 @@
 # PR for #227 (payroll tax), for the user to open
 
 Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
-`fmateoc:payroll-tax-pr` (pushed), three commits on upstream `dev` `22ce72b` (the version kick
-after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes) and `3167318` (one filing-status
-rule), base `dev`. Built in a worktree
+`fmateoc:payroll-tax-pr` (pushed), four commits on upstream `dev` `22ce72b` (the version kick
+after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status
+rule) and `033c9d8` (MOSEK records left empty), base `dev`. Built in a worktree
 of stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
@@ -102,7 +102,8 @@ instructions)
 The twelve without wages are unchanged to the cent in basis, bequest, federal and state tax. Six
 rows match the #227 repro to the dollar; riley+casey (added since) is 7.65% of Riley's \$48,000.
 
-**Re-pinned** (HiGHS, linux):
+**Re-pinned** (HiGHS, linux). I don't have a MOSEK license, so none of these was run under
+MOSEK; `test_toml_cases.py` and `test_repro.py` hold a MOSEK run to the same values:
 
 - `test_toml_cases.py`: jack+jill 102,621 -> 100,669, joe 92,575 -> 91,276, john+sally
   16,803 -> 21. One table, as before.
@@ -113,9 +114,9 @@ rows match the #227 repro to the dollar; riley+casey (added since) is 7.65% of R
   half the tax and at all of it, on 1969 returns.
 - `amo_mip_reference.json`: HiGHS basis and bequest re-recorded for alex+jamie, jack+jill, joe,
   john+sally and jon+jane (other fields unchanged), and the five added to `_rerecorded_cases`.
-  **I have no MOSEK license**, so each MOSEK record was moved by the HiGHS change (pristine minus
-  patched, same day) and marked as an estimate in its `_rerecorded` note: please re-record them
-  under MOSEK (jack+jill's MOSEK record already differed from HiGHS's by 0.43%).
+  **Not run under MOSEK** (no license, as above): their MOSEK records are
+  left empty (`null`, with a `_mosek_not_recorded` note in the fixture), and
+  `test_objective_matches_reference` skips the five under MOSEK until you record them.
 - `test_local_search.py` (deep): the #197 tests. With the tax, john+sally no longer exercises
   #197: the full search, the search without (b'), the search with the full LTCG link rows
   (`_relax_links` returning the plan's rows) and the search with neither all give 14,013.49. So
@@ -155,7 +156,7 @@ failure mode, so it may be the first value to move on MOSEK or another HiGHS. Op
 call: keep it; pin john+sally under local search; or lower its `netSpending` so the shipped plan
 is not at the edge (the description's numbers would change too). I changed nothing in the example.
 
-**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, 7:05); `pytest -m deep`: 5
+**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers; rerun on the head with the MOSEK records emptied, the same); `pytest -m deep`: 5
 passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
 `test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
@@ -166,4 +167,4 @@ passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.p
 - Decide whether to keep the john+sally paragraph's three options or name one.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
-- Three commits: squash them if you prefer one (he squashed #222 on landing).
+- Four commits: squash them if you prefer one (he squashed #222 on landing).

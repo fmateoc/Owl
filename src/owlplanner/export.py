@@ -575,27 +575,21 @@ def build_summary_dic(plan, N=None):
     stTaxPaid = np.sum(plan.st_T_n[:N], axis=0)
     stTaxPaidNow = np.sum(plan.st_T_n[:N] / plan.gamma_n[:N], axis=0)
     _summary_currency_pair(dic, "Total state income tax paid", stTaxPaidNow, stTaxPaid)
-    # Parts of the state total above (not in addition to it), shown only where they exist.
-    parts = (("Total state benefit recapture paid", plan.st_recap_n), ("Total local income tax paid", plan.lt_T_n))
-    for label, arr in parts:
-        if np.any(arr > 0):
-            _summary_currency_pair(dic, label, np.sum(arr[:N] / plan.gamma_n[:N]), np.sum(arr[:N]))
-    # Fork: the NY STAR credit, a refundable state income tax credit (the state total is net of it).
-    star_n = getattr(plan, "st_star_n", None)
-    if star_n is not None and np.any(star_n > 0):
-        _summary_currency_pair(
-            dic, "Total NY STAR credit received", np.sum(star_n[:N] / plan.gamma_n[:N]), np.sum(star_n[:N])
-        )
-    if np.any(getattr(plan, "st_item_n", 0) > 0):
-        _summary_currency_pair(
-            dic, "Total state itemized deduction",
-            np.sum(plan.st_item_n[:N] / plan.gamma_n[:N]), np.sum(plan.st_item_n[:N]),
-        )
-    if np.any(getattr(plan, "item_n", 0) > 0):
-        _summary_currency_pair(
-            dic, "Total itemized deduction",
-            np.sum(plan.item_n[:N] / plan.gamma_n[:N]), np.sum(plan.item_n[:N]),
-        )
+    # Fork rows, reported for every plan ($0 where they do not apply), as upstream's are, so variants
+    # (a move, a locality, giving or not) compare row for row. Recapture and local tax are parts of
+    # the state total above (not in addition to it); the state total is net of the NY STAR credit,
+    # a refundable credit.
+    zeros = np.zeros(plan.N_n)
+    for label, name in (
+        ("Total state benefit recapture paid", "st_recap_n"),
+        ("Total local income tax paid", "lt_T_n"),
+        ("Total NY STAR credit received", "st_star_n"),
+        ("Total state itemized deduction", "st_item_n"),
+        ("Total itemized deduction", "item_n"),
+    ):
+        arr = getattr(plan, name, None)
+        arr = zeros if arr is None else np.broadcast_to(np.asarray(arr, dtype=float), (plan.N_n,))
+        _summary_currency_pair(dic, label, np.sum(arr[:N] / plan.gamma_n[:N]), np.sum(arr[:N]))
 
     taxPaid = np.sum(plan.medicare_n[:N], axis=0)
     taxPaidNow = np.sum(plan.medicare_n[:N] / plan.gamma_n[:N], axis=0)

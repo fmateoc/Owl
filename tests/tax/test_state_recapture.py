@@ -214,8 +214,10 @@ def test_summary_breaks_out_recapture_and_local_tax():
 
     labels = " ".join(build_summary_dic(_plan([14000, 8000], locality="Yonkers")))
     assert "Total state benefit recapture paid" in labels and "Total local income tax paid" in labels
-    labels = " ".join(build_summary_dic(_plan([14000, 8000], state="NJ")))
-    assert "recapture" not in labels and "local income tax" not in labels
+    # Outside New York the rows read $0 (every plan has the same rows, so variants compare row for row).
+    dic = build_summary_dic(_plan([14000, 8000], state="NJ"))
+    assert dic["Total state benefit recapture paid (nominal)"] == "$0"
+    assert dic["Total local income tax paid (nominal)"] == "$0"
 
 
 def test_replayed_rows_match_a_fresh_build_with_recapture_local_tax_and_a_move():

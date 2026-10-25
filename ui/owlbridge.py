@@ -1603,8 +1603,7 @@ def setProfile(plan, key):
     dip = kz.getCaseKey("smileDip")
     increase = kz.getCaseKey("smileIncrease")
     delay = kz.getCaseKey("smileDelay")
-    start_age = kz.getCaseKey("smileStartAge")  # the younger spouse's age when the smile starts
-    plan.setSpendingProfile(profile, survivor, dip, increase, delay, start_age=start_age)
+    plan.setSpendingProfile(profile, survivor, dip, increase, delay)
 
 
 @_checkPlan
@@ -2023,13 +2022,11 @@ def genDic(plan):
     if plan.spendingProfile == "smile":
         dic["smileDip"] = plan.smileDip
         dic["smileIncrease"] = plan.smileIncrease
-        dic["smileDelay"] = max(0, plan.smileDelay)
-        dic["smileStartAge"] = plan.smileStartAge
+        dic["smileDelay"] = plan.smileDelay
     else:
         dic["smileDip"] = 15
         dic["smileIncrease"] = 12
         dic["smileDelay"] = 0
-        dic["smileStartAge"] = plan._youngerAgeAtStart()
     dic["survivor"] = 100 * plan.chi
     dic["divRate"] = 100 * plan.mu
     dic["heirsTx"] = 100 * plan.nu

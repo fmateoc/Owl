@@ -7,6 +7,17 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Removed: the fork's age-anchored smile (back to upstream's smile)
+
+The smile is upstream's again: one cosine period over the plan's length, starting `smile_delay`
+years after the first plan year. Gone: the fixed 30-year period, `smile_start_age` (a case that
+still carries it has it ignored), the survivor's age after the first death, the old-case warning
+and the UI's start-age field. The six example cases no longer carry `smile_start_age`, and the
+pinned results of the smile cases are upstream's again where no other fork feature moves them
+(jack+jill's spending basis 102,621 in `test_toml_cases`; the AMO records of jordan+taylor and
+morgan, MOSEK entries included). For the household's horizon (ages 62-92, 31 years) both curves
+were identical.
+
 ### Removed: the fork's New Jersey rules (back to upstream's New Jersey)
 
 The household dropped New Jersey as a place to live (2026-10-17), and the fork's three NJ-only

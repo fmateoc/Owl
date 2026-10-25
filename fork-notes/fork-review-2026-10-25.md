@@ -21,6 +21,9 @@ code. Each claim below says how it was checked.
 
 ### A. The age-anchored smile changes upstream's own examples
 
+**Done 2026-10-25 (user): the fork's smile dropped, upstream's taken** (not the opt-in below). See
+PROGRESS.md, "The fork's smile dropped".
+
 The fork's smile (fixed 30-year cosine period, start at an age, survivor's age after the first
 death) replaces upstream's curve for every smile case, including the six example cases, which
 carry a fork-only `smile_start_age` line. Measured on 2026-10-24 (PROGRESS.md, "The rest

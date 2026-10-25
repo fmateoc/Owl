@@ -277,21 +277,9 @@ def _apply_optimization_to_plan(plan: "Plan", known: dict) -> None:
         dip = int(op.get("smile_dip", 15))
         increase = int(op.get("smile_increase", 12))
         delay = int(op.get("smile_delay", 0))
-        # Fork: the younger spouse's age when the smile starts; it wins over smile_delay, which a
-        # case without it is converted from (years from this year), once, when the case is read.
-        start_age = op.get("smile_start_age")
-        start_age = None if start_age is None else int(start_age)
     else:
-        dip, increase, delay, start_age = 15, 12, 0, None
-    plan.setSpendingProfile(profile, survivor, dip, increase, delay, start_age=start_age)
-    if profile == "smile" and start_age is None:
-        plan.mylog.print(
-            f"The case gives the smile's start as smile_delay = {delay} years from now, not as an age: "
-            f"read as smile_start_age = {plan.smileStartAge} (the younger spouse's age this year plus "
-            f"the delay). Read again next year, it would start a year later. Save the case to keep "
-            f"the age, or add smile_start_age = {plan.smileStartAge} to [optimization_parameters].",
-            tag="WARNING",
-        )
+        dip, increase, delay = 15, 12, 0
+    plan.setSpendingProfile(profile, survivor, dip, increase, delay)
 
 
 def _apply_solver_options_to_plan(plan: "Plan", known: dict) -> None:
@@ -599,10 +587,7 @@ def plan_to_config(myplan: "Plan") -> dict:
     if myplan.spendingProfile == "smile":
         diconf["optimization_parameters"]["smile_dip"] = int(myplan.smileDip)
         diconf["optimization_parameters"]["smile_increase"] = int(myplan.smileIncrease)
-        # The age anchors the curve; the delay (from this year, never negative) is for readers
-        # that only know smile_delay, such as upstream Owl.
-        diconf["optimization_parameters"]["smile_start_age"] = int(myplan.smileStartAge)
-        diconf["optimization_parameters"]["smile_delay"] = max(0, int(myplan.smileDelay))
+        diconf["optimization_parameters"]["smile_delay"] = int(myplan.smileDelay)
     budget_file = getattr(myplan, "budgetFileName", None)
     if budget_file and budget_file != "None":
         diconf["optimization_parameters"]["budget_file"] = budget_file

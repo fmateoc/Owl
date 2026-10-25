@@ -123,23 +123,20 @@ def getHFP(exdir, case, check_exists=True):
 # reinvested dividends and interest and putting the unrealized gain in the equity share.
 # kim+sam-spending returned to 186_583 under HiGHS when residualTol became a per-year bar: at
 # $50/yr it converges where it did before the exit test, while MOSEK still settles at 186_519.
-# jack+jill 102_535 -> 103_499 when the smile became age-anchored (fixed 30-year span instead of
-# one period over the plan's length): its 33-year horizon no longer stretches the go-go years.
-# joe (N_n = 31 = SMILE_SPAN + 1) is unchanged by that.
 # kim+sam-bequest 1_944_071 -> 1_946_663 (both solvers 1_946_662.67) when IRMAA started using the
 # filing status of the lookback return (#213): the survivor's first two years are on the joint
 # table, which cuts its lifetime Medicare by $2,297 in today's dollars.
-# jack+jill 103_499 -> 103_578 (fork, 2026-10-23) when the SSA earnings test became part of the
-# model: Jill claims at 62y1m in 2028, her last work year at $85k, so that year's $14,302 (nominal)
-# is withheld and its 11 months come back at FRA through the adjustment of the reduction factor,
-# which here outweighs the withholding. 103_499.11 with the test run on zero earnings.
+# jack+jill 102_535 -> 102_621 when the SSA earnings test was applied (#220): Jill claims at 62y1m
+# in 2028, her last work year at $85k, so $14,302 (nominal) is withheld that year and its 11 months
+# come back at FRA through the adjustment of the reduction factor, which here outweighs the
+# withholding. 102_531.46 with the test run on zero earnings, under the frozen test date.
 EXPECTED_OBJECTIVE_VALUES = {
     "Case_john+sally": {
         "net_spending_basis": 145_000,
         "bequest": 16_803,
     },
     "Case_jack+jill": {
-        "net_spending_basis": 103_578,
+        "net_spending_basis": 102_621,
         "bequest": 400_000,
     },
     "Case_joe": {
@@ -163,11 +160,11 @@ EXPECTED_OBJECTIVE_VALUES = {
 
 @pytest.fixture
 def upstream_model_without_payroll_tax(monkeypatch):
-    """Fork: john+sally's and joe's values are upstream's, and jack+jill's the fork's earlier
-    model, all without a payroll tax. The fork's payroll tax (always charged on wages since
-    2026-10-24) is taken out here so the values keep checking that the fork equals upstream
-    elsewhere; it is tested in tests/plan/test_payroll_tax.py and test_payroll_tax_always.py,
-    and the fork's own model with it is pinned by tests/data/amo_mip_reference.json."""
+    """Fork: these values are upstream's, for upstream's model, which charges no payroll tax.
+    The fork's payroll tax (always charged on wages since 2026-10-24) is taken out here so the
+    values keep checking that the fork equals upstream elsewhere; it is tested in
+    tests/plan/test_payroll_tax.py and test_payroll_tax_always.py, and the fork's own model with
+    it is pinned by tests/data/amo_mip_reference.json."""
     def nothing(earnings, gamma_n, n_d, N_n, thisyear):
         return np.zeros_like(earnings), np.zeros_like(earnings), np.zeros(N_n)
 

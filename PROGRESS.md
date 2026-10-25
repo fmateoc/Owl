@@ -2364,6 +2364,27 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## The fork's smile dropped (2026-10-25, on `claude/phase5-step1`)
+
+User's decision after the review (option A, taken further than the opt-in proposed): the fork's
+age-anchored smile is gone and upstream's is back. The household does not use the smile
+(`"flat"` in the template, `"budget"` for housing), and for its 62-92 horizon (31 years = the
+fork's 30-year period + 1) the two curves were identical (both computed: low point 79% of the
+first year at 76, 110% at 92). Taken from upstream as is: `spending.py`, `tests/plan/test_spending.py`,
+the six example cases (no `smile_start_age`), `tests/plan/test_amo_postprocess.py`; reverted by hand:
+`Plan.setSpendingProfile` (keeps the `"budget"` branch; `_smileYears` / `_youngerAgeAtStart` /
+`smileStartAge` gone), `plan_bridge` (old-case warning, `smile_start_age` read and written),
+`ui_bridge` (`_younger_age_now`), the schema field, the UI field (back to *Smile delay*), the docs.
+`tests/plan/test_smile_start_age.py` deleted. A case still carrying `smile_start_age` has it
+silently ignored (the section takes unknown keys, as upstream).
+
+Pinned results: `test_toml_cases` is upstream's file again plus the payroll-tax fixture (jack+jill
+102,621, upstream's value). AMO fixture: jordan+taylor and morgan take upstream's records, MOSEK
+entries back (the fork's basis equals upstream's to the cent: 221,105.33 and 41,340.55; bequests
+within the test's band); jack+jill re-recorded, basis only, 100,669.12 (the payroll tax: Jill's
+wages). Cases still differing from upstream's fixture: alex+jamie, jack+jill, joe, john+sally,
+jon+jane (payroll tax) and devon (itemizing).
+
 ## Fork review: closer to upstream (2026-10-25, on `claude/phase5-step1`)
 
 Whole-fork diff against upstream `dev` `4e55b36` (nothing newer upstream), read for edits to
@@ -3381,6 +3402,7 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
 
 ## Test status
 
+2026-10-25, the fork's smile dropped: **3492 passed, 1 skipped** (7:14); the 23 fewer are the removed smile tests (15 in `test_smile_start_age.py`, 6 fork tests in `test_spending.py`, 2 schema round-trips of `smile_start_age`), checked by comparing collected test ids.
 2026-10-25, fork review (decorator restored on `_add_defunct_constraints`): **3515 passed, 1 skipped** (7:10).
 2026-10-25, `withPayrollTax` removed: **3515 passed, 1 skipped** (11:39). flake8 clean.
 

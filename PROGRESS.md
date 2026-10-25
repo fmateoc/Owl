@@ -2373,8 +2373,11 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
   `test_toml_cases` / `test_repro` pins, which a MOSEK run is held to.
 - john+sally (user: name the local-search option): the text now proposes pinning it under
   `breakpointMethod = "local-search"`, measured on the PR head, frozen test date: 14,013.49 (=
-  branch-and-bound), 45.6 s wall / 53.0 s CPU, so possibly a `deep` test. Not implemented; waits
-  on the maintainer.
+  branch-and-bound), 45.6 s wall / 53.0 s CPU. Then made (user: as a deep test): PR `263c0b3`,
+  `test_john_sally_under_local_search` (`deep`), john+sally out of `test_reproducibility`'s table;
+  ported to the fork (file identical). PR head: 3232 passed / 1 skipped, `-m deep` 6 passed (7:05);
+  fork: `test_toml_cases.py` default 2 passed, deep 1 passed (45 s). Left: the AMO fixture's HiGHS
+  john+sally record (loop, 21.00; the test accepts up to \$72), flagged in the PR text.
 
 ## #227 PR reviewed and fixed (2026-10-25, on `claude/lucid-gates-uo4kbu`)
 

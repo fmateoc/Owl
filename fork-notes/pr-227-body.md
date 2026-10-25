@@ -1,9 +1,10 @@
 # PR for #227 (payroll tax), for the user to open
 
 Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
-`fmateoc:payroll-tax-pr` (pushed), four commits on upstream `dev` `22ce72b` (the version kick
+`fmateoc:payroll-tax-pr` (pushed), five commits on upstream `dev` `22ce72b` (the version kick
 after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status
-rule) and `033c9d8` (MOSEK records left empty), base `dev`. Built in a worktree
+rule), `033c9d8` (MOSEK records left empty) and `263c0b3` (john+sally pinned under local search, a
+`deep` test), base `dev`. Built in a worktree
 of stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
@@ -105,8 +106,9 @@ rows match the #227 repro to the dollar; riley+casey (added since) is 7.65% of R
 **Re-pinned** (HiGHS, linux). I don't have a MOSEK license, so none of these was run under
 MOSEK; `test_toml_cases.py` and `test_repro.py` hold a MOSEK run to the same values:
 
-- `test_toml_cases.py`: jack+jill 102,621 -> 100,669, joe 92,575 -> 91,276, john+sally
-  16,803 -> 21. One table, as before.
+- `test_toml_cases.py`: jack+jill 102,621 -> 100,669, joe 92,575 -> 91,276. john+sally leaves
+  the table (it was 16,803; the loop now gives 21) for a new `deep` test,
+  `test_john_sally_under_local_search`, which pins it under local search at 14,013 (see below).
 - `test_repro.py`: SPENDING1 89,154 -> 87,226, BEQUEST1 959,477 -> 859,316, SPENDING2
   99,246 -> 97,199, SPENDING1_FIXED 93,255 -> 90,852, the same in the darwin, linux and win32
   tables. **Only linux was run**; darwin and win32 take the linux values, as in the earlier
@@ -152,22 +154,26 @@ in a way the tax causes:
 
 The tax only pushed this case past the edge: the loop's plan without it leaves \$16,803 where local
 search leaves \$31,778. For the pins, the \$21 is reproducible here, but it sits on the loop's
-failure mode, so it may be the first value to move on MOSEK or another HiGHS. I suggest pinning
+failure mode, so it may be the first value to move on MOSEK or another HiGHS. So the PR pins
 john+sally under local search (`breakpointMethod = "local-search"`) instead: 14,013.49, the same as
-branch-and-bound, with no residual. The cost is time: 46 s wall (53 s CPU) here on the frozen test
-date, in a container about 2.4x slower than your machine, so it may belong with the `deep` tests.
-I have not made that change, nor any to the example; say if you want it in this PR.
+branch-and-bound, with no residual. It takes 46 s wall (53 s CPU) here on the frozen test date,
+and this container ran stock code about 2.4x slower than your machine, so it is a `deep` test and
+the default run no longer solves john+sally in `test_toml_cases.py`. The example is unchanged.
+One loop pin is left: the AMO fixture's HiGHS record for john+sally holds the loop's 21.00, where
+`test_objective_matches_reference` accepts a bequest up to \$72 (5% + \$50; its floor, -\$29,
+is below zero), so a solver that lands the loop higher fails it. I left that test alone, since it
+checks the loop path against its record; say if you want john+sally out of it too.
 
-**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers; rerun on the head with the MOSEK records emptied, the same); `pytest -m deep`: 5
-passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
+**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, on the head `263c0b3`); `pytest -m deep`:
+6 passed (7:05). flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
 `test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
 ---
 
 ## Before opening (user)
 
-- john+sally: the text now proposes the local-search pin (user, 2026-10-25); the change itself is
-  not made, it waits on his answer.
+- john+sally: pinned under local search as a `deep` test (user, 2026-10-25); the AMO fixture's
+  loop record (21.00) is left, flagged in the text.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
-- Four commits: squash them if you prefer one (he squashed #222 on landing).
+- Five commits: squash them if you prefer one (he squashed #222 on landing).

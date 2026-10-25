@@ -34,6 +34,8 @@ from pathlib import Path
 
 import numpy as np
 
+from . import tax_federal
+
 _TOML_PATH = Path(__file__).parent / "data" / "taxes_state.toml"
 
 # Sentinel width for the last (open-ended) bracket, in base-year dollars.
@@ -207,13 +209,6 @@ def _padded_rates_and_widths(brackets: list, n_st: int):
     rates, widths = _brackets_to_rates_and_widths(brackets, _LAST_BRACKET_SENTINEL)
     extra = n_st - len(rates)
     return np.append(rates, np.full(extra, rates[-1])), np.append(widths, np.zeros(extra))
-
-
-def filing_status_by_year(N_i: int, n_d: int, N_n: int) -> np.ndarray:
-    """Filing status in each plan year: 1 = MFJ, 0 = Single (a couple files Single from year n_d on)."""
-    status = np.full(N_n, N_i - 1, dtype=int)
-    status[n_d:] = max(0, N_i - 2)
-    return status
 
 
 def _deduction_amount(entry: dict) -> float:
@@ -415,7 +410,7 @@ def st_taxParams(
     itemized = StateItemizedParams.empty(N_n)
 
     thisyear = date.today().year
-    filing_status_n = filing_status_by_year(N_i, n_d, N_n)
+    filing_status_n = tax_federal.filingStatus_n(N_i, n_d, N_n)
 
     for n in range(N_n):
         entry = entry_mfj if filing_status_n[n] == 1 else entry_single

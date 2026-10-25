@@ -1,7 +1,9 @@
 # PR for #227 (payroll tax), for the user to open
 
-Status: drafted 2026-10-25. Head `fmateoc:payroll-tax-pr` (pushed), one commit `55b49ba` on
-upstream `dev` `22ce72b` (the version kick after `03aaef3`), base `dev`. Built in a worktree of stock `dev`; no fork code.
+Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
+`fmateoc:payroll-tax-pr` (pushed), two commits on upstream `dev` `22ce72b` (the version kick after
+`03aaef3`): `55b49ba` (the feature) and `36cdddf` (review fixes), base `dev`. Built in a worktree
+of stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
 ---
@@ -18,7 +20,13 @@ Closes #227, in the shape you described.
   year. 6.2% of each person's earnings up to the wage base (`payrollWageBase` = \$184,500 times
   `gamma_n`, i.e. the 2026 base held in today's dollars), 1.45% on all of them, and 0.9% of the
   household's combined earnings above \$250,000 through the year of the first death and \$200,000
-  after (the same `n == n_d` switch as `computeNIIT`; not indexed). Constants next to NIIT's.
+  after (not indexed). Constants next to NIIT's. No loop over years: the filing status of each
+  year comes from a new `filingStatus_n(N_i, n_d, N_n)` (joint while `n < n_d`).
+- `filingStatus_n` also replaces the per-year loop in `computeNIIT`, now vectorized (equal to the
+  old loop to the bit on 20 random cases, `tests/tax/test_filing_status.py`), and the inline copy
+  in `compute_social_security_taxability`. `capitalGainTax`, `taxParams`, `seniorBonusSchedule`,
+  `taxBrackets` and `tax_state` still carry their own copy of the rule inside loops that do more per
+  year; I left them alone here and can convert them in a follow-up if you want.
 - `Plan.payroll_n`: zeros in `__init__`, rebuilt at solve time in the `_adjustedParameters` block
   right after `_ss_streams`, from `_earnings_test_inputs()` (wages plus the year's tax-deferred
   contributions, payroll HSA left out). `solve()` resets `_adjustedParameters`, so a change of
@@ -33,9 +41,14 @@ Closes #227, in the shape you described.
 - Cash Flow sheet: `payroll tax` (negative) right after `NIIT`, when any year has one. The sheet
   still balances: a new test sums every column of the actual sheet against net spending, row by row.
 - `planData` (CSV): the same column, same place; `Tax bills + Med.` in the Income sheet and the CSV.
+- Taxes sheet: a `payroll tax` column after `10% penalty`, when any year has one, outside its
+  `total` (which is `T_n`), so the sheet reconciles with *Tax bills + Med.*
 - `_check_cashflow_balance`: on the outflow side.
 - `lifetime_allocation()["outflows"]["taxes"]`, and the same term in `annual_cashflow_mix()` so the
   two stay consistent (not in your list; say if you would rather leave the mix alone).
+- Not done, your call: the taxes plot (`showTaxes`, `allTaxes = T_n + U_n + J_n`) does not show the
+  payroll tax. It could join the "income tax" line or be its own line, which needs a new series in
+  both plotting backends.
 - Summary: *Total payroll tax paid* (today's \$ and nominal) after the NIIT line, for every case
   (\$0 without earnings).
 - `plan_metrics`: `payroll_tax_today` / `payroll_tax_nominal`, in `METRICS_COLUMN_MAP`, so
@@ -56,9 +69,12 @@ instructions)
 - jack+jill by hand (\$195,000 / \$195,000 / \$185,000 of earnings, 7.65%); a second solve after
   editing wages; the cash-flow identity and no balance warning; the Cash Flow sheet's column order
   and row sums; `T_n` is still the bracket sum; metrics, Summary columns, lifetime allocation, the
-  Income sheet and the CSV; the Summary row at \$0 and no Cash Flow column without earnings.
+  Taxes sheet (column place, value, `total` still `T_n`), Income sheet and the CSV; the Summary row
+  at \$0 and no Cash Flow or Taxes column without earnings.
 - The twelve examples without wages derive no earnings and pay nothing (parametrized); the seven
   with wages pay something.
+- `tests/tax/test_filing_status.py`: `filingStatus_n` on couples (death inside, at 0, at and past
+  the end, None) and singles; `computeNIIT` equal to the old loop on 20 random cases.
 - Two existing identities gained the term: `test_cashflow_balance._assert_cashflow_balance` and
   `test_export.test_cash_flow_sheet_balances_to_zero`.
 
@@ -92,8 +108,17 @@ rows match the #227 repro to the dollar; riley+casey (added since) is 7.65% of R
   **I have no MOSEK license**, so each MOSEK record was moved by the HiGHS change (pristine minus
   patched, same day) and marked as an estimate in its `_rerecorded` note: please re-record them
   under MOSEK (jack+jill's MOSEK record already differed from HiGHS's by 0.43%).
-- `test_local_search.py` (deep): john+sally's #197 test asserted `bequest > 31_000`. With the tax,
-  local search and branch-and-bound both give 14,013.49 (measured), so the bar is now 14,000.
+- `test_local_search.py` (deep): the #197 tests. With the tax, john+sally no longer exercises
+  #197: the full search, the search without (b'), the search with the full LTCG link rows
+  (`_relax_links` returning the plan's rows) and the search with neither all give 14,013.49. So
+  the tests now solve john+sally without the tax (`payrollTax` patched to zero), where the four
+  give 31,778.17, 31,778.17, 30,823.25 and 20,004.43:
+  - the existing test keeps the branch-and-bound bar, now 31,500 (was 31,000, which the full link
+    rows' 30,823 came close to);
+  - a new one runs on the full link rows and asserts > 30,000, so (b') is tested on its own. On
+    `dev` today nothing tests it: with the relaxation, john+sally reaches 31,778 without (b').
+  - Checked by reverting each part on this branch: no relaxation fails the first (30,823), no
+    (b') fails the second (20,004), neither fails both.
 
 **john+sally: \$16,803 -> \$21.** You asked whether a floor or constraint binds. It does, and not
 in a way the tax causes:
@@ -122,18 +147,15 @@ failure mode, so it may be the first value to move on MOSEK or another HiGHS. Op
 call: keep it; pin john+sally under local search; or lower its `netSpending` so the shipped plan
 is not at the edge (the description's numbers would change too). I changed nothing in the example.
 
-**Also found:** on `dev` `22ce72b`, without this PR, the #197 deep test also passes with step (b')
-switched off (`if False and "zs" in fams ...`): local search still reaches 31,778.17 on john+sally
-(and 14,013.49 with the tax). So that test no longer shows that (b') is needed. Not changed here.
-
-**Checks:** `pytest -n 4`: 3205 passed, 1 skipped (default markers, 7:16); `pytest -m deep`: 4
-passed.
-flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
-`test_local_search.py:264`, `test_roth_maturation_losses.py:49`).
+**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, 8:11); `pytest -m deep`: 5
+passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
+`test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
 ---
 
 ## Before opening (user)
 
 - Decide whether to keep the john+sally paragraph's three options or name one.
-- The `annual_cashflow_mix` change is beyond his list; it is flagged in the text.
+- The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
+  taxes plot left for him to decide.
+- Two commits: squash them if you prefer one (he squashed #222 on landing).

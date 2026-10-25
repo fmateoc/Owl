@@ -31,7 +31,7 @@ from pathlib import Path
 import numpy as np
 import toml
 
-from . import tax_state
+from . import tax_federal, tax_state
 
 _TOML_PATH = Path(__file__).parent / "data" / "taxes_local.toml"
 
@@ -126,7 +126,7 @@ def local_taxParams_schedule(
 
     *residences_n* holds a (state, locality) pair for each year; locality "" means none.
     """
-    status_n = tax_state.filing_status_by_year(N_i, n_d, N_n)
+    status_n = tax_federal.filingStatus_n(N_i, n_d, N_n)
     per_year = []  # per year: (rates, widths) or None
     surcharge_n = np.zeros(N_n)
     for n, (state, locality) in enumerate(residences_n):

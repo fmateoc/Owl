@@ -1037,24 +1037,6 @@ that phases in over \$50{,}000 of AGI tier by tier (rule in \code{tax\_state.sta
 reproducing the IT-201-I tax computation worksheets), is added to the state tax.
 Like the NIIT it is a self-consistent-loop parameter: $R_n$ enters the cash flow as
 a constant from the previous iterate.
-New Jersey excludes retirement income in steps of total income (NJ-1040 lines
-28a--28c): with line-27 income $L_n$ up to \$100{,}000 a married couple aged 62
-or more excludes its pensions, IRA withdrawals and Roth conversions up to
-\$100{,}000, half of them up to \$125{,}000, a quarter up to \$150{,}000, and
-nothing above; with wages of at most \$3{,}000 the unused part covers other
-income, so the exclusion becomes the same share of $L_n$. Because the steps are
-cliffs, the tier is chosen by binaries $z^x_{kn}$, $\sum_k z^x_{kn} = 1$, in the
-disaggregated form of the disjunction: $L_n = \sum_k L_{kn}$ with
-$c_{k-1} z^x_{kn} \le L_{kn} \le c_k z^x_{kn}$, the eligible base split the same
-way into $B_{kn} \le L_{kn}$, and the exclusion bounded by
-$\sum_k s_k B_{kn}$ and the cap. Only the copy above the last ceiling needs the
-income ceiling as a bound, so inside the ceilings the relaxation is the concave
-envelope of the staircase. The optimizer can then hold $L_n$ at a ceiling when the
-exclusion is worth more than the income above it.
-The binaries are free only in years whose $L_n$ in the previous iterate was at most
-1.5 times the top ceiling (the first iterate is solved without the exclusion, and the
-set only grows); without a time limit set by the user, a MILP carrying them stops
-after 60 seconds and its tiers are kept for the remaining iterations.
 A city tax can sit on top of the state's (\code{locality}, data in
 \code{data/taxes\_local.toml}): either a set of brackets on the state taxable
 income, which adds bracket variables $f^{\ell}_{tn}$ with

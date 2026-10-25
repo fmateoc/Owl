@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-24)
+# Owl fork — progress (as of 2026-10-25)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -2364,6 +2364,26 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Fork review: closer to upstream (2026-10-25, on `claude/phase5-step1`)
+
+Whole-fork diff against upstream `dev` `4e55b36` (nothing newer upstream), read for edits to
+upstream lines; report `fork-notes/fork-review-2026-10-25.md`. Done:
+
+- `@_fixedAcrossIterations` restored on `_add_defunct_constraints`: lost by mistake in `a5fd533`
+  (NJ removal) with the NJ builder above it; the only upstream line that commit removed by mistake
+  (scan of its removed lines against upstream). Same bounds, rebuilt each iteration instead of
+  replayed: no plan change.
+- The fork's `CHANGELOG.md` block moved to `fork-notes/CHANGELOG-fork.md`: `CHANGELOG.md` is
+  upstream's byte for byte, so it stops conflicting at syncs. New fork entries go in the new file.
+- Stale NJ text: the NJ exclusion paragraph in `papers/owl.tex`, two mentions in the template.
+
+Open for the user (report section 2): the age-anchored smile (changes six upstream examples; the
+household does not use the smile; recommended: opt-in through `smile_start_age`, upstream's curve
+without it), `withItemized` default, several moves vs upstream's one, a tuple/dict-compatible
+`StateTaxParams`, the legacy `Housing` reader, the tracked `otherFiles/PROGRESS.md`. Upstream
+(section 3): #158 is closed but upstream still has no NY recapture (`git grep`), and the stock
+patch no longer applies to `4e55b36`; the paper/docs drift draft is unfiled and stale.
+
 ## Payroll-tax issue draft reviewed; `withPayrollTax` removed (2026-10-25, on `claude/phase5-step1`)
 
 **Posted by the user as #227** (2026-10-25), with the PR offer kept.
@@ -3361,6 +3381,7 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
 
 ## Test status
 
+2026-10-25, fork review (decorator restored on `_add_defunct_constraints`): **3515 passed, 1 skipped** (7:10).
 2026-10-25, `withPayrollTax` removed: **3515 passed, 1 skipped** (11:39). flake8 clean.
 
 2026-10-24, payroll tax always on: **3517 passed, 1 skipped** (11:56). flake8 clean; Ruff only upstream's three B905.

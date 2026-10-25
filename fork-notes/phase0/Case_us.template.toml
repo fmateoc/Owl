@@ -9,7 +9,8 @@ description = """
 NY-metro couple, both born 1964 (FRA 67), currently renting. No pensions or
 457(b). Goal: spend down to $0 by age 92. Exploring retirement timing (end of
 2026 vs later), SS claiming, part-time work, residency (Yonkers / NYC /
-Westchester / NJ), and rent vs buy. Healthcare cost growth is the main worry.
+rest of Westchester, or a later move within NY), and rent vs buy. Healthcare
+cost growth is the main worry.
 """
 
 [basic_info]
@@ -82,7 +83,7 @@ bequest = 0                             # spend down to $0 at 92 (read here, not
 withSSAges = "optimize"                 # co-optimize claiming ages
 withMedicare = "optimize"               # IRMAA as endogenous cost
 withACA = "loop"                        # pre-65 marketplace (2027 until each turns 65)
-withItemized = "loop"                   # itemized deductions (federal, NY, NJ line 31); "none" = standard only
+withItemized = "loop"                   # itemized deductions (federal and NY IT-196); "none" = standard only
 solver = "default"
 spendingSlack = 0
 maxRothConversion = 200

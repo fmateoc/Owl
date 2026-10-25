@@ -4451,6 +4451,7 @@ class Plan:
                     rhs = self.piBar_in[i, n] if self.st_pension_eligible_n[n] else 0
                     self.A.addRow(row, -np.inf, rhs, tag=("state_ret_exempt_cap", i, n))
 
+    @_fixedAcrossIterations
     def _add_defunct_constraints(self):
         if self.N_i == 2:
             for n in range(self.n_d, self.N_n):

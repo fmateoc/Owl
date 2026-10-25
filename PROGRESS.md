@@ -2364,6 +2364,22 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Upstream `dev` `6371346` merged; #227 PR merged with it and reviewed a last time (2026-10-25, on `claude/phase5-step1`)
+
+- Upstream: `0d30350` (after each branch-and-bound solve, the years whose own income contradicts the
+  cost charged are re-solved with their binaries free: `localsearch.repair_inconsistent_years`,
+  `Plan._repairInconsistentYears`) and the 2026.10.25 version kick. Clean merge here (CHANGELOG
+  is upstream's byte for byte); the fork's `zst` family already works with the repair
+  (`RESIDUAL_FAMILY.get` in `_inconsistent_columns`). Fork suite 3545 passed / 1 skipped (10:12;
+  3541 + upstream's 4).
+- PR (`payroll-tax-pr`): `dev` merged (`2bc5e7d`, no conflict), but the auto-merge left the
+  payroll entry inside the released 2026.10.25 section; moved under a new Version WIP (`f98ef3e`).
+  3236 passed / 1 skipped, `-m deep` 6 passed. All 19 examples re-measured on stock `6371346`
+  vs the PR head (frozen date, HiGHS): the PR table holds to the cent, the twelve without wages
+  identical in basis, bequest, federal and state tax; john+sally still 21.00, IRMAA residual \$374.
+  Final read of the text: base, commits, measured-on line, checks and Ruff line numbers updated;
+  nothing else found.
+
 ## #227 PR text: MOSEK records empty, local search named for john+sally (2026-10-25, on `claude/phase5-step1`)
 
 - AMO fixture (PR `033c9d8`, fork `457815a`): the five re-pinned cases' MOSEK records are `null`

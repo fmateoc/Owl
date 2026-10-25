@@ -1,12 +1,14 @@
 # PR for #227 (payroll tax), for the user to open
 
 Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
-`fmateoc:payroll-tax-pr` (pushed), six commits on upstream `dev` `22ce72b` (the version kick
-after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status
-rule), `033c9d8` (MOSEK records left empty), `263c0b3` (john+sally pinned under local search, a
-`deep` test) and `5043e98` (the helper renamed `filingStatusIndex_n`, out of `taxParams` and
-`seniorBonusSchedule`), base `dev`. Built in a worktree
-of stock `dev`; no fork code.
+`fmateoc:payroll-tax-pr` `f98ef3e` (pushed), base `dev`: six commits on upstream `dev` `22ce72b`,
+`55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status rule), `033c9d8`
+(MOSEK records left empty), `263c0b3` (john+sally pinned under local search, a `deep` test) and
+`5043e98` (the helper renamed `filingStatusIndex_n`, out of `taxParams` and `seniorBonusSchedule`),
+then a merge of `dev` `6371346` (`2bc5e7d`: `0d30350`, the branch-and-bound repair, and the
+2026.10.25 version kick; no conflict) and `f98ef3e` (the CHANGELOG entry moved under a new
+Version WIP, above the released 2026.10.25, where the merge had left it). Built in a worktree of
+stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
 ---
@@ -89,7 +91,8 @@ instructions)
 - Two existing identities gained the term: `test_cashflow_balance._assert_cashflow_balance` and
   `test_export.test_cash_flow_sheet_balances_to_zero`.
 
-**Measured: all 19 examples as shipped**, `dev` `22ce72b` vs this branch (frozen test date, HiGHS):
+**Measured: all 19 examples as shipped**, `dev` vs this branch (frozen test date, HiGHS). Measured
+on `22ce72b` and again on `6371346` after merging it: the same numbers to the cent.
 
 | case | objective | payroll tax (nominal) | before | after | change |
 |---|---|---:|---:|---:|---:|
@@ -166,9 +169,9 @@ One loop pin is left: the AMO fixture's HiGHS record for john+sally holds the lo
 is below zero), so a solver that lands the loop higher fails it. I left that test alone, since it
 checks the loop path against its record; say if you want john+sally out of it too.
 
-**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, on the head `5043e98`); `pytest -m deep`:
-6 passed (6:50, same head). flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
-`test_local_search.py`, `test_roth_maturation_losses.py:49`).
+**Checks** (on the merge with `dev` `6371346`): `pytest -n 4`: 3236 passed, 1 skipped (default
+markers); `pytest -m deep`: 6 passed. flake8 clean. Ruff: only the three B905 already on `dev`
+(`localsearch.py:240`, `test_local_search.py:288`, `test_roth_maturation_losses.py:49`).
 
 ---
 
@@ -178,4 +181,4 @@ checks the loop path against its record; say if you want john+sally out of it to
   loop record (21.00) is left, flagged in the text.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
-- Six commits: squash them if you prefer one (he squashed #222 on landing).
+- Six commits and a merge of `dev`: squash them if you prefer one (he squashed #222 on landing).

@@ -1,0 +1,19 @@
+{
+  "description": "Dry run of work_sweep.py on examples/Case_chris+pat.toml (Pat works through 2028 at $85k). slcsp_annual 20 ($k/yr) is a stand-in, not a quote (as in the 2026-10-22 probes). Same PIAs in every variant: a mechanics test, not a decision (a real sweep enters one PIA per variant, D4). aca_start_year: the year after Pat's last work year; Chris is on Medicare from 2028.",
+  "set": [
+    "aca_settings.slcsp_annual=20",
+    "solver_options.withSSAges=optimize"
+  ],
+  "variants": [
+    {"name": "base", "set": ["aca_settings.aca_start_year=2029"]},
+    {"name": "pat-stops-2027",
+     "set": ["aca_settings.aca_start_year=2028"],
+     "hfp": {"Pat": [{"years": [2028, 2028], "anticipated wages": 0, "401k ctrb": 0}]}},
+    {"name": "pat-stops-mid-2028",
+     "set": ["aca_settings.aca_start_year=2029"],
+     "hfp": {"Pat": [{"years": [2028, 2028], "anticipated wages": 42500, "401k ctrb": 13950, "months worked": 6}]}},
+    {"name": "pat-part-time-2029-30",
+     "set": ["aca_settings.aca_start_year=2029"],
+     "hfp": {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}}
+  ]
+}

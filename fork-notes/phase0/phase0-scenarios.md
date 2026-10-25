@@ -108,12 +108,57 @@ owlcli compare otherFiles/Case_us.toml --set basic_info.locality=Yonkers \
 (`--solver-opt withSSTaxability=0.85` pins the fraction since upstream #174, merged 2026-10-08;
 before, it stayed the text "0.85" and silently ran the loop.)
 
-## 4. Part-time work (Phase 5; placeholder now)
+## 4. Work variants: the sweep (Phase 5 step 6)
 
-Use one HFP workbook per scenario, with wages in the working years. The Social Security earnings
-test is not modeled yet, so claiming before FRA while working overstates benefits.
+Owl applies the SSA earnings test to every claim before FRA (upstream `6ea43a9`) and charges the
+employee payroll tax on wages (upstream `3a2dfc33`), so work variants compare directly. Decide them
+with `fork-notes/phase5/work_sweep.py`, not with `owlcli compare`: claiming ages need the
+two-stage method of `fork-notes/plan-review-2026-10-22.md` §3.2 (decision R1). The script runs a
+`withSSAges` search under the exact LP (ACA optimized when `slcsp_annual > 0`) and under the loop,
+then scores the whole-year ages 62-70 and both picks under local search at fixed ages; local
+search decides. A direct `owlcli run` of the template's `withSSAges = "optimize"` with
+`withMedicare = "optimize"` makes every candidate a branch-and-bound MIP under HiGHS.
 
-## 4b. One stops and may claim SS; the other keeps working
+Variants are a JSON file of `--set` overrides and HFP cell edits (format in the script's
+docstring; a worked example: `fork-notes/phase5/work_sweep_chris+pat.json`). Keep the real one
+in `otherFiles/`:
+
+```json
+{
+  "set": ["solver_options.withSSAges=optimize"],
+  "variants": [
+    {"name": "both-stop-2026", "set": ["aca_settings.aca_start_year=2027"]},
+    {"name": "B-part-time-2027-28",
+     "set": ["aca_settings.aca_start_year=2027",
+             "fixed_income.social_security_pia_amounts=[PIA_A, PIA_B_with_the_extra_years]"],
+     "hfp": {"SpouseB": [{"years": [2027, 2028], "anticipated wages": 40000, "401k ctrb": 0}]}}
+  ]
+}
+```
+
+```bash
+.venv/bin/python fork-notes/phase5/work_sweep.py otherFiles/Case_us.toml otherFiles/work_variants.json \
+  --out-dir otherFiles/sweep --jobs 4 --json otherFiles/sweep/scores.json | tee otherFiles/sweep/report.txt
+```
+
+- One PIA per variant (decision D4: SSA's calculator in your account), set in the variant's `set`.
+- Wages are the wages in AGI (#221); enter `months worked` in a spouse's last work year (it decides
+  the grace year).
+- The script writes each variant's workbook and case file to `--out-dir`, so any variant reruns
+  with `owlcli run`.
+- Read the *spread* column: local search's deepest dip between neighbouring ages. A difference
+  between variants smaller than both spreads is unresolved; "no spread" means no dip was seen,
+  so the noise is unknown, not zero.
+- Cost: one local-search solve on chris+pat took 144 s in this container (2026-10-25), and a
+  variant with both spouses searched scores about 20 ages; the dry run's totals are in
+  `fork-notes/phase5/work_sweep_chris+pat_2026-10-25.txt`.
+
+The same script serves locality and rent/buy comparisons: a variant is any set of overrides.
+
+## 4b. One stops and may claim SS; the other keeps working (a single comparison)
+
+For a quick look at one variant, `owlcli compare` still works (claiming ages then come from the
+case's own search, loop noise included).
 
 Example: SpouseA stops at the end of 2026; SpouseB works through 2028 (full or part time) and the
 employer plan covers both until then. Make a workbook with B's wages only:

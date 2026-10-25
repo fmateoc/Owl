@@ -80,7 +80,9 @@ objective = "maxSpending"
 
 [solver_options]
 bequest = 0                             # spend down to $0 at 92 (read here, not under optimization_parameters)
-withSSAges = "optimize"                 # co-optimize claiming ages
+withSSAges = "optimize"                 # co-optimize claiming ages (the full model; with withMedicare
+                                        # "optimize" every candidate is a MIP: decide ages with
+                                        # fork-notes/phase5/work_sweep.py, phase0-scenarios.md section 4)
 withMedicare = "optimize"               # IRMAA as endogenous cost
 withACA = "loop"                        # pre-65 marketplace (2027 until each turns 65)
 withItemized = "loop"                   # itemized deductions (federal and NY IT-196); "none" = standard only

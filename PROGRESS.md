@@ -2363,6 +2363,40 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Payroll-tax issue draft reviewed; `withPayrollTax` removed (2026-10-25, on `claude/phase5-step1`)
+
+**`withPayrollTax` removed outright**, as `withEarningsTest` was (user): no `RETIRED_OPTIONS` entry,
+so a case still carrying the key gets "Ignoring unknown solver option" and nothing else (remove the
+line from `otherFiles/Case_us.toml` if it is there). The deprecated-key test and the saved-case
+guard in `test_payroll_tax_always.py` went with it; code and docs no longer name the key
+(PROGRESS, `phase5-plan.md` and the AMO fixture notes keep the history).
+
+**Review of `fork-notes/issue-payroll-tax.md`** before posting. Fixed:
+1. *Filing status cited wrong:* the shape said "as `irmaaStatus` does"; since #213 `irmaaStatus`
+   follows the lookback return. The fork's rule (joint through the death year) is `computeNIIT`'s
+   (`n == n_d` switches to single, read on `4e55b36`); now cited.
+2. *Dates:* "since 2026-10-18 and, since today" -> charged since 2026-10-22 (step 5), no option since
+   2026-10-24.
+3. *Two claims verified that were recalled:* the wage base's indexing (20 CFR 404.1048, eCFR
+   versioner API, 2026-10-15 text: refigured in each year with a benefit COLA by the ratio of
+   average W-2 wages, rounded to \$300, never lower) and the SE-tax figures (IRS Tax Topic 554,
+   reviewed 24-Sep-2026: 12.4% + 2.9% on 92.35% of net earnings, half deducted from AGI); both
+   texts saved in `fork-notes/phase5/sources/`.
+4. *SE earnings:* upstream's `PARAMETERS.md:83` tells users to enter net SE earnings in
+   `anticipated wages` for the earnings test; under the proposed rule they would pay 7.65%, about
+   half of SE tax's 14.1%. Now said in choice 2.
+5. *Overstatements in wording:* "an extra working year looks 7.65% more valuable" -> each working
+   year brings in 7.65% more cash than it does; "no effect on the tax computations or the loop" ->
+   no term in any tax computation (the tax changes withdrawals, hence taxes, through the plan).
+6. *Rerun advice:* the repro runs under the frozen test date, so it moves only with upstream code,
+   not with the day.
+
+Full suite: **3515 passed, 1 skipped** (11:39; 3517 - the 2 removed tests). flake8 clean.
+
+Held (checked): the six examples with wages of 18 (the repro's case scan); the table against the
+saved output; the no-hit search; `ui/Documentation.py:446-453` and `PARAMETERS.md:81` quotes; the
+earnings test's exempt amounts held in today's dollars (upstream's SS row).
+
 ## Payroll tax always on; upstream issue drafted (2026-10-24, on `claude/phase5-step1`)
 
 User's decision after the merge review: the payroll tax is part of the model, as the earnings test
@@ -3323,6 +3357,8 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
   reads the new Summary rows. §8 (#180) closed.
 
 ## Test status
+
+2026-10-25, `withPayrollTax` removed: **3515 passed, 1 skipped** (11:39). flake8 clean.
 
 2026-10-24, payroll tax always on: **3517 passed, 1 skipped** (11:56). flake8 clean; Ruff only upstream's three B905.
 

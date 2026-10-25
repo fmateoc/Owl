@@ -1,9 +1,10 @@
 # Draft upstream design issue: the employee payroll tax on wages, for the user to post
 
-Status: **drafted 2026-10-24** on `claude/phase5-step1` (pushed as `claude/eager-hawking-scp4gw`),
+Status: **drafted 2026-10-24, reviewed 2026-10-25** on `claude/phase5-step1` (pushed as `claude/eager-hawking-scp4gw`),
 after merging upstream `dev` `4e55b36`. Not posted. Concept level, as #220 was: the gap, the rule,
 a shape and measured stakes on upstream's own examples, not the fork's code. The fork charges the
-tax with no option since 2026-10-24 (PROGRESS.md "Payroll tax always on").
+tax with no option since 2026-10-24 (PROGRESS.md "Payroll tax always on; upstream issue drafted"),
+and has no `withPayrollTax` key since 2026-10-25.
 
 ## What the text rests on
 
@@ -38,9 +39,20 @@ within \$0.16 (225,076.85, 91,275.84, 21.00, 155,455.03). jack+jill differs by t
 2026-10-18 and 2026-10-22, not re-read today): IRS Pub. 15 (2026), "What's New": 6.2% social
 security tax each for employer and employee up to \$184,500, Medicare 1.45% each with no base;
 Instructions for Form 8959: Additional Medicare Tax 0.9% above \$250,000 MFJ / \$200,000 single,
-"aren't indexed for inflation", on combined Medicare wages. **Recalled, kept out of the text's
-claims:** that the wage base follows the national average wage index each year (statutory, not
-read this session); W-2 box 3/5 treatment of 401(k) deferrals (in) and section 125 HSA (out).
+"aren't indexed for inflation", on combined Medicare wages.
+
+**Verified at the review (2026-10-25; both texts saved in `fork-notes/phase5/sources/`):** 20 CFR 404.1048 (eCFR versioner API, 2026-10-15 text): the
+contribution and benefit base is refigured in each year with a benefit cost-of-living increase, by
+the ratio of average W-2 wages, rounded to \$300, and is never lower than the base in effect. IRS Tax
+Topic 554 (irs.gov, "Page Last Reviewed or Updated: 24-Sep-2026"): self-employment tax is 12.4% +
+2.9% on 92.35% of net earnings from self-employment, and one-half of it is deducted in figuring
+AGI. `info/PARAMETERS.md:83` on `4e55b36`: `other inc` is "Not read by the SSA earnings test: enter
+net SE earnings in `anticipated wages` for them to count". `computeNIIT` switches to single in the
+year after the first death (`n == n_d`); `irmaaStatus` follows the lookback return since #213, so
+the text cites `computeNIIT`.
+
+**Recalled, kept out of the text's claims:** W-2 box 3/5 treatment of 401(k) deferrals (in) and
+section 125 HSA (out).
 
 **Not in the text on purpose:** the fork's other additions; MOSEK (no license here).
 
@@ -49,7 +61,7 @@ read this session); W-2 box 3/5 treatment of 401(k) deferrals (in) and section 1
 - **A new issue.** Nothing upstream tracks it.
 - **Timing.** Right after #220/#222 and #221, which defined the wage input this rests on and the
   derived earnings it would reuse; the maintainer has that code in mind. The evidence is his own
-  examples and moves only with the date.
+  examples under the frozen test date, so it moves only when upstream's code does.
 - **Offer a PR?** #222 was squashed and landed with one change; the same could work here (pure
   function in `tax_federal`, a constant in the cash-flow row, outputs). The text offers it.
 
@@ -96,17 +108,17 @@ faces soon, and when we can do that without making the planner harder to use or 
 solve"):
 
 - *A near-term decision.* Every work variant pays it: retiring a year later, part time, or
-  stopping now. Without it, an extra working year looks 7.65% more valuable than it is, in the same
+  stopping now. Without it, each working year brings in 7.65% more cash than it does, in the same
   comparisons the earnings test now gets right.
 - *No input.* The earnings are the ones the earnings test already derives; the rates are statutory.
 - *Nothing to solve.* The tax is not deductible, so it is a constant of each year's cash-flow row:
-  no column, no row, no binary, and no effect on the tax computations or the loop.
+  no column, no row, no binary, and no term in any tax computation.
 
-**A shape** (what the fork has done since 2026-10-18 and, since today, with no option):
+**A shape** (what the fork has charged since 2026-10-22, with no option since 2026-10-24):
 
 - a pure function: per person, 6.2% of earnings up to the wage base plus 1.45% of all earnings;
   per household, 0.9% of the combined earnings above the threshold, joint through the year of the
-  first death and single after, as `irmaaStatus` does;
+  first death and single after, as `computeNIIT` does;
 - the year's total subtracted from that year's cash-flow right-hand side, like debt payments;
 - outputs: a *payroll tax* column in the Cash Flow sheet (which must still balance), inside the
   taxes of the lifetime allocation, a Summary line for households with earnings, and the plan
@@ -114,12 +126,16 @@ solve"):
 
 Choices I would leave to you:
 
-1. **The wage base after 2026.** By statute it follows the national average wage index; the fork
-   holds the 2026 \$184,500 constant in today's dollars, as the earnings test does with its exempt
-   amounts. The threshold of the 0.9% is not indexed (Form 8959).
-2. **Self-employment tax.** `other inc` is not read by the earnings test, and the fork does not tax
-   it either. SE tax (15.3% of 92.35%, half deductible) is a larger number for a consultant, but it
-   needs an input saying which income is SE income: probably a documented limitation for now.
+1. **The wage base after 2026.** By statute it follows average wages (20 CFR 404.1048: refigured in
+   each year with a benefit COLA, never lower than before); the fork holds the 2026 \$184,500
+   constant in today's dollars, as the earnings test does with its exempt amounts. The threshold of
+   the 0.9% is not indexed (Form 8959).
+2. **Self-employment tax.** `info/PARAMETERS.md` asks for net SE earnings in *anticipated wages*
+   so that the earnings test counts them. They would then pay the employee's 7.65%, about half of
+   the 14.1% that SE tax takes (12.4% + 2.9% on 92.35% of net earnings, half of it deducted from
+   AGI; IRS Tax Topic 554). Taxing them right needs an input saying which wages are SE earnings:
+   probably a documented limitation for now. `other inc` stays untaxed, as it
+   stays out of the earnings test.
 3. **Default.** On for every case, with no option, as the earnings test is: the six examples above
    move; the other twelve are unchanged to the cent (no earnings, so nothing is charged).
 
@@ -207,5 +223,5 @@ def test_repro():
 - The script in the `<details>` block is `fork-notes/issue-payroll-tax-repro.py` as run (its
   docstring's `\\$` escapes shown as `$`); its run instructions name a `<stock>` checkout.
 - Decide on the PR offer.
-- Rerun the script on the `dev` of the day if more than a few days pass (plans start today; the
-  frozen-date run moves only when the test date does).
+- Rerun the script if upstream `dev` has moved past `4e55b36` (the run uses the frozen test date,
+  so only code changes move it).

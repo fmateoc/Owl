@@ -1,11 +1,9 @@
 """
-The employee payroll tax is part of the model (fork, 2026-10-24; was the opt-in switch
-``withPayrollTax``, decision D3 of Phase 5):
+The employee payroll tax is part of the model (fork, 2026-10-24; it was an opt-in switch,
+decision D3 of Phase 5):
 
 - every solve charges it on the earnings the plan holds (the SSA earnings test's derived
   earnings), with no option;
-- ``withPayrollTax`` in a saved case is reported as a deprecated option and changes nothing
-  (the household template carried it);
 - the Summary rows and the Cash Flow column appear for a household with earnings in the plan,
   and a household without earnings gets none.
 
@@ -37,7 +35,6 @@ import pytest
 
 import owlplanner as owl
 from owlplanner.export import build_summary_dic
-from owlplanner.mylogging import Logger
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 
@@ -56,30 +53,8 @@ def _solve(p, **extra):
 
 def test_charged_with_no_option():
     p = _load("jack+jill")
-    assert "withPayrollTax" not in (p.solverOptions or {})
     _solve(p)
     assert p.payroll_tax_n[0] == pytest.approx(0.0765 * 195_000.0)
-
-
-def test_the_old_key_is_deprecated_and_changes_nothing():
-    p = _load("jack+jill")
-    buf = io.StringIO()
-    p.mylog = Logger(verbose=False, logstreams=[buf])
-    _solve(p, withPayrollTax=False)
-    assert "Ignoring deprecated solver option 'withPayrollTax'" in buf.getvalue()
-    assert p.payroll_tax_n[0] == pytest.approx(0.0765 * 195_000.0)
-
-
-def test_a_saved_case_with_the_key_still_loads():
-    # A guard (passes before and after): the key must not make a saved case fail to load.
-    from owlplanner.config import load_toml
-    from owlplanner.config.schema import parse_solver_options
-
-    assert "withPayrollTax" not in parse_solver_options({}).keys()
-    diconf, _, _ = load_toml(os.path.join(_EXAMPLES, "Case_joe.toml"))
-    diconf["solver_options"]["withPayrollTax"] = True
-    opts = parse_solver_options(diconf["solver_options"])
-    assert opts["withPayrollTax"] is True  # kept as an unknown key (extra="allow"), not coerced
 
 
 def test_rows_only_for_a_household_with_earnings():

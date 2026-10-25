@@ -2,8 +2,7 @@
 Tests for the employee payroll tax on earnings (fork, Phase 5 step 5, decision D3).
 
 Every solve charges the employee's share of the payroll tax on each person's earnings as a
-cash outflow of the year (until 2026-10-24 the opt-in ``withPayrollTax``; see
-tests/plan/test_payroll_tax_always.py):
+cash outflow of the year (no option; see tests/plan/test_payroll_tax_always.py):
 
 - social security tax, 6.2% of earnings up to the wage base (\\$184,500 in 2026, held at
   that level in today's dollars afterwards, like the earnings test's exempt amounts);

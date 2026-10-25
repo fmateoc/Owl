@@ -98,9 +98,6 @@ _SCLOOP_RETIRED = (
     "phaseout and the cost-basis gain fractions are nonlinear in the solution -- and turning "
     "it off left Medicare out of the budget, overstating spending. Use maxIter to shorten it"
 )
-# Fork: the employee payroll tax was an opt-in switch (Phase 5, D3) until 2026-10-24; the household
-# template carried the key, so a case saved from it is told why the key does nothing.
-_PAYROLL_RETIRED = "the employee payroll tax on earnings is now always charged (fork)"
 RETIRED_OPTIONS = {
     "amoConstraints": _AMO_RETIRED,
     "amoRoth": _AMO_RETIRED,
@@ -112,7 +109,6 @@ RETIRED_OPTIONS = {
     "bigMniit": _BIGM_RETIRED,
     "withDecomposition": _DECOMP_RETIRED,
     "withSCLoop": _SCLOOP_RETIRED,
-    "withPayrollTax": _PAYROLL_RETIRED,
 }
 
 # Sentinel distinguishing "argument omitted" from an explicit None, which callers use to
@@ -2460,8 +2456,8 @@ class Plan:
         """
         Build ``payroll_tax_n`` (nominal $) for this solve: the employee's social security
         and Medicare taxes on each person's earnings and the household's Additional
-        Medicare Tax (``tax_federal.payrollTax``). Always charged (until 2026-10-24 the
-        opt-in ``withPayrollTax``): it needs no input and adds nothing to the solve.
+        Medicare Tax (``tax_federal.payrollTax``). Always charged: it needs no input and adds
+        nothing to the solve.
 
         Earnings are the earnings test's (``_earnings_test_inputs``: in a year with wages,
         the wages, as they enter AGI (#221), plus that year's tax-deferred contributions; an

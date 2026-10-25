@@ -2379,6 +2379,9 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
   identical in basis, bequest, federal and state tax; john+sally still 21.00, IRMAA residual \$374.
   Final read of the text: base, commits, measured-on line, checks and Ruff line numbers updated;
   nothing else found.
+- **Filed by the user as PR #228** (https://github.com/mdlacasse/Owl/pull/228), head `f98ef3e` =
+  `payroll-tax-pr` (checked with `git ls-remote`). When it lands, take upstream's version and drop
+  the fork's duplicate code and tests, as with #222.
 
 ## #227 PR text: MOSEK records empty, local search named for john+sally (2026-10-25, on `claude/phase5-step1`)
 

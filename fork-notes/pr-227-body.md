@@ -1,6 +1,8 @@
-# PR for #227 (payroll tax), for the user to open
+# PR for #227 (payroll tax): filed as PR #228
 
-Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
+Status: drafted 2026-10-25, revised the same day after a review of the branch; **filed by the user as
+PR #228** (https://github.com/mdlacasse/Owl/pull/228) the same day, head `f98ef3e` (checked with
+`git ls-remote upstream refs/pull/228/head`). Head
 `fmateoc:payroll-tax-pr` `f98ef3e` (pushed), base `dev`: six commits on upstream `dev` `22ce72b`,
 `55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status rule), `033c9d8`
 (MOSEK records left empty), `263c0b3` (john+sally pinned under local search, a `deep` test) and

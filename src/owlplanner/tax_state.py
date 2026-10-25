@@ -410,7 +410,7 @@ def st_taxParams(
     itemized = StateItemizedParams.empty(N_n)
 
     thisyear = date.today().year
-    filing_status_n = tax_federal.filingStatus_n(N_i, n_d, N_n)
+    filing_status_n = tax_federal.filingStatusIndex_n(N_i, n_d, N_n)
 
     for n in range(N_n):
         entry = entry_mfj if filing_status_n[n] == 1 else entry_single

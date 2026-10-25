@@ -2377,7 +2377,15 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
   `test_john_sally_under_local_search` (`deep`), john+sally out of `test_reproducibility`'s table;
   ported to the fork (file identical). PR head: 3232 passed / 1 skipped, `-m deep` 6 passed (7:05);
   fork: `test_toml_cases.py` default 2 passed, deep 1 passed (45 s). Left: the AMO fixture's HiGHS
-  john+sally record (loop, 21.00; the test accepts up to \$72), flagged in the PR text.
+  john+sally record (loop, 21.00; the test accepts up to \$72), flagged in the PR text; the user
+  keeps it as is.
+- The helper reviewed (user's questions: a distinct concept? fewer lines? more readable? a good
+  name?): one tax rule at all ten sites, net 0 source lines (32 added, 32 removed, by hunk), clearer
+  where it replaced the decrementing counter, worse in `taxParams` / `seniorBonusSchedule`, where
+  the death now showed in two places (helper for the status, `souls.remove` in the block). User:
+  renamed `filingStatusIndex_n` (it returns an index) and those two functions back to `dev`'s code.
+  PR `5043e98`, fork the same (its two fork sites and `tax_local` renamed). PR suite 3232 passed /
+  1 skipped; fork suite 3541 passed / 1 skipped (10:15).
 
 ## #227 PR reviewed and fixed (2026-10-25, on `claude/lucid-gates-uo4kbu`)
 

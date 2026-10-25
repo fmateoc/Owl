@@ -1,10 +1,11 @@
 # PR for #227 (payroll tax), for the user to open
 
 Status: drafted 2026-10-25, revised the same day after a review of the branch. Head
-`fmateoc:payroll-tax-pr` (pushed), five commits on upstream `dev` `22ce72b` (the version kick
+`fmateoc:payroll-tax-pr` (pushed), six commits on upstream `dev` `22ce72b` (the version kick
 after `03aaef3`): `55b49ba` (the feature), `36cdddf` (review fixes), `3167318` (one filing-status
-rule), `033c9d8` (MOSEK records left empty) and `263c0b3` (john+sally pinned under local search, a
-`deep` test), base `dev`. Built in a worktree
+rule), `033c9d8` (MOSEK records left empty), `263c0b3` (john+sally pinned under local search, a
+`deep` test) and `5043e98` (the helper renamed `filingStatusIndex_n`, out of `taxParams` and
+`seniorBonusSchedule`), base `dev`. Built in a worktree
 of stock `dev`; no fork code.
 Everything below is from real runs on that branch (HiGHS, linux, frozen test date) unless marked.
 
@@ -23,13 +24,14 @@ Closes #227, in the shape you described.
   `gamma_n`, i.e. the 2026 base held in today's dollars), 1.45% on all of them, and 0.9% of the
   household's combined earnings above \$250,000 through the year of the first death and \$200,000
   after (not indexed). Constants next to NIIT's. The filing status of each year comes from a new
-  `filingStatus_n(N_i, n_d, N_n)` (joint while `n < n_d`, single after; single throughout for one
-  person).
-- One copy of that rule. `filingStatus_n` replaces the ten copies of it: `capitalGainTax`,
-  `taxParams`, `seniorBonusSchedule`, `taxBrackets`, `computeNIIT`,
-  `compute_social_security_taxability`, `tax_state.st_taxParams`, and the inline ones in the SS
-  taxability, LTCG and NIIT rows of `plan.py` (the NIIT rows also stop hard-coding 200,000 /
-  250,000 and read `niitThreshold`). The loops stay loops: vectorizing `computeNIIT` and the payroll
+  `filingStatusIndex_n(N_i, n_d, N_n)`, an index into the [single, MFJ] tables (joint while
+  `n < n_d`, single after; single throughout for one person).
+- `filingStatusIndex_n` replaces eight copies of that rule: `capitalGainTax`, `taxBrackets`,
+  `computeNIIT`, `compute_social_security_taxability`, `tax_state.st_taxParams`, and the inline
+  ones in the SS taxability, LTCG and NIIT rows of `plan.py` (the NIIT rows also stop hard-coding
+  200,000 / 250,000 and read `niitThreshold`). `taxParams` and `seniorBonusSchedule` keep their
+  own: there the death also removes the deceased from `souls`, and both changes read best in the
+  one `if n == n_d:` block they share. The loops stay loops: vectorizing `computeNIIT` and the payroll
   tax saved 9 µs and 100 µs per call (30-year couple), about 0.15 ms of joe's 70 ms solve and
   0.2 ms of jack+jill's 1.3 s, below run-to-run noise, so it was not worth the change. Every pinned
   plan is unchanged (full suite), and `computeNIIT` equals the old decrementing loop to the bit on
@@ -82,7 +84,7 @@ instructions)
   at \$0 and no Cash Flow or Taxes column without earnings.
 - The twelve examples without wages derive no earnings and pay nothing (parametrized); the seven
   with wages pay something.
-- `tests/tax/test_filing_status.py`: `filingStatus_n` on couples (death inside, at 0, at and past
+- `tests/tax/test_filing_status.py`: `filingStatusIndex_n` on couples (death inside, at 0, at and past
   the end, None) and singles; `computeNIIT` equal to the old loop on 20 random cases.
 - Two existing identities gained the term: `test_cashflow_balance._assert_cashflow_balance` and
   `test_export.test_cash_flow_sheet_balances_to_zero`.
@@ -164,7 +166,7 @@ One loop pin is left: the AMO fixture's HiGHS record for john+sally holds the lo
 is below zero), so a solver that lands the loop higher fails it. I left that test alone, since it
 checks the loop path against its record; say if you want john+sally out of it too.
 
-**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, on the head `263c0b3`); `pytest -m deep`:
+**Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers, on the head `5043e98`); `pytest -m deep`:
 6 passed (7:05). flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
 `test_local_search.py`, `test_roth_maturation_losses.py:49`).
 
@@ -176,4 +178,4 @@ checks the loop path against its record; say if you want john+sally out of it to
   loop record (21.00) is left, flagged in the text.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
-- Five commits: squash them if you prefer one (he squashed #222 on landing).
+- Six commits: squash them if you prefer one (he squashed #222 on landing).

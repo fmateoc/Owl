@@ -16,9 +16,10 @@ today's dollars. *Total payroll tax paid* is now in the Summary of every case (\
 earnings), the fork's *Additional Medicare tax* line under it is gone, and the Cash Flow and CSV
 *payroll tax* column sits after *NIIT*. Rules and amounts unchanged: every pinned case gives the
 PR's values. With the PR's review fixes: a *payroll tax* column in the Taxes worksheet, and
-`tax_federal.filingStatus_n` in place of the fork's `tax_state.filing_status_by_year` (same rule),
-then of every other copy of the rule, upstream's and the fork's (the itemizing warning, the
-non-itemizer charity cap).
+`tax_federal.filingStatusIndex_n` in place of the fork's `tax_state.filing_status_by_year` (same rule),
+then of the other copies, upstream's and the fork's (the itemizing warning, the non-itemizer
+charity cap), except upstream's `taxParams` and `seniorBonusSchedule`, which keep theirs as in the
+PR.
 
 ### Removed: the fork's age-anchored smile (back to upstream's smile)
 

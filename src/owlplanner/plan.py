@@ -3875,7 +3875,7 @@ class Plan:
         """
         if self.budget is None:
             return np.zeros(self.N_n)
-        cap = tx.NONITEMIZER_CHARITY[tx.filingStatus_n(self.N_i, self.n_d, self.N_n)]
+        cap = tx.NONITEMIZER_CHARITY[tx.filingStatusIndex_n(self.N_i, self.n_d, self.N_n)]
         return np.where(self._item_obbba_n, cap, 0.0)
 
     def _item_standard_n(self, g_n=None):
@@ -4271,7 +4271,7 @@ class Plan:
                 f"{u.d(np.sum(np.abs(dcap) / gam))} in all (today's $).",
                 tag="WARNING",
             )
-        status_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
+        status_n = tx.filingStatusIndex_n(self.N_i, self.n_d, self.N_n)
         obbba = year_n < self.yOBBBA
         # 2/37 limit: the 37% bracket starts after the first six widths.
         start37 = np.sum(self.DeltaBar_tn[:6, :], axis=0)
@@ -5189,7 +5189,7 @@ class Plan:
         if options.get("withSSTaxability", "loop") != "optimize":
             return
 
-        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
+        filing_n = tx.filingStatusIndex_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
             zetaBar_n = np.sum(self.zetaBar_in[:, n])
 
@@ -5426,7 +5426,7 @@ class Plan:
         sb_year = {n: j for j, n in enumerate(self._sb_years)} if self._sb_lp else {}
         prev_e_n = getattr(self, "e_n", None)
         self._ltcg_wide_n = self._ltcg_deduction_widens_n()
-        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
+        filing_n = tx.filingStatusIndex_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
             status_n = filing_n[n]
 
@@ -5698,7 +5698,7 @@ class Plan:
 
         fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
 
-        filing_n = tx.filingStatus_n(self.N_i, self.n_d, self.N_n)
+        filing_n = tx.filingStatusIndex_n(self.N_i, self.n_d, self.N_n)
         for n in range(self.N_n):
             T_niit = float(tx.niitThreshold[filing_n[n]])  # NOT inflation-adjusted
 

@@ -2364,6 +2364,18 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## #227 PR text: MOSEK records empty, local search named for john+sally (2026-10-25, on `claude/phase5-step1`)
+
+- AMO fixture (PR `033c9d8`, fork `457815a`): the five re-pinned cases' MOSEK records are `null`
+  with a `_mosek_not_recorded` note; the MOSEK comparison skips them (checked with
+  `OWL_TEST_SOLVER=mosek`: five skips, the other nine fail on the missing license). PR suite
+  3232 passed, 1 skipped. The PR text says no MOSEK license, so not run, also for the shared
+  `test_toml_cases` / `test_repro` pins, which a MOSEK run is held to.
+- john+sally (user: name the local-search option): the text now proposes pinning it under
+  `breakpointMethod = "local-search"`, measured on the PR head, frozen test date: 14,013.49 (=
+  branch-and-bound), 45.6 s wall / 53.0 s CPU, so possibly a `deep` test. Not implemented; waits
+  on the maintainer.
+
 ## #227 PR reviewed and fixed (2026-10-25, on `claude/lucid-gates-uo4kbu`)
 
 Code review of `payroll-tax-pr` (the `code-review` skill, unverified findings), each finding then

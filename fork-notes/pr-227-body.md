@@ -152,9 +152,11 @@ in a way the tax causes:
 
 The tax only pushed this case past the edge: the loop's plan without it leaves \$16,803 where local
 search leaves \$31,778. For the pins, the \$21 is reproducible here, but it sits on the loop's
-failure mode, so it may be the first value to move on MOSEK or another HiGHS. Options I see, your
-call: keep it; pin john+sally under local search; or lower its `netSpending` so the shipped plan
-is not at the edge (the description's numbers would change too). I changed nothing in the example.
+failure mode, so it may be the first value to move on MOSEK or another HiGHS. I suggest pinning
+john+sally under local search (`breakpointMethod = "local-search"`) instead: 14,013.49, the same as
+branch-and-bound, with no residual. The cost is time: 46 s wall (53 s CPU) here on the frozen test
+date, in a container about 2.4x slower than your machine, so it may belong with the `deep` tests.
+I have not made that change, nor any to the example; say if you want it in this PR.
 
 **Checks:** `pytest -n 4`: 3232 passed, 1 skipped (default markers; rerun on the head with the MOSEK records emptied, the same); `pytest -m deep`: 5
 passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.py:194`,
@@ -164,7 +166,8 @@ passed. flake8 clean. Ruff: only the three B905 already on `dev` (`localsearch.p
 
 ## Before opening (user)
 
-- Decide whether to keep the john+sally paragraph's three options or name one.
+- john+sally: the text now proposes the local-search pin (user, 2026-10-25); the change itself is
+  not made, it waits on his answer.
 - The `annual_cashflow_mix` change is beyond his list; it is flagged in the text, as is the
   taxes plot left for him to decide.
 - Four commits: squash them if you prefer one (he squashed #222 on landing).

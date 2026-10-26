@@ -2410,6 +2410,47 @@ in `src/owlplanner` reads the year, or the year and month in `_ssaCurrentAgeMont
   script and in `phase0-scenarios.md`.
 - Cost: 20-28 min per variant; local-search solves 71-280 s.
 
+**Branch-and-bound check of the Pat 64y0m dip** (2026-10-26, `fork-notes/phase5/ws_bb_check.py`,
+outputs `ws_bb_check_2026-10-26.txt`, `ws_bb_check_part-time_2026-10-26.txt`,
+`ws_bb_check_gap3e-3_2026-10-26.txt`): the dry run's plans at fixed ages under
+`breakpointMethod="branch-and-bound"` (every family exact), one process per age, compared with the
+dry run's local-search scores of 2026-10-25 (same month; the date check above applies).
+
+- **Owl's automatic gap is too loose for this.** With no `gap` option and
+  `withMedicare="optimize"`, `plan.py` sets the gap to `MILP_GAP` = 3e-3 (about \$340/yr here).
+  At that gap branch-and-bound scored \$64-237/yr *below* local search at 63/64/65 (30-110 s).
+  The check passes `gap=1e-5` (about \$1.1/yr) and Owl's 900 s per MIP.
+- At gap 1e-5 every HiGHS run ended "Optimal" within the gap; no node or time cap; residual \$0-2.
+
+| Variant (Chris held) | Pat | B&B \$/yr | Local search | B&B - LS | ACA B&B / LS | seconds |
+|---|---|---:|---:|---:|---|---:|
+| base (68y6m) | 63y0m | 113,542.48 | 113,479.30 | +63.18 | 12,819 / 19,906 | 176 |
+| | 64y0m | 113,427.74 | 113,353.30 | +74.44 | 12,765 / 19,906 | 173 |
+| | 65y0m | 113,426.62 | 113,379.36 | +47.26 | 11,660 / 19,906 | 288 |
+| part time 2029-30 (68y5m) | 63y0m | 116,229.70 | 116,214.45 | +15.25 | 12,978 / 19,906 | 133 |
+| | 64y0m | 116,194.31 | 116,173.41 | +20.90 | 12,208 / 19,906 | 182 |
+| | 65y0m | 116,248.30 | 116,214.18 | +34.12 | 11,777 / 19,906 | 94 |
+
+- **Base: the dip was local search's.** Under branch-and-bound 64y0m is \$1.12 above 65y0m, at
+  the gap's size: no dip. The recurring dip is not evidence of a model feature by itself.
+- **Part time: the dip is the model's.** 64y0m is \$35 below 63y0m and \$54 below 65y0m (gap
+  \$1.2); at 64y0m the earnings test withholds \$4,463 and federal tax is highest (378,138 vs
+  371,722 / 374,705); the mechanism was not isolated further.
+- **The part-time pick reverses:** branch-and-bound ranks 65y0m above 63y0m by \$18.60/yr;
+  local search had them \$0.27 apart and kept 63y0m. The dry-run table's part-time ages are
+  therefore not the model's optimum (one variant; Chris's age not re-swept under branch-and-bound).
+- **Local search falls short at every plan checked** (6 of 6, \$15-74/yr), and every
+  branch-and-bound plan pays less ACA (\$11.7-13.0k lifetime vs \$19.9k): local search keeps
+  the ACA-year income these plans avoid. This differs from the 2026-10-22 finding ("local search
+  did not miss a better plan"), which compared it with branch-and-bound on ACA only, the other
+  families in the loop, at other ages and before the payroll tax.
+- **Cost:** 94-288 s per solve, the same order as local search's 71-280 s on this case. HiGHS
+  branch-and-bound can be far slower on other cases (upstream's note: 49-238x slower than MOSEK),
+  so this holds for chris+pat only until measured on the household case.
+
+Open (the user's call; it revises R1): use branch-and-bound at a tight gap as the decider in
+`work_sweep.py` stage (c), with local search as the fallback when it stops at a cap.
+
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 

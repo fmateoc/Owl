@@ -20,7 +20,10 @@ variant's spread is its deepest dip. A difference between two variants is "resol
 is larger than both variants' spreads; with no dip seen, the spread is unknown, not zero. Cliffs
 (ACA, IRMAA, SS taxability) can make the true value dip too: a dip that recurs at the same age in
 every variant may be the model's, and then the spread overstates the noise (it errs toward
-"unresolved"). The per-plan scores in --json show which costs move at a dip.
+"unresolved"). On the chris+pat dry run, ws_bb_check.py (branch-and-bound at gap 1e-5) found the
+Pat 64y0m dip to be noise in one variant and the model's in another, and plans $15-74/yr better
+than local search's at every age it scored. The per-plan scores in --json show which costs move
+at a dip.
 
 Variants are generic case and HFP overrides, so the script also serves the locality and rent/buy
 comparisons (Phase 6 folded in, decision R5). A JSON file describes them:

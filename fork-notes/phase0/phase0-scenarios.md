@@ -149,9 +149,12 @@ in `otherFiles/`:
 - Read the *spread* column: local search's deepest dip between neighbouring ages. A difference
   between variants smaller than both spreads is unresolved; "no spread" means no dip was seen,
   so the noise is unknown, not zero.
-- A dip that recurs at the same age in every variant may be the model's own (a cliff), not
-  noise; then the spread overstates the noise. `--json` keeps each scored plan's costs, to see
-  what moves at a dip.
+- A dip can be the model's own (a cliff) or local search's noise, and recurring at the same age
+  in every variant does not tell which: on the dry run, branch-and-bound at gap 1e-5 removed the
+  Pat 64y0m dip in the base variant and confirmed it in the part-time one
+  (`fork-notes/phase5/ws_bb_check.py`). Before deciding between neighbouring ages, check them
+  with it; it also found plans \$15-74/yr better than local search's at every age it scored.
+  `--json` keeps each scored plan's costs, to see what moves at a dip.
 - Cost (dry run on chris+pat, 4 cores, `--jobs 4`, 2026-10-25): 20-28 minutes per variant with
   both spouses searched (exact-LP search 4-7 min, loop search 1-2 min, 18-28 local-search solves
   of 71-280 s each); 98 minutes for four variants

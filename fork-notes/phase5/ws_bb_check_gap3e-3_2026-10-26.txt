@@ -1,0 +1,22 @@
+# Run at 214771b, before the explicit gap: the gap is Owl's automatic MILP_GAP (3e-3) under withMedicare="optimize".
+# The 'HiGHS runs' lines read 0 because that version wrapped _run_mip, which the HiGHS path does not call.
+ws_bb_check.py, 2026-10-26, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+chris+pat dry-run variant 'base': aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029
+branch-and-bound at fixed ages, Chris 68y6m; objective: annual spending, today's $/yr
+
+   Pat          B&B  local search  B&B - LS       gap     nodes  node cap time cap  residual  seconds
+ 63y0m   113,334.40    113,479.30   -144.90   3.0e-03       570         0        0         0       60
+ 64y0m   113,289.74    113,353.30    -63.56   3.0e-03        88         0        0         1       30
+ 65y0m   113,142.59    113,379.36   -236.77   3.0e-03      1664         0        0         0      110
+
+   Pat    federal      ACA  Medicare     SS paid SS withheld  method
+ 63y0m    359,065   12,819   129,044   1,038,310           0  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+ 64y0m    338,742   12,729   129,044   1,044,960           0  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+ 65y0m    361,848   11,291   129,044   1,056,067           0  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+
+node cap: main MIP solves stopped at the node limit; time cap: engine runs HiGHS stopped on time;
+residual: the plan's fixed-point residual, today's $ summed over families.
+Pat 63y0m: 0 engine runs, largest gap -1.0e+00, statuses []
+Pat 64y0m: 0 engine runs, largest gap -1.0e+00, statuses []
+Pat 65y0m: 0 engine runs, largest gap -1.0e+00, statuses []
+Total 115s.

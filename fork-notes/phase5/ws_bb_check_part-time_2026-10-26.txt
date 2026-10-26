@@ -1,0 +1,21 @@
+ws_bb_check.py, 2026-10-26, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+chris+pat dry-run variant 'pat-part-time-2029-30': aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}
+branch-and-bound at fixed ages, Chris 68y5m, gap 1e-05, maxTime 900s per MIP; objective: annual spending, today's $/yr
+
+   Pat          B&B  local search  B&B - LS       gap     nodes  node cap time cap  residual  seconds
+ 63y0m   116,229.70    116,214.45     15.25   1.0e-05      6897         0        0         2      133
+ 64y0m   116,194.31    116,173.41     20.90   9.8e-06     11571         0        0         0      182
+ 65y0m   116,248.30    116,214.18     34.12   1.0e-05      4265         0        0         0       94
+
+   Pat    federal      ACA  Medicare     SS paid SS withheld  method
+ 63y0m    371,722   12,978   129,044   1,041,042       9,050  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+ 64y0m    378,138   12,208   129,044   1,045,773       4,463  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+ 65y0m    374,705   11,777   129,044   1,053,907           0  branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)
+
+gap: the accepted solve's; node cap: main MIP solves stopped at the node limit; time cap: HiGHS
+runs stopped on time;
+residual: the plan's fixed-point residual, today's $ summed over families.
+Pat 63y0m: 4 HiGHS runs, largest gap 1.0e-05, statuses ['Optimal']
+Pat 64y0m: 2 HiGHS runs, largest gap 9.8e-06, statuses ['Optimal']
+Pat 65y0m: 2 HiGHS runs, largest gap 1.0e-05, statuses ['Optimal']
+Total 186s.

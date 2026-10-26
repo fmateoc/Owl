@@ -2364,6 +2364,55 @@ Full suite on the merge: **3516 passed, 1 skipped** (10:59; 3497 + upstream's 19
 `test_highs_lp_fallback.py`, 3 in `test_roth_early_withdrawals.py`), after the two fixes above
 (targeted run before them: 2 failed, 380 passed). flake8 clean; Ruff only upstream's three `B905`s.
 
+## Phase 5 step 6: the sweep script and its dry run (2026-10-25/26, on `claude/affectionate-goldberg-l0wd1l`)
+
+`fork-notes/phase5/work_sweep.py` (`e57b7bb`, method of `plan-review-2026-10-22.md` §3.2, R1):
+variants as `owlcli --set` specs plus HFP cell edits (openpyxl on a copy, so formats and other
+cells stay); per variant (a) a `withSSAges` search under the exact LP, `withACA="optimize"` with
+an SLCSP, (b) the same under the loop, (c) local search at fixed ages over each searched person's
+whole years 62-70 and both picks, the others held, until no age moves. Local search's time caps
+are raised (7200 s / 1800 s) so its node limits decide and scores do not depend on load or
+`--jobs`; the report lists plans where the default caps (300 s / 60 s) would have bound. Spread =
+deepest interior dip in a sweep (assumes the true value is unimodal in each age). Each variant's
+HFP and case file are written out (`owlcli run` repeats them). Variant JSON format in the
+docstring; `phase0-scenarios.md` §4 rewritten around it; template comment on `withSSAges`.
+
+**Dry run** (`work_sweep_chris+pat.json`, output `work_sweep_chris+pat_2026-10-25.txt`, run at
+`e57b7bb`; the later change only drops repeated sweeps from the report): chris+pat, stand-in
+`slcsp_annual` 20, the same PIAs in every variant (mechanics, not a decision), both spouses
+searched, `--jobs 4`. 5,901 s in all; every plan solved; no default cap would have bound; the date
+rolled to 2026-10-26 during the third variant, which changes nothing here (every `date.today()`
+in `src/owlplanner` reads the year, or the year and month in `_ssaCurrentAgeMonths`, except the
+`start_date = "today"` path, not taken: chris+pat sets `2026-01-01`; checked by grep).
+
+| Variant | (a) exact LP | (b) loop | Decided (local search) | Basis $/yr | Spread | (a) cost | (b) cost |
+|---|---|---|---|---:|---:|---:|---:|
+| base (Pat works through 2028) | 68y3m/63y0m | 68y6m/63y0m | 68y6m/63y0m | 113,479.30 | 26 | 13 | 0 |
+| Pat stops end of 2027 | 68y3m/62y1m | 68y7m/62y3m | 68y7m/62y1m | 108,675.47 | 61 | 99 | 78 |
+| Pat stops mid-2028 (6 months) | 68y3m/62y6m | 68y6m/62y6m | 68y6m/62y6m | 111,332.70 | 14 | 20 | 0 |
+| Pat part time 2029-30 ($40k) | 68y3m/65y0m | 68y5m/63y7m | 68y5m/63y0m | 116,214.45 | 38 | 8 | 3 |
+
+- Differences between variants (\$2.1-4.8k/yr) are far above every spread: "resolved". With the
+  same PIAs they are not the price of work; a real sweep enters one PIA per variant (D4).
+- The exact LP picked Chris 68y3m in every variant, the loop 68y5m-68y7m; local search sided with
+  the loop each time, at \$8-99/yr. The exact-LP pick is a good start, not a decision, as §3.2
+  said.
+- Pat part time: 63y0m and 65y0m score within \$0.27/yr (116,214.45 vs 116,214.18), with 64y0m
+  \$41 below both: unresolved between 63 and 65 by any measure. SS withheld \$9,050 at 63y0m
+  (the earnings test on the 2029-30 wages).
+- Two kinds of dip. In "Pat stops 2027" lifetime ACA flips between \$22.4k and \$29.7k across
+  neighbouring Chris ages (68y0m 22,407, 68y3m 29,731, 68y7m 22,403), though Chris's claim starts
+  after Pat's ACA years: local search missing the cheaper ACA plan, i.e. noise (the \$61 dip at
+  68y3m). The dip at Pat 64y0m recurs in all four variants (13-38) with ACA and Medicare flat and
+  more federal tax (base 360,958 vs 350,445 at 63 and 348,794 at 65): possibly the model's own
+  shape, not noise; not resolved (an exact branch-and-bound at 63/64/65 would tell, not run). If
+  it is the model's, the spread overstates the noise (errs toward "unresolved"); stated in the
+  script and in `phase0-scenarios.md`.
+- Cost: 20-28 min per variant; local-search solves 71-280 s.
+
+Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
+SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
 ## PR #228 landed; upstream `dev` `b52b766` merged (2026-10-25, on `claude/phase5-step1`)
 
 - Found by the second git check-in (20:30 UTC): PR #228 squashed into `dev` as `3a2dfc33`, tree

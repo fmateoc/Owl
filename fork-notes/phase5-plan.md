@@ -595,6 +595,9 @@ a doc sentence corrected; 21 tests.
 
 ### Step 6: scenarios and sweep — size M (D4, D5)
 
+*(2026-10-25/26: `fork-notes/phase5/work_sweep.py` written and dry-run on chris+pat with a stand-in
+SLCSP; PROGRESS.md "Phase 5 step 6". Left: the household's inputs (R6) and the real run.)*
+
 **Method revised 2026-10-22** (`fork-notes/plan-review-2026-10-22.md` §3.2, measured on
 chris+pat): a local-search age search costs hours per variant (about 2 minutes per candidate,
 up to 97 candidates per spouse per round), loop picks move with loop noise, and the exact LP

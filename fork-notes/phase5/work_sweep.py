@@ -17,7 +17,10 @@ Spread: local search is not a proven optimum, so its scores carry noise. Assumin
 is unimodal in each person's claiming age, every interior dip in a sweep (a score below both
 neighbours) is noise; its depth, min(neighbours) - score, is a lower bound on that noise. A
 variant's spread is its deepest dip. A difference between two variants is "resolved" only when it
-is larger than both variants' spreads; with no dip seen, the spread is unknown, not zero.
+is larger than both variants' spreads; with no dip seen, the spread is unknown, not zero. Cliffs
+(ACA, IRMAA, SS taxability) can make the true value dip too: a dip that recurs at the same age in
+every variant may be the model's, and then the spread overstates the noise (it errs toward
+"unresolved"). The per-plan scores in --json show which costs move at a dip.
 
 Variants are generic case and HFP overrides, so the script also serves the locality and rent/buy
 comparisons (Phase 6 folded in, decision R5). A JSON file describes them:
@@ -266,9 +269,13 @@ def decide(diconf, dirname, ref, loop, pool, ls_time, ls_step, passes, log):
 
     run([tuple(best)])
     sweeps = []
+    seen = set()
     for k in range(passes if free else 0):
         moved = False
         for i in free:
+            if (i, tuple(best)) in seen:  # the same sweep again: same scores, no move
+                continue
+            seen.add((i, tuple(best)))
             opts = set(whole_year_candidates(p, i)) | {best[i]}
             for pick in (ref, loop):
                 if pick and pick["status"] == "solved":
@@ -290,6 +297,7 @@ def decide(diconf, dirname, ref, loop, pool, ls_time, ls_step, passes, log):
                 best[i] = winner[i]
                 moved = True
         if not moved:
+            log(f"    pass {k}: no age moved")
             break
     return tuple(best), cache, sweeps, [p.inames[i] for i in free]
 

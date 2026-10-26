@@ -1,0 +1,102 @@
+work_sweep.py, 2026-10-25, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+pat.json, jobs 4, passes 2, localSearchTime 7200s, localSearchStepTime 1800s
+  base: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029
+  pat-stops-2027: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2028; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 0, "401k ctrb": 0}]}
+  pat-stops-mid-2028: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 42500, "401k ctrb": 13950, "months worked": 6}]}
+  pat-part-time-2029-30: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}
+
+== base
+  (a) exact-LP search: solved, ages 68y3m/63y0m (348s)
+  (b) loop search:     solved, ages 68y6m/63y0m (48s)
+  (c) local search at fixed ages:
+    pass 0, Chris swept (10 ages, 401s): best 68y6m at 113,479.30
+    pass 0, Pat swept (9 ages, 399s): best 63y0m at 113,479.30
+    pass 1, Chris swept (10 ages, 0s): best 68y6m at 113,479.30
+    pass 1, Pat swept (9 ages, 0s): best 63y0m at 113,479.30
+
+== pat-stops-2027
+  (a) exact-LP search: solved, ages 68y3m/62y1m (388s)
+  (b) loop search:     solved, ages 68y7m/62y3m (66s)
+  (c) local search at fixed ages:
+    pass 0, Chris swept (10 ages, 522s): best 68y7m at 108,675.47
+    pass 0, Pat swept (10 ages, 589s): best 62y1m at 108,675.47
+    pass 1, Chris swept (10 ages, 0s): best 68y7m at 108,675.47
+    pass 1, Pat swept (10 ages, 0s): best 62y1m at 108,675.47
+
+== pat-stops-mid-2028
+  (a) exact-LP search: solved, ages 68y3m/62y6m (435s)
+  (b) loop search:     solved, ages 68y6m/62y6m (53s)
+  (c) local search at fixed ages:
+    pass 0, Chris swept (10 ages, 389s): best 68y6m at 111,332.70
+    pass 0, Pat swept (10 ages, 416s): best 62y6m at 111,332.70
+    pass 1, Chris swept (10 ages, 0s): best 68y6m at 111,332.70
+    pass 1, Pat swept (10 ages, 0s): best 62y6m at 111,332.70
+
+== pat-part-time-2029-30
+  (a) exact-LP search: solved, ages 68y3m/65y0m (235s)
+  (b) loop search:     solved, ages 68y5m/63y7m (142s)
+  (c) local search at fixed ages:
+    pass 0, Chris swept (10 ages, 307s): best 68y5m at 116,214.18
+    pass 0, Pat swept (10 ages, 370s): best 63y0m at 116,214.45
+    pass 1, Chris swept (10 ages, 275s): best 68y5m at 116,214.45
+    pass 1, Pat swept (10 ages, 0s): best 63y0m at 116,214.45
+
+Decided by local search; objective = annual spending, today's $/yr. Taxes and premiums: lifetime, today's $.
+variant                           ages    objective   vs first   spread              (a) cost (b) cost
+base                       68y6m/63y0m   113,479.30       0.00       26                    13        0
+pat-stops-2027             68y7m/62y1m   108,675.47  -4,803.83       61  resolved          99       78
+pat-stops-mid-2028         68y6m/62y6m   111,332.70  -2,146.60       14  resolved          20        0
+pat-part-time-2029-30      68y5m/63y0m   116,214.45   2,735.15       38  resolved           8        3
+
+(a)/(b) cost: decided objective less local search's score at that search's pick.
+
+variant                    federal     state   payroll  Medicare       ACA SS withheld    SS paid    bequest
+base                       350,445         0    45,594   129,044    19,906           0  1,038,310    823,000
+pat-stops-2027             331,687         0    37,957   129,044    22,403           0  1,032,872    823,000
+pat-stops-mid-2028         339,034         0    41,775   129,044    19,906           0  1,034,355    823,000
+pat-part-time-2029-30      370,549         0    50,724   129,044    19,906       9,050  1,041,042    823,000
+
+Local search per scored plan:
+  base: 18 plans scored; deepest dip 26.06
+    pass 0 Chris (held 68y3m/63y0m): 63y9m 113,021.96, 64y0m 113,046.60, 65y0m 113,217.85, 66y0m 113,356.86, 67y0m 113,344.92, 68y0m 113,440.76, 68y3m 113,465.99, 68y6m 113,479.30, 69y0m 113,462.45, 70y0m 113,321.15
+      dip at 67y0m: 11.94
+    pass 0 Pat (held 68y6m/63y0m): 62y1m 113,341.15, 63y0m 113,479.30, 64y0m 113,353.30, 65y0m 113,379.36, 66y0m 113,329.76, 67y0m 113,174.15, 68y0m 113,114.08, 69y0m 112,861.86, 70y0m 112,636.60
+      dip at 64y0m: 26.06
+    pass 1 Chris (held 68y6m/63y0m): 63y9m 113,021.96, 64y0m 113,046.60, 65y0m 113,217.85, 66y0m 113,356.86, 67y0m 113,344.92, 68y0m 113,440.76, 68y3m 113,465.99, 68y6m 113,479.30, 69y0m 113,462.45, 70y0m 113,321.15
+      dip at 67y0m: 11.94
+    pass 1 Pat (held 68y6m/63y0m): 62y1m 113,341.15, 63y0m 113,479.30, 64y0m 113,353.30, 65y0m 113,379.36, 66y0m 113,329.76, 67y0m 113,174.15, 68y0m 113,114.08, 69y0m 112,861.86, 70y0m 112,636.60
+      dip at 64y0m: 26.06
+  pat-stops-2027: 19 plans scored; deepest dip 61.12
+    pass 0 Chris (held 68y3m/62y1m): 63y9m 108,080.25, 64y0m 108,117.45, 65y0m 108,276.74, 66y0m 108,431.24, 67y0m 108,438.81, 68y0m 108,637.23, 68y3m 108,576.11, 68y7m 108,675.47, 69y0m 108,644.18, 70y0m 108,438.60
+      dip at 68y3m: 61.12
+    pass 0 Pat (held 68y7m/62y1m): 62y1m 108,675.47, 62y3m 108,597.83, 63y0m 108,635.69, 64y0m 108,461.08, 65y0m 108,479.76, 66y0m 108,436.65, 67y0m 108,282.99, 68y0m 108,274.55, 69y0m 107,991.49, 70y0m 107,798.25
+      dip at 62y3m: 37.86
+      dip at 64y0m: 18.68
+    pass 1 Chris (held 68y7m/62y1m): 63y9m 108,080.25, 64y0m 108,117.45, 65y0m 108,276.74, 66y0m 108,431.24, 67y0m 108,438.81, 68y0m 108,637.23, 68y3m 108,576.11, 68y7m 108,675.47, 69y0m 108,644.18, 70y0m 108,438.60
+      dip at 68y3m: 61.12
+    pass 1 Pat (held 68y7m/62y1m): 62y1m 108,675.47, 62y3m 108,597.83, 63y0m 108,635.69, 64y0m 108,461.08, 65y0m 108,479.76, 66y0m 108,436.65, 67y0m 108,282.99, 68y0m 108,274.55, 69y0m 107,991.49, 70y0m 107,798.25
+      dip at 62y3m: 37.86
+      dip at 64y0m: 18.68
+  pat-stops-mid-2028: 19 plans scored; deepest dip 13.92
+    pass 0 Chris (held 68y3m/62y6m): 63y9m 110,865.33, 64y0m 110,898.75, 65y0m 111,056.65, 66y0m 111,206.81, 67y0m 111,192.89, 68y0m 111,299.74, 68y3m 111,312.69, 68y6m 111,332.70, 69y0m 111,320.87, 70y0m 111,180.74
+      dip at 67y0m: 13.92
+    pass 0 Pat (held 68y6m/62y6m): 62y1m 111,265.30, 62y6m 111,332.70, 63y0m 111,319.34, 64y0m 111,217.00, 65y0m 111,229.97, 66y0m 111,180.40, 67y0m 111,021.41, 68y0m 111,004.96, 69y0m 110,758.44, 70y0m 110,514.50
+      dip at 64y0m: 12.97
+    pass 1 Chris (held 68y6m/62y6m): 63y9m 110,865.33, 64y0m 110,898.75, 65y0m 111,056.65, 66y0m 111,206.81, 67y0m 111,192.89, 68y0m 111,299.74, 68y3m 111,312.69, 68y6m 111,332.70, 69y0m 111,320.87, 70y0m 111,180.74
+      dip at 67y0m: 13.92
+    pass 1 Pat (held 68y6m/62y6m): 62y1m 111,265.30, 62y6m 111,332.70, 63y0m 111,319.34, 64y0m 111,217.00, 65y0m 111,229.97, 66y0m 111,180.40, 67y0m 111,021.41, 68y0m 111,004.96, 69y0m 110,758.44, 70y0m 110,514.50
+      dip at 64y0m: 12.97
+  pat-part-time-2029-30: 28 plans scored; deepest dip 37.81
+    pass 0 Chris (held 68y3m/65y0m): 63y9m 115,781.13, 64y0m 115,810.87, 65y0m 115,969.74, 66y0m 116,105.62, 67y0m 116,079.50, 68y0m 116,191.97, 68y3m 116,206.82, 68y5m 116,214.18, 69y0m 116,181.58, 70y0m 116,031.01
+      dip at 67y0m: 26.12
+    pass 0 Pat (held 68y5m/65y0m): 62y1m 116,073.72, 63y0m 116,214.45, 63y7m 116,211.22, 64y0m 116,173.41, 65y0m 116,214.18, 66y0m 116,136.50, 67y0m 115,986.24, 68y0m 115,928.37, 69y0m 115,680.05, 70y0m 115,443.03
+      dip at 64y0m: 37.81
+    pass 1 Chris (held 68y5m/63y0m): 63y9m 115,779.08, 64y0m 115,809.09, 65y0m 115,967.43, 66y0m 116,096.46, 67y0m 116,085.16, 68y0m 116,191.04, 68y3m 116,208.70, 68y5m 116,214.45, 69y0m 116,186.87, 70y0m 116,038.40
+      dip at 67y0m: 11.30
+    pass 1 Pat (held 68y5m/63y0m): 62y1m 116,073.72, 63y0m 116,214.45, 63y7m 116,211.22, 64y0m 116,173.41, 65y0m 116,214.18, 66y0m 116,136.50, 67y0m 115,986.24, 68y0m 115,928.37, 69y0m 115,680.05, 70y0m 115,443.03
+      dip at 64y0m: 37.81
+
+Scored plans where the default caps (300 s / 60 s) would have bound: none
+Scored plans that spent the raised time budget: none
+Scored plans not solved: none
+Total 5901s.

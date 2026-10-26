@@ -1,0 +1,54 @@
+diff --git a/src/owlplanner/plan.py b/src/owlplanner/plan.py
+index 5286a20..15ad4f9 100644
+--- a/src/owlplanner/plan.py
++++ b/src/owlplanner/plan.py
+@@ -7276,11 +7276,17 @@ class Plan:
+                 self._use_mosek = saved
+             obj, gap = result[0], result[4]
+             if res[2] and res[0] is not None and res[0] <= obj + self._sticky_tol * abs(obj):
++                kept_gap = gap
+                 if gap is not None and gap >= 0:  # the same bound, against the kept plan
+                     bound = obj - gap * abs(obj)
+-                    gap = (res[0] - bound) / max(abs(res[0]), 1e-12)
+-                chosen = (res[0], res[1], True, result[3], gap)
+-                self.mylog.vprint(f"Kept the previous binaries (objective {res[0] - obj:+.2e} against the new plan).")
++                    kept_gap = (res[0] - bound) / max(abs(res[0]), 1e-12)
++                # A tie may not take a plan the solver proved within the requested gap outside it.
++                requested = u.get_numeric_option(options, "gap", GAP, min_value=0)
++                if gap is None or gap < 0 or gap > requested or kept_gap <= requested:
++                    chosen = (res[0], res[1], True, result[3], kept_gap)
++                    self.mylog.vprint(
++                        f"Kept the previous binaries (objective {res[0] - obj:+.2e} against the new plan)."
++                    )
+         self._stickyPrev = chosen[1].copy()
+         return chosen
+ 
+diff --git a/tests/solver/test_sticky_binaries.py b/tests/solver/test_sticky_binaries.py
+index bfbe4c1..5ff9df9 100644
+--- a/tests/solver/test_sticky_binaries.py
++++ b/tests/solver/test_sticky_binaries.py
+@@ -84,6 +84,24 @@ def test_a_worse_plan_does_not_keep_them(plan, monkeypatch):
+     assert np.array_equal(plan._stickyPrev, x)
+ 
+ 
++def test_a_tie_does_not_take_the_plan_outside_the_requested_gap(plan, monkeypatch):
++    """A tie within relTol (5e-5) but worth more than the room left in a gap the solve met: the kept
++    plan would sit 1.19e-5 from the solver's bound against a requested 1e-5."""
++    x, prev, _ = _with_prev(plan, flip=True)
++    monkeypatch.setattr(plan, "_run_mip", lambda *a, **k: (-1.0 + 2e-6, prev, True, "pinned LP", -1.0))
++    result = (-1.0, x, True, "MIP", 9.9e-6)
++    assert plan._stickyBinaries(result, {"gap": 1e-5}, use_mosek=False) is result
++    assert np.array_equal(plan._stickyPrev, x)
++
++
++def test_a_tie_inside_the_requested_gap_still_keeps_them(plan, monkeypatch):
++    x, prev, _ = _with_prev(plan, flip=True)
++    monkeypatch.setattr(plan, "_run_mip", lambda *a, **k: (-1.0 + 2e-6, prev, True, "pinned LP", -1.0))
++    obj, z, ok, msg, gap = plan._stickyBinaries((-1.0, x, True, "MIP", 5e-6), {"gap": 1e-5}, use_mosek=False)
++    assert np.array_equal(z, prev) and ok
++    assert gap == pytest.approx(7e-6, rel=1e-3) and gap <= 1e-5
++
++
+ def test_the_same_binaries_are_not_solved_again(plan, monkeypatch):
+     x, _, _ = _with_prev(plan, flip=False)
+     monkeypatch.setattr(plan, "_run_mip", lambda *a, **k: pytest.fail("re-solved identical binaries"))

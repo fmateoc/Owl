@@ -2505,6 +2505,23 @@ denominator, so a solve HiGHS calls "Optimal" stays within its gap.
   checked. (Measured below: one sticky keep worth 4.39e-6 of the objective left the basis
   unchanged to the cent, so gap x basis can overstate the distance; it errs toward "unresolved".)
 
+**Upstream note drafted: the sticky tie looser than a requested gap** (2026-10-26,
+`fork-notes/issue-sticky-gap.md`, not filed; the user files it). On stock `dev` `4dcfabb`
+(`issue-sticky-gap-repro.py`, output `issue-sticky-gap-repro-output.txt`): `Case_chris+pat` as
+shipped with only `breakpointMethod="branch-and-bound", gap=1e-5` gives `solverGap` 1.833e-5 while
+every HiGHS run reported <= 9.706e-6 (one sticky keep); two of three SLCSP stand-in variants likewise
+(1.968e-5, 1.935e-5). Patch `issue-sticky-gap.patch` (`plan.py` +9/-3, two tests): a tie may not
+take a plan the solver proved within the requested gap outside it; when the solve stopped above the
+requested gap the tie is kept as today. With it: `solverGap` 9.942e-6 / 9.867e-6 / 9.981e-6, no
+keeps, plans \$0-1.23/yr better, those solves 39-98 s longer. Upstream suite with the patch 3248
+passed, 1 skipped; `-m deep` 6 passed, 3 skipped (the MOSEK-only `test_pathological_cases_settle`,
+the case the sticky binaries were written for: not checkable here). A first version (limit = the
+larger of the requested and the solve's gap) failed upstream's
+`test_a_tie_keeps_the_previous_binaries`, whose HiGHS result carries a gap above the requested one;
+the narrower rule keeps today's behaviour there. The `min(rel_tol, gap)` cap was considered and left
+out of the issue: it would not remove one keep in the repro. The fork itself is not patched
+(`work_sweep.py` passes `relTol` = gap, which bounds plans to 2 x gap).
+
 **relTol equal to the gap, measured** (2026-10-26, `fork-notes/phase5/reltol_probe.py`, output
 `reltol_probe_2026-10-26.txt`; `reltol_check.py`, `reltol_check_2026-10-26.txt`): the 15 plans of the
 branch-and-bound dry run that matter here (the 12 whose reported gap exceeded 1e-5, and each

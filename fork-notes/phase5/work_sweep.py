@@ -8,22 +8,33 @@ For each variant:
     `withSSTaxability=0.85`), with `withACA="optimize"` added when the case has a benchmark
     premium (the same rule as the local-search preset), so the ACA cliff is priced;
 (b) loop search: `withSSAges` with every breakpoint family on the loop (skip with --no-loop);
-(c) decision: local search at fixed ages. For each searched person in turn, with the others held
-    at the current best: the whole years 62-70 (each mapped to the first open month at or after
-    it), the picks of (a) and (b) and the current best. The best under local search becomes that
-    person's age; passes repeat while someone moves (--passes, default 2).
+(c) decision at fixed ages. For each searched person in turn, with the others held at the current
+    best: the whole years 62-70 (each mapped to the first open month at or after it), the picks of
+    (a) and (b) and the current best. The best score becomes that person's age; passes repeat
+    while someone moves (--passes, default 2).
 
-Spread: local search is not a proven optimum, so its scores carry noise. Assuming the true value
-is unimodal in each person's claiming age, every interior dip in a sweep (a score below both
-neighbours) is noise; its depth, min(neighbours) - score, is a lower bound on that noise. A
-variant's spread is its deepest dip. A difference between two variants is "resolved" only when it
-is larger than both variants' spreads; with no dip seen, the spread is unknown, not zero. Cliffs
-(ACA, IRMAA, SS taxability) can make the true value dip too: a dip that recurs at the same age in
-every variant may be the model's, and then the spread overstates the noise (it errs toward
-"unresolved"). On the chris+pat dry run, ws_bb_check.py (branch-and-bound at gap 1e-5) found the
-Pat 64y0m dip to be noise in one variant and the model's in another, and plans $15-74/yr better
-than local search's at every age it scored. The per-plan scores in --json show which costs move
-at a dip.
+Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, revising R1):
+
+- "bb" (default): branch-and-bound on the case's own model (`breakpointMethod="branch-and-bound"`,
+  every family exact) at --gap (default 1e-5; without a gap option, `withMedicare="optimize"`
+  loosens Owl's gap to 3e-3, about $340/yr on chris+pat) and --max-time per MIP (Owl's 900 s). A
+  plan is *proved* when every HiGHS run ended "Optimal", the accepted solve met the gap and no
+  solve stopped at the node limit; its score is then within gap x score of the model's optimum at
+  those ages (its *tolerance*). An unproved plan is also scored by local search and the better of
+  the two kept, labelled by the method that produced it. On chris+pat branch-and-bound at 1e-5
+  beat local search by $15-74/yr on all 6 plans checked, in 94-288 s each
+  (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other cases.
+- "ls": local search at fixed ages, its time caps raised (--ls-time, --ls-step-time) so its node
+  limits decide; scores carry search noise.
+
+Resolution. With proved plans, a difference is resolved when it is larger than the two plans'
+tolerances together; the report also names sweeps whose best and second-best ages are that close,
+and a dip between proved plans is the model's own (on chris+pat, part time, Pat 64y0m). Where a
+score came from local search, the noise is estimated as before: assuming the true value is
+unimodal in each claiming age, an interior dip (a score below both neighbours) is a lower bound on
+the noise, and the deepest one is the variant's spread; it can also be the model's own (the base
+variant's dip at Pat 64y0m was local search's, the part-time one the model's). The per-plan scores
+in --json show which costs move at a dip.
 
 Variants are generic case and HFP overrides, so the script also serves the locality and rent/buy
 comparisons (Phase 6 folded in, decision R5). A JSON file describes them:
@@ -51,9 +62,9 @@ comparisons (Phase 6 folded in, decision R5). A JSON file describes them:
 Each variant's workbook and case file are written to --out-dir, so any run can be repeated with
 `owlcli run`. Real numbers stay in `otherFiles/` (the default --out-dir is `otherFiles/sweep`).
 
-Local search runs here with its time caps raised (--ls-time, --ls-step-time), so its node limits
-decide and the scores do not depend on machine load or on --jobs. The report says, per scored
-plan, whether the default caps (300 s per solve, 60 s per restricted solve) would have bound.
+Scores should not depend on machine load or --jobs: branch-and-bound's are load-free unless a
+MIP stops on --max-time (reported per plan); local search runs with its time caps raised and the
+report says where its default caps (300 s per solve, 60 s per restricted solve) would have bound.
 
 Plans start today: compare variants run the same day. Run from the repository root:
 
@@ -82,11 +93,13 @@ from owlplanner.cli.set_override import apply_overrides  # noqa: E402
 from owlplanner.config import load_toml, save_toml  # noqa: E402
 from owlplanner.config.plan_bridge import config_to_plan  # noqa: E402
 from owlplanner.export import plan_metrics  # noqa: E402
+from owlplanner.plan import TIME_LIMIT, Plan  # noqa: E402
 
 EXACT = {"withMedicare": "none", "withSSTaxability": 0.85}
 FAMILIES = ("withSSTaxability", "withLTCG", "withNIIT", "withACA", "withSeniorBonus", "withMedicare")
 PRESET_KEYS = ("breakpointMethod", "mipStrategy", "localSearchTime", "localSearchStepTime",
                "localSearchRadius", "localSearchStepNodes")
+DECIDER = {"bb": "branch-and-bound", "ls": "local search"}
 METRICS = ("federal_income_tax_today", "ltcg_tax_today", "niit_today", "state_tax_today", "payroll_tax_today",
            "medicare_today", "aca_today", "ss_withheld_today", "ss_income_today", "final_bequest_today")
 
@@ -205,18 +218,37 @@ def age_search(diconf, dirname, mode):
             "status": p.caseStatus, "seconds": dt}
 
 
-# ----- stage (c): local search at fixed ages ------------------------------------------------------
-def score(args):
-    """Worker: local search at fixed ages. Picklable arguments, a plain dict back."""
-    diconf, dirname, ages, ls_time, ls_step = args
+# ----- stage (c): scoring at fixed ages -----------------------------------------------------------
+_HIGHS_RUNS = []  # (status, gap) of every HiGHS run in this worker's current solve
+
+
+def _record_highs_runs():
+    """Wrap Plan._run_highs once per worker process (one plan solves at a time in a worker)."""
+    if getattr(Plan._run_highs, "_recorded", False):
+        return
+    run_highs = Plan._run_highs
+
+    def recorded(self, *a, **k):
+        res = run_highs(self, *a, **k)
+        _HIGHS_RUNS.append((str(res[3]), float(res[4])))
+        return res
+
+    recorded._recorded = True
+    Plan._run_highs = recorded
+
+
+def _solved(p, t0):
+    return {"status": p.caseStatus, "seconds": time.time() - t0, "method": getattr(p, "breakpointMethodUsed", None)}
+
+
+def _score_ls(diconf, dirname, ages, cfg):
     p, buf = make_plan(diconf, dirname, ages)
     opts = base_options(p, withSSAges="fixed", breakpointMethod="local-search",
-                        localSearchTime=ls_time, localSearchStepTime=ls_step)
+                        localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
     t0 = time.time()
     p.solve(p.objective, opts)
-    dt = time.time() - t0
-    out = {"ages": list(months(ages)), "status": p.caseStatus, "seconds": dt,
-           "method": getattr(p, "breakpointMethodUsed", None)}
+    out = _solved(p, t0)
+    out["used"] = "local search"
     if p.caseStatus != "solved":
         return out
     log = getattr(p, "localSearchLog", None) or []
@@ -230,6 +262,59 @@ def score(args):
     })
     out["default_caps_bind"] = (out["search_seconds"] > localsearch.TOTAL_TIME
                                 or out["max_step_seconds"] > localsearch.STEP_TIME)
+    return out
+
+
+def _score_bb(diconf, dirname, ages, cfg):
+    _record_highs_runs()
+    _HIGHS_RUNS.clear()
+    p, _ = make_plan(diconf, dirname, ages)
+    opts = base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
+                        gap=cfg["gap"], maxTime=cfg["max_time"])
+    t0 = time.time()
+    p.solve(p.objective, opts)
+    out = _solved(p, t0)
+    runs = list(_HIGHS_RUNS)
+    hits = getattr(p, "solverNodeLimitHits", None)
+    out.update({
+        "used": "branch-and-bound",
+        "highs_runs": len(runs),
+        "highs_statuses": sorted({st for st, _ in runs}),
+        "time_limit_runs": sum("time limit" in st.lower() for st, _ in runs),
+        "node_limit_runs": int(hits[0]) if hits else 0,
+    })
+    if p.caseStatus != "solved":
+        out["proved"] = False
+        return out
+    gap = float(p.solverGap)
+    value = p._objectiveValue(p.objective)
+    proved = (all(st == "Optimal" for st, _ in runs) and 0 <= gap <= cfg["gap"] * 1.0001
+              and out["node_limit_runs"] == 0)
+    out.update({
+        "value": value, "gap": gap, "proved": proved,
+        "tolerance": gap * abs(value) if proved else None,
+        "residual": p._fixedPointResidualTotal(),
+        "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
+    })
+    return out
+
+
+def score(args):
+    """Worker: one plan at fixed ages. Picklable arguments, a plain dict back."""
+    diconf, dirname, ages, cfg = args
+    if cfg["decider"] == "ls":
+        out = _score_ls(diconf, dirname, ages, cfg)
+    else:
+        out = _score_bb(diconf, dirname, ages, cfg)
+        if not out.get("proved"):
+            ls = _score_ls(diconf, dirname, ages, cfg)
+            out["fallback"] = {k: v for k, v in ls.items() if k != "metrics"}
+            if ls.get("value") is not None and (out.get("value") is None or ls["value"] > out["value"]):
+                keep = {k: out[k] for k in ("highs_runs", "highs_statuses", "time_limit_runs", "node_limit_runs",
+                                            "gap", "fallback") if k in out}
+                out = dict(ls, bb=dict(keep, value=out.get("value"), status=out["status"]), proved=False,
+                           tolerance=None)
+    out["ages"] = list(months(ages))
     return out
 
 
@@ -254,7 +339,7 @@ def dips(points):
     return out
 
 
-def decide(diconf, dirname, ref, loop, pool, ls_time, ls_step, passes, log):
+def decide(diconf, dirname, ref, loop, pool, cfg, passes, log):
     p, _ = make_plan(diconf, dirname)
     p._ssa_optimize_set = p._parseSSAgesOption(p.solverOptions or {})
     free = [i for i in sorted(p._ssa_optimize_set) if not p._ssaAgeIsFixed(i)]
@@ -263,7 +348,7 @@ def decide(diconf, dirname, ref, loop, pool, ls_time, ls_step, passes, log):
 
     def run(trials):
         todo = [t for t in dict.fromkeys(trials) if t not in cache]
-        jobs = [(diconf, dirname, [m / 12 for m in t], ls_time, ls_step) for t in todo]
+        jobs = [(diconf, dirname, [m / 12 for m in t], cfg) for t in todo]
         for t, r in zip(todo, pool.map(score, jobs), strict=True):
             cache[t] = r
 
@@ -292,7 +377,8 @@ def decide(diconf, dirname, ref, loop, pool, ls_time, ls_step, passes, log):
             run(trials)
             pts = [(t[i], val(t)) for t in trials if val(t) is not None]
             winner = max(trials, key=lambda t: -float("inf") if val(t) is None else val(t))
-            sweeps.append({"pass": k, "person": p.inames[i], "held": list(best), "points": pts, "dips": dips(pts)})
+            sweeps.append({"pass": k, "person": p.inames[i], "index": i, "held": list(best), "points": pts,
+                           "dips": dips(pts)})
             log(f"    pass {k}, {p.inames[i]} swept ({len(trials)} ages, {time.time() - t0:.0f}s): "
                 f"best {ym(winner[i] / 12)} at {val(winner):,.2f}")
             vb = val(tuple(best))
@@ -316,47 +402,89 @@ def run_variant(name, diconf, dirname, args, pool, log):
         loop = age_search(diconf, dirname, "loop")
         log(f"  (b) loop search:     {loop['status']}, ages {'/'.join(ym(a) for a in loop['ages'])} "
             f"({loop['seconds']:.0f}s)")
-    log("  (c) local search at fixed ages:")
+    log(f"  (c) {DECIDER[args.decider]} at fixed ages:")
+    cfg = {"decider": args.decider, "gap": args.gap, "max_time": args.max_time,
+           "ls_time": args.ls_time, "ls_step": args.ls_step_time}
     best, cache, sweeps, free = decide(diconf, dirname, ref if ref["status"] == "solved" else None, loop, pool,
-                                       args.ls_time, args.ls_step_time, args.passes, log)
-    spread = max((d for s in sweeps for _, d in s["dips"]), default=None)
+                                       cfg, args.passes, log)
+    # Noise: the dips matter only where a score is local search's (an unproved plan).
+    ls_dips = [d for s in sweeps for m, d in s["dips"] if not _all_proved(cache, s, m)]
+    spread = max(ls_dips, default=None)
     res = cache[best]
+    close = []
+    for s in sweeps:
+        ranked = sorted(((v, m) for m, v in s["points"]), reverse=True)
+        if len(ranked) > 1:
+            (v1, m1), (v2, m2) = ranked[0], ranked[1]
+            t1, t2 = (_cell(cache, s, m).get("tolerance") for m in (m1, m2))
+            if t1 is not None and t2 is not None and v1 - v2 <= t1 + t2:
+                close.append(f"{s['person']} {ym(m1 / 12)} vs {ym(m2 / 12)} ({v1 - v2:,.2f} within "
+                             f"{t1 + t2:,.2f})")
 
     def at(pick):
         if not pick or pick["status"] != "solved":
             return None
         return cache.get(months(pick["ages"]), {}).get("value")
 
-    return {"name": name, "free": free, "best": list(best), "result": res, "spread": spread,
+    return {"name": name, "free": free, "best": list(best), "result": res, "spread": spread, "close": close,
             "ref": ref, "loop": loop, "ref_value": at(ref), "loop_value": at(loop), "sweeps": sweeps,
-            "results": {"/".join(ym(m / 12) for m in k): v for k, v in cache.items()}}
+            "results": {"/".join(ym(m / 12) for m in k): v for k, v in cache.items()}, "_cache": cache}
 
 
-def report(rows, objective, log):
+def _cell(cache, sweep, m):
+    """The scored plan of a sweep at person's age m (months)."""
+    i = sweep["index"]
+    t = list(sweep["held"])
+    t[i] = m
+    return cache[tuple(t)]
+
+
+def _all_proved(cache, sweep, m):
+    """True when the dip at m and both its neighbours in the sweep are proved plans."""
+    ms = sorted(x for x, _ in sweep["points"])
+    k = ms.index(m)
+    return all(_cell(cache, sweep, x).get("proved") for x in ms[k - 1:k + 2])
+
+
+def _verdict(r, r0):
+    """Resolution of r's difference from the reference row r0."""
+    a, b = r["result"], r0["result"]
+    d = a["value"] - b["value"]
+    if a.get("tolerance") is not None and b.get("tolerance") is not None:
+        return "resolved" if abs(d) > a["tolerance"] + b["tolerance"] else "unresolved"
+    sp, sp0 = r["spread"], r0["spread"]
+    if sp is None or sp0 is None:
+        return "no spread"
+    return "resolved" if abs(d) > max(sp, sp0) else "unresolved"
+
+
+def report(rows, objective, decider, log):
     unit = "annual spending, today's $/yr" if objective == "maxSpending" else "after-tax bequest, today's $"
-    log(f"\nDecided by local search; objective = {unit}. Taxes and premiums: lifetime, today's $.")
+    log(f"\nDecided by {DECIDER[decider]}; objective = {unit}. Taxes and premiums: lifetime, today's $.")
     base = rows[0]["result"].get("value")
-    hdr = (f"{'variant':<24}{'ages':>14}{'objective':>13}{'vs first':>11}{'spread':>9}  {'':<11}"
-           f"{'(a) cost':>9}{'(b) cost':>9}")
+    hdr = (f"{'variant':<24}{'ages':>14}{'objective':>13}{'vs first':>11}{'tol':>7}{'spread':>8}  {'':<11}"
+           f"{'(a) cost':>9}{'(b) cost':>9}  by")
     log(hdr)
     for r in rows:
-        v = r["result"].get("value")
+        res = r["result"]
+        v = res.get("value")
         if v is None:
-            log(f"{r['name']:<24}{'':>14}{r['result']['status']:>13}")
+            log(f"{r['name']:<24}{'':>14}{res['status']:>13}")
             continue
         sp = r["spread"]
-        sp0 = rows[0]["spread"]
+        tol = res.get("tolerance")
         d = v - base if base is not None else None
-        if r is rows[0]:
-            verdict = ""
-        elif sp is None or sp0 is None:
-            verdict = "no spread"
-        else:
-            verdict = "resolved" if abs(d) > max(sp, sp0) else "unresolved"
+        verdict = "" if r is rows[0] else _verdict(r, rows[0])
         costs = [f"{v - x:>9,.0f}" if x is not None else f"{'-':>9}" for x in (r["ref_value"], r["loop_value"])]
-        log(f"{r['name']:<24}{'/'.join(ym(m / 12) for m in r['best']):>14}{v:>13,.2f}"
-            f"{d:>11,.2f}{'?' if sp is None else f'{sp:,.0f}':>9}  {verdict:<11}{costs[0]}{costs[1]}")
-    log("\n(a)/(b) cost: decided objective less local search's score at that search's pick.")
+        log(f"{r['name']:<24}{'/'.join(ym(m / 12) for m in r['best']):>14}{v:>13,.2f}{d:>11,.2f}"
+            f"{'-' if tol is None else f'{tol:,.2f}':>7}{'-' if sp is None else f'{sp:,.0f}':>8}  {verdict:<11}"
+            f"{costs[0]}{costs[1]}  {res.get('used', '')}")
+    log("\ntol: the decided plan's proved tolerance (gap x objective); spread: deepest dip among local-search")
+    log("scores (none when every score is proved). (a)/(b) cost: decided objective less the score at that")
+    log("search's pick.")
+    for r in rows:
+        for c in r["close"]:
+            log(f"  {r['name']}: best two ages within their tolerances: {c}")
     log(f"\n{'variant':<24}{'federal':>10}{'state':>10}{'payroll':>10}{'Medicare':>10}{'ACA':>10}"
         f"{'SS withheld':>12}{'SS paid':>11}{'bequest':>11}")
     for r in rows:
@@ -367,15 +495,16 @@ def report(rows, objective, log):
         log(f"{r['name']:<24}{fed:>10,.0f}{m['state_tax_today']:>10,.0f}{m['payroll_tax_today']:>10,.0f}"
             f"{m['medicare_today']:>10,.0f}{m['aca_today']:>10,.0f}{m['ss_withheld_today']:>12,.0f}"
             f"{m['ss_income_today']:>11,.0f}{m['final_bequest_today']:>11,.0f}")
-    log("\nLocal search per scored plan:")
+    log("\nScores per sweep (* = not proved: local search's score or an unproved branch-and-bound):")
     for r in rows:
-        deepest = "none seen" if r["spread"] is None else f"{r['spread']:,.2f}"
-        log(f"  {r['name']}: {len(r['results'])} plans scored; deepest dip {deepest}")
+        log(f"  {r['name']}: {len(r['results'])} plans scored")
         for s in r["sweeps"]:
-            pts = ", ".join(f"{ym(m / 12)} {v:,.2f}" for m, v in sorted(s["points"]))
+            cells = [(m, v, _cell(r["_cache"], s, m)) for m, v in sorted(s["points"])]
+            pts = ", ".join(f"{ym(m / 12)} {v:,.2f}{'' if c.get('proved') else '*'}" for m, v, c in cells)
             log(f"    pass {s['pass']} {s['person']} (held {'/'.join(ym(m / 12) for m in s['held'])}): {pts}")
             for m, dd in s["dips"]:
-                log(f"      dip at {ym(m / 12)}: {dd:,.2f}")
+                kind = "the model's (proved)" if _all_proved(r["_cache"], s, m) else "noise or the model's"
+                log(f"      dip at {ym(m / 12)}: {dd:,.2f}, {kind}")
 
 
 def main():
@@ -383,7 +512,10 @@ def main():
     ap.add_argument("case")
     ap.add_argument("variants")
     ap.add_argument("--out-dir", default="otherFiles/sweep")
-    ap.add_argument("--jobs", type=int, default=1, help="parallel local-search solves (processes)")
+    ap.add_argument("--jobs", type=int, default=1, help="parallel solves in (c) (processes)")
+    ap.add_argument("--decider", choices=sorted(DECIDER), default="bb", help="scoring in (c)")
+    ap.add_argument("--gap", type=float, default=1e-5, help="relative MIP gap of branch-and-bound in (c)")
+    ap.add_argument("--max-time", type=float, default=TIME_LIMIT, help="seconds per MIP solve in (c)")
     ap.add_argument("--passes", type=int, default=2)
     ap.add_argument("--ls-time", type=float, default=7200.0, help="localSearchTime (s); default lifts the cap")
     ap.add_argument("--ls-step-time", type=float, default=1800.0, help="localSearchStepTime (s)")
@@ -403,7 +535,10 @@ def main():
         variants = [by[n] for n in args.only]
     log(f"work_sweep.py, {date.today().isoformat()}, owlplanner {owl.__version__} from {owl.__file__}")
     log(f"case {args.case}, variants {args.variants}, jobs {args.jobs}, passes {args.passes}, "
-        f"localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s")
+        f"decider {DECIDER[args.decider]}"
+        + (f" (gap {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search for unproved plans)"
+           if args.decider == "bb" else "")
+        + f", localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s")
     for name, _, _, sets in variants:
         log(f"  {name}: {'; '.join(sets) or '(no overrides)'}")
     objective = None
@@ -414,18 +549,28 @@ def main():
             if objective is None:
                 objective = make_plan(d, dirname)[0].objective
             rows.append(run_variant(name, d, dirname, args, pool, log))
-    report(rows, objective, log)
-    caps = [(r["name"], k) for r in rows for k, c in r["results"].items() if c.get("default_caps_bind")]
-    spent = [(r["name"], k) for r in rows for k, c in r["results"].items() if c.get("budget_spent")]
-    failed = [(r["name"], k, c["status"]) for r in rows for k, c in r["results"].items() if c["status"] != "solved"]
-    log(f"\nScored plans where the default caps (300 s / 60 s) would have bound: "
-        f"{', '.join(f'{n} {k}' for n, k in caps) or 'none'}")
-    log(f"Scored plans that spent the raised time budget: {', '.join(f'{n} {k}' for n, k in spent) or 'none'}")
-    log(f"Scored plans not solved: {', '.join(f'{n} {k} ({st})' for n, k, st in failed) or 'none'}")
+    report(rows, objective, args.decider, log)
+
+    def cells(pred):
+        return ", ".join(f"{r['name']} {k}" for r in rows for k, c in r["results"].items() if pred(c)) or "none"
+
+    def ls_part(c):
+        return c if c.get("used") == "local search" else c.get("fallback", {})
+
+    log("")
+    if args.decider == "bb":
+        log(f"Scored plans not proved by branch-and-bound: {cells(lambda c: not c.get('proved'))}")
+        log(f"  of which a MIP stopped on time: {cells(lambda c: (c.get('bb') or c).get('time_limit_runs'))}")
+        log(f"  of which a MIP stopped at the node limit: {cells(lambda c: (c.get('bb') or c).get('node_limit_runs'))}")
+        log(f"  of which local search's score was kept: {cells(lambda c: c.get('used') == 'local search')}")
+    log(f"Local-search scores where its default caps (300 s / 60 s) would have bound: "
+        f"{cells(lambda c: ls_part(c).get('default_caps_bind'))}")
+    log(f"Local-search scores that spent the raised time budget: {cells(lambda c: ls_part(c).get('budget_spent'))}")
+    log(f"Scored plans not solved: {cells(lambda c: c['status'] != 'solved')}")
     log(f"Total {time.time() - t0:.0f}s.")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(rows, f, indent=1, default=str)
+            json.dump([{k: v for k, v in r.items() if k != "_cache"} for r in rows], f, indent=1, default=str)
 
 
 if __name__ == "__main__":

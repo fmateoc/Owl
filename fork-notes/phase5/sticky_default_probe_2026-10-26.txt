@@ -1,0 +1,27 @@
+sticky_default_probe.py on stock upstream dev 4dcfabb, 2026-10-26: each example at its own options plus
+breakpointMethod='branch-and-bound' (default gap: 3e-3 with Medicare as MILP). ties: _stickyBinaries ties
+(pinned LP within _sticky_tol); per tie (HiGHS gap, gap against the kept plan, requested gap, kept?).
+Run four at a time; for about 30 min two orphaned worker pools also ran, so times are not comparable.
+(The first two result lines were later overwritten in the file by a stray resource_tracker warning;
+ they are restored here as read from the file earlier in the same session.)
+
+owlplanner 2026.10.26 /tmp/claude-0/-home-user-Owl/67841edb-d702-5a7c-932c-9582eb5f4b1a/scratchpad/stock/src/owlplanner/__init__.py
+Case_alex+jamie.toml           solved iters=3 conv='monotonic' bins=289 solverGap=0.0029997140993887473 value=225904.81 ties=0 tie_leaves_gap=0 [] 484s
+Case_avery+quinn.toml          solved iters=4 conv='monotonic' bins=300 solverGap=0.0028927409893224933 value=2407645.0622059004 ties=0 tie_leaves_gap=0 [] 93s
+Case_bill.toml                 solved iters=2 conv='monotonic' bins=153 solverGap=0.0 value=36665.93 ties=0 tie_leaves_gap=0 [] 1s
+Case_cameron.toml              solved iters=2 conv='monotonic' bins=300 solverGap=0.0 value=18996.31 ties=0 tie_leaves_gap=0 [] 2s
+Case_chris+pat.toml            solved iters=4 conv='monotonic' bins=352 solverGap=0.002989801266414192 value=114230.83 ties=0 tie_leaves_gap=0 [] 139s
+Case_dana.toml                 solved iters=3 conv='monotonic' bins=300 solverGap=0.002984062484170301 value=81126.75 ties=0 tie_leaves_gap=0 [] 91s
+Case_devon.toml                solved iters=2 conv='monotonic' bins=300 solverGap=0.0029753829895098156 value=248502.22 ties=0 tie_leaves_gap=0 [] 124s
+Case_helen+ruth.toml           solved iters=2 conv='monotonic' bins=234 solverGap=0.0029988851854120817 value=195527.24 ties=0 tie_leaves_gap=0 [] 187s
+Case_jack+jill.toml            solved iters=3 conv='monotonic' bins=352 solverGap=0.002999189026841658 value=110983.22 ties=0 tie_leaves_gap=0 [] 662s
+Case_joe.toml                  solved iters=4 conv='oscillatory' bins=305 solverGap=0.0029995192010237996 value=98966.61 ties=0 tie_leaves_gap=0 [] 282s
+Case_john+sally.toml           solved iters=2 conv='monotonic' bins=319 solverGap=0.0 value=14013.494960764097 ties=0 tie_leaves_gap=0 [] 30s
+Case_jon+jane.toml             solved iters=2 conv='monotonic' bins=366 solverGap=0.025775340438579125 value=153167.34 ties=0 tie_leaves_gap=0 [] 11s
+Case_jordan+taylor-qcd.toml    solved iters=2 conv='monotonic' bins=311 solverGap=0.002999984274256558 value=1205540.2068139154 ties=0 tie_leaves_gap=0 [] 463s
+Case_jordan+taylor.toml        solved iters=2 conv='monotonic' bins=311 solverGap=0.0029999354137375503 value=1554926.0208662557 ties=0 tie_leaves_gap=0 [] 341s
+Case_kim+sam-bequest.toml      solved iters=3 conv='monotonic' bins=345 solverGap=0.004025234989057485 value=1962690.4515777184 ties=0 tie_leaves_gap=0 [] 2701s
+Case_kim+sam-spending.toml     solved iters=2 conv='monotonic' bins=345 solverGap=0.0029961818080557305 value=186275.91 ties=0 tie_leaves_gap=0 [] 29s
+Case_morgan.toml               solved iters=2 conv='monotonic' bins=451 solverGap=0.0029992159293437508 value=47527.06 ties=0 tie_leaves_gap=0 [] 138s
+Case_riley+casey.toml          solved iters=6 conv='monotonic' bins=488 solverGap=0.0029999857512591037 value=118893.91 ties=0 tie_leaves_gap=0 [] 4229s
+Case_robin.toml                solved iters=2 conv='monotonic' bins=300 solverGap=0.00294243002166533 value=44159.28 ties=1 tie_leaves_gap=0 [('2.94e-03', '2.94e-03', '3e-03', 'kept')] 9s

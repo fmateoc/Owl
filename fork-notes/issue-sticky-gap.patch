@@ -24,10 +24,19 @@ index 5286a20..15ad4f9 100644
          return chosen
  
 diff --git a/tests/solver/test_sticky_binaries.py b/tests/solver/test_sticky_binaries.py
-index bfbe4c1..5ff9df9 100644
+index bfbe4c1..48d0813 100644
 --- a/tests/solver/test_sticky_binaries.py
 +++ b/tests/solver/test_sticky_binaries.py
-@@ -84,6 +84,24 @@ def test_a_worse_plan_does_not_keep_them(plan, monkeypatch):
+@@ -68,7 +68,7 @@ def test_a_tie_keeps_the_previous_binaries(plan, monkeypatch):
+         return -1.0 + 1e-6, prev, True, "pinned LP", -1.0  # within 5e-5 of the new plan's -1.0
+ 
+     monkeypatch.setattr(plan, "_run_mip", lp)
+-    obj, z, ok, msg, gap = plan._stickyBinaries((-1.0, x, True, "MIP", 2e-3), {}, use_mosek=False)
++    obj, z, ok, msg, gap = plan._stickyBinaries((-1.0, x, True, "MIP", 2e-3), {"gap": 3e-3}, use_mosek=False)
+     assert seen["lp"] is True
+     assert all(seen["pins"][int(j)] == (prev[j],) * 2 for j in bins)
+     assert np.array_equal(z, prev) and ok and msg == "MIP"
+@@ -84,6 +84,33 @@ def test_a_worse_plan_does_not_keep_them(plan, monkeypatch):
      assert np.array_equal(plan._stickyPrev, x)
  
  
@@ -47,6 +56,15 @@ index bfbe4c1..5ff9df9 100644
 +    obj, z, ok, msg, gap = plan._stickyBinaries((-1.0, x, True, "MIP", 5e-6), {"gap": 1e-5}, use_mosek=False)
 +    assert np.array_equal(z, prev) and ok
 +    assert gap == pytest.approx(7e-6, rel=1e-3) and gap <= 1e-5
++
++
++def test_a_solve_stopped_above_the_requested_gap_still_keeps_them(plan, monkeypatch):
++    """A node or time limit: the solve itself did not meet the gap, so the tie keeps its convergence aid."""
++    x, prev, _ = _with_prev(plan, flip=True)
++    monkeypatch.setattr(plan, "_run_mip", lambda *a, **k: (-1.0 + 2e-6, prev, True, "pinned LP", -1.0))
++    obj, z, ok, msg, gap = plan._stickyBinaries((-1.0, x, True, "MIP", 2e-5), {"gap": 1e-5}, use_mosek=False)
++    assert np.array_equal(z, prev) and ok
++    assert gap == pytest.approx(2.2e-5, rel=1e-3)
 +
 +
  def test_the_same_binaries_are_not_solved_again(plan, monkeypatch):

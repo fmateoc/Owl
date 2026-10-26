@@ -1,0 +1,77 @@
+sticky_iter_probe.py, 2026-10-26: the issue's four cases with each loop iteration's HiGHS MIP gap, whether
+the tie was kept, and the returned plan's true gap against that iteration's HiGHS bound vs the gap reported.
+stock = upstream dev 4dcfabb; patched = + issue-sticky-gap.patch; anchor = stock with _stickyPrev set after
+_repairInconsistentYears (the tie judged against the plan the repair returned) instead of before it.
+
+== stock_1e-5
+as shipped         solved value=114,325.86 solverGap=1.833e-05 iters=2 repairs_improved=0 conv='monotonic' 107s
+    MIP gap 9.706e-06        returned plan: true gap 9.706e-06, reported 9.706e-06
+    MIP gap 9.445e-06  kept  returned plan: true gap 1.833e-05, reported 1.833e-05
+SLCSP 20, 67/63    solved value=113,450.58 solverGap=1.968e-05 iters=2 repairs_improved=0 conv='monotonic' 153s
+    MIP gap 9.872e-06        returned plan: true gap 9.872e-06, reported 9.872e-06
+    MIP gap 9.809e-06  kept  returned plan: true gap 1.968e-05, reported 1.968e-05
+SLCSP 20, 70/63    solved value=113,361.62 solverGap=1.935e-05 iters=2 repairs_improved=0 conv='monotonic' 236s
+    MIP gap 9.976e-06        returned plan: true gap 9.976e-06, reported 9.976e-06
+    MIP gap 9.858e-06  kept  returned plan: true gap 1.935e-05, reported 1.935e-05
+SLCSP 20, 68.5/63  solved value=113,542.48 solverGap=9.720e-06 iters=2 repairs_improved=0 conv='monotonic' 141s
+    MIP gap 9.834e-06        returned plan: true gap 9.834e-06, reported 9.834e-06
+    MIP gap 9.720e-06        returned plan: true gap 9.720e-06, reported 9.720e-06
+
+== patched_1e-5
+as shipped         solved value=114,327.09 solverGap=9.942e-06 iters=3 repairs_improved=0 conv='monotonic' 135s
+    MIP gap 9.706e-06        returned plan: true gap 9.706e-06, reported 9.706e-06
+    MIP gap 9.445e-06        returned plan: true gap 9.445e-06, reported 9.445e-06
+    MIP gap 9.942e-06        returned plan: true gap 9.942e-06, reported 9.942e-06
+SLCSP 20, 67/63    solved value=113,451.71 solverGap=9.867e-06 iters=3 repairs_improved=0 conv='monotonic' 206s
+    MIP gap 9.872e-06        returned plan: true gap 9.872e-06, reported 9.872e-06
+    MIP gap 9.809e-06        returned plan: true gap 9.809e-06, reported 9.809e-06
+    MIP gap 9.867e-06        returned plan: true gap 9.867e-06, reported 9.867e-06
+SLCSP 20, 70/63    solved value=113,362.69 solverGap=9.981e-06 iters=3 repairs_improved=0 conv='monotonic' 301s
+    MIP gap 9.976e-06        returned plan: true gap 9.976e-06, reported 9.976e-06
+    MIP gap 9.858e-06        returned plan: true gap 9.858e-06, reported 9.858e-06
+    MIP gap 9.981e-06        returned plan: true gap 9.981e-06, reported 9.981e-06
+SLCSP 20, 68.5/63  solved value=113,542.48 solverGap=9.720e-06 iters=2 repairs_improved=0 conv='monotonic' 129s
+    MIP gap 9.834e-06        returned plan: true gap 9.834e-06, reported 9.834e-06
+    MIP gap 9.720e-06        returned plan: true gap 9.720e-06, reported 9.720e-06
+
+== anchor_1e-5
+as shipped         solved value=114,325.86 solverGap=1.833e-05 iters=2 repairs_improved=0 conv='monotonic' 110s
+    MIP gap 9.706e-06        returned plan: true gap 9.706e-06, reported 9.706e-06
+    MIP gap 9.445e-06  kept  returned plan: true gap 1.833e-05, reported 1.833e-05
+SLCSP 20, 67/63    solved value=113,450.58 solverGap=1.968e-05 iters=2 repairs_improved=0 conv='monotonic' 156s
+    MIP gap 9.872e-06        returned plan: true gap 9.872e-06, reported 9.872e-06
+    MIP gap 9.809e-06  kept  returned plan: true gap 1.968e-05, reported 1.968e-05
+SLCSP 20, 70/63    solved value=113,361.62 solverGap=1.935e-05 iters=2 repairs_improved=0 conv='monotonic' 239s
+    MIP gap 9.976e-06        returned plan: true gap 9.976e-06, reported 9.976e-06
+    MIP gap 9.858e-06  kept  returned plan: true gap 1.935e-05, reported 1.935e-05
+SLCSP 20, 68.5/63  solved value=113,542.48 solverGap=9.720e-06 iters=2 repairs_improved=0 conv='monotonic' 146s
+    MIP gap 9.834e-06        returned plan: true gap 9.834e-06, reported 9.834e-06
+    MIP gap 9.720e-06        returned plan: true gap 9.720e-06, reported 9.720e-06
+
+== stock_1e-4
+as shipped         solved value=114,323.03 solverGap=9.982e-05 iters=2 repairs_improved=0 conv='monotonic' 107s
+    MIP gap 9.967e-05        returned plan: true gap 9.967e-05, reported 9.967e-05
+    MIP gap 9.982e-05        returned plan: true gap 9.982e-05, reported 9.982e-05
+SLCSP 20, 67/63    solved value=113,444.76 solverGap=9.991e-05 iters=2 repairs_improved=0 conv='monotonic' 135s
+    MIP gap 9.999e-05        returned plan: true gap 9.999e-05, reported 9.999e-05
+    MIP gap 9.991e-05        returned plan: true gap 9.991e-05, reported 9.991e-05
+SLCSP 20, 70/63    solved value=113,357.49 solverGap=9.961e-05 iters=2 repairs_improved=0 conv='monotonic' 190s
+    MIP gap 9.996e-05        returned plan: true gap 9.996e-05, reported 9.996e-05
+    MIP gap 9.961e-05        returned plan: true gap 9.961e-05, reported 9.961e-05
+SLCSP 20, 68.5/63  solved value=113,532.48 solverGap=9.995e-05 iters=2 repairs_improved=0 conv='monotonic' 159s
+    MIP gap 9.993e-05        returned plan: true gap 9.993e-05, reported 9.993e-05
+    MIP gap 9.995e-05        returned plan: true gap 9.995e-05, reported 9.995e-05
+
+== patched_1e-4
+as shipped         solved value=114,323.03 solverGap=9.982e-05 iters=2 repairs_improved=0 conv='monotonic' 99s
+    MIP gap 9.967e-05        returned plan: true gap 9.967e-05, reported 9.967e-05
+    MIP gap 9.982e-05        returned plan: true gap 9.982e-05, reported 9.982e-05
+SLCSP 20, 67/63    solved value=113,444.76 solverGap=9.991e-05 iters=2 repairs_improved=0 conv='monotonic' 126s
+    MIP gap 9.999e-05        returned plan: true gap 9.999e-05, reported 9.999e-05
+    MIP gap 9.991e-05        returned plan: true gap 9.991e-05, reported 9.991e-05
+SLCSP 20, 70/63    solved value=113,357.49 solverGap=9.961e-05 iters=2 repairs_improved=0 conv='monotonic' 174s
+    MIP gap 9.996e-05        returned plan: true gap 9.996e-05, reported 9.996e-05
+    MIP gap 9.961e-05        returned plan: true gap 9.961e-05, reported 9.961e-05
+SLCSP 20, 68.5/63  solved value=113,532.48 solverGap=9.995e-05 iters=2 repairs_improved=0 conv='monotonic' 146s
+    MIP gap 9.993e-05        returned plan: true gap 9.993e-05, reported 9.993e-05
+    MIP gap 9.995e-05        returned plan: true gap 9.995e-05, reported 9.995e-05

@@ -2472,9 +2472,38 @@ same stand-in SLCSP and PIAs):
   differences from base (-\$4,821, -\$2,109, +\$2,706) resolved.
 - **Proof rule fixed after the run:** it first also required the reported gap <= 1e-5; 12 plans
   (every run "Optimal", gaps 1.0-2.0e-5) failed it, were marked unproved and were also scored by
-  local search (all 12 below branch-and-bound, so no score changed; the time was wasted). Why
-  HiGHS reports "Optimal" above `mip_rel_gap` was not traced. The run's own report shows the old
-  classification; `--report-from` applies the fixed one.
+  local search (all 12 below branch-and-bound, so no score changed; the time was wasted). The run's
+  own report shows the old classification; `--report-from` applies the fixed one.
+
+**Why the reported gap exceeds `mip_rel_gap`** (2026-10-26, `fork-notes/phase5/highs_gap_probe.py`,
+output `highs_gap_probe_2026-10-26.txt`): not HiGHS. One of the 12 plans re-solved
+(pat-stops-2027, Chris 68y3m / Pat 62y1m; same value \$108,718.70 and `solverGap` 1.434e-5 as in
+the run) with every HiGHS run recorded: both branch-and-bound solves ended "Optimal" at gaps of
+9.952e-6 and 9.950e-6 (HiGHS's own log: "Gap 0.000995% (tolerance: 0.001%)"), the four repair
+MIPs at 0. The extra gap is Owl's: `_stickyBinaries` (`plan.py:8826`, upstream `6250a5b0`)
+re-solves the LP with the previous iteration's binaries pinned and keeps that plan when its
+objective is within `_sticky_tol` of the new one; `_sticky_tol` is the loop's `rel_tol`
+(`plan.py:7521`), 5e-5 by default (max(`REL_TOL`, gap/300) in `_build_sc_loop_policy`). It then
+re-expresses HiGHS's bound against the kept plan, `gap' = (res - (obj - gap|obj|)) / |res|`. Here
+the kept plan was 14.6073 objective units (4.39e-6 relative) worse than HiGHS's: 9.950e-6 + 4.39e-6
+= 1.434e-5, the reported gap to four digits. Read in the HiGHS source at the installed commit
+(1.15.1, `04024d7`): the reported `mip_gap` is |primal - dual| / |primal| with presolve's offset
+added to both (`highs/mip/HighsMipSolver.cpp` 1076-1104), and nodes are pruned against
+`mip_rel_gap` x |upper bound + offset| (`highs/mip/HighsMipSolverData.cpp` 628-666): the same
+denominator, so a solve HiGHS calls "Optimal" stays within its gap.
+
+- The reported gap is an honest bound on the kept plan (the bound is HiGHS's, the objective the
+  kept plan's), so `work_sweep.py`'s fixed rule (tolerance = reported gap x score) is right, and
+  the first rule (reported gap <= --gap) was wrong for this reason. The other 11 plans were not
+  re-solved; their gaps (all <= 2.0e-5 <= 1e-5 + 5e-5) fit the same mechanism (inferred).
+- With the default `relTol`, `--gap 1e-5` bounds a plan only to 1e-5 + 5e-5 (about \$6.5/yr on
+  chris+pat): the sticky tie is looser than the gap whenever `gap < relTol`. At Owl's default gap
+  (3e-3) it is 60x tighter than the gap, as the docstring intends ("a tie, not anything inside the
+  gap"). Passing `relTol` equal to the gap would make the tie follow it, and also tightens the
+  loop's own convergence test (not measured).
+- The tolerance is relative to the whole objective; using it as gap x basis assumes the objective
+  is proportional to the basis under `maxSpending` (the tie-break terms aside): inferred, not
+  checked.
 - **Correction to the 2026-10-25 dry run:** "the exact LP's Chris pick (68y3m) is 3-4 months
   early, \$8-99/yr" was local search's noise: under branch-and-bound 68y3m is within tolerance of
   the best Chris age in base, Pat-stops-2027 and mid-2028, and costs \$0-2/yr everywhere; the

@@ -1,0 +1,14 @@
+highs_gap_probe.py, 2026-10-26, HiGHS 1.15.1 (04024d7); per-run table of one plan's solve (HiGHS banner lines dropped).
+Runs 1 and 5: the sticky-binaries LP (previous iteration's binaries pinned, passed unscaled: dollars x 100 of the MIP's units).
+Runs 2-3, 6-7: localsearch.repair_inconsistent_years (maxTime <= 60). Kept plan = run 5: worse than run 4 by 14.6073 (4.39e-6 relative),
+within _sticky_tol = rel_tol = 5e-5, so gap' = 9.950e-6 + 4.39e-6 = 1.434e-5 = solverGap.
+pat-stops-2027 at 68y3m/62y1m: solved, value 108,718.70, solverGap 1.434e-05
+ run status       mip  rel_gap  abs_gap  time presolve          primal            dual    mip_gap     recomp   nodes
+   0 Optimal        y  1.0e-05  1.0e-06   900       on   -33266.416880   -33266.747931  9.952e-06  9.952e-06    3362
+   1 Optimal        n  1.0e-05  1.0e-06   900       on -3326641.687986        0.000000        inf  1.000e+00      -1
+   2 Optimal        y  1.0e-05  1.0e-06    60       on   -33266.562953   -33266.562953  0.000e+00  0.000e+00       9
+   3 Optimal        y  1.0e-05  1.0e-06    60       on   -33266.562953   -33266.562953  0.000e+00  0.000e+00       1
+   4 Optimal        y  1.0e-05  1.0e-06   900       on   -33266.562953   -33266.893946  9.950e-06  9.950e-06     884
+   5 Optimal        n  1.0e-05  1.0e-06   900       on -3326641.687986        0.000000        inf  1.000e+00      -1
+   6 Optimal        y  1.0e-05  1.0e-06    60       on   -33266.562953   -33266.562953  0.000e+00  0.000e+00       9
+   7 Optimal        y  1.0e-05  1.0e-06    60       on   -33266.562953   -33266.562953  0.000e+00  0.000e+00       1

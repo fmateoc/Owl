@@ -20,10 +20,13 @@ Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, r
   loosens Owl's gap to 3e-3, about $340/yr on chris+pat) and --max-time per MIP (Owl's 900 s). A
   plan is *proved* when every HiGHS run ended "Optimal" and none stopped on time or at the node
   limit; its *tolerance* is the accepted solve's reported gap x score, the distance to the model's
-  optimum at those ages that HiGHS's bound allows. The reported gap can exceed --gap by a little
-  (1.0-2.0e-5 on 12 of 84 chris+pat plans at --gap 1e-5, every run "Optimal"; why HiGHS stops
-  there was not traced). An unproved plan is also scored by local search and the better of the
-  two kept, labelled by the method that produced it. On chris+pat branch-and-bound at 1e-5
+  optimum at those ages that HiGHS's bound allows. The reported gap can exceed --gap (1.0-2.0e-5
+  on 12 of 84 chris+pat plans at --gap 1e-5): HiGHS stops within --gap, but the branch-and-bound
+  loop's sticky binaries (upstream `6250a5b0`) may keep the previous iteration's plan when it is
+  within the loop's relTol (5e-5 by default) of HiGHS's, and re-express the bound against it
+  (`highs_gap_probe.py`). So --gap alone bounds the plan to --gap + relTol. An unproved plan is
+  also scored by local search and the better of the two kept, labelled by the method that
+  produced it. On chris+pat branch-and-bound at 1e-5
   beat local search by $15-74/yr on all 6 plans checked, in 94-288 s each
   (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other cases.
 - "ls": local search at fixed ages, its time caps raised (--ls-time, --ls-step-time) so its node

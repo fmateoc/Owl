@@ -2591,6 +2591,11 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/affectionate-goldberg-l0wd1l` (2026-10-26)
+
+The user's call, after the `4dcfabb` merge: `main` moves from `8c51157` (`claude/phase5-step1`) to
+this branch (Phase 5 step 6 dry run, #233, upstream `dev` `4dcfabb`; suite 3555 passed, 1 skipped).
+
 ## Upstream `dev` `4dcfabb` merged (2026-10-26, on `claude/affectionate-goldberg-l0wd1l`)
 
 15 commits after `b52b766` (`main` = `dev`): a documentation pass (HFP columns, payroll tax,

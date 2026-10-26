@@ -32,6 +32,7 @@ import work_sweep as ws  # noqa: E402
 
 import owlplanner as owl  # noqa: E402
 from owlplanner.export import plan_metrics  # noqa: E402
+from owlplanner.plan import TIME_LIMIT, Plan  # noqa: E402
 
 HERE = os.path.dirname(__file__)
 CASE = os.path.join(HERE, "..", "..", "examples", "Case_chris+pat.toml")
@@ -40,19 +41,21 @@ LS_SCORES = os.path.join(HERE, "work_sweep_chris+pat_2026-10-25.json")
 
 
 def bb(args):
-    diconf, dirname, ages = args
+    diconf, dirname, ages, gap, max_time = args
     p, buf = ws.make_plan(diconf, dirname, ages)
-    opts = ws.base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound")
-    runs = []  # every engine run of the solve: (HiGHS status, gap, seconds)
-    run_mip = p._run_mip
+    # Without a gap option, withMedicare="optimize" loosens the gap to MILP_GAP (3e-3, about
+    # $340/yr here): more than the dip being tested. maxTime is per MIP solve.
+    opts = ws.base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound", gap=gap, maxTime=max_time)
+    runs = []  # every HiGHS run of the solve: (status, gap, seconds)
+    run_highs = Plan._run_highs
 
-    def recorded(*a, **k):
+    def recorded(self, *a, **k):
         t = time.time()
-        res = run_mip(*a, **k)
+        res = run_highs(self, *a, **k)
         runs.append((res[3], res[4], round(time.time() - t, 1)))
         return res
 
-    p._run_mip = recorded
+    Plan._run_highs = recorded  # one plan per worker process
     t0 = time.time()
     p.solve(p.objective, opts)
     dt = time.time() - t0
@@ -80,6 +83,8 @@ def main():
     ap.add_argument("--variant", default="base")
     ap.add_argument("--chris", type=float, default=68.5)
     ap.add_argument("--pat", type=float, nargs="*", default=[63.0, 64.0, 65.0])
+    ap.add_argument("--gap", type=float, default=1e-5, help="relative MIP gap (Owl's GAP is 1e-4)")
+    ap.add_argument("--max-time", type=float, default=TIME_LIMIT, help="seconds per MIP solve")
     ap.add_argument("--out-dir", default=os.path.join(HERE, "..", "..", "otherFiles", "sweep-bb"))
     ap.add_argument("--json")
     args = ap.parse_args()
@@ -90,7 +95,8 @@ def main():
     _, d, dirname, sets = by[args.variant]
     print(f"ws_bb_check.py, {date.today().isoformat()}, owlplanner {owl.__version__} from {owl.__file__}")
     print(f"chris+pat dry-run variant '{args.variant}': {'; '.join(sets)}")
-    print(f"branch-and-bound at fixed ages, Chris {ws.ym(args.chris)}; objective: annual spending, today's $/yr")
+    print(f"branch-and-bound at fixed ages, Chris {ws.ym(args.chris)}, gap {args.gap:.0e}, maxTime "
+          f"{args.max_time:.0f}s per MIP; objective: annual spending, today's $/yr")
 
     ls = {}
     if os.path.exists(LS_SCORES):
@@ -102,7 +108,7 @@ def main():
     trials = [[args.chris, a] for a in args.pat]
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=len(trials), mp_context=mp.get_context("spawn")) as pool:
-        results = list(pool.map(bb, [(d, dirname, t) for t in trials]))
+        results = list(pool.map(bb, [(d, dirname, t, args.gap, args.max_time) for t in trials]))
     print(f"\n{'Pat':>6}{'B&B':>13}{'local search':>14}{'B&B - LS':>10}{'gap':>10}{'nodes':>10}"
           f"{'node cap':>10}{'time cap':>9}{'residual':>10}{'seconds':>9}")
     for t, r in zip(trials, results, strict=True):
@@ -122,10 +128,11 @@ def main():
         if r["status"] == "solved":
             print(f"{ws.ym(t[1]):>6}{r['federal']:>11,.0f}{r['aca']:>9,.0f}{r['medicare']:>10,.0f}"
                   f"{r['ss_paid']:>12,.0f}{r['ss_withheld']:>12,.0f}  {r['method']}")
-    print("\nnode cap: main MIP solves stopped at the node limit; time cap: engine runs HiGHS stopped on time;")
+    print("\ngap: the accepted solve's; node cap: main MIP solves stopped at the node limit; time cap: HiGHS")
+    print("runs stopped on time;")
     print("residual: the plan's fixed-point residual, today's $ summed over families.")
     for t, r in zip(trials, results, strict=True):
-        print(f"Pat {ws.ym(t[1])}: {len(r['runs'])} engine runs, largest gap {r['max_run_gap']:.1e}, "
+        print(f"Pat {ws.ym(t[1])}: {len(r['runs'])} HiGHS runs, largest gap {r['max_run_gap']:.1e}, "
               f"statuses {sorted({st for st, _, _ in r['runs']})}")
     print(f"Total {time.time() - t0:.0f}s.")
     if args.json:

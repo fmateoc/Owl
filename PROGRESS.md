@@ -2592,6 +2592,30 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## Earnings-test property tests; #231 comment drafted (2026-10-26, on `claude/clever-hypatia-6l8txj`)
+
+Assessment after #229-#232 (the user's question: do they show a weakness?): #229/#230 come
+from the derived earnings (`6ea43a9`, the maintainer's replacement of our `gross earnings`;
+our D1 had flagged the match). #231/#232 are in our `socialsecurity.py`, each on a premise
+stated in a comment and never tested ("charging never reaches that month"; nominal table
+read as first-year dollars). The four were found by property checks, which our example-based
+tests lacked. A condition scan found none of the 19 examples affected by #229 or #232.
+
+`tests/ss/test_earnings_test_properties.py`: conservation (paid + withheld = due, "due"
+rebuilt from the rule functions), the excess bound, continuity of the earnings in wages
+(401(k)), start-year invariance (a tabled year). #229, #231 and #232 are strict xfails with
+`raises=AssertionError`. The tests' own checks: #232's figures come out exactly; a 1%-lossy
+mutant of `charge_excess_months` fails conservation; 0% inflation passes the start-year
+harness. Details in `fork-notes/upstream-229-232/README.md`, "Property tests". Full suite **3565 passed, 1 skipped, 4 xfailed** (12:05; 3555 before); flake8 and Ruff clean on the new file.
+
+#231 comment `fork-notes/issue-231-comment.md`, for the user to post. It has two parts: a
+regression test for the fix, run on stock `dev` `4dcfabb` (fails at 2.5%: 6,900.30 vs
+7,220.00), and the wage base, which follows the brackets' release-year convention (285.97
+on $250k between the two start years) and should join the exempt table's convention once
+#231 is fixed. Repro `fork-notes/issue-231-repro.py`, output
+`issue-231-repro-output.txt`. Correction to the chat assessment: the wage base is not a
+separate unreported bug, only an inconsistency after #231's fix.
+
 ## Upstream issues #229-#232 checked (2026-10-26, on `claude/clever-hypatia-6l8txj`)
 
 Four issues by `rationalpiper`, filed today, all on code that came from our PRs (the derived

@@ -1,0 +1,11 @@
+owlplanner from src/owlplanner/__init__.py
+
+Earnings test, $40,000 of 2027 wages: nominal amount withheld
+  shipped table (2024-2026)        inflation 0.0%: plan from 2026  7,760.00  plan from 2027  7,760.00  diff     0.00
+  shipped table (2024-2026)        inflation 2.5%: plan from 2026  7,453.80  plan from 2027  7,760.00  diff  -306.20
+  2027 added as (25,560, 67,920)   inflation 0.0%: plan from 2026  7,220.00  plan from 2027  7,220.00  diff     0.00
+  2027 added as (25,560, 67,920)   inflation 2.5%: plan from 2026  6,900.30  plan from 2027  7,220.00  diff  -319.70
+
+Payroll tax, $250,000 of 2027 wages (payrollWageBase = 184,500)
+  inflation 0.0%: plan from 2026  15,514.00  plan from 2027  15,514.00  diff     0.00
+  inflation 2.5%: plan from 2026  15,799.97  plan from 2027  15,514.00  diff   285.97

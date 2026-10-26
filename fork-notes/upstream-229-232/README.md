@@ -70,3 +70,33 @@ No claim found wrong.
   reporter's #199-#217 himself within two days. When he fixes these, merge his version and drop
   our gate test if it conflicts. If the step-6 sweep has to run first on inputs that meet a
   condition, patch the fork then.
+
+## Property tests (2026-10-26)
+
+`tests/ss/test_earnings_test_properties.py` (fork). It checks properties over random
+households and edge cases, where the other test files check hand numbers on chosen
+examples. The properties:
+
+- conservation: paid + withheld = due in every payment year, with "due" rebuilt from the
+  rule functions;
+- the excess bound: nothing withheld beyond the excess;
+- continuity of the earnings in wages, for a 401(k) deferral;
+- start-year invariance of the nominal withholding, for a year in the table.
+
+#229, #231 and #232 are strict xfails (`raises=AssertionError`), so a fix shows up as an
+XPASS. #230 has no property test: the inputs cannot tell an employer match from a deferral.
+Checks of the tests themselves:
+
+- The rebuilt "due" gives #232's figures exactly: 32,460.00 / 32,760.00, missing 810.11 /
+  1,381.31, payment year 2029 only.
+- A mutant that loses 1% of each withheld amount fails both conservation tests.
+- The start-year harness agrees with itself at 0% inflation.
+
+The domain of the random households has no deaths, no trim and no delayed credits.
+
+Comment for #231: `fork-notes/issue-231-comment.md` (a stock-runnable version of the
+start-year test, and the payroll wage base). Correction to the assessment given in chat
+the same day: the wage base is not a separate unreported bug. It follows the convention of
+Owl's federal brackets, one year's values grown by inflation from the plan's start, and the
+year-end checklist covers it. It becomes a real inconsistency only once #231's fix makes the
+exempt table nominal and year-keyed.

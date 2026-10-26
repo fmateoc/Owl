@@ -2591,6 +2591,29 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## Upstream `dev` `4dcfabb` merged (2026-10-26, on `claude/affectionate-goldberg-l0wd1l`)
+
+15 commits after `b52b766` (`main` = `dev`): a documentation pass (HFP columns, payroll tax,
+PARAMETERS and Modeling Capabilities against the code, INSTALL, CONTRIBUTING, Docker, MCP guide,
+credits), a `make_spia` docstring (indexed amounts in today's dollars), and one feature: MCP
+`run_from_params` and `save_case` take `rate_params` (`c901c77`). Merge `270345d`; conflicts in docs
+only:
+
+- `info/PARAMETERS.md`, `withSSAges`: theirs (up to 96 months from the earliest claiming age, 97
+  for a birth on the 1st or 2nd); the fork had not changed that row.
+- `info/modeling-capabilities.md`: *Fixed assets* theirs (proceeds are cash flow of the sale year;
+  the fork had not changed it); *Debts* and *Ordinary income tax* ours (itemizing; upstream had
+  not changed them); *State income tax* ours with upstream's three edits (retirement exemption
+  examples incl. KY, `pension_exemption` used by no state, SS exclusion a yes/no flag with the
+  KS/MO AGI figures unused). Checked: `ss_exemption_threshold` and `pension_exemption` are 0 for
+  every state in the fork's data, and `tax_state.py` reads them as upstream does.
+- `CHANGELOG.md` is upstream's byte for byte.
+
+Full suite **3555 passed, 1 skipped** (10:24; 3554 before, upstream's `rate_params` test added).
+flake8 clean; Ruff's three B905 are upstream's lines (`localsearch.py:244`, 4 lines below
+upstream's because of the fork's `zst` comment, `tests/plan/test_local_search.py:288`,
+`tests/plan/test_roth_maturation_losses.py:49`).
+
 ## PR #228 landed; upstream `dev` `b52b766` merged (2026-10-25, on `claude/phase5-step1`)
 
 - Found by the second git check-in (20:30 UTC): PR #228 squashed into `dev` as `3a2dfc33`, tree

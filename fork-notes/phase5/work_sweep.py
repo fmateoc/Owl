@@ -43,6 +43,21 @@ the noise, and the deepest one is the variant's spread; it can also be the model
 variant's dip at Pat 64y0m was local search's, the part-time one the model's). The per-plan scores
 in --json show which costs move at a dip.
 
+Two checks on the decided plans (2026-10-26, after upstream #234):
+
+- Round-trip netting. Owl's worksheet nets a taxable sale against the surplus deposit that rebuys
+  it in years with no federally taxed gains (`Plan._netSurplusRoundTrip`), while the gains, the
+  state tax and the cost basis keep the gross flows. Every scored plan records what was netted
+  per year, in today's $: the amount, and the gain it hides (amount x gain coefficient x equity
+  share, the part of `Q_n` the displayed flows no longer explain), with that year's state tax.
+  NY taxes the gain, so a netted NY year carries state tax on a sale the worksheet does not show.
+- Deposit split. The surplus goes to the spouses' taxable accounts in a fixed split (`eta`,
+  `spousal_surplus_deposit_fraction`), a modelling constraint, not a household fact; a forced
+  split can make the plan sell in one account to deposit in the other (#234). For couples, each
+  variant's decided ages are scored again at every --eta value (default 0 and 1) with the same
+  decider, and the report gives the change against the case's own split. The ages are not
+  re-decided: a difference beyond the tolerances says the split matters, not which ages it picks.
+
 Variants are generic case and HFP overrides, so the script also serves the locality and rent/buy
 comparisons (Phase 6 folded in, decision R5). A JSON file describes them:
 
@@ -92,6 +107,7 @@ import multiprocessing as mp
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+import numpy as np  # noqa: E402
 import openpyxl  # noqa: E402
 
 import owlplanner as owl  # noqa: E402
@@ -192,10 +208,12 @@ def build_variants(case_file, spec, out_dir):
     return out
 
 
-def make_plan(diconf, dirname, ages=None):
+def make_plan(diconf, dirname, ages=None, eta=None):
     d = copy.deepcopy(diconf)
     if ages is not None:
         d.setdefault("fixed_income", {})["social_security_ages"] = [m / 12 for m in months(ages)]
+    if eta is not None:
+        d.setdefault("savings_assets", {})["spousal_surplus_deposit_fraction"] = float(eta)
     buf = io.StringIO()
     p = config_to_plan(d, dirname, verbose=True, logstreams=[buf])
     return p, buf
@@ -244,12 +262,49 @@ def _record_highs_runs():
     Plan._run_highs = recorded
 
 
+def _record_netting():
+    """Wrap Plan._netSurplusRoundTrip once per worker process: each call leaves on the plan what it
+    netted, per year in today's $. On the plan, not in a module list, so a state the solve restores
+    afterwards (local search falling back to the loop's plan) carries its own record."""
+    if getattr(Plan._netSurplusRoundTrip, "_recorded", False):
+        return
+    net = Plan._netSurplusRoundTrip
+
+    def recorded(self):
+        w0 = self.w_ijn[:, 0, :].copy()
+        net(self)
+        rows = []
+        for n in range(self.N_n):
+            delta = w0[:, n] - self.w_ijn[:, 0, n]
+            if delta.sum() <= 0.5:
+                continue
+            g = float(self.gamma_n[n])
+            hidden = sum(float(delta[i]) * self._effective_cap_gain_coef(i, n) * float(self.alpha_ijkn[i, 0, 0, n])
+                         for i in range(self.N_i))
+            basis = self.gain_fraction_in is not None and any(
+                delta[i] > 0.5 and not np.isnan(self.gain_fraction_in[i, n]) for i in range(self.N_i))
+            rows.append([int(self.year_n[n]), float(delta.sum()) / g, hidden / g, float(self.st_T_n[n]) / g, basis])
+        self._ws_netted = rows
+
+    recorded._recorded = True
+    Plan._netSurplusRoundTrip = recorded
+
+
+def _netting(p):
+    """The netting record of a solved plan: totals and the years, today's $."""
+    rows = getattr(p, "_ws_netted", None) or []
+    return {"netted": sum(r[1] for r in rows), "hidden_gain": sum(r[2] for r in rows),
+            "years": [{"year": r[0], "netted": r[1], "hidden_gain": r[2], "state_tax": r[3], "basis": r[4]}
+                      for r in rows]}
+
+
 def _solved(p, t0):
     return {"status": p.caseStatus, "seconds": time.time() - t0, "method": getattr(p, "breakpointMethodUsed", None)}
 
 
 def _score_ls(diconf, dirname, ages, cfg):
-    p, buf = make_plan(diconf, dirname, ages)
+    _record_netting()
+    p, buf = make_plan(diconf, dirname, ages, cfg.get("eta"))
     opts = base_options(p, withSSAges="fixed", breakpointMethod="local-search",
                         localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
     t0 = time.time()
@@ -266,6 +321,7 @@ def _score_ls(diconf, dirname, ages, cfg):
         "max_step_seconds": max(steps) if steps else 0.0,
         "budget_spent": "time budget spent" in buf.getvalue(),
         "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
+        "netting": _netting(p),
     })
     out["default_caps_bind"] = (out["search_seconds"] > localsearch.TOTAL_TIME
                                 or out["max_step_seconds"] > localsearch.STEP_TIME)
@@ -274,8 +330,9 @@ def _score_ls(diconf, dirname, ages, cfg):
 
 def _score_bb(diconf, dirname, ages, cfg):
     _record_highs_runs()
+    _record_netting()
     _HIGHS_RUNS.clear()
-    p, _ = make_plan(diconf, dirname, ages)
+    p, _ = make_plan(diconf, dirname, ages, cfg.get("eta"))
     opts = base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
                         gap=cfg["gap"], relTol=cfg["gap"], maxTime=cfg["max_time"])
     t0 = time.time()
@@ -298,6 +355,7 @@ def _score_bb(diconf, dirname, ages, cfg):
         "residual": p._fixedPointResidualTotal(),
         "sticky_tol": getattr(p, "_sticky_tol", None),
         "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
+        "netting": _netting(p),
     })
     return _prove(out)
 
@@ -422,10 +480,26 @@ def run_variant(name, diconf, dirname, args, pool, log):
            "ls_time": args.ls_time, "ls_step": args.ls_step_time}
     best, cache, sweeps, free = decide(diconf, dirname, ref if ref["status"] == "solved" else None, loop, pool,
                                        cfg, args.passes, log)
-    return summarize(name, free, best, cache, sweeps, ref, loop)
+    etas = eta_check(diconf, dirname, best, pool, cfg, args.eta, log)
+    return summarize(name, free, best, cache, sweeps, ref, loop, etas)
 
 
-def summarize(name, free, best, cache, sweeps, ref, loop):
+def eta_check(diconf, dirname, best, pool, cfg, etas, log):
+    """The decided ages scored again at each other deposit split: [[eta, cell]] (couples only)."""
+    p, _ = make_plan(diconf, dirname)
+    own = float(p.eta)
+    others = [e for e in etas if abs(e - own) > 1e-9]
+    if p.N_i != 2 or not others:
+        return []
+    t0 = time.time()
+    ages = [m / 12 for m in best]
+    cells = list(pool.map(score, [(diconf, dirname, ages, dict(cfg, eta=e)) for e in others]))
+    log(f"  deposit split at the decided ages ({time.time() - t0:.0f}s): case's {own:.2f}; "
+        + ", ".join(f"{e:.2f} -> {c.get('value', float('nan')):,.2f}" for e, c in zip(others, cells, strict=True)))
+    return [[e, c] for e, c in zip(others, cells, strict=True)]
+
+
+def summarize(name, free, best, cache, sweeps, ref, loop, etas=None):
     """A variant's row: decided plan, noise and tolerance measures, every scored plan."""
     uniq, seen = [], set()
     for s in sweeps:  # a sweep repeated with the same other ages adds nothing (older runs kept them)
@@ -456,7 +530,8 @@ def summarize(name, free, best, cache, sweeps, ref, loop):
 
     return {"name": name, "free": free, "best": list(best), "result": cache[tuple(best)], "spread": spread,
             "close": close, "ref": ref, "loop": loop, "ref_value": at(ref), "loop_value": at(loop), "sweeps": sweeps,
-            "results": {"/".join(ym(m / 12) for m in k): v for k, v in cache.items()}, "_cache": cache}
+            "results": {"/".join(ym(m / 12) for m in k): v for k, v in cache.items()}, "_cache": cache,
+            "eta": etas or []}
 
 
 def reload(path):
@@ -470,7 +545,9 @@ def reload(path):
             if "highs_statuses" in c and c.get("used") == "branch-and-bound":
                 _prove(c)
             cache[tuple(c["ages"])] = c
-        rows.append(summarize(r["name"], r["free"], r["best"], cache, r["sweeps"], r["ref"], r["loop"]))
+        etas = [[e, _prove(c) if c.get("used") == "branch-and-bound" and "highs_statuses" in c else c]
+                for e, c in r.get("eta", [])]
+        rows.append(summarize(r["name"], r["free"], r["best"], cache, r["sweeps"], r["ref"], r["loop"], etas))
     return rows
 
 
@@ -538,6 +615,8 @@ def report(rows, objective, decider, log):
         log(f"{r['name']:<24}{fed:>10,.0f}{m['state_tax_today']:>10,.0f}{m['payroll_tax_today']:>10,.0f}"
             f"{m['medicare_today']:>10,.0f}{m['aca_today']:>10,.0f}{m['ss_withheld_today']:>12,.0f}"
             f"{m['ss_income_today']:>11,.0f}{m['final_bequest_today']:>11,.0f}")
+    _report_netting(rows, log)
+    _report_eta(rows, log)
     log("\nScores per sweep (* = not proved: local search's score or an unproved branch-and-bound):")
     for r in rows:
         log(f"  {r['name']}: {len(r['results'])} plans scored")
@@ -548,6 +627,47 @@ def report(rows, objective, decider, log):
             for m, dd in s["dips"]:
                 kind = "the model's (proved)" if _all_proved(r["_cache"], s, m) else "noise or the model's"
                 log(f"      dip at {ym(m / 12)}: {dd:,.2f}, {kind}")
+
+
+def _report_netting(rows, log):
+    """Round-trip netting (#234) in the decided plans, and how many scored plans had any."""
+    log("\nRound-trip netting (#234): taxable sale and rebuy the worksheet nets away; today's $.")
+    log(f"{'variant':<24}{'netted':>11}{'hidden gain':>13}  years (netted / hidden gain / state tax that year)")
+    for r in rows:
+        nt = r["result"].get("netting")
+        scored = [c for c in r["results"].values() if c.get("netting")]
+        some = sum(1 for c in scored if c["netting"]["netted"] > 0.5)
+        tail = f"  [{some} of {len(scored)} scored plans net something]"
+        if not nt:
+            log(f"{r['name']:<24}{'-':>11}{'-':>13}  (not recorded){tail}")
+            continue
+        yrs = "; ".join(f"{y['year']}: {y['netted']:,.0f} / {y['hidden_gain']:,.0f} / {y['state_tax']:,.0f}"
+                        + ("" if y["basis"] else " (no basis)") for y in nt["years"]) or "none"
+        log(f"{r['name']:<24}{nt['netted']:>11,.0f}{nt['hidden_gain']:>13,.0f}  {yrs}{tail}")
+
+
+def _report_eta(rows, log):
+    """The deposit-split sensitivity at each variant's decided ages."""
+    if not any(r.get("eta") for r in rows):
+        return
+    log("\nDeposit split (eta) at the decided ages: objective change against the case's split (ages not")
+    log("re-decided). resolved = beyond the two plans' proved tolerances.")
+    for r in rows:
+        if not r.get("eta"):
+            continue
+        b = r["result"]
+        parts = []
+        for e, c in r["eta"]:
+            if c.get("value") is None or b.get("value") is None:
+                parts.append(f"eta {e:.2f}: {c.get('status')}")
+                continue
+            d = c["value"] - b["value"]
+            ta, tb = c.get("tolerance"), b.get("tolerance")
+            verdict = ("resolved" if abs(d) > ta + tb else "unresolved") if ta is not None and tb is not None \
+                else "not proved"
+            nt = (c.get("netting") or {}).get("netted")
+            parts.append(f"eta {e:.2f}: {d:+,.2f} ({verdict}{'' if nt is None else f'; netted {nt:,.0f}'})")
+        log(f"  {r['name']:<22}{'; '.join(parts)}")
 
 
 def main():
@@ -563,6 +683,8 @@ def main():
     ap.add_argument("--ls-time", type=float, default=7200.0, help="localSearchTime (s); default lifts the cap")
     ap.add_argument("--ls-step-time", type=float, default=1800.0, help="localSearchStepTime (s)")
     ap.add_argument("--no-loop", action="store_true", help="skip stage (b)")
+    ap.add_argument("--eta", type=float, nargs="*", default=[0.0, 1.0],
+                    help="deposit splits to score at the decided ages (couples; none: --eta with no value)")
     ap.add_argument("--only", nargs="*", help="run only these variants (the first listed is the reference)")
     ap.add_argument("--json", help="write every score to this file")
     ap.add_argument("--report-from", metavar="JSON", help="print the report of a saved --json run, solving nothing")
@@ -591,7 +713,8 @@ def main():
         + (f" (gap {args.gap:.0e}, relTol {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search "
            f"for unproved plans)"
            if args.decider == "bb" else "")
-        + f", localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s")
+        + f", localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s"
+        + f", eta check {', '.join(f'{e:.2f}' for e in args.eta) or 'off'}")
     for name, _, _, sets in variants:
         log(f"  {name}: {'; '.join(sets) or '(no overrides)'}")
     objective = None

@@ -2499,11 +2499,31 @@ denominator, so a solve HiGHS calls "Optimal" stays within its gap.
 - With the default `relTol`, `--gap 1e-5` bounds a plan only to 1e-5 + 5e-5 (about \$6.5/yr on
   chris+pat): the sticky tie is looser than the gap whenever `gap < relTol`. At Owl's default gap
   (3e-3) it is 60x tighter than the gap, as the docstring intends ("a tie, not anything inside the
-  gap"). Passing `relTol` equal to the gap would make the tie follow it, and also tightens the
-  loop's own convergence test (not measured).
+  gap"). Passing `relTol` equal to the gap makes the tie follow it (measured below).
 - The tolerance is relative to the whole objective; using it as gap x basis assumes the objective
   is proportional to the basis under `maxSpending` (the tie-break terms aside): inferred, not
-  checked.
+  checked. (Measured below: one sticky keep worth 4.39e-6 of the objective left the basis
+  unchanged to the cent, so gap x basis can overstate the distance; it errs toward "unresolved".)
+
+**relTol equal to the gap, measured** (2026-10-26, `fork-notes/phase5/reltol_probe.py`, output
+`reltol_probe_2026-10-26.txt`; `reltol_check.py`, `reltol_check_2026-10-26.txt`): the 15 plans of the
+branch-and-bound dry run that matter here (the 12 whose reported gap exceeded 1e-5, and each
+variant's decided plan, one of them among the 12) re-solved the same day at `gap=1e-5`, default
+`relTol` (5e-5) vs `relTol=1e-5`, four at a time; 1,302 s.
+
+- **No difference at all:** the same value to the cent, reported gap, iterations (2 each),
+  convergence ("monotonic"), sticky keeps and residual for all 15 plans; times within 4 s. Every
+  sticky keep in this set was already within 1e-5 of HiGHS's plan (reported gap less HiGHS's MIP
+  gap <= 9.8e-6), so the default tie never used its extra room here; all values also equal the dry
+  run's (same day).
+- **The option reaches the tie** (checked, since "no change" alone could mean it did not):
+  `Plan._sticky_tol` = 1e-5 and 1e-7 under `relTol` 1e-5 and 1e-7; at 1e-7 the keep is refused and
+  the reported gap falls to HiGHS's (1.434e-5 -> 9.950e-6; 1.968e-5 -> 9.867e-6). The plans then
+  move by \$0.00 and +\$1.13/yr (within tolerance); the second took one more iteration (216 s vs
+  149 s).
+- So on chris+pat `relTol` = gap costs nothing measured and tightens the worst-case bound from
+  gap + 5e-5 to 2 x gap (\$6.5/yr to \$2.2/yr), but changed no plan. Not adopted in
+  `work_sweep.py` yet (the user's call).
 - **Correction to the 2026-10-25 dry run:** "the exact LP's Chris pick (68y3m) is 3-4 months
   early, \$8-99/yr" was local search's noise: under branch-and-bound 68y3m is within tolerance of
   the best Chris age in base, Pat-stops-2027 and mid-2028, and costs \$0-2/yr everywhere; the

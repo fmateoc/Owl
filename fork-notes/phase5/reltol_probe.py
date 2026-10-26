@@ -49,7 +49,8 @@ def solve(args):
     mip_gaps = [g for _, g in runs if g >= 0]
     out = {"status": p.caseStatus, "seconds": time.time() - t0, "iterations": log.count("Iter: "),
            "sticky_keeps": log.count("Kept the previous binaries"),
-           "convergence": getattr(p, "convergenceType", None), "highs_runs": len(runs),
+           "convergence": getattr(p, "convergenceType", None), "sticky_tol": getattr(p, "_sticky_tol", None),
+           "highs_runs": len(runs),
            "highs_statuses": sorted({st for st, _ in runs}), "max_mip_gap": max(mip_gaps, default=None)}
     if p.caseStatus == "solved":
         out.update({"value": p._objectiveValue(p.objective), "gap": float(p.solverGap),

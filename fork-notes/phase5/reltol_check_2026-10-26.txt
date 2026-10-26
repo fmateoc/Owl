@@ -1,0 +1,6 @@
+reltol_check, 2026-10-26, owlplanner 2026.10.26 (run from a scratch copy of reltol_check.py, same jobs and output;
+the committed script differs in layout only). Branch-and-bound at gap 1e-5, chris+pat dry-run variants.
+68y3m/62y1m relTol 1e-05: sticky_tol 1e-05 value 108,718.70 gap 1.434e-05 stick 1 iter 2 conv monotonic MIP gap 9.95e-06 resid 8 87s
+68y3m/62y1m relTol 1e-07: sticky_tol 1e-07 value 108,718.70 gap 9.950e-06 stick 0 iter 2 conv monotonic MIP gap 9.95e-06 resid 8 85s
+67y0m/63y0m relTol 1e-05: sticky_tol 1e-05 value 113,450.58 gap 1.968e-05 stick 1 iter 2 conv monotonic MIP gap 9.87e-06 resid 5 149s
+67y0m/63y0m relTol 1e-07: sticky_tol 1e-07 value 113,451.71 gap 9.867e-06 stick 0 iter 3 conv monotonic MIP gap 9.87e-06 resid 5 216s

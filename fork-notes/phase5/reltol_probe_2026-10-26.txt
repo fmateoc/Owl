@@ -1,0 +1,38 @@
+reltol_probe.py, 2026-10-26, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+15 plans of work_sweep_chris+pat_bb_2026-10-26.json, branch-and-bound at gap 1e-05, default relTol vs relTol = 1e-05; jobs 4
+
+variant                       ages  relTol         value  d value       gap        conv iter stick   MIP gap  resid   sec
+base                   67y0m/63y0m  default   113,450.58     0.00  1.97e-05   monotonic    2     1  9.87e-06      5   148
+base                   67y0m/63y0m  = gap     113,450.58     0.00  1.97e-05   monotonic    2     1  9.87e-06      5   148
+base                  68y6m/63y0m*  default   113,542.48     0.00  9.72e-06   monotonic    2     0  9.83e-06      0   140
+base                  68y6m/63y0m*  = gap     113,542.48     0.00  9.72e-06   monotonic    2     0  9.83e-06      0   138
+base                   70y0m/63y0m  default   113,361.62     0.00  1.93e-05   monotonic    2     1  9.98e-06      6   227
+base                   70y0m/63y0m  = gap     113,361.62     0.00  1.93e-05   monotonic    2     1  9.98e-06      6   226
+pat-stops-2027         68y3m/62y1m  default   108,718.70     0.00  1.43e-05   monotonic    2     1  9.95e-06      8    82
+pat-stops-2027         68y3m/62y1m  = gap     108,718.70     0.00  1.43e-05   monotonic    2     1  9.95e-06      8    82
+pat-stops-2027         69y0m/62y1m  default   108,688.14     0.00  1.31e-05   monotonic    2     1  9.97e-06      8   152
+pat-stops-2027         69y0m/62y1m  = gap     108,688.14     0.00  1.31e-05   monotonic    2     1  9.97e-06      8   150
+pat-stops-2027        68y7m/62y3m*  default   108,721.05     0.00  9.96e-06   monotonic    2     0  9.96e-06      8   118
+pat-stops-2027        68y7m/62y3m*  = gap     108,721.05     0.00  9.96e-06   monotonic    2     0  9.96e-06      8   118
+pat-stops-2027         65y0m/62y3m  default   108,451.87     0.00  1.00e-05   monotonic    2     1  1.00e-05    113   294
+pat-stops-2027         65y0m/62y3m  = gap     108,451.87     0.00  1.00e-05   monotonic    2     1  1.00e-05    113   294
+pat-stops-2027         68y3m/62y3m  default   108,717.82     0.00  1.27e-05   monotonic    2     1  9.99e-06      8   120
+pat-stops-2027         68y3m/62y3m  = gap     108,717.82     0.00  1.27e-05   monotonic    2     1  9.99e-06      8   120
+pat-stops-2027         69y0m/62y3m  default   108,686.59     0.00  1.42e-05   monotonic    2     1  9.99e-06      8   125
+pat-stops-2027         69y0m/62y3m  = gap     108,686.59     0.00  1.42e-05   monotonic    2     1  9.99e-06      8   127
+pat-stops-2027         70y0m/62y3m  default   108,537.47     0.00  1.44e-05   monotonic    2     1  9.94e-06      8   185
+pat-stops-2027         70y0m/62y3m  = gap     108,537.47     0.00  1.44e-05   monotonic    2     1  9.94e-06      8   187
+pat-stops-mid-2028     65y0m/62y6m  default   111,195.18     0.00  1.42e-05   monotonic    2     1  9.83e-06      6   149
+pat-stops-mid-2028     65y0m/62y6m  = gap     111,195.18     0.00  1.42e-05   monotonic    2     1  9.83e-06      6   145
+pat-stops-mid-2028    68y6m/62y6m*  default   111,433.21     0.00  1.04e-05   monotonic    2     1  9.95e-06      8   122
+pat-stops-mid-2028    68y6m/62y6m*  = gap     111,433.21     0.00  1.04e-05   monotonic    2     1  9.95e-06      8   122
+pat-stops-mid-2028     70y0m/62y6m  default   111,253.82     0.00  1.87e-05   monotonic    2     1  9.93e-06      4   138
+pat-stops-mid-2028     70y0m/62y6m  = gap     111,253.82     0.00  1.87e-05   monotonic    2     1  9.93e-06      4   139
+pat-stops-mid-2028     68y6m/70y0m  default   110,519.93     0.00  1.80e-05   monotonic    2     1  9.92e-06      6   310
+pat-stops-mid-2028     68y6m/70y0m  = gap     110,519.93     0.00  1.80e-05   monotonic    2     1  9.92e-06      6   312
+pat-part-time-2029-30 68y5m/65y0m*  default   116,248.30     0.00  9.96e-06   monotonic    2     0  9.96e-06      0    78
+pat-part-time-2029-30 68y5m/65y0m*  = gap     116,248.30     0.00  9.96e-06   monotonic    2     0  9.96e-06      0    78
+
+* = the variant's decided plan in the dry run. d value: relTol = gap less default. gap: the accepted
+solve's reported gap. stick: sticky-binary keeps. MIP gap: largest gap HiGHS reported on any MIP run.
+Total 1302s.

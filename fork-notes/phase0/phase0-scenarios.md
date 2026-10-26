@@ -115,8 +115,9 @@ employee payroll tax on wages (upstream `3a2dfc33`), so work variants compare di
 with `fork-notes/phase5/work_sweep.py`, not with `owlcli compare`: claiming ages need the
 two-stage method of `fork-notes/plan-review-2026-10-22.md` §3.2 (decision R1). The script runs a
 `withSSAges` search under the exact LP (ACA optimized when `slcsp_annual > 0`) and under the loop,
-then scores the whole-year ages 62-70 and both picks under local search at fixed ages; local
-search decides. A direct `owlcli run` of the template's `withSSAges = "optimize"` with
+then scores the whole-year ages 62-70 and both picks at fixed ages by branch-and-bound at gap
+1e-5 (`--decider bb`, the default since 2026-10-26; `--decider ls` for local search), which
+decides. A direct `owlcli run` of the template's `withSSAges = "optimize"` with
 `withMedicare = "optimize"` makes every candidate a branch-and-bound MIP under HiGHS.
 
 Variants are a JSON file of `--set` overrides and HFP cell edits (format in the script's
@@ -146,19 +147,21 @@ in `otherFiles/`:
   the grace year).
 - The script writes each variant's workbook and case file to `--out-dir`, so any variant reruns
   with `owlcli run`.
-- Read the *spread* column: local search's deepest dip between neighbouring ages. A difference
-  between variants smaller than both spreads is unresolved; "no spread" means no dip was seen,
-  so the noise is unknown, not zero.
-- A dip can be the model's own (a cliff) or local search's noise, and recurring at the same age
-  in every variant does not tell which: on the dry run, branch-and-bound at gap 1e-5 removed the
-  Pat 64y0m dip in the base variant and confirmed it in the part-time one
-  (`fork-notes/phase5/ws_bb_check.py`). Before deciding between neighbouring ages, check them
-  with it; it also found plans \$15-74/yr better than local search's at every age it scored.
-  `--json` keeps each scored plan's costs, to see what moves at a dip.
-- Cost (dry run on chris+pat, 4 cores, `--jobs 4`, 2026-10-25): 20-28 minutes per variant with
-  both spouses searched (exact-LP search 4-7 min, loop search 1-2 min, 18-28 local-search solves
-  of 71-280 s each); 98 minutes for four variants
-  (`fork-notes/phase5/work_sweep_chris+pat_2026-10-25.txt`).
+- Read the *tol* column: a proved plan's distance to the model's optimum at its ages (the
+  reported gap x the objective; about \$1.1/yr on chris+pat). A difference between variants
+  larger than the two tolerances together is resolved; the report also lists ages whose scores
+  are within their tolerances of the best one (a tie, not a pick). A plan branch-and-bound does
+  not prove (a run not "Optimal", a time or node stop) is also scored by local search; then the
+  *spread* column (local search's deepest dip between neighbouring ages) is the noise measure.
+- A dip between proved plans is the model's own (on the dry run: Chris 67y0m, Pat 64y0m in the
+  part-time variant). Under local search a dip can also be noise (the base variant's Pat 64y0m,
+  `fork-notes/phase5/ws_bb_check.py`). `--json` keeps each scored plan's costs, to see what moves.
+- `--report-from scores.json` reprints the report of a saved run without solving.
+- Cost (dry run on chris+pat, 4 cores, `--jobs 4`): with branch-and-bound (2026-10-26) 29-51
+  minutes per variant, 158 minutes for four, branch-and-bound solves of 84-632 s
+  (`fork-notes/phase5/work_sweep_chris+pat_bb_2026-10-26_report.txt`); with local search
+  (2026-10-25) 20-28 minutes per variant, 98 for four (`work_sweep_chris+pat_2026-10-25.txt`).
+  HiGHS branch-and-bound can be much slower on another case: read the report's time-stop line.
 
 The same script serves locality and rent/buy comparisons: a variant is any set of overrides.
 

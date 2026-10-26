@@ -1,0 +1,97 @@
+work_sweep.py, 2026-10-26, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+pat.json, jobs 4, passes 2, decider branch-and-bound (gap 1e-05, maxTime 900s per MIP; local search for unproved plans), localSearchTime 7200s, localSearchStepTime 1800s
+  base: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029
+  pat-stops-2027: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2028; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 0, "401k ctrb": 0}]}
+  pat-stops-mid-2028: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 42500, "401k ctrb": 13950, "months worked": 6}]}
+  pat-part-time-2029-30: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}
+
+== base
+  (a) exact-LP search: solved, ages 68y3m/63y0m (370s)
+  (b) loop search:     solved, ages 68y6m/63y0m (53s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 729s): best 68y6m at 113,542.48
+    pass 0, Pat swept (9 ages, 589s): best 63y0m at 113,542.48
+    pass 1, Chris swept (10 ages, 0s): best 68y6m at 113,542.48
+    pass 1: no age moved
+
+== pat-stops-2027
+  (a) exact-LP search: solved, ages 68y3m/62y1m (411s)
+  (b) loop search:     solved, ages 68y7m/62y3m (69s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 803s): best 68y7m at 108,720.87
+    pass 0, Pat swept (10 ages, 867s): best 62y3m at 108,721.05
+    pass 1, Chris swept (10 ages, 930s): best 68y7m at 108,721.05
+    pass 1, Pat swept (10 ages, 0s): best 62y3m at 108,721.05
+    pass 1: no age moved
+
+== pat-stops-mid-2028
+  (a) exact-LP search: solved, ages 68y3m/62y6m (466s)
+  (b) loop search:     solved, ages 68y6m/62y6m (55s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 646s): best 68y6m at 111,433.21
+    pass 0, Pat swept (10 ages, 854s): best 62y6m at 111,433.21
+    pass 1, Chris swept (10 ages, 0s): best 68y6m at 111,433.21
+    pass 1: no age moved
+
+== pat-part-time-2029-30
+  (a) exact-LP search: solved, ages 68y3m/65y0m (266s)
+  (b) loop search:     solved, ages 68y5m/63y7m (159s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 686s): best 68y5m at 116,248.30
+    pass 0, Pat swept (10 ages, 848s): best 65y0m at 116,248.30
+    pass 1, Chris swept (10 ages, 0s): best 68y5m at 116,248.30
+    pass 1: no age moved
+
+Decided by branch-and-bound; objective = annual spending, today's $/yr. Taxes and premiums: lifetime, today's $.
+variant                           ages    objective   vs first    tol  spread              (a) cost (b) cost  by
+base                       68y6m/63y0m   113,542.48       0.00   1.10      17                     0        0  branch-and-bound
+pat-stops-2027             68y7m/62y3m   108,721.05  -4,821.43   1.08       -  resolved           2        0  branch-and-bound
+pat-stops-mid-2028         68y6m/62y6m   111,433.21  -2,109.27      -       -  no spread          1        0  branch-and-bound
+pat-part-time-2029-30      68y5m/65y0m   116,248.30   2,705.82   1.16       -  resolved           2       19  branch-and-bound
+
+tol: the decided plan's proved tolerance (gap x objective); spread: deepest dip among local-search
+scores (none when every score is proved). (a)/(b) cost: decided objective less the score at that
+search's pick.
+  base: best two ages within their tolerances: Chris 68y6m vs 68y3m (0.37 within 2.23)
+  base: best two ages within their tolerances: Chris 68y6m vs 68y3m (0.37 within 2.23)
+  pat-stops-2027: best two ages within their tolerances: Pat 62y3m vs 62y1m (0.18 within 2.14)
+  pat-stops-2027: best two ages within their tolerances: Pat 62y3m vs 62y1m (0.18 within 2.14)
+
+variant                    federal     state   payroll  Medicare       ACA SS withheld    SS paid    bequest
+base                       354,748         0    45,594   129,044    12,819           0  1,038,310    823,000
+pat-stops-2027             342,551         0    37,957   129,044    15,563           0  1,034,353    823,000
+pat-stops-mid-2028         356,180         0    41,775   129,044     5,221           0  1,034,355    823,000
+pat-part-time-2029-30      374,705         0    50,724   129,044    11,777           0  1,053,907    823,000
+
+Scores per sweep (* = not proved: local search's score or an unproved branch-and-bound):
+  base: 18 plans scored
+    pass 0 Chris (held 68y3m/63y0m): 63y9m 113,156.61, 64y0m 113,185.80, 65y0m 113,341.50, 66y0m 113,467.83, 67y0m 113,450.58*, 68y0m 113,532.59, 68y3m 113,542.11, 68y6m 113,542.48, 69y0m 113,512.14, 70y0m 113,361.62*
+      dip at 67y0m: 17.25, noise or the model's
+    pass 0 Pat (held 68y6m/63y0m): 62y1m 113,398.59, 63y0m 113,542.48, 64y0m 113,427.74, 65y0m 113,426.62, 66y0m 113,359.07, 67y0m 113,207.73, 68y0m 113,142.37, 69y0m 112,896.75, 70y0m 112,654.28
+    pass 1 Chris (held 68y6m/63y0m): 63y9m 113,156.61, 64y0m 113,185.80, 65y0m 113,341.50, 66y0m 113,467.83, 67y0m 113,450.58*, 68y0m 113,532.59, 68y3m 113,542.11, 68y6m 113,542.48, 69y0m 113,512.14, 70y0m 113,361.62*
+      dip at 67y0m: 17.25, noise or the model's
+  pat-stops-2027: 28 plans scored
+    pass 0 Chris (held 68y3m/62y1m): 63y9m 108,265.21, 64y0m 108,294.97, 65y0m 108,452.09, 66y0m 108,589.93, 67y0m 108,592.98, 68y0m 108,703.98, 68y3m 108,718.70*, 68y7m 108,720.87, 69y0m 108,688.14*, 70y0m 108,538.88
+    pass 0 Pat (held 68y7m/62y1m): 62y1m 108,720.87, 62y3m 108,721.05, 63y0m 108,683.94, 64y0m 108,570.03, 65y0m 108,565.94, 66y0m 108,496.50, 67y0m 108,349.57, 68y0m 108,287.02, 69y0m 108,039.31, 70y0m 107,799.82
+    pass 1 Chris (held 68y7m/62y3m): 63y9m 108,263.97, 64y0m 108,293.73, 65y0m 108,451.87*, 66y0m 108,588.70, 67y0m 108,592.08, 68y0m 108,703.10, 68y3m 108,717.82*, 68y7m 108,721.05, 69y0m 108,686.59*, 70y0m 108,537.47*
+    pass 1 Pat (held 68y7m/62y3m): 62y1m 108,720.87, 62y3m 108,721.05, 63y0m 108,683.94, 64y0m 108,570.03, 65y0m 108,565.94, 66y0m 108,496.50, 67y0m 108,349.57, 68y0m 108,287.02, 69y0m 108,039.31, 70y0m 107,799.82
+  pat-stops-mid-2028: 19 plans scored
+    pass 0 Chris (held 68y3m/62y6m): 63y9m 111,010.39, 64y0m 111,038.83, 65y0m 111,195.18*, 66y0m 111,329.07, 67y0m 111,321.11, 68y0m 111,421.43, 68y3m 111,432.16, 68y6m 111,433.21*, 69y0m 111,397.15, 70y0m 111,253.82*
+      dip at 67y0m: 7.96, the model's (proved)
+    pass 0 Pat (held 68y6m/62y6m): 62y1m 111,357.72, 62y6m 111,433.21*, 63y0m 111,403.91, 64y0m 111,293.56, 65y0m 111,290.30, 66y0m 111,218.16, 67y0m 111,066.51, 68y0m 111,004.96, 69y0m 110,758.44, 70y0m 110,519.93*
+    pass 1 Chris (held 68y6m/62y6m): 63y9m 111,010.39, 64y0m 111,038.83, 65y0m 111,195.18*, 66y0m 111,329.07, 67y0m 111,321.11, 68y0m 111,421.43, 68y3m 111,432.16, 68y6m 111,433.21*, 69y0m 111,397.15, 70y0m 111,253.82*
+      dip at 67y0m: 7.96, the model's (proved)
+  pat-part-time-2029-30: 19 plans scored
+    pass 0 Chris (held 68y3m/65y0m): 63y9m 115,780.36, 64y0m 115,811.13, 65y0m 115,968.71, 66y0m 116,106.12, 67y0m 116,127.94, 68y0m 116,233.71, 68y3m 116,245.98, 68y5m 116,248.30, 69y0m 116,208.11, 70y0m 116,061.78
+    pass 0 Pat (held 68y5m/65y0m): 62y1m 116,087.83, 63y0m 116,229.70, 63y7m 116,229.34, 64y0m 116,194.31, 65y0m 116,248.30, 66y0m 116,173.27, 67y0m 116,018.87, 68y0m 115,951.04, 69y0m 115,695.22, 70y0m 115,453.67
+      dip at 64y0m: 35.03, the model's (proved)
+    pass 1 Chris (held 68y5m/65y0m): 63y9m 115,780.36, 64y0m 115,811.13, 65y0m 115,968.71, 66y0m 116,106.12, 67y0m 116,127.94, 68y0m 116,233.71, 68y3m 116,245.98, 68y5m 116,248.30, 69y0m 116,208.11, 70y0m 116,061.78
+
+Scored plans not proved by branch-and-bound: base 67y0m/63y0m, base 70y0m/63y0m, pat-stops-2027 68y3m/62y1m, pat-stops-2027 69y0m/62y1m, pat-stops-2027 65y0m/62y3m, pat-stops-2027 68y3m/62y3m, pat-stops-2027 69y0m/62y3m, pat-stops-2027 70y0m/62y3m, pat-stops-mid-2028 65y0m/62y6m, pat-stops-mid-2028 68y6m/62y6m, pat-stops-mid-2028 70y0m/62y6m, pat-stops-mid-2028 68y6m/70y0m
+  of which a MIP stopped on time: none
+  of which a MIP stopped at the node limit: none
+  of which local search's score was kept: none
+Local-search scores where its default caps (300 s / 60 s) would have bound: none
+Local-search scores that spent the raised time budget: none
+Scored plans not solved: none
+Total 9502s.

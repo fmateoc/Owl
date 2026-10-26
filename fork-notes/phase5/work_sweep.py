@@ -18,10 +18,12 @@ Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, r
 - "bb" (default): branch-and-bound on the case's own model (`breakpointMethod="branch-and-bound"`,
   every family exact) at --gap (default 1e-5; without a gap option, `withMedicare="optimize"`
   loosens Owl's gap to 3e-3, about $340/yr on chris+pat) and --max-time per MIP (Owl's 900 s). A
-  plan is *proved* when every HiGHS run ended "Optimal", the accepted solve met the gap and no
-  solve stopped at the node limit; its score is then within gap x score of the model's optimum at
-  those ages (its *tolerance*). An unproved plan is also scored by local search and the better of
-  the two kept, labelled by the method that produced it. On chris+pat branch-and-bound at 1e-5
+  plan is *proved* when every HiGHS run ended "Optimal" and none stopped on time or at the node
+  limit; its *tolerance* is the accepted solve's reported gap x score, the distance to the model's
+  optimum at those ages that HiGHS's bound allows. The reported gap can exceed --gap by a little
+  (1.0-2.0e-5 on 12 of 84 chris+pat plans at --gap 1e-5, every run "Optimal"; why HiGHS stops
+  there was not traced). An unproved plan is also scored by local search and the better of the
+  two kept, labelled by the method that produced it. On chris+pat branch-and-bound at 1e-5
   beat local search by $15-74/yr on all 6 plans checked, in 94-288 s each
   (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other cases.
 - "ls": local search at fixed ages, its time caps raised (--ls-time, --ls-step-time) so its node
@@ -286,17 +288,23 @@ def _score_bb(diconf, dirname, ages, cfg):
     if p.caseStatus != "solved":
         out["proved"] = False
         return out
-    gap = float(p.solverGap)
-    value = p._objectiveValue(p.objective)
-    proved = (all(st == "Optimal" for st, _ in runs) and 0 <= gap <= cfg["gap"] * 1.0001
-              and out["node_limit_runs"] == 0)
     out.update({
-        "value": value, "gap": gap, "proved": proved,
-        "tolerance": gap * abs(value) if proved else None,
+        "value": p._objectiveValue(p.objective), "gap": float(p.solverGap),
         "residual": p._fixedPointResidualTotal(),
         "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
     })
-    return out
+    return _prove(out)
+
+
+def _prove(c):
+    """Set proved / tolerance on a branch-and-bound cell from its recorded runs (also on re-report)."""
+    ok = (c.get("status") == "solved" and c.get("highs_runs", 0) > 0
+          and all(st == "Optimal" for st in c.get("highs_statuses", []))
+          and not c.get("time_limit_runs") and not c.get("node_limit_runs")
+          and c.get("gap") is not None and c["gap"] >= 0)
+    c["proved"] = ok
+    c["tolerance"] = c["gap"] * abs(c["value"]) if ok else None
+    return c
 
 
 def score(args):
@@ -361,9 +369,10 @@ def decide(diconf, dirname, ref, loop, pool, cfg, passes, log):
     for k in range(passes if free else 0):
         moved = False
         for i in free:
-            if (i, tuple(best)) in seen:  # the same sweep again: same scores, no move
+            key = (i, tuple(best[:i] + best[i + 1:]))  # the others' ages: same key, same sweep
+            if key in seen:
                 continue
-            seen.add((i, tuple(best)))
+            seen.add(key)
             opts = set(whole_year_candidates(p, i)) | {best[i]}
             for pick in (ref, loop):
                 if pick and pick["status"] == "solved":
@@ -407,10 +416,23 @@ def run_variant(name, diconf, dirname, args, pool, log):
            "ls_time": args.ls_time, "ls_step": args.ls_step_time}
     best, cache, sweeps, free = decide(diconf, dirname, ref if ref["status"] == "solved" else None, loop, pool,
                                        cfg, args.passes, log)
+    return summarize(name, free, best, cache, sweeps, ref, loop)
+
+
+def summarize(name, free, best, cache, sweeps, ref, loop):
+    """A variant's row: decided plan, noise and tolerance measures, every scored plan."""
+    uniq, seen = [], set()
+    for s in sweeps:  # a sweep repeated with the same other ages adds nothing (older runs kept them)
+        held = list(s["held"])
+        held[s["index"]] = None
+        key = (s["index"], tuple(held))
+        if key not in seen:
+            seen.add(key)
+            uniq.append(s)
+    sweeps = uniq
     # Noise: the dips matter only where a score is local search's (an unproved plan).
     ls_dips = [d for s in sweeps for m, d in s["dips"] if not _all_proved(cache, s, m)]
     spread = max(ls_dips, default=None)
-    res = cache[best]
     close = []
     for s in sweeps:
         ranked = sorted(((v, m) for m, v in s["points"]), reverse=True)
@@ -426,9 +448,24 @@ def run_variant(name, diconf, dirname, args, pool, log):
             return None
         return cache.get(months(pick["ages"]), {}).get("value")
 
-    return {"name": name, "free": free, "best": list(best), "result": res, "spread": spread, "close": close,
-            "ref": ref, "loop": loop, "ref_value": at(ref), "loop_value": at(loop), "sweeps": sweeps,
+    return {"name": name, "free": free, "best": list(best), "result": cache[tuple(best)], "spread": spread,
+            "close": close, "ref": ref, "loop": loop, "ref_value": at(ref), "loop_value": at(loop), "sweeps": sweeps,
             "results": {"/".join(ym(m / 12) for m in k): v for k, v in cache.items()}, "_cache": cache}
+
+
+def reload(path):
+    """Rows of a saved --json run, re-classified with the current proof rule (no solving)."""
+    with open(path, encoding="utf-8") as f:
+        saved = json.load(f)
+    rows = []
+    for r in saved:
+        cache = {}
+        for c in r["results"].values():
+            if "highs_statuses" in c and c.get("used") == "branch-and-bound":
+                _prove(c)
+            cache[tuple(c["ages"])] = c
+        rows.append(summarize(r["name"], r["free"], r["best"], cache, r["sweeps"], r["ref"], r["loop"]))
+    return rows
 
 
 def _cell(cache, sweep, m):
@@ -522,10 +559,19 @@ def main():
     ap.add_argument("--no-loop", action="store_true", help="skip stage (b)")
     ap.add_argument("--only", nargs="*", help="run only these variants (the first listed is the reference)")
     ap.add_argument("--json", help="write every score to this file")
+    ap.add_argument("--report-from", metavar="JSON", help="print the report of a saved --json run, solving nothing")
+    ap.add_argument("--objective", default="maxSpending", help="with --report-from: the case's objective")
     args = ap.parse_args()
 
     def log(msg):
         print(msg, flush=True)
+
+    if args.report_from:
+        log(f"work_sweep.py --report-from {args.report_from}, {date.today().isoformat()} (no solves)")
+        rows = reload(args.report_from)
+        report(rows, args.objective, args.decider, log)
+        _summary(rows, args.decider, log)
+        return
 
     with open(args.variants, encoding="utf-8") as f:
         spec = json.load(f)
@@ -550,7 +596,14 @@ def main():
                 objective = make_plan(d, dirname)[0].objective
             rows.append(run_variant(name, d, dirname, args, pool, log))
     report(rows, objective, args.decider, log)
+    _summary(rows, args.decider, log)
+    log(f"Total {time.time() - t0:.0f}s.")
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump([{k: v for k, v in r.items() if k != "_cache"} for r in rows], f, indent=1, default=str)
 
+
+def _summary(rows, decider, log):
     def cells(pred):
         return ", ".join(f"{r['name']} {k}" for r in rows for k, c in r["results"].items() if pred(c)) or "none"
 
@@ -558,7 +611,7 @@ def main():
         return c if c.get("used") == "local search" else c.get("fallback", {})
 
     log("")
-    if args.decider == "bb":
+    if decider == "bb":
         log(f"Scored plans not proved by branch-and-bound: {cells(lambda c: not c.get('proved'))}")
         log(f"  of which a MIP stopped on time: {cells(lambda c: (c.get('bb') or c).get('time_limit_runs'))}")
         log(f"  of which a MIP stopped at the node limit: {cells(lambda c: (c.get('bb') or c).get('node_limit_runs'))}")
@@ -567,10 +620,10 @@ def main():
         f"{cells(lambda c: ls_part(c).get('default_caps_bind'))}")
     log(f"Local-search scores that spent the raised time budget: {cells(lambda c: ls_part(c).get('budget_spent'))}")
     log(f"Scored plans not solved: {cells(lambda c: c['status'] != 'solved')}")
-    log(f"Total {time.time() - t0:.0f}s.")
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump([{k: v for k, v in r.items() if k != "_cache"} for r in rows], f, indent=1, default=str)
+    if decider == "bb":
+        gaps = [c["gap"] for r in rows for c in r["results"].values() if c.get("proved")]
+        if gaps:
+            log(f"Reported gaps of proved plans: {min(gaps):.1e} to {max(gaps):.1e}")
 
 
 if __name__ == "__main__":

@@ -2448,8 +2448,43 @@ dry run's local-search scores of 2026-10-25 (same month; the date check above ap
   branch-and-bound can be far slower on other cases (upstream's note: 49-238x slower than MOSEK),
   so this holds for chris+pat only until measured on the household case.
 
-Open (the user's call; it revises R1): use branch-and-bound at a tight gap as the decider in
-`work_sweep.py` stage (c), with local search as the fallback when it stops at a cap.
+**Stage (c) decided by branch-and-bound** (2026-10-26, the user's call, revising R1; `cc0f5ac` and
+the proof-rule fix after the run): `--decider bb` (default) solves each fixed-age plan with
+`breakpointMethod="branch-and-bound"`, `gap=1e-5`, 900 s per MIP; a plan is proved when every
+HiGHS run ended "Optimal" and none stopped on time or at the node limit, and its tolerance is the
+reported gap x score; an unproved plan is also scored by local search and the better kept.
+Variant differences are resolved against the two tolerances; ties within tolerance are listed;
+the dip spread covers local-search scores only. `--report-from` reprints a saved run;
+`--decider ls` is the old path.
+
+Dry run rerun the same day (`work_sweep_chris+pat_bb_2026-10-26.txt` is the run's own log and
+report; `..._report.txt` the report regenerated from its JSON under the fixed rule; same variants,
+same stand-in SLCSP and PIAs):
+
+| Variant | Decided (B&B) | Basis \$/yr | tol | Local search's pick (2026-10-25) | (a) cost | (b) cost |
+|---|---|---:|---:|---|---:|---:|
+| base | 68y6m/63y0m | 113,542.48 | 1.10 | 68y6m/63y0m, 113,479.30 | 0 | 0 |
+| Pat stops end of 2027 | 68y7m/62y3m | 108,721.05 | 1.08 | 68y7m/62y1m, 108,675.47 | 2 | 0 |
+| Pat stops mid-2028 | 68y6m/62y6m | 111,433.21 | 1.16 | 68y6m/62y6m, 111,332.70 | 1 | 0 |
+| Pat part time 2029-30 | 68y5m/65y0m | 116,248.30 | 1.16 | 68y5m/63y0m, 116,214.45 | 2 | 19 |
+
+- All 84 plans solved and proved (gaps 8.9e-6 to 2.0e-5), no time or node stop; the three
+  differences from base (-\$4,821, -\$2,109, +\$2,706) resolved.
+- **Proof rule fixed after the run:** it first also required the reported gap <= 1e-5; 12 plans
+  (every run "Optimal", gaps 1.0-2.0e-5) failed it, were marked unproved and were also scored by
+  local search (all 12 below branch-and-bound, so no score changed; the time was wasted). Why
+  HiGHS reports "Optimal" above `mip_rel_gap` was not traced. The run's own report shows the old
+  classification; `--report-from` applies the fixed one.
+- **Correction to the 2026-10-25 dry run:** "the exact LP's Chris pick (68y3m) is 3-4 months
+  early, \$8-99/yr" was local search's noise: under branch-and-bound 68y3m is within tolerance of
+  the best Chris age in base, Pat-stops-2027 and mid-2028, and costs \$0-2/yr everywhere; the
+  loop's pick \$0-19/yr. Pat's part-time pick reverses (65y0m, not 63y0m), as `ws_bb_check.py`
+  found; Pat 62y3m vs 62y1m in Pat-stops-2027 is a tie within tolerance.
+- Proved dips (the model's): Chris 67y0m in base (\$17) and mid-2028 (\$8), Pat 64y0m in the
+  part-time variant (\$35).
+- On the 75 plans both runs scored: branch-and-bound - local search -\$1.03 to +\$185/yr (the
+  -\$1.03 within tolerance); lifetime ACA \$3.7-19.9k under branch-and-bound vs \$11.5-29.7k.
+- Cost: 9,502 s (158 min) vs local search's 5,901 s; solves 84-632 s; per variant 29-51 min.
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.

@@ -1,0 +1,3900 @@
+[
+ {
+  "name": "base",
+  "free": [
+   "Chris",
+   "Pat"
+  ],
+  "best": [
+   822,
+   756
+  ],
+  "result": {
+   "status": "solved",
+   "seconds": 172.73090147972107,
+   "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+   "used": "branch-and-bound",
+   "highs_runs": 2,
+   "highs_statuses": [
+    "Optimal"
+   ],
+   "time_limit_runs": 0,
+   "node_limit_runs": 0,
+   "value": 113542.48,
+   "gap": 9.72016307868816e-06,
+   "proved": true,
+   "tolerance": 1.1036514219586888,
+   "residual": 0.08844065317822067,
+   "metrics": {
+    "ss_income_today": 1038310.0000000001,
+    "federal_income_tax_today": 354150.15411010676,
+    "ltcg_tax_today": 598.2167561700426,
+    "niit_today": 0.0,
+    "payroll_tax_today": 45594.22733465329,
+    "state_tax_today": 0.0,
+    "medicare_today": 129044.4036587112,
+    "aca_today": 12818.515718405957,
+    "ss_withheld_today": 0.0,
+    "final_bequest_today": 823000.0001852168
+   },
+   "ages": [
+    822,
+    756
+   ]
+  },
+  "spread": 17.25,
+  "close": [
+   "Chris 68y6m vs 68y3m (0.37 within 2.23)",
+   "Chris 68y6m vs 68y3m (0.37 within 2.23)"
+  ],
+  "ref": {
+   "ages": [
+    68.25,
+    63.0
+   ],
+   "value": 117122.59,
+   "status": "solved",
+   "seconds": 369.5885887145996
+  },
+  "loop": {
+   "ages": [
+    68.5,
+    63.0
+   ],
+   "value": 113356.75,
+   "status": "solved",
+   "seconds": 52.97142004966736
+  },
+  "ref_value": 113542.11,
+  "loop_value": 113542.48,
+  "sweeps": [
+   {
+    "pass": 0,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     819,
+     756
+    ],
+    "points": [
+     [
+      765,
+      113156.61
+     ],
+     [
+      768,
+      113185.8
+     ],
+     [
+      780,
+      113341.5
+     ],
+     [
+      792,
+      113467.83
+     ],
+     [
+      804,
+      113450.58
+     ],
+     [
+      816,
+      113532.59
+     ],
+     [
+      819,
+      113542.11
+     ],
+     [
+      822,
+      113542.48
+     ],
+     [
+      828,
+      113512.14
+     ],
+     [
+      840,
+      113361.62
+     ]
+    ],
+    "dips": [
+     [
+      804,
+      17.25
+     ]
+    ]
+   },
+   {
+    "pass": 0,
+    "person": "Pat",
+    "index": 1,
+    "held": [
+     822,
+     756
+    ],
+    "points": [
+     [
+      745,
+      113398.59
+     ],
+     [
+      756,
+      113542.48
+     ],
+     [
+      768,
+      113427.74
+     ],
+     [
+      780,
+      113426.62
+     ],
+     [
+      792,
+      113359.07
+     ],
+     [
+      804,
+      113207.73
+     ],
+     [
+      816,
+      113142.37
+     ],
+     [
+      828,
+      112896.75
+     ],
+     [
+      840,
+      112654.28
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 1,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     822,
+     756
+    ],
+    "points": [
+     [
+      765,
+      113156.61
+     ],
+     [
+      768,
+      113185.8
+     ],
+     [
+      780,
+      113341.5
+     ],
+     [
+      792,
+      113467.83
+     ],
+     [
+      804,
+      113450.58
+     ],
+     [
+      816,
+      113532.59
+     ],
+     [
+      819,
+      113542.11
+     ],
+     [
+      822,
+      113542.48
+     ],
+     [
+      828,
+      113512.14
+     ],
+     [
+      840,
+      113361.62
+     ]
+    ],
+    "dips": [
+     [
+      804,
+      17.25
+     ]
+    ]
+   }
+  ],
+  "results": {
+   "68y3m/63y0m": {
+    "status": "solved",
+    "seconds": 146.31420350074768,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113542.11,
+    "gap": 9.956185166548328e-06,
+    "proved": true,
+    "tolerance": 1.1304462713605985,
+    "residual": 5.579709229722294,
+    "metrics": {
+     "ss_income_today": 1031750.0000000001,
+     "federal_income_tax_today": 388751.2635544593,
+     "ltcg_tax_today": 598.2167561700426,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 6028.380100331913,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     819,
+     756
+    ]
+   },
+   "63y9m/63y0m": {
+    "status": "solved",
+    "seconds": 186.25492787361145,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113156.61,
+    "gap": 9.828153225773449e-06,
+    "proved": true,
+    "tolerance": 1.112120501589088,
+    "residual": 6.059274087265718,
+    "metrics": {
+     "ss_income_today": 940616.6666666666,
+     "federal_income_tax_today": 372347.9026029592,
+     "ltcg_tax_today": 602.8792422318548,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11057.055774707345,
+     "ss_withheld_today": 23625.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     765,
+     756
+    ]
+   },
+   "64y0m/63y0m": {
+    "status": "solved",
+    "seconds": 136.55558705329895,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113185.8,
+    "gap": 9.967994938915155e-06,
+    "proved": true,
+    "tolerance": 1.128235481557063,
+    "residual": 5.4842596488476145,
+    "metrics": {
+     "ss_income_today": 941216.6666666666,
+     "federal_income_tax_today": 372421.6663365568,
+     "ltcg_tax_today": 602.8539615530507,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11099.924130832396,
+     "ss_withheld_today": 19200.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     768,
+     756
+    ]
+   },
+   "65y0m/63y0m": {
+    "status": "solved",
+    "seconds": 190.44131875038147,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113341.5,
+    "gap": 9.984835768418295e-06,
+    "proved": true,
+    "tolerance": 1.1316962632461822,
+    "residual": 5.168917737088479,
+    "metrics": {
+     "ss_income_today": 944416.6666666667,
+     "federal_income_tax_today": 372815.08279074816,
+     "ltcg_tax_today": 602.7097799671557,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11328.510489852099,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     780,
+     756
+    ]
+   },
+   "66y0m/63y0m": {
+    "status": "solved",
+    "seconds": 145.99220252037048,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113467.83,
+    "gap": 9.94084931935734e-06,
+    "proved": true,
+    "tolerance": 1.1279666006244544,
+    "residual": 0.448238728313817,
+    "metrics": {
+     "ss_income_today": 971483.3333333334,
+     "federal_income_tax_today": 369896.2084784728,
+     "ltcg_tax_today": 598.5470754901331,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11684.814358844586,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     792,
+     756
+    ]
+   },
+   "67y0m/63y0m": {
+    "status": "solved",
+    "seconds": 184.01805996894836,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113450.58,
+    "gap": 1.9681049324758545e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 5.07243567683057,
+    "metrics": {
+     "ss_income_today": 995350.0000000001,
+     "federal_income_tax_today": 377459.21054695686,
+     "ltcg_tax_today": 598.4968688539752,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 8873.341975158399,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 182.32941818237305,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 113344.92,
+     "search_seconds": 181.86,
+     "max_step_seconds": 31.26,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     804,
+     756
+    ]
+   },
+   "68y0m/63y0m": {
+    "status": "solved",
+    "seconds": 149.00262665748596,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113532.59,
+    "gap": 9.972548449687963e-06,
+    "proved": true,
+    "tolerance": 1.1322092543935591,
+    "residual": 5.585373900709957,
+    "metrics": {
+     "ss_income_today": 1024950.0000000001,
+     "federal_income_tax_today": 388966.8285388978,
+     "ltcg_tax_today": 598.259489416208,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 6028.513727807981,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     816,
+     756
+    ]
+   },
+   "68y6m/63y0m": {
+    "status": "solved",
+    "seconds": 172.73090147972107,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113542.48,
+    "gap": 9.72016307868816e-06,
+    "proved": true,
+    "tolerance": 1.1036514219586888,
+    "residual": 0.08844065317822067,
+    "metrics": {
+     "ss_income_today": 1038310.0000000001,
+     "federal_income_tax_today": 354150.15411010676,
+     "ltcg_tax_today": 598.2167561700426,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12818.515718405957,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     756
+    ]
+   },
+   "69y0m/63y0m": {
+    "status": "solved",
+    "seconds": 177.63908433914185,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113512.14,
+    "gap": 9.872004700756865e-06,
+    "proved": true,
+    "tolerance": 1.1205923796729713,
+    "residual": 5.60158218825677,
+    "metrics": {
+     "ss_income_today": 1050710.0000000002,
+     "federal_income_tax_today": 378268.6801212768,
+     "ltcg_tax_today": 595.8484729726574,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 6027.221415488744,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     828,
+     756
+    ]
+   },
+   "70y0m/63y0m": {
+    "status": "solved",
+    "seconds": 278.8257393836975,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113361.62,
+    "gap": 1.9348542599551853e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 5.507760008856406,
+    "metrics": {
+     "ss_income_today": 1072630.0000000002,
+     "federal_income_tax_today": 368020.98039514566,
+     "ltcg_tax_today": 592.5630708474371,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 6023.185332199777,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 150.2146236896515,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 113321.15,
+     "search_seconds": 149.74,
+     "max_step_seconds": 29.34,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     840,
+     756
+    ]
+   },
+   "68y6m/62y1m": {
+    "status": "solved",
+    "seconds": 127.84210157394409,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113398.59,
+    "gap": 9.970338557343067e-06,
+    "proved": true,
+    "tolerance": 1.1306223342253379,
+    "residual": 2.087292082841919,
+    "metrics": {
+     "ss_income_today": 1035230.0,
+     "federal_income_tax_today": 378154.1514417763,
+     "ltcg_tax_today": 596.6961247544025,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5859.299116350792,
+     "ss_withheld_today": 10844.16666666667,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     745
+    ]
+   },
+   "68y6m/64y0m": {
+    "status": "solved",
+    "seconds": 170.33786582946777,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 3,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113427.74,
+    "gap": 9.992097569785305e-06,
+    "proved": true,
+    "tolerance": 1.1333810452002395,
+    "residual": 0.3202108855394361,
+    "metrics": {
+     "ss_income_today": 1044960.0000000002,
+     "federal_income_tax_today": 353291.9333023816,
+     "ltcg_tax_today": 598.723555124028,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12764.78912130944,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     768
+    ]
+   },
+   "68y6m/65y0m": {
+    "status": "solved",
+    "seconds": 290.39335227012634,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113426.62,
+    "gap": 9.892263008459408e-06,
+    "proved": true,
+    "tolerance": 1.122045957200582,
+    "residual": 0.9265079529124776,
+    "metrics": {
+     "ss_income_today": 1056066.666666667,
+     "federal_income_tax_today": 354060.9007389458,
+     "ltcg_tax_today": 598.7278284486447,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11660.165942112124,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     780
+    ]
+   },
+   "68y6m/66y0m": {
+    "status": "solved",
+    "seconds": 225.029798746109,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113359.07,
+    "gap": 9.951409189978325e-06,
+    "proved": true,
+    "tolerance": 1.1280824909653964,
+    "residual": 0.8919840134347226,
+    "metrics": {
+     "ss_income_today": 1064933.3333333335,
+     "federal_income_tax_today": 353035.17348220036,
+     "ltcg_tax_today": 599.0268478341111,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11661.827933845718,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     792
+    ]
+   },
+   "68y6m/67y0m": {
+    "status": "solved",
+    "seconds": 199.66601252555847,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113207.73,
+    "gap": 9.930267183067744e-06,
+    "proved": true,
+    "tolerance": 1.1241830060885936,
+    "residual": 0.932811550364858,
+    "metrics": {
+     "ss_income_today": 1071560.0000000002,
+     "federal_income_tax_today": 365480.87906646513,
+     "ltcg_tax_today": 1004.3185118487456,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11659.815169987447,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     804
+    ]
+   },
+   "68y6m/68y0m": {
+    "status": "solved",
+    "seconds": 332.86012983322144,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 113142.37,
+    "gap": 9.903978026873132e-06,
+    "proved": true,
+    "tolerance": 1.1205595463883498,
+    "residual": 0.7863060398245283,
+    "metrics": {
+     "ss_income_today": 1080184.0000000002,
+     "federal_income_tax_today": 348780.5495484355,
+     "ltcg_tax_today": 599.9850058597588,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11667.156329453923,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     816
+    ]
+   },
+   "68y6m/69y0m": {
+    "status": "solved",
+    "seconds": 364.08808636665344,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 112896.75,
+    "gap": 9.95983010793156e-06,
+    "proved": true,
+    "tolerance": 1.1244324497376224,
+    "residual": 0.680905120055604,
+    "metrics": {
+     "ss_income_today": 1086120.0000000002,
+     "federal_income_tax_today": 351465.9469342369,
+     "ltcg_tax_today": 601.0697502862109,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11673.194621028735,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     828
+    ]
+   },
+   "68y6m/70y0m": {
+    "status": "solved",
+    "seconds": 259.84838032722473,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 112654.28,
+    "gap": 9.856161228100466e-06,
+    "proved": true,
+    "tolerance": 1.1103387467155736,
+    "residual": 0.5808923777497301,
+    "metrics": {
+     "ss_income_today": 1089368.0000000002,
+     "federal_income_tax_today": 349439.4207130192,
+     "ltcg_tax_today": 602.1417880765052,
+     "niit_today": 0.0,
+     "payroll_tax_today": 45594.22733465329,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11679.149395431008,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     840
+    ]
+   }
+  }
+ },
+ {
+  "name": "pat-stops-2027",
+  "free": [
+   "Chris",
+   "Pat"
+  ],
+  "best": [
+   823,
+   747
+  ],
+  "result": {
+   "status": "solved",
+   "seconds": 157.62602257728577,
+   "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+   "used": "branch-and-bound",
+   "highs_runs": 4,
+   "highs_statuses": [
+    "Optimal"
+   ],
+   "time_limit_runs": 0,
+   "node_limit_runs": 0,
+   "value": 108721.05,
+   "gap": 9.95666897009365e-06,
+   "proved": true,
+   "tolerance": 1.0824995049310002,
+   "residual": 7.936065148199462,
+   "metrics": {
+    "ss_income_today": 1034353.3333333334,
+    "federal_income_tax_today": 341931.4093249037,
+    "ltcg_tax_today": 619.5303588866661,
+    "niit_today": 0.0,
+    "payroll_tax_today": 37956.72269147984,
+    "state_tax_today": 0.0,
+    "medicare_today": 129044.4036587112,
+    "aca_today": 15562.620741383911,
+    "ss_withheld_today": 0.0,
+    "final_bequest_today": 823000.0001852168
+   },
+   "ages": [
+    823,
+    747
+   ]
+  },
+  "spread": null,
+  "close": [
+   "Pat 62y3m vs 62y1m (0.18 within 2.14)",
+   "Pat 62y3m vs 62y1m (0.18 within 2.14)"
+  ],
+  "ref": {
+   "ages": [
+    68.25,
+    62.083333333333336
+   ],
+   "value": 112256.2,
+   "status": "solved",
+   "seconds": 410.8867027759552
+  },
+  "loop": {
+   "ages": [
+    68.58333333333333,
+    62.25
+   ],
+   "value": 108379.29,
+   "status": "solved",
+   "seconds": 69.49106287956238
+  },
+  "ref_value": 108718.7,
+  "loop_value": 108721.05,
+  "sweeps": [
+   {
+    "pass": 0,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     819,
+     745
+    ],
+    "points": [
+     [
+      765,
+      108265.21
+     ],
+     [
+      768,
+      108294.97
+     ],
+     [
+      780,
+      108452.09
+     ],
+     [
+      792,
+      108589.93
+     ],
+     [
+      804,
+      108592.98
+     ],
+     [
+      816,
+      108703.98
+     ],
+     [
+      819,
+      108718.7
+     ],
+     [
+      823,
+      108720.87
+     ],
+     [
+      828,
+      108688.14
+     ],
+     [
+      840,
+      108538.88
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 0,
+    "person": "Pat",
+    "index": 1,
+    "held": [
+     823,
+     745
+    ],
+    "points": [
+     [
+      745,
+      108720.87
+     ],
+     [
+      747,
+      108721.05
+     ],
+     [
+      756,
+      108683.94
+     ],
+     [
+      768,
+      108570.03
+     ],
+     [
+      780,
+      108565.94
+     ],
+     [
+      792,
+      108496.5
+     ],
+     [
+      804,
+      108349.57
+     ],
+     [
+      816,
+      108287.02
+     ],
+     [
+      828,
+      108039.31
+     ],
+     [
+      840,
+      107799.82
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 1,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     823,
+     747
+    ],
+    "points": [
+     [
+      765,
+      108263.97
+     ],
+     [
+      768,
+      108293.73
+     ],
+     [
+      780,
+      108451.87
+     ],
+     [
+      792,
+      108588.7
+     ],
+     [
+      804,
+      108592.08
+     ],
+     [
+      816,
+      108703.1
+     ],
+     [
+      819,
+      108717.82
+     ],
+     [
+      823,
+      108721.05
+     ],
+     [
+      828,
+      108686.59
+     ],
+     [
+      840,
+      108537.47
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 1,
+    "person": "Pat",
+    "index": 1,
+    "held": [
+     823,
+     747
+    ],
+    "points": [
+     [
+      745,
+      108720.87
+     ],
+     [
+      747,
+      108721.05
+     ],
+     [
+      756,
+      108683.94
+     ],
+     [
+      768,
+      108570.03
+     ],
+     [
+      780,
+      108565.94
+     ],
+     [
+      792,
+      108496.5
+     ],
+     [
+      804,
+      108349.57
+     ],
+     [
+      816,
+      108287.02
+     ],
+     [
+      828,
+      108039.31
+     ],
+     [
+      840,
+      107799.82
+     ]
+    ],
+    "dips": []
+   }
+  ],
+  "results": {
+   "68y3m/62y1m": {
+    "status": "solved",
+    "seconds": 101.2780909538269,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 8,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108718.7,
+    "gap": 1.4340763734671468e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 7.709251698816155,
+    "metrics": {
+     "ss_income_today": 1024178.3333333335,
+     "federal_income_tax_today": 342299.80938829586,
+     "ltcg_tax_today": 619.5402921982075,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15536.938564022646,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 145.40691423416138,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108576.11,
+     "search_seconds": 145.01,
+     "max_step_seconds": 31.23,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     819,
+     745
+    ]
+   },
+   "63y9m/62y1m": {
+    "status": "solved",
+    "seconds": 278.97464966773987,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108265.21,
+    "gap": 9.869345946931492e-06,
+    "proved": true,
+    "tolerance": 1.068506811507187,
+    "residual": 6.055718933765175,
+    "metrics": {
+     "ss_income_today": 933045.0000000001,
+     "federal_income_tax_today": 341782.76019487984,
+     "ltcg_tax_today": 621.5448480664501,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18097.685264184223,
+     "ss_withheld_today": 23625.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     765,
+     745
+    ]
+   },
+   "64y0m/62y1m": {
+    "status": "solved",
+    "seconds": 344.7674868106842,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108294.97,
+    "gap": 9.980494290124137e-06,
+    "proved": true,
+    "tolerance": 1.0808373297341647,
+    "residual": 856.0162101598365,
+    "metrics": {
+     "ss_income_today": 933645.0000000001,
+     "federal_income_tax_today": 341785.95550585206,
+     "ltcg_tax_today": 621.4123750033372,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18197.66367143471,
+     "ss_withheld_today": 19200.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     768,
+     745
+    ]
+   },
+   "65y0m/62y1m": {
+    "status": "solved",
+    "seconds": 235.6275773048401,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108452.09,
+    "gap": 9.853828866896455e-06,
+    "proved": true,
+    "tolerance": 1.0686683351172523,
+    "residual": 2.1138689648523474,
+    "metrics": {
+     "ss_income_today": 936845.0000000001,
+     "federal_income_tax_today": 341803.0410276813,
+     "ltcg_tax_today": 620.7176631039154,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18738.694730073716,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     780,
+     745
+    ]
+   },
+   "66y0m/62y1m": {
+    "status": "solved",
+    "seconds": 150.3454887866974,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108589.93,
+    "gap": 9.99914517651914e-06,
+    "proved": true,
+    "tolerance": 1.0858064747780511,
+    "residual": 11.660824785562825,
+    "metrics": {
+     "ss_income_today": 963911.6666666667,
+     "federal_income_tax_today": 341359.0930355944,
+     "ltcg_tax_today": 620.1083043591327,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18728.618796480856,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     792,
+     745
+    ]
+   },
+   "67y0m/62y1m": {
+    "status": "solved",
+    "seconds": 246.23860502243042,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108592.98,
+    "gap": 9.98299820173006e-06,
+    "proved": true,
+    "tolerance": 1.0840835240605082,
+    "residual": 4.1721346261685754,
+    "metrics": {
+     "ss_income_today": 987778.3333333335,
+     "federal_income_tax_today": 341494.7500566329,
+     "ltcg_tax_today": 620.0954843852833,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 17474.923257114107,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     804,
+     745
+    ]
+   },
+   "68y0m/62y1m": {
+    "status": "solved",
+    "seconds": 117.79220223426819,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108703.98,
+    "gap": 9.696783824887811e-06,
+    "proved": true,
+    "tolerance": 1.054078994964928,
+    "residual": 7.6887117011061585,
+    "metrics": {
+     "ss_income_today": 1017378.3333333335,
+     "federal_income_tax_today": 342470.4089772467,
+     "ltcg_tax_today": 619.6057787297639,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15537.272881079227,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     816,
+     745
+    ]
+   },
+   "68y7m/62y1m": {
+    "status": "solved",
+    "seconds": 102.62801933288574,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108720.87,
+    "gap": 9.718236719521578e-06,
+    "proved": true,
+    "tolerance": 1.0565751510123318,
+    "residual": 7.4263192477319615,
+    "metrics": {
+     "ss_income_today": 1032871.6666666669,
+     "federal_income_tax_today": 342166.71163723076,
+     "ltcg_tax_today": 619.5303588866661,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15549.698683270033,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     745
+    ]
+   },
+   "69y0m/62y1m": {
+    "status": "solved",
+    "seconds": 191.00823283195496,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 7,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108688.14,
+    "gap": 1.3100553854994621e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 7.6989322851528295,
+    "metrics": {
+     "ss_income_today": 1043138.3333333335,
+     "federal_income_tax_today": 341834.65656705695,
+     "ltcg_tax_today": 619.6755385859369,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15537.623901570314,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 266.8522775173187,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108644.18,
+     "search_seconds": 266.28999999999996,
+     "max_step_seconds": 32.53,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     828,
+     745
+    ]
+   },
+   "70y0m/62y1m": {
+    "status": "solved",
+    "seconds": 154.5758352279663,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108538.88,
+    "gap": 9.853694864135551e-06,
+    "proved": true,
+    "tolerance": 1.0695090044150248,
+    "residual": 7.613282769006524,
+    "metrics": {
+     "ss_income_today": 1065058.3333333337,
+     "federal_income_tax_today": 340814.7069412599,
+     "ltcg_tax_today": 620.3346772261181,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15541.017244531236,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     840,
+     745
+    ]
+   },
+   "68y7m/62y3m": {
+    "status": "solved",
+    "seconds": 157.62602257728577,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108721.05,
+    "gap": 9.95666897009365e-06,
+    "proved": true,
+    "tolerance": 1.0824995049310002,
+    "residual": 7.936065148199462,
+    "metrics": {
+     "ss_income_today": 1034353.3333333334,
+     "federal_income_tax_today": 341931.4093249037,
+     "ltcg_tax_today": 619.5303588866661,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15562.620741383911,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     747
+    ]
+   },
+   "68y7m/63y0m": {
+    "status": "solved",
+    "seconds": 218.8068196773529,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108683.94,
+    "gap": 9.892828159929071e-06,
+    "proved": true,
+    "tolerance": 1.0751915421640417,
+    "residual": 4.539248315944065,
+    "metrics": {
+     "ss_income_today": 1040443.3333333334,
+     "federal_income_tax_today": 341667.999663921,
+     "ltcg_tax_today": 632.719401933377,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15552.96912582179,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     756
+    ]
+   },
+   "68y7m/64y0m": {
+    "status": "solved",
+    "seconds": 397.05939173698425,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108570.03,
+    "gap": 9.787698162464095e-06,
+    "proved": true,
+    "tolerance": 1.0626506831296716,
+    "residual": 8.910646739524555,
+    "metrics": {
+     "ss_income_today": 1047093.3333333335,
+     "federal_income_tax_today": 342055.03108910436,
+     "ltcg_tax_today": 635.9787225031395,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 14494.409403163503,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     768
+    ]
+   },
+   "68y7m/65y0m": {
+    "status": "solved",
+    "seconds": 416.764817237854,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108565.94,
+    "gap": 9.86915222610374e-06,
+    "proved": true,
+    "tolerance": 1.071453788430045,
+    "residual": 10.951568322268981,
+    "metrics": {
+     "ss_income_today": 1058200.0000000002,
+     "federal_income_tax_today": 342864.7438371091,
+     "ltcg_tax_today": 620.2151374745465,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13449.934199077385,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     780
+    ]
+   },
+   "68y7m/66y0m": {
+    "status": "solved",
+    "seconds": 437.076931476593,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108496.5,
+    "gap": 9.744608888678273e-06,
+    "proved": true,
+    "tolerance": 1.0572559582904821,
+    "residual": 11.950019888895667,
+    "metrics": {
+     "ss_income_today": 1067066.6666666667,
+     "federal_income_tax_today": 342329.1595535556,
+     "ltcg_tax_today": 619.0932389781923,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13417.283333405801,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     792
+    ]
+   },
+   "68y7m/67y0m": {
+    "status": "solved",
+    "seconds": 263.2923517227173,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108349.57,
+    "gap": 9.940590651677033e-06,
+    "proved": true,
+    "tolerance": 1.0770587226552264,
+    "residual": 11.589202073336148,
+    "metrics": {
+     "ss_income_today": 1073693.3333333335,
+     "federal_income_tax_today": 341876.62564349454,
+     "ltcg_tax_today": 620.6924962193291,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13361.486818321076,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     804
+    ]
+   },
+   "68y7m/68y0m": {
+    "status": "solved",
+    "seconds": 411.62280464172363,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108287.02,
+    "gap": 9.98399677562522e-06,
+    "proved": true,
+    "tolerance": 1.0811372585220638,
+    "residual": 11.580924333285488,
+    "metrics": {
+     "ss_income_today": 1082317.3333333335,
+     "federal_income_tax_today": 339905.2065889728,
+     "ltcg_tax_today": 621.4479482625778,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13361.343783570512,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     816
+    ]
+   },
+   "68y7m/69y0m": {
+    "status": "solved",
+    "seconds": 189.1411406993866,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108039.31,
+    "gap": 9.657172040958925e-06,
+    "proved": true,
+    "tolerance": 1.043354203856494,
+    "residual": 11.544388955558231,
+    "metrics": {
+     "ss_income_today": 1088253.3333333335,
+     "federal_income_tax_today": 342014.4198445416,
+     "ltcg_tax_today": 621.6374873603903,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13360.763230759396,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     828
+    ]
+   },
+   "68y7m/70y0m": {
+    "status": "solved",
+    "seconds": 384.093425989151,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 107799.82,
+    "gap": 9.936133797758943e-06,
+    "proved": true,
+    "tolerance": 1.0711134348943305,
+    "residual": 11.53067665274786,
+    "metrics": {
+     "ss_income_today": 1091501.3333333335,
+     "federal_income_tax_today": 340806.500090918,
+     "ltcg_tax_today": 623.6019571547079,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 13360.199505565995,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     823,
+     840
+    ]
+   },
+   "63y9m/62y3m": {
+    "status": "solved",
+    "seconds": 178.15880799293518,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108263.97,
+    "gap": 9.32586028305534e-06,
+    "proved": true,
+    "tolerance": 1.0096546579088947,
+    "residual": 6.007052507185151,
+    "metrics": {
+     "ss_income_today": 934526.6666666667,
+     "federal_income_tax_today": 341741.2075597146,
+     "ltcg_tax_today": 621.5505080533749,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18093.36742636378,
+     "ss_withheld_today": 23625.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     765,
+     747
+    ]
+   },
+   "64y0m/62y3m": {
+    "status": "solved",
+    "seconds": 253.5076823234558,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108293.73,
+    "gap": 9.954852540769119e-06,
+    "proved": true,
+    "tolerance": 1.078048113239865,
+    "residual": 7.785296814275264,
+    "metrics": {
+     "ss_income_today": 935126.6666666666,
+     "federal_income_tax_today": 341744.4017318383,
+     "ltcg_tax_today": 621.419534990262,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18193.34583361427,
+     "ss_withheld_today": 19200.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     768,
+     747
+    ]
+   },
+   "65y0m/62y3m": {
+    "status": "solved",
+    "seconds": 376.73189091682434,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108451.87,
+    "gap": 1.000212137799067e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 112.85338139911758,
+    "metrics": {
+     "ss_income_today": 938326.6666666667,
+     "federal_income_tax_today": 341761.4579172223,
+     "ltcg_tax_today": 620.7190497662236,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18697.04095354258,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 158.48062086105347,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108277.57,
+     "search_seconds": 158.0,
+     "max_step_seconds": 41.23,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     780,
+     747
+    ]
+   },
+   "66y0m/62y3m": {
+    "status": "solved",
+    "seconds": 375.6256058216095,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108588.7,
+    "gap": 9.939562674137824e-06,
+    "proved": true,
+    "tolerance": 1.0793241893531498,
+    "residual": 46.58094858603205,
+    "metrics": {
+     "ss_income_today": 965393.3333333334,
+     "federal_income_tax_today": 341317.5403428541,
+     "ltcg_tax_today": 620.1154643460577,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 18724.300958660413,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     792,
+     747
+    ]
+   },
+   "67y0m/62y3m": {
+    "status": "solved",
+    "seconds": 242.0490803718567,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108592.08,
+    "gap": 9.954313118284097e-06,
+    "proved": true,
+    "tolerance": 1.080959566485756,
+    "residual": 4.755129967971279,
+    "metrics": {
+     "ss_income_today": 989260.0000000001,
+     "federal_income_tax_today": 341209.24406570784,
+     "ltcg_tax_today": 620.0997577098997,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 17501.87501968122,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     804,
+     747
+    ]
+   },
+   "68y0m/62y3m": {
+    "status": "solved",
+    "seconds": 159.43853116035461,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108703.1,
+    "gap": 9.920262763241199e-06,
+    "proved": true,
+    "tolerance": 1.0783633151788845,
+    "residual": 7.920596287826929,
+    "metrics": {
+     "ss_income_today": 1018860.0000000001,
+     "federal_income_tax_today": 342388.56336581084,
+     "ltcg_tax_today": 619.6086653920722,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15563.030285987381,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     816,
+     747
+    ]
+   },
+   "68y3m/62y3m": {
+    "status": "solved",
+    "seconds": 153.56371235847473,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 7,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108717.82,
+    "gap": 1.2723120030213442e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 7.932731383679447,
+    "metrics": {
+     "ss_income_today": 1025660.0000000001,
+     "federal_income_tax_today": 342217.9649705122,
+     "ltcg_tax_today": 619.544565522824,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15562.695968930802,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 187.8080768585205,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108582.06,
+     "search_seconds": 187.24,
+     "max_step_seconds": 45.43,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     819,
+     747
+    ]
+   },
+   "69y0m/62y3m": {
+    "status": "solved",
+    "seconds": 166.10784769058228,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 7,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108686.59,
+    "gap": 1.41551102959519e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 7.905602235712977,
+    "metrics": {
+     "ss_income_today": 1044620.0000000001,
+     "federal_income_tax_today": 341763.72951999516,
+     "ltcg_tax_today": 621.9917571748202,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15563.41477543909,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 267.65440940856934,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108645.51,
+     "search_seconds": 267.17,
+     "max_step_seconds": 41.93,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     828,
+     747
+    ]
+   },
+   "70y0m/62y3m": {
+    "status": "solved",
+    "seconds": 246.64232730865479,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 7,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 108537.47,
+    "gap": 1.4440545662205875e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 7.831636450131559,
+    "metrics": {
+     "ss_income_today": 1066540.0000000002,
+     "federal_income_tax_today": 337093.22531316394,
+     "ltcg_tax_today": 620.3418372130427,
+     "niit_today": 0.0,
+     "payroll_tax_today": 37956.72269147984,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 15566.799766682758,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 262.37418150901794,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 108439.68,
+     "search_seconds": 261.89,
+     "max_step_seconds": 50.27,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     840,
+     747
+    ]
+   }
+  }
+ },
+ {
+  "name": "pat-stops-mid-2028",
+  "free": [
+   "Chris",
+   "Pat"
+  ],
+  "best": [
+   822,
+   750
+  ],
+  "result": {
+   "status": "solved",
+   "seconds": 170.581125497818,
+   "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+   "used": "branch-and-bound",
+   "highs_runs": 7,
+   "highs_statuses": [
+    "Optimal"
+   ],
+   "time_limit_runs": 0,
+   "node_limit_runs": 0,
+   "value": 111433.21,
+   "gap": 1.0400413448135297e-05,
+   "proved": false,
+   "tolerance": null,
+   "residual": 8.083139413198646,
+   "metrics": {
+    "ss_income_today": 1034355.0000000001,
+    "federal_income_tax_today": 355572.67928694934,
+    "ltcg_tax_today": 607.5403236118342,
+    "niit_today": 0.0,
+    "payroll_tax_today": 41775.47501306656,
+    "state_tax_today": 0.0,
+    "medicare_today": 129044.4036587112,
+    "aca_today": 5221.333755745488,
+    "ss_withheld_today": 0.0,
+    "final_bequest_today": 823000.0001852168
+   },
+   "fallback": {
+    "status": "solved",
+    "seconds": 150.032564163208,
+    "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "local search",
+    "value": 111332.7,
+    "search_seconds": 149.51,
+    "max_step_seconds": 36.6,
+    "budget_spent": false,
+    "default_caps_bind": false
+   },
+   "ages": [
+    822,
+    750
+   ]
+  },
+  "spread": null,
+  "close": [],
+  "ref": {
+   "ages": [
+    68.25,
+    62.5
+   ],
+   "value": 114877.78,
+   "status": "solved",
+   "seconds": 465.6027464866638
+  },
+  "loop": {
+   "ages": [
+    68.5,
+    62.5
+   ],
+   "value": 111188.77,
+   "status": "solved",
+   "seconds": 54.692233085632324
+  },
+  "ref_value": 111432.16,
+  "loop_value": 111433.21,
+  "sweeps": [
+   {
+    "pass": 0,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     819,
+     750
+    ],
+    "points": [
+     [
+      765,
+      111010.39
+     ],
+     [
+      768,
+      111038.83
+     ],
+     [
+      780,
+      111195.18
+     ],
+     [
+      792,
+      111329.07
+     ],
+     [
+      804,
+      111321.11
+     ],
+     [
+      816,
+      111421.43
+     ],
+     [
+      819,
+      111432.16
+     ],
+     [
+      822,
+      111433.21
+     ],
+     [
+      828,
+      111397.15
+     ],
+     [
+      840,
+      111253.82
+     ]
+    ],
+    "dips": [
+     [
+      804,
+      7.960000000006403
+     ]
+    ]
+   },
+   {
+    "pass": 0,
+    "person": "Pat",
+    "index": 1,
+    "held": [
+     822,
+     750
+    ],
+    "points": [
+     [
+      745,
+      111357.72
+     ],
+     [
+      750,
+      111433.21
+     ],
+     [
+      756,
+      111403.91
+     ],
+     [
+      768,
+      111293.56
+     ],
+     [
+      780,
+      111290.3
+     ],
+     [
+      792,
+      111218.16
+     ],
+     [
+      804,
+      111066.51
+     ],
+     [
+      816,
+      111004.96
+     ],
+     [
+      828,
+      110758.44
+     ],
+     [
+      840,
+      110519.93
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 1,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     822,
+     750
+    ],
+    "points": [
+     [
+      765,
+      111010.39
+     ],
+     [
+      768,
+      111038.83
+     ],
+     [
+      780,
+      111195.18
+     ],
+     [
+      792,
+      111329.07
+     ],
+     [
+      804,
+      111321.11
+     ],
+     [
+      816,
+      111421.43
+     ],
+     [
+      819,
+      111432.16
+     ],
+     [
+      822,
+      111433.21
+     ],
+     [
+      828,
+      111397.15
+     ],
+     [
+      840,
+      111253.82
+     ]
+    ],
+    "dips": [
+     [
+      804,
+      7.960000000006403
+     ]
+    ]
+   }
+  ],
+  "results": {
+   "68y3m/62y6m": {
+    "status": "solved",
+    "seconds": 173.42500185966492,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111432.16,
+    "gap": 9.98525178782581e-06,
+    "proved": true,
+    "tolerance": 1.1126781748612917,
+    "residual": 7.720780585531347,
+    "metrics": {
+     "ss_income_today": 1027795.0000000001,
+     "federal_income_tax_today": 355596.7113495836,
+     "ltcg_tax_today": 607.5445969364507,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5353.533285637272,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     819,
+     750
+    ]
+   },
+   "63y9m/62y6m": {
+    "status": "solved",
+    "seconds": 288.8900475502014,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111010.39,
+    "gap": 9.971425475111914e-06,
+    "proved": true,
+    "tolerance": 1.1069318308481089,
+    "residual": 5.2564503627508765,
+    "metrics": {
+     "ss_income_today": 936661.6666666667,
+     "federal_income_tax_today": 360402.8302900469,
+     "ltcg_tax_today": 609.4095197546557,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11123.146243276977,
+     "ss_withheld_today": 23625.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     765,
+     750
+    ]
+   },
+   "64y0m/62y6m": {
+    "status": "solved",
+    "seconds": 217.60879063606262,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111038.83,
+    "gap": 9.977371651859052e-06,
+    "proved": true,
+    "tolerance": 1.1078756746975966,
+    "residual": 2.5503351938014784,
+    "metrics": {
+     "ss_income_today": 937261.6666666666,
+     "federal_income_tax_today": 363379.44537590235,
+     "ltcg_tax_today": 609.2828200161592,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11265.33322098943,
+     "ss_withheld_today": 19200.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     768,
+     750
+    ]
+   },
+   "65y0m/62y6m": {
+    "status": "solved",
+    "seconds": 187.44696307182312,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111195.18,
+    "gap": 1.4172719009124458e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 5.941847097239468,
+    "metrics": {
+     "ss_income_today": 940461.6666666667,
+     "federal_income_tax_today": 366435.2246233721,
+     "ltcg_tax_today": 608.5923814413541,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11394.60095842173,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 122.15478587150574,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 111056.65,
+     "search_seconds": 121.7,
+     "max_step_seconds": 43.73,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     780,
+     750
+    ]
+   },
+   "66y0m/62y6m": {
+    "status": "solved",
+    "seconds": 272.8992269039154,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111329.07,
+    "gap": 9.949044172630115e-06,
+    "proved": true,
+    "tolerance": 1.1076178351278303,
+    "residual": 0.7574577110636851,
+    "metrics": {
+     "ss_income_today": 967528.3333333334,
+     "federal_income_tax_today": 358359.9188894207,
+     "ltcg_tax_today": 608.0001159950375,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11606.637139381302,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     792,
+     750
+    ]
+   },
+   "67y0m/62y6m": {
+    "status": "solved",
+    "seconds": 106.83417105674744,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111321.11,
+    "gap": 9.999700806913779e-06,
+    "proved": true,
+    "tolerance": 1.1131777934935376,
+    "residual": 5.593280067289878,
+    "metrics": {
+     "ss_income_today": 991395.0000000001,
+     "federal_income_tax_today": 365585.4074595219,
+     "ltcg_tax_today": 607.6516498295862,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 8782.833961590499,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     804,
+     750
+    ]
+   },
+   "68y0m/62y6m": {
+    "status": "solved",
+    "seconds": 336.92122292518616,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111421.43,
+    "gap": 9.88084731726267e-06,
+    "proved": true,
+    "tolerance": 1.1009381377010703,
+    "residual": 5.470282490031772,
+    "metrics": {
+     "ss_income_today": 1020995.0000000001,
+     "federal_income_tax_today": 355621.01312240877,
+     "ltcg_tax_today": 607.592990169541,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5395.500467365373,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     816,
+     750
+    ]
+   },
+   "68y6m/62y6m": {
+    "status": "solved",
+    "seconds": 170.581125497818,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 7,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111433.21,
+    "gap": 1.0400413448135297e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 8.083139413198646,
+    "metrics": {
+     "ss_income_today": 1034355.0000000001,
+     "federal_income_tax_today": 355572.67928694934,
+     "ltcg_tax_today": 607.5403236118342,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5221.333755745488,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 150.032564163208,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 111332.7,
+     "search_seconds": 149.51,
+     "max_step_seconds": 36.6,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     822,
+     750
+    ]
+   },
+   "69y0m/62y6m": {
+    "status": "solved",
+    "seconds": 224.44672274589539,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111397.15,
+    "gap": 9.992131802593828e-06,
+    "proved": true,
+    "tolerance": 1.113095005233315,
+    "residual": 10.273467926131595,
+    "metrics": {
+     "ss_income_today": 1046755.0000000001,
+     "federal_income_tax_today": 348556.4692739627,
+     "ltcg_tax_today": 607.6997099472628,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5960.983339809685,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     828,
+     750
+    ]
+   },
+   "70y0m/62y6m": {
+    "status": "solved",
+    "seconds": 188.2375967502594,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111253.82,
+    "gap": 1.8695960899018045e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 3.9018057696958763,
+    "metrics": {
+     "ss_income_today": 1068675.0000000002,
+     "federal_income_tax_today": 349752.7434667562,
+     "ltcg_tax_today": 608.3333219774365,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5992.7525860634305,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 132.33388328552246,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 111180.74,
+     "search_seconds": 131.86,
+     "max_step_seconds": 29.49,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     840,
+     750
+    ]
+   },
+   "68y6m/62y1m": {
+    "status": "solved",
+    "seconds": 84.10791325569153,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111357.72,
+    "gap": 9.982356484624003e-06,
+    "proved": true,
+    "tolerance": 1.111612458354944,
+    "residual": 11.204930425780713,
+    "metrics": {
+     "ss_income_today": 1032780.0,
+     "federal_income_tax_today": 355590.1787711412,
+     "ltcg_tax_today": 607.8734162565413,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5048.762222304189,
+     "ss_withheld_today": 4929.166666666668,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     745
+    ]
+   },
+   "68y6m/63y0m": {
+    "status": "solved",
+    "seconds": 235.93300867080688,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111403.91,
+    "gap": 9.985355337600495e-06,
+    "proved": true,
+    "tolerance": 1.1124076273480652,
+    "residual": 13.220260493228544,
+    "metrics": {
+     "ss_income_today": 1038310.0000000001,
+     "federal_income_tax_today": 355477.9732322579,
+     "ltcg_tax_today": 607.6684100126388,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 5148.059659547013,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     756
+    ]
+   },
+   "68y6m/64y0m": {
+    "status": "solved",
+    "seconds": 128.99447059631348,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111293.56,
+    "gap": 8.9355956474308e-06,
+    "proved": true,
+    "tolerance": 0.9944742503230786,
+    "residual": 6.809841220265544,
+    "metrics": {
+     "ss_income_today": 1044960.0000000002,
+     "federal_income_tax_today": 355439.1029004216,
+     "ltcg_tax_today": 608.1567290058499,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 4399.780225527467,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     768
+    ]
+   },
+   "68y6m/65y0m": {
+    "status": "solved",
+    "seconds": 220.0602207183838,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111290.3,
+    "gap": 9.992560475273963e-06,
+    "proved": true,
+    "tolerance": 1.1120750530613819,
+    "residual": 8.148787458211576,
+    "metrics": {
+     "ss_income_today": 1056066.666666667,
+     "federal_income_tax_today": 355843.71746143233,
+     "ltcg_tax_today": 608.1724356420077,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 3723.616969090287,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     780
+    ]
+   },
+   "68y6m/66y0m": {
+    "status": "solved",
+    "seconds": 533.2786068916321,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111218.16,
+    "gap": 9.860399333233273e-06,
+    "proved": true,
+    "tolerance": 1.0966554707074316,
+    "residual": 3.8055888746284787,
+    "metrics": {
+     "ss_income_today": 1064933.3333333335,
+     "federal_income_tax_today": 342581.34008980653,
+     "ltcg_tax_today": 608.491321650557,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11571.036415574894,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     792
+    ]
+   },
+   "68y6m/67y0m": {
+    "status": "solved",
+    "seconds": 210.63826489448547,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111066.51,
+    "gap": 9.927531892304928e-06,
+    "proved": true,
+    "tolerance": 1.102616320192004,
+    "residual": 6.397249284009777,
+    "metrics": {
+     "ss_income_today": 1071560.0000000002,
+     "federal_income_tax_today": 335823.5220569108,
+     "ltcg_tax_today": 609.1603936022793,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11519.589837288786,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     804
+    ]
+   },
+   "68y6m/68y0m": {
+    "status": "solved",
+    "seconds": 168.3313603401184,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 111004.96,
+    "gap": 9.99653296834394e-06,
+    "proved": true,
+    "tolerance": 1.1096647422897004,
+    "residual": 6.311556306820013,
+    "metrics": {
+     "ss_income_today": 1080184.0000000002,
+     "federal_income_tax_today": 335704.88466818794,
+     "ltcg_tax_today": 609.4337730400466,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11521.101498111802,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     816
+    ]
+   },
+   "68y6m/69y0m": {
+    "status": "solved",
+    "seconds": 317.214234828949,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 110758.44,
+    "gap": 9.814896232128861e-06,
+    "proved": true,
+    "tolerance": 1.0870825954324705,
+    "residual": 5.989532471669983,
+    "metrics": {
+     "ss_income_today": 1086120.0000000002,
+     "federal_income_tax_today": 338185.9200744447,
+     "ltcg_tax_today": 610.5242907911154,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11527.156493121125,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     822,
+     828
+    ]
+   },
+   "68y6m/70y0m": {
+    "status": "solved",
+    "seconds": 387.8169016838074,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 5,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 110519.93,
+    "gap": 1.7959027490377662e-05,
+    "proved": false,
+    "tolerance": null,
+    "residual": 5.664026066220229,
+    "metrics": {
+     "ss_income_today": 1089368.0000000002,
+     "federal_income_tax_today": 328912.5052748929,
+     "ltcg_tax_today": 611.5763486206354,
+     "niit_today": 0.0,
+     "payroll_tax_today": 41775.47501306656,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11533.019398633602,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "fallback": {
+     "status": "solved",
+     "seconds": 125.54472708702087,
+     "method": "local search (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+     "used": "local search",
+     "value": 110514.5,
+     "search_seconds": 125.13,
+     "max_step_seconds": 34.7,
+     "budget_spent": false,
+     "default_caps_bind": false
+    },
+    "ages": [
+     822,
+     840
+    ]
+   }
+  }
+ },
+ {
+  "name": "pat-part-time-2029-30",
+  "free": [
+   "Chris",
+   "Pat"
+  ],
+  "best": [
+   821,
+   780
+  ],
+  "result": {
+   "status": "solved",
+   "seconds": 95.27794361114502,
+   "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+   "used": "branch-and-bound",
+   "highs_runs": 2,
+   "highs_statuses": [
+    "Optimal"
+   ],
+   "time_limit_runs": 0,
+   "node_limit_runs": 0,
+   "value": 116248.3,
+   "gap": 9.956174228612556e-06,
+   "proved": true,
+   "tolerance": 1.157388328580021,
+   "residual": 0.23115158963481014,
+   "metrics": {
+    "ss_income_today": 1053906.666666667,
+    "federal_income_tax_today": 374118.31018131087,
+    "ltcg_tax_today": 586.2552475052182,
+    "niit_today": 0.0,
+    "payroll_tax_today": 50724.47832461029,
+    "state_tax_today": 0.0,
+    "medicare_today": 129044.4036587112,
+    "aca_today": 11777.14844569224,
+    "ss_withheld_today": 0.0,
+    "final_bequest_today": 823000.0001852168
+   },
+   "ages": [
+    821,
+    780
+   ]
+  },
+  "spread": null,
+  "close": [],
+  "ref": {
+   "ages": [
+    68.25,
+    65.0
+   ],
+   "value": 119959.24,
+   "status": "solved",
+   "seconds": 266.1096954345703
+  },
+  "loop": {
+   "ages": [
+    68.41666666666667,
+    63.583333333333336
+   ],
+   "value": 116164.07,
+   "status": "solved",
+   "seconds": 158.95829367637634
+  },
+  "ref_value": 116245.98,
+  "loop_value": 116229.34,
+  "sweeps": [
+   {
+    "pass": 0,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     819,
+     780
+    ],
+    "points": [
+     [
+      765,
+      115780.36
+     ],
+     [
+      768,
+      115811.13
+     ],
+     [
+      780,
+      115968.71
+     ],
+     [
+      792,
+      116106.12
+     ],
+     [
+      804,
+      116127.94
+     ],
+     [
+      816,
+      116233.71
+     ],
+     [
+      819,
+      116245.98
+     ],
+     [
+      821,
+      116248.3
+     ],
+     [
+      828,
+      116208.11
+     ],
+     [
+      840,
+      116061.78
+     ]
+    ],
+    "dips": []
+   },
+   {
+    "pass": 0,
+    "person": "Pat",
+    "index": 1,
+    "held": [
+     821,
+     780
+    ],
+    "points": [
+     [
+      745,
+      116087.83
+     ],
+     [
+      756,
+      116229.7
+     ],
+     [
+      763,
+      116229.34
+     ],
+     [
+      768,
+      116194.31
+     ],
+     [
+      780,
+      116248.3
+     ],
+     [
+      792,
+      116173.27
+     ],
+     [
+      804,
+      116018.87
+     ],
+     [
+      816,
+      115951.04
+     ],
+     [
+      828,
+      115695.22
+     ],
+     [
+      840,
+      115453.67
+     ]
+    ],
+    "dips": [
+     [
+      768,
+      35.029999999998836
+     ]
+    ]
+   },
+   {
+    "pass": 1,
+    "person": "Chris",
+    "index": 0,
+    "held": [
+     821,
+     780
+    ],
+    "points": [
+     [
+      765,
+      115780.36
+     ],
+     [
+      768,
+      115811.13
+     ],
+     [
+      780,
+      115968.71
+     ],
+     [
+      792,
+      116106.12
+     ],
+     [
+      804,
+      116127.94
+     ],
+     [
+      816,
+      116233.71
+     ],
+     [
+      819,
+      116245.98
+     ],
+     [
+      821,
+      116248.3
+     ],
+     [
+      828,
+      116208.11
+     ],
+     [
+      840,
+      116061.78
+     ]
+    ],
+    "dips": []
+   }
+  ],
+  "results": {
+   "68y3m/65y0m": {
+    "status": "solved",
+    "seconds": 127.90978121757507,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116245.98,
+    "gap": 9.852147681684625e-06,
+    "proved": true,
+    "tolerance": 1.1452725623621574,
+    "residual": 0.23762600715976936,
+    "metrics": {
+     "ss_income_today": 1049506.666666667,
+     "federal_income_tax_today": 374535.1151441771,
+     "ltcg_tax_today": 586.2651808167595,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11777.20690771302,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     819,
+     780
+    ]
+   },
+   "63y9m/65y0m": {
+    "status": "solved",
+    "seconds": 319.43800592422485,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115780.36,
+    "gap": 9.946430216217398e-06,
+    "proved": true,
+    "tolerance": 1.1516012711485282,
+    "residual": 0.07044893528868856,
+    "metrics": {
+     "ss_income_today": 958373.3333333335,
+     "federal_income_tax_today": 383680.0565527178,
+     "ltcg_tax_today": 589.6461285042473,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 19905.791332069814,
+     "ss_withheld_today": 23625.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     765,
+     780
+    ]
+   },
+   "64y0m/65y0m": {
+    "status": "solved",
+    "seconds": 348.1615242958069,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115811.13,
+    "gap": 9.936006435781632e-06,
+    "proved": true,
+    "tolerance": 1.1507001330151432,
+    "residual": 0.08212283482305377,
+    "metrics": {
+     "ss_income_today": 958973.3333333334,
+     "federal_income_tax_today": 379267.3150478939,
+     "ltcg_tax_today": 589.6226833391933,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 19905.791332069814,
+     "ss_withheld_today": 19200.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     768,
+     780
+    ]
+   },
+   "65y0m/65y0m": {
+    "status": "solved",
+    "seconds": 436.6967966556549,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115968.71,
+    "gap": 9.993572101509266e-06,
+    "proved": true,
+    "tolerance": 1.1589416649040187,
+    "residual": 0.07519314684228678,
+    "metrics": {
+     "ss_income_today": 962173.3333333335,
+     "federal_income_tax_today": 384242.9851599138,
+     "ltcg_tax_today": 589.5252131796404,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 19905.791332069814,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     780,
+     780
+    ]
+   },
+   "66y0m/65y0m": {
+    "status": "solved",
+    "seconds": 187.02878427505493,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116106.12,
+    "gap": 9.988049714133651e-06,
+    "proved": true,
+    "tolerance": 1.1596736986751675,
+    "residual": 0.07853841801641942,
+    "metrics": {
+     "ss_income_today": 989240.0000000002,
+     "federal_income_tax_today": 379546.0821614951,
+     "ltcg_tax_today": 586.8844728730835,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 19905.791332069814,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     792,
+     780
+    ]
+   },
+   "67y0m/65y0m": {
+    "status": "solved",
+    "seconds": 170.54300093650818,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116127.94,
+    "gap": 9.765173292102165e-06,
+    "proved": true,
+    "tolerance": 1.1340094581548428,
+    "residual": 0.2177608252879814,
+    "metrics": {
+     "ss_income_today": 1013106.6666666669,
+     "federal_income_tax_today": 382738.2354881095,
+     "ltcg_tax_today": 586.627419979948,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12212.330720606675,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     804,
+     780
+    ]
+   },
+   "68y0m/65y0m": {
+    "status": "solved",
+    "seconds": 167.06111860275269,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116233.71,
+    "gap": 9.738132637915844e-06,
+    "proved": true,
+    "tolerance": 1.1318992849770453,
+    "residual": 0.23654107647105987,
+    "metrics": {
+     "ss_income_today": 1042706.6666666669,
+     "federal_income_tax_today": 375047.2024108582,
+     "ltcg_tax_today": 586.3192340367746,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11777.507569534173,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     816,
+     780
+    ]
+   },
+   "68y5m/65y0m": {
+    "status": "solved",
+    "seconds": 95.27794361114502,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116248.3,
+    "gap": 9.956174228612556e-06,
+    "proved": true,
+    "tolerance": 1.157388328580021,
+    "residual": 0.23115158963481014,
+    "metrics": {
+     "ss_income_today": 1053906.666666667,
+     "federal_income_tax_today": 374118.31018131087,
+     "ltcg_tax_today": 586.2552475052182,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11777.14844569224,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     780
+    ]
+   },
+   "69y0m/65y0m": {
+    "status": "solved",
+    "seconds": 328.40509366989136,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116208.11,
+    "gap": 9.978154117065987e-06,
+    "proved": true,
+    "tolerance": 1.1595424312329572,
+    "residual": 0.2522373407297561,
+    "metrics": {
+     "ss_income_today": 1068466.666666667,
+     "federal_income_tax_today": 373263.0913191183,
+     "ltcg_tax_today": 586.431727139113,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11778.13394832824,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     828,
+     780
+    ]
+   },
+   "70y0m/65y0m": {
+    "status": "solved",
+    "seconds": 130.2227439880371,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116061.78,
+    "gap": 9.942166323166136e-06,
+    "proved": true,
+    "tolerance": 1.1539055205227169,
+    "residual": 0.2771273709249976,
+    "metrics": {
+     "ss_income_today": 1090386.666666667,
+     "federal_income_tax_today": 369394.72045726946,
+     "ltcg_tax_today": 587.0795458054446,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11781.733538464818,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     840,
+     780
+    ]
+   },
+   "68y5m/62y1m": {
+    "status": "solved",
+    "seconds": 179.3589370250702,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116087.83,
+    "gap": 9.96934622477995e-06,
+    "proved": true,
+    "tolerance": 1.1573197697533966,
+    "residual": 0.2910388688718757,
+    "metrics": {
+     "ss_income_today": 1037961.6666666671,
+     "federal_income_tax_today": 370136.0197711516,
+     "ltcg_tax_today": 586.9641660407979,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12867.415022929523,
+     "ss_withheld_today": 19894.16666666667,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     745
+    ]
+   },
+   "68y5m/63y0m": {
+    "status": "solved",
+    "seconds": 138.23158407211304,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 4,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116229.7,
+    "gap": 9.958045000270498e-06,
+    "proved": true,
+    "tolerance": 1.1574205829679398,
+    "residual": 2.2579791128976052,
+    "metrics": {
+     "ss_income_today": 1041041.666666667,
+     "federal_income_tax_today": 371135.426763601,
+     "ltcg_tax_today": 586.3378273352408,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12978.325828065806,
+     "ss_withheld_today": 9050.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     756
+    ]
+   },
+   "68y5m/63y7m": {
+    "status": "solved",
+    "seconds": 153.9654757976532,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116229.34,
+    "gap": 9.953563908979641e-06,
+    "proved": true,
+    "tolerance": 1.1568961637885238,
+    "residual": 0.2145985060327515,
+    "metrics": {
+     "ss_income_today": 1047448.6111111115,
+     "federal_income_tax_today": 381659.1250655522,
+     "ltcg_tax_today": 586.3392139975491,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12210.790993585892,
+     "ss_withheld_today": 9050.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     763
+    ]
+   },
+   "68y5m/64y0m": {
+    "status": "solved",
+    "seconds": 193.16010451316833,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116194.31,
+    "gap": 9.832087072652233e-06,
+    "proved": true,
+    "tolerance": 1.142432573266746,
+    "residual": 0.2422837740095399,
+    "metrics": {
+     "ss_income_today": 1045772.5555555557,
+     "federal_income_tax_today": 377553.63534861675,
+     "ltcg_tax_today": 584.5322166125854,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 12207.997609045457,
+     "ss_withheld_today": 4463.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     768
+    ]
+   },
+   "68y5m/66y0m": {
+    "status": "solved",
+    "seconds": 188.41866326332092,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116173.27,
+    "gap": 9.622177972598481e-06,
+    "proved": true,
+    "tolerance": 1.117839879598736,
+    "residual": 0.2580454537295813,
+    "metrics": {
+     "ss_income_today": 1062773.3333333335,
+     "federal_income_tax_today": 373154.30478274287,
+     "ltcg_tax_today": 586.5869534876169,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11778.994175205427,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     792
+    ]
+   },
+   "68y5m/67y0m": {
+    "status": "solved",
+    "seconds": 254.17287755012512,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 116018.87,
+    "gap": 9.992511972199587e-06,
+    "proved": true,
+    "tolerance": 1.1593199474760674,
+    "residual": 0.2951556112559068,
+    "metrics": {
+     "ss_income_today": 1069400.0000000005,
+     "federal_income_tax_today": 371458.95170766686,
+     "ltcg_tax_today": 587.2688454131891,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11782.78585483885,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     804
+    ]
+   },
+   "68y5m/68y0m": {
+    "status": "solved",
+    "seconds": 300.4275813102722,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115951.04,
+    "gap": 9.95329376306206e-06,
+    "proved": true,
+    "tolerance": 1.1540947632525596,
+    "residual": 0.3229011265814889,
+    "metrics": {
+     "ss_income_today": 1078024.0000000002,
+     "federal_income_tax_today": 370575.88481013256,
+     "ltcg_tax_today": 587.5692514609639,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11784.447846572444,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     816
+    ]
+   },
+   "68y5m/69y0m": {
+    "status": "solved",
+    "seconds": 632.1305062770844,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115695.22,
+    "gap": 9.964742448586426e-06,
+    "proved": true,
+    "tolerance": 1.1528730698325453,
+    "residual": 0.29057012274750044,
+    "metrics": {
+     "ss_income_today": 1083960.0,
+     "federal_income_tax_today": 366401.96716641984,
+     "ltcg_tax_today": 947.7573726510709,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11781.4996903817,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     828
+    ]
+   },
+   "68y5m/70y0m": {
+    "status": "solved",
+    "seconds": 520.940539598465,
+    "method": "branch-and-bound (SS, IRMAA, ACA, LTCG, NIIT, senior bonus)",
+    "used": "branch-and-bound",
+    "highs_runs": 2,
+    "highs_statuses": [
+     "Optimal"
+    ],
+    "time_limit_runs": 0,
+    "node_limit_runs": 0,
+    "value": 115453.67,
+    "gap": 9.978044650663819e-06,
+    "proved": true,
+    "tolerance": 1.1520018743430058,
+    "residual": 0.39900916396800024,
+    "metrics": {
+     "ss_income_today": 1087208.0000000002,
+     "federal_income_tax_today": 364088.8266154921,
+     "ltcg_tax_today": 952.6292941354177,
+     "niit_today": 0.0,
+     "payroll_tax_today": 50724.47832461029,
+     "state_tax_today": 0.0,
+     "medicare_today": 129044.4036587112,
+     "aca_today": 11791.39647532797,
+     "ss_withheld_today": 0.0,
+     "final_bequest_today": 823000.0001852168
+    },
+    "ages": [
+     821,
+     840
+    ]
+   }
+  }
+ }
+]

@@ -2522,6 +2522,35 @@ the narrower rule keeps today's behaviour there. The `min(rel_tol, gap)` cap was
 out of the issue: it would not remove one keep in the repro. The fork itself is not patched
 (`work_sweep.py` passes `relTol` = gap, which bounds plans to 2 x gap).
 
+**Sticky-gap issue reviewed** (2026-10-26, on `claude/affectionate-goldberg-l0wd1l`; probes
+`fork-notes/phase5/sticky_default_probe.py` and `sticky_iter_probe.py`, outputs `*_2026-10-26.txt`,
+stock `dev` `4dcfabb`, HiGHS):
+
+- **Confirmed:** the repro reproduces to the cent on stock and patched (re-run, same day); the patch
+  applies on `4dcfabb`; the refusal test fails on stock and passes patched; the mechanism matches
+  the code (`_sticky_tol` = `rel_tol` = max(5e-5, gap/300); `requested` reads the same `gap` key that
+  `_run_highs` and `_mosekSolve` read, including the 3e-3 default `solve()` writes into the options
+  when Medicare is a MILP). The refusal costs one loop iteration in each of the three cases (3 vs 2).
+- **Corrected in the issue:** "at the default gaps relTol is far inside the gap and nothing changes".
+  A keep leaves the gap whenever HiGHS's gap plus the tie's cost exceeds the request, and HiGHS stops
+  within 0.4% of its gap (0.9706-0.9981 at 1e-5, 0.9961-0.9999 at 1e-4 on the four cases). The
+  reason small gaps differ is how often ties happen: none in the four cases at 1e-4 (stock and
+  patched identical), one across the 19 examples at their own options (`Case_robin`, kept, within
+  3e-3). So the patch refuses almost any tie that happens; whether MOSEK's ties in joe, jack+jill and
+  avery+quinn survive depends on how close MOSEK stops to 3e-3 (not measurable here). The issue now
+  names the `min(rel_tol, gap)` cap as the fallback if the maintainer's MOSEK run fails.
+- **Patch tests:** `test_a_tie_keeps_the_previous_binaries` passed `{}` with a 2e-3 gap, so under the
+  patch it kept its tie through the stopped-above-the-gap branch (requested 1e-4), not the normal one;
+  it now passes `{"gap": 3e-3}`, and a new test covers the stopped-above branch (7 passed patched).
+- **Repro script:** its `RUNS` list and `_run_highs` wrapper were module state never reset, correct
+  only because each of the four workers took one case; now per case and restored. Iterations counted.
+- **Not in the issue (pre-existing, upstream):** `_stickyPrev` is set before
+  `_repairInconsistentYears`, and the repair returns the gap it was given. In pat-stops-2027
+  68y3m/62y1m (`highs_gap_probe`), the repair took the kept plan back to the new plan's objective
+  (-33266.563), so the reported 1.434e-5 overstated that plan's 9.95e-6 (still a valid bound). In the
+  issue's four cases no repair improved, so their gaps are the plans' own. Anchoring the tie after the
+  repair changed nothing in them (`sticky_iter_probe` "anchor").
+
 **relTol equal to the gap, measured** (2026-10-26, `fork-notes/phase5/reltol_probe.py`, output
 `reltol_probe_2026-10-26.txt`; `reltol_check.py`, `reltol_check_2026-10-26.txt`): the 15 plans of the
 branch-and-bound dry run that matter here (the 12 whose reported gap exceeded 1e-5, and each

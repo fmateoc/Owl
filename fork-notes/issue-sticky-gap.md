@@ -39,10 +39,10 @@ With `breakpointMethod="branch-and-bound"` and a `gap` tighter than the loop's `
 default), the accepted plan can be outside the requested gap even though every HiGHS run met it.
 On `Case_chris+pat.toml` as shipped, adding only `breakpointMethod="branch-and-bound", gap=1e-5`:
 
-| | largest gap HiGHS reported | accepted `solverGap` | sticky keeps |
-|---|---:|---:|---:|
-| `dev` `4dcfabb` | 9.706e-06 | **1.833e-05** | 1 |
-| with the patch | 9.942e-06 | 9.942e-06 | 0 |
+| | largest gap HiGHS reported | accepted `solverGap` | sticky keeps | loop iterations |
+|---|---:|---:|---:|---:|
+| `dev` `4dcfabb` | 9.706e-06 | **1.833e-05** | 1 | 2 |
+| with the patch | 9.942e-06 | 9.942e-06 | 0 | 3 |
 
 **Why.** `_stickyBinaries` (from `6250a5b0`) keeps the previous iteration's binaries when the LP with
 them pinned is within `_sticky_tol` of the new plan, and `_sticky_tol` is the loop's `rel_tol`
@@ -63,10 +63,11 @@ asked for is not the bound they get: at `gap=1e-5` a plan is guaranteed only to 
 patch has a time cost where it refuses a keep: each of those three solves took one more loop
 iteration (3 instead of 2).
 
-**Proposed fix** (patch attached, `plan.py` only, plus two tests in `test_sticky_binaries.py`): keep
-the tie unless it would take a plan the solver proved within the requested gap outside it. When the
-solve itself stopped above the requested gap (a node or time limit), the tie is kept as today, so the
-loop keeps its convergence aid where it matters most.
+**Proposed fix** (patch attached: `plan.py`, three tests in `test_sticky_binaries.py`, and the gap it is
+about passed to `test_a_tie_keeps_the_previous_binaries`): keep the tie unless it would take a plan
+the solver proved within the requested gap outside it. When the solve itself stopped above the
+requested gap (a node or time limit), the tie is kept as today, so the loop keeps its convergence aid
+where it matters most.
 
 ```python
 kept_gap = gap
@@ -82,12 +83,12 @@ if gap is None or gap < 0 or gap > requested or kept_gap <= requested:
 Repro (stock examples, `breakpointMethod="branch-and-bound", gap=1e-5`; chris+pat as shipped, then
 with `setACA(20, start_year=2029)` at three pairs of claiming ages):
 
-| case | stock: HiGHS max gap / `solverGap` / keeps / value | patched: HiGHS max gap / `solverGap` / keeps / value |
+| case | stock: HiGHS max gap / `solverGap` / keeps / iterations / value | patched: the same |
 |---|---|---|
-| chris+pat as shipped | 9.706e-06 / **1.833e-05** / 1 / 114,325.86 (103 s) | 9.942e-06 / 9.942e-06 / 0 / 114,327.09 (142 s) |
-| SLCSP 20, ages 67/63 | 9.872e-06 / **1.968e-05** / 1 / 113,450.58 (141 s) | 9.872e-06 / 9.867e-06 / 0 / 113,451.71 (220 s) |
-| SLCSP 20, ages 70/63 | 9.976e-06 / **1.935e-05** / 1 / 113,361.62 (215 s) | 9.981e-06 / 9.981e-06 / 0 / 113,362.69 (313 s) |
-| SLCSP 20, ages 68.5/63 | 9.834e-06 / 9.720e-06 / 0 / 113,542.48 (132 s) | 9.834e-06 / 9.720e-06 / 0 / 113,542.48 (137 s) |
+| chris+pat as shipped | 9.706e-06 / **1.833e-05** / 1 / 2 / 114,325.86 (106 s) | 9.942e-06 / 9.942e-06 / 0 / 3 / 114,327.09 (136 s) |
+| SLCSP 20, ages 67/63 | 9.872e-06 / **1.968e-05** / 1 / 2 / 113,450.58 (145 s) | 9.872e-06 / 9.867e-06 / 0 / 3 / 113,451.71 (208 s) |
+| SLCSP 20, ages 70/63 | 9.976e-06 / **1.935e-05** / 1 / 2 / 113,361.62 (220 s) | 9.981e-06 / 9.981e-06 / 0 / 3 / 113,362.69 (300 s) |
+| SLCSP 20, ages 68.5/63 | 9.834e-06 / 9.720e-06 / 0 / 2 / 113,542.48 (137 s) | 9.834e-06 / 9.720e-06 / 0 / 2 / 113,542.48 (130 s) |
 
 Values are the `maxSpending` basis in today's \$/yr; every HiGHS run ended "Optimal"; four solves ran
 at a time on 4 cores, so the times are relative.

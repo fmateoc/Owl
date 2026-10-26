@@ -24,11 +24,13 @@ Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, r
   on 12 of 84 chris+pat plans at --gap 1e-5): HiGHS stops within --gap, but the branch-and-bound
   loop's sticky binaries (upstream `6250a5b0`) may keep the previous iteration's plan when it is
   within the loop's relTol (5e-5 by default) of HiGHS's, and re-express the bound against it
-  (`highs_gap_probe.py`). So --gap alone bounds the plan to --gap + relTol. An unproved plan is
-  also scored by local search and the better of the two kept, labelled by the method that
-  produced it. On chris+pat branch-and-bound at 1e-5
-  beat local search by $15-74/yr on all 6 plans checked, in 94-288 s each
-  (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other cases.
+  (`highs_gap_probe.py`). So --gap alone bounds the plan to --gap + relTol; the script passes
+  relTol = --gap (2026-10-26, the user's call), which bounds it to 2 x --gap (on 15 chris+pat
+  plans it changed nothing: `reltol_probe_2026-10-26.txt`). An unproved plan is also scored by
+  local search and the better of the two kept, labelled by the method that produced it. On
+  chris+pat branch-and-bound at 1e-5 beat local search by $15-74/yr on all 6 plans checked, in
+  94-288 s each (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other
+  cases.
 - "ls": local search at fixed ages, its time caps raised (--ls-time, --ls-step-time) so its node
   limits decide; scores carry search noise.
 
@@ -275,7 +277,7 @@ def _score_bb(diconf, dirname, ages, cfg):
     _HIGHS_RUNS.clear()
     p, _ = make_plan(diconf, dirname, ages)
     opts = base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
-                        gap=cfg["gap"], maxTime=cfg["max_time"])
+                        gap=cfg["gap"], relTol=cfg["gap"], maxTime=cfg["max_time"])
     t0 = time.time()
     p.solve(p.objective, opts)
     out = _solved(p, t0)
@@ -294,6 +296,7 @@ def _score_bb(diconf, dirname, ages, cfg):
     out.update({
         "value": p._objectiveValue(p.objective), "gap": float(p.solverGap),
         "residual": p._fixedPointResidualTotal(),
+        "sticky_tol": getattr(p, "_sticky_tol", None),
         "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
     })
     return _prove(out)
@@ -585,7 +588,8 @@ def main():
     log(f"work_sweep.py, {date.today().isoformat()}, owlplanner {owl.__version__} from {owl.__file__}")
     log(f"case {args.case}, variants {args.variants}, jobs {args.jobs}, passes {args.passes}, "
         f"decider {DECIDER[args.decider]}"
-        + (f" (gap {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search for unproved plans)"
+        + (f" (gap {args.gap:.0e}, relTol {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search "
+           f"for unproved plans)"
            if args.decider == "bb" else "")
         + f", localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s")
     for name, _, _, sets in variants:

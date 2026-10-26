@@ -116,7 +116,7 @@ with `fork-notes/phase5/work_sweep.py`, not with `owlcli compare`: claiming ages
 two-stage method of `fork-notes/plan-review-2026-10-22.md` §3.2 (decision R1). The script runs a
 `withSSAges` search under the exact LP (ACA optimized when `slcsp_annual > 0`) and under the loop,
 then scores the whole-year ages 62-70 and both picks at fixed ages by branch-and-bound at gap
-1e-5 (`--decider bb`, the default since 2026-10-26; `--decider ls` for local search), which
+1e-5, with the loop's `relTol` equal to the gap (`--decider bb`, the default since 2026-10-26; `--decider ls` for local search), which
 decides. A direct `owlcli run` of the template's `withSSAges = "optimize"` with
 `withMedicare = "optimize"` makes every candidate a branch-and-bound MIP under HiGHS.
 

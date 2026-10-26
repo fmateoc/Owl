@@ -2522,8 +2522,10 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
   move by \$0.00 and +\$1.13/yr (within tolerance); the second took one more iteration (216 s vs
   149 s).
 - So on chris+pat `relTol` = gap costs nothing measured and tightens the worst-case bound from
-  gap + 5e-5 to 2 x gap (\$6.5/yr to \$2.2/yr), but changed no plan. Not adopted in
-  `work_sweep.py` yet (the user's call).
+  gap + 5e-5 to 2 x gap (\$6.5/yr to \$2.2/yr), but changed no plan. **Adopted** the same day
+  (the user's call): `work_sweep.py` passes `relTol` = `--gap` to every branch-and-bound score and
+  records `sticky_tol` per plan; checked on the part-time decided plan (\$116,248.30, gap
+  9.96e-6, proved, `sticky_tol` 1e-5, 82 s), as in the dry run.
 - **Correction to the 2026-10-25 dry run:** "the exact LP's Chris pick (68y3m) is 3-4 months
   early, \$8-99/yr" was local search's noise: under branch-and-bound 68y3m is within tolerance of
   the best Chris age in base, Pat-stops-2027 and mid-2028, and costs \$0-2/yr everywhere; the

@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-25)
+# Owl fork — progress (as of 2026-10-26)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -41,6 +41,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). |
+| #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified here); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. Not fixed upstream yet (`dev` = `main` = `4dcfabb`). Fork not patched; merge the maintainer's fixes |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2590,6 +2591,21 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Upstream issues #229-#232 checked (2026-10-26, on `claude/clever-hypatia-6l8txj`)
+
+Four issues by `rationalpiper`, filed today, all on code that came from our PRs (the derived
+earnings `_earnings_test_inputs`, read by the payroll tax and the earnings test; the earnings
+test's exempt amounts and spousal charging). Texts read through the fetch tool (summaries; the
+GitHub API and github.com answer 403 for upstream here). Every number in the four repros reproduced with
+our own script (`fork-notes/upstream-229-232/check_229_232.py`, output saved next to it; #231's
+318.77 comes out 318.78). No claim found wrong; the 2027 exempt amounts (91 FR 67380) could not be
+fetched (federalregister.gov does not resolve, ssa.gov 403). Our own test
+`test_earnings_are_the_wages_before_pre_tax_deferrals` pins #229's gate, which keeps a spousal IRA out
+of earnings, so #229's first fix needs its second (401(k) and IRA separately). A condition scan of
+the 19 examples finds none in #229's or #232's situation; #231 reaches every plan built from
+2027-01-01. Fork not patched: merge the maintainer's fixes; patch first only if the step-6 sweep
+must run on household inputs that meet a condition (README "Effect on the fork").
 
 ## `main` fast-forwarded to `claude/affectionate-goldberg-l0wd1l` (2026-10-26)
 

@@ -1,0 +1,22 @@
+owlplanner from <fork checkout>/src/owlplanner/__init__.py
+
+#229
+  23,500 all to 401k               earnings       0.00  payroll      0.00  law  1,797.75
+  23,501, 23,500 to 401k           earnings  23,501.00  payroll  1,797.83  law  1,797.83
+  7,000 all to deductible IRA      earnings       0.00  payroll      0.00  law    535.50
+  7,001, 7,000 to IRA              earnings   7,001.00  payroll    535.58  law    535.58
+
+#230
+  103,500, 23,500 deferred         earnings 103,500.00  payroll  7,917.75  law  7,917.75  diff    0.00
+  same + 6,000 employer match      earnings 109,500.00  payroll  8,376.75  law  7,917.75  diff  459.00
+  80,000 + 7,000 nondeductible IRA earnings  87,000.00  payroll  6,655.50  law  6,120.00  diff  535.50
+
+#231
+  get_exempt_amounts 2026/2027/2030: [(24480.0, 65160.0), (24480.0, 65160.0), (24480.0, 65160.0)]
+  plan 2027, under FRA, $40,000        withheld Owl  7,760.00  published  7,220.00  diff  540.00
+  plan 2027, FRA Sep 2027, $110,000    withheld Owl  2,724.00  published  1,804.00  diff  920.00
+  plan 2026, $40,000 in 2027 @2.5%: Owl - right =  234.72 (2027 $); '2027 added as is' - right = -318.78
+
+#232
+  W $60,000: due  32,460.00  paid  13,889.89 + withheld  17,760.00 =  31,649.89  missing   810.11  (spousal 593.33 -> 733.33, 26 crediting months)
+  W $70,000: due  32,760.00  paid   8,618.69 + withheld  22,760.00 =  31,378.69  missing 1,381.31  (spousal 593.33 -> 766.67, 32 crediting months)

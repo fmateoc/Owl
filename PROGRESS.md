@@ -42,6 +42,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). |
 | #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified here); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. Not fixed upstream yet (`dev` = `main` = `4dcfabb`). Fork not patched; merge the maintainer's fixes |
+| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2591,6 +2592,29 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Upstream issues #234 and #235 checked (2026-10-26, on `claude/clever-hypatia-6l8txj`)
+
+The #231 comment (`fork-notes/issue-231-comment.md`) was posted by the user. Two more issues
+by `rationalpiper`, read through the fetch tool (summaries):
+
+- **#234**, upstream's `_netSurplusRoundTrip` (`8bd1f3d`): the worksheet nets a taxable sale
+  and rebuy in years with no federally taxed gains, while `Q_n`, the state tax and the cost
+  basis follow the gross flows. The fixed `eta` split can force the round trip, and local
+  search starts from the netted `w_ijn`. All code claims are valid by reading. The numbers
+  could not be reproduced: horizons, rates, allocations and objective are not given, and our
+  rebuilt case had no surplus. Scan of the 19 examples (`scan234.py`): only jack+jill nets,
+  $118,626 in 2034/2036/2038, basis tracked, Tennessee (no state tax). The hidden round trip
+  there is a 0% gain harvest whose basis step-up the worksheet does not show.
+  Household: the template has `eta = 0.5` and a cost basis, and NY taxes gains. On the real
+  runs, record the netted amounts and run `eta` as a sensitivity.
+- **#235**, our earnings test: no pre-plan history (grace year used, months withheld, the
+  December check). This is the premise our docstring states, so the issue is a feature
+  request. Owl's numbers reproduced (`check235.py`: 1,408.33 / 15,491.67, 12 ARF months; 16,900
+  with 0); the law's arithmetic checked; the CFR/USC text recalled, not reread. Household:
+  only once someone has claimed before a plan's start year.
+
+No fork change; take the maintainer's fixes.
 
 ## Earnings-test property tests; #231 comment drafted (2026-10-26, on `claude/clever-hypatia-6l8txj`)
 

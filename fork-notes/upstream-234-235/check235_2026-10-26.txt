@@ -1,0 +1,3 @@
+case 1 (works Jan-Jun 2026 for 80,000): paid by payment year {2026: np.float64(1408.33), 2027: np.float64(15491.67), 2028: np.float64(16900.0)} ARF months 12 excess 2026 27760
+cases 2-3 (no plan-year work): paid {2026: np.float64(16900.0), 2030: np.float64(16900.0), 2031: np.float64(16900.0)} ARF months 0
+monthly at 62y1m: 1408.33  with 6 crediting months from FRA: 1458.33  12: 1508.33  24: 1611.11

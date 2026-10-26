@@ -2593,6 +2593,32 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `work_sweep.py`: netting record and deposit-split check (2026-10-26, on `claude/clever-hypatia-6l8txj`)
+
+The user's call after #234.
+
+- **Netting record:** every scored plan records what `_netSurplusRoundTrip` nets per year, in
+  today's $: the amount, the hidden gain (amount x gain coefficient x equity share, the part of
+  `Q_n` the displayed flows miss) and that year's state tax. A per-worker wrapper keeps the
+  record on the plan object, so a state that local search restores carries its own record.
+- **Deposit-split check:** for couples, the decided ages are scored again at each `--eta`
+  (default 0 and 1) with the same decider. The report gives the change against the case's split,
+  "resolved" only when both plans are proved and the difference is beyond their tolerances. The
+  ages are not re-decided.
+- Both appear as report sections and in `--json` (`netting` per cell, `eta` per row).
+  `--report-from` reads older JSON without them.
+
+**Mechanics check** on jack+jill (`work_sweep_jack+jill.json`, ages fixed, `--no-loop --gap 3e-3
+--max-time 120`, log `work_sweep_jack+jill_mechanics_2026-10-26.txt`, 19:55):
+
+- Decided plan: branch-and-bound stopped on time, so local search's 111,038.88 was kept. It nets
+  $3,260 in 2036, hiding $77 of gain, basis tracked, no state tax (TN). The loop's plan had netted
+  $118,626 over three years (scan of 2026-10-26), so the netting depends on which plan is solved.
+- Eta 0 gives -28.63 (local search, unproved) and eta 1 gives -86.12 (branch-and-bound,
+  proved); neither nets anything. No verdict: the base is unproved.
+- The first attempt, at gap 1e-5 with --max-time 600, did not finish one plan in 40 min and was
+  stopped. jack+jill is slow under branch-and-bound here; chris+pat took 94-288 s per plan.
+
 ## Upstream issues #234 and #235 checked (2026-10-26, on `claude/clever-hypatia-6l8txj`)
 
 The #231 comment (`fork-notes/issue-231-comment.md`) was posted by the user. Two more issues

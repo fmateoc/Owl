@@ -1,0 +1,44 @@
+work_sweep.py, 2026-10-26, owlplanner 2026.10.26 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+case examples/Case_jack+jill.toml, variants <scratch>/jj.json, jobs 3, passes 2, decider branch-and-bound (gap 3e-03, relTol 3e-03, maxTime 120s per MIP; local search for unproved plans), localSearchTime 7200s, localSearchStepTime 1800s, eta check 0.00, 1.00
+  base: (no overrides)
+
+== base
+  (a) exact-LP search: solved, ages 70y0m/62y1m (1s)
+  (c) branch-and-bound at fixed ages:
+  deposit split at the decided ages (539s): case's 0.50; 0.00 -> 111,010.25, 1.00 -> 110,952.76
+
+Decided by branch-and-bound; objective = annual spending, today's $/yr. Taxes and premiums: lifetime, today's $.
+variant                           ages    objective   vs first    tol  spread              (a) cost (b) cost  by
+base                       70y0m/62y1m   111,038.88       0.00      -       -                     0        -  local search
+
+tol: the decided plan's proved tolerance (gap x objective); spread: deepest dip among local-search
+scores (none when every score is proved). (a)/(b) cost: decided objective less the score at that
+search's pick.
+
+variant                    federal     state   payroll  Medicare       ACA SS withheld    SS paid    bequest
+base                       206,291         0    41,587   129,044         0      12,719  1,259,939    400,000
+
+Round-trip netting (#234): taxable sale and rebuy the worksheet nets away; today's $.
+variant                      netted  hidden gain  years (netted / hidden gain / state tax that year)
+base                          3,260           77  2036: 3,260 / 77 / 0  [1 of 1 scored plans net something]
+
+Deposit split (eta) at the decided ages: objective change against the case's split (ages not
+re-decided). resolved = beyond the two plans' proved tolerances.
+  base                  eta 0.00: -28.63 (not proved; netted 0); eta 1.00: -86.12 (not proved; netted 0)
+
+Scores per sweep (* = not proved: local search's score or an unproved branch-and-bound):
+  base: 1 plans scored
+
+Scored plans not proved by branch-and-bound: base 70y0m/62y1m
+  of which a MIP stopped on time: base 70y0m/62y1m
+  of which a MIP stopped at the node limit: none
+  of which local search's score was kept: base 70y0m/62y1m
+Local-search scores where its default caps (300 s / 60 s) would have bound: base 70y0m/62y1m
+Local-search scores that spent the raised time budget: none
+Scored plans not solved: none
+Total 1192s.
+
+real	19m54.590s
+user	25m12.985s
+sys	0m2.591s
+EXIT 0

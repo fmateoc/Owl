@@ -1,6 +1,7 @@
 # Draft upstream issue: the sticky-binaries tie can take a plan outside a requested MIP gap
 
-Status: **draft, not filed** (2026-10-26). Found while deciding claiming ages by branch-and-bound at
+Status: **filed by the user as #233** (2026-10-26), the text below the `---` line as reviewed (patch first,
+the `min(rel_tol, gap)` cap as the fallback). Drafted 2026-10-26. Found while deciding claiming ages by branch-and-bound at
 `gap=1e-5` in the fork's work sweep (PROGRESS.md "Why the reported gap exceeds `mip_rel_gap`",
 "relTol equal to the gap, measured"). Every number below comes from stock upstream `dev` `4dcfabb`,
 run 2026-10-26 (plans start today, so a later run can move by dollars):

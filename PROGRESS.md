@@ -40,6 +40,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
+| #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2551,6 +2552,9 @@ stock `dev` `4dcfabb`, HiGHS):
   (-33266.563), so the reported 1.434e-5 overstated that plan's 9.95e-6 (still a valid bound). In the
   issue's four cases no repair improved, so their gaps are the plans' own. Anchoring the tie after the
   repair changed nothing in them (`sticky_iter_probe` "anchor").
+
+**Filed as #233** (2026-10-26, by the user), lead with the patch, the cap as the fallback (the
+user's call). The fork itself stays unpatched; `work_sweep.py` passes `relTol` = gap.
 
 **relTol equal to the gap, measured** (2026-10-26, `fork-notes/phase5/reltol_probe.py`, output
 `reltol_probe_2026-10-26.txt`; `reltol_check.py`, `reltol_check_2026-10-26.txt`): the 15 plans of the

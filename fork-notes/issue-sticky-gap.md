@@ -27,9 +27,9 @@ the maintainer's MOSEK run of `test_pathological_cases_settle` fails with the pa
 default run unchanged but bounds the plan only to 2 x gap; on the 15 fork plans measured it changed
 nothing (every keep was within 1e-5 of HiGHS's plan, `reltol_probe_2026-10-26.txt`), and in the repro
 it would not remove a single keep (measured on three of the four cases, which are in the reltol
-probe; inferred for "as shipped"). Patch or cap first is the user's call: the patch guarantees the
-requested gap but may cost MOSEK its convergence aid; the cap carries no such risk and guarantees
-less.
+probe; inferred for "as shipped"). Decided 2026-10-26 (user): lead with the patch, which guarantees
+the requested gap but may cost MOSEK its convergence aid; keep the cap, which carries no such risk
+and guarantees less, as the fallback.
 
 ---
 

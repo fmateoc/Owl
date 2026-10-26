@@ -2538,7 +2538,8 @@ stock `dev` `4dcfabb`, HiGHS):
   patched identical), one across the 19 examples at their own options (`Case_robin`, kept, within
   3e-3). So the patch refuses almost any tie that happens; whether MOSEK's ties in joe, jack+jill and
   avery+quinn survive depends on how close MOSEK stops to 3e-3 (not measurable here). The issue now
-  names the `min(rel_tol, gap)` cap as the fallback if the maintainer's MOSEK run fails.
+  names the `min(rel_tol, gap)` cap as the fallback if the maintainer's MOSEK run fails. The user's
+  call (2026-10-26): lead with the patch, keep the cap as the fallback, as the draft stands.
 - **Patch tests:** `test_a_tie_keeps_the_previous_binaries` passed `{}` with a 2e-3 gap, so under the
   patch it kept its tie through the stopped-above-the-gap branch (requested 1e-4), not the normal one;
   it now passes `{"gap": 3e-3}`, and a new test covers the stopped-above branch (7 passed patched).

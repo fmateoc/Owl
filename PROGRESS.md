@@ -2594,6 +2594,11 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
+
+The user's call: `main` moves from `7e4b7df` to this branch, adding the #236 check against the
+household's deposit split (`fork-notes/upstream-236/`) and the api.govinfo.gov note. Docs only.
+
 ## #236 checked against the household's deposit split (2026-10-27, on `claude/determined-goodall-f5yxft`)
 
 The user's question. Details, table and rerun steps: `fork-notes/upstream-236/README.md`

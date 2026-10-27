@@ -23,7 +23,7 @@ household's three places.
 `fetch.sh <new dir>` downloads every file used; `rates.py`, `attrs.py`, `slcsp.py`,
 `rates2026.py` rebuild the tables (run them from that directory; they need pandas, xlrd,
 openpyxl). Output of the run from a fresh download: `slcsp_2026-10-27.txt`;
-`silver_region4_2027.csv` is the ranked list. Downloads are not committed (about 200 MB unpacked).
+`silver_region4_2027.csv` is the ranked list (gold: section "Gold plans"). Downloads are not committed (about 200 MB unpacked).
 
 ## What the filings say (verified in the files)
 
@@ -97,8 +97,48 @@ plans (`063`, `064`, `046`, `050`) that have no 2027 rate (0 in Exhibit 23's 202
 absent from the approved-rates template). 2026 benchmark: 868.20 (`dep26`: `25303NY0020001`) or
 846.86 (`all`: `064`, an age-29 twin), couple 20,837 or 20,325 per year. The 2027 benchmark is
 **+21.4%** (`dep26`) or +16.7% (`all`) over 2026, against the market's +6.0% average: the
-benchmark plan itself rose 8.46% (868.20 -> 941.66), the rest is Fidelis dropping its cheapest
+2026 benchmark plan itself rose 8.46% (868.20 -> 941.66), the rest is Fidelis dropping its cheapest
 silver plans.
+
+## Gold plans (added 2026-10-27, the user's question)
+
+`metal.py Gold` and `rates2026.py fx/unz Gold`; output `gold_2026-10-27.txt`, ranked list
+`gold_region4_2027.csv` (on and off exchange; Aetna Life and UHIC included: their applications
+list Queens and Westchester in Region 4).
+
+**Standard design 2027** (NY standardizes it; same table in Fidelis's and HIP's applications,
+HIP labels the amounts "(single)"):
+
+| | Platinum | Gold | Silver | Bronze |
+|---|---|---|---|---|
+| Deductible | $0 | $1,200 | $3,750 | $5,025 |
+| Out-of-pocket maximum | $4,000 | $12,000 | $12,000 | $12,000 |
+| PCP / specialist | $15 / $35 | $25 / $40 | $30 / $65 | $50 / $75 |
+| Inpatient, per admission | $500 | $1,000 | $1,500 | $1,500 |
+| AV (HIP) | 91.88% | 81.99% | 71.76% | 64.98% |
+
+Gold and silver share the $12,000 out-of-pocket maximum: gold buys a lower deductible and
+copays, not a lower worst case. Non-standard plans (`std` = Non-Standard) have their own designs,
+not read here.
+
+**Lowest gold premiums, 2027, monthly, dependents to 26** (approved rates):
+
+| Plan | Exchange | Single | Couple | Westchester | Queens |
+|---|---|---|---|---|---|
+| Fidelis `25303NY0030001` (standard) | on | 1,219.05 | 2,438.10 | 1 | 1 |
+| MetroPlus `11177NY0080001` (standard) | on | 1,242.19 | 2,484.38 | - | 2 |
+| Fidelis `25303NY0550001` (non-standard) | on | 1,246.01 | 2,492.02 | 2 | 3 |
+| Healthfirst `91237NY0020011` (standard) | on | 1,309.89 | 2,619.78 | 3 | 5 |
+| Anthem HP `41046NY0010006` (standard) | on | 1,316.96 | 2,633.92 | 4 | 6 |
+
+The most expensive gold (dependents to 26) in Region 4 is UHIC's off-exchange `54297NY0060002` at
+1,998.32 single; Oscar's standard gold is 1,610.76, HIP's 1,762.33, UHC's 1,910.72.
+
+**Against silver (couple, per year):** the cheapest gold costs 29,257 in 2027, **+3,969** over
+the `dep26` benchmark (25,288) and +6,657 over the cheapest silver (22,600). In 2026 (Exhibit 23
+in-force rates: Fidelis `25303NY0030001` 1,123.85 single, the lowest exchange gold in the Region 4 filings) it was
+26,972, +6,136 over that year's benchmark (20,837): the gap narrows in 2027 because the
+benchmark jumps (silver discontinuations) while this gold plan rises 8.47%.
 
 ## For Owl
 
@@ -106,6 +146,12 @@ silver plans.
   in 2026: **20.84** (in the template since 2026-10-27, the user's call) (`dep26`, 2026 rates) or 20.32 (`all`). Owl grows it with `_medical_n(gamma_n)` (inflation, or
   `setMedicalInflation`'s rate; `plan.py`, the `acaVals` call), so the 2027 jump above inflation is not represented; entering the
   2027 benchmark deflated one year is the conservative alternative (25.29 nominal 2027).
+- **Buying gold:** Owl prices the marketplace as the benchmark (net cost min(SLCSP, applicable
+  percentage x MAGI), `tax_federal.acaCosts`), so a gold plan's extra premium over the benchmark
+  is not in the model. The credit does not depend on the plan bought, so the extra is the same
+  at every income while the credit is below the gold premium: 3.97k/yr for the couple at 2027
+  rates, 6.14k at 2026 rates. To model gold, add it as a `medical` budget line (premiums are
+  medical expenses for the itemized claims), ending when Medicare starts.
 - **Lone enrollee (verified in the code, `data/aca_age_rating.py:110`, used at
   `tax_federal.py:722` and `:725`):** when one spouse is on Medicare, Owl prices the other's
   benchmark as `f(younger) / (3.000 + f(younger))` of the couple's (CMS age curve). Under NY's

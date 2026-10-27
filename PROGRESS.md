@@ -2617,6 +2617,11 @@ The user's question (the R6 input SLCSP). Details, sources and rerun steps:
 - The user's call: the template takes `dep26`, `slcsp_annual = 20.84`
   (`fork-notes/phase0/Case_us.template.toml`); `phase0-scenarios.md` runs 25.29 (2027) as the
   sensitivity.
+- Gold plans (the user's question, same day; `metal.py`, README "Gold plans"): standard gold
+  2027 deductible $1,200, out-of-pocket max $12,000 (silver $3,750 / $12,000; Fidelis and HIP
+  tables). Cheapest gold in both counties: Fidelis `25303NY0030001`, 1,219.05/mo single, couple
+  29,257/yr, +3,969 over the benchmark (2026: +6,136). Owl prices the benchmark only; gold's extra
+  would go in as a `medical` budget line.
 
 ## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
 

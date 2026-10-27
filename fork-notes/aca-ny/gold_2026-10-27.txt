@@ -1,0 +1,59 @@
+
+== Westchester: Gold plans, dependents to 26, approved 2027 monthly rates
+         carrier           plan  single  couple    on          std hsa non_ehb
+           NYQHC 25303NY0030001 1219.05 2438.10  True     Standard  No      No
+           NYQHC 25303NY0550001 1246.01 2492.02  True Non-Standard  No     Yes
+Healthfirst_PHSP 91237NY0020011 1309.89 2619.78  True     Standard  No      No
+       Anthem_HP 41046NY0010006 1316.96 2633.92  True     Standard  No     Yes
+       Anthem_HP 41046NY0020018 1317.98 2635.96 False     Standard  No     Yes
+Healthfirst_PHSP 91237NY0020081 1365.86 2731.72  True Non-Standard  No     Yes
+Healthfirst_PHSP 91237NY0020056 1368.36 2736.72  True Non-Standard  No     Yes
+          MVP_HP 56184NY0200009 1512.63 3025.26  True Non-Standard Yes      No
+           Oscar 74289NY2770020 1536.32 3072.64  True Non-Standard  No     Yes
+          MVP_HP 56184NY0140014 1542.30 3084.60  True     Standard  No      No
+          MVP_HP 56184NY0150018 1548.62 3097.24  True Non-Standard  No      No
+          MVP_HP 56184NY0200015 1558.01 3116.02 False Non-Standard Yes     Yes
+          MVP_HP 56184NY0150120 1585.01 3170.02 False Non-Standard  No      No
+          MVP_HP 56184NY0140024 1588.57 3177.14 False     Standard  No     Yes
+          MVP_HP 56184NY0150040 1594.61 3189.22 False Non-Standard  No      No
+          MVP_HP 56184NY0150030 1595.08 3190.16 False Non-Standard  No     Yes
+           Oscar 74289NY2770004 1610.76 3221.52  True     Standard  No     Yes
+      Aetna_Life 17210NY0120018 1611.53 3223.06 False Non-Standard  No      No
+          MVP_HP 56184NY0150122 1632.56 3265.12 False Non-Standard  No     Yes
+          MVP_HP 56184NY0150042 1642.45 3284.90 False Non-Standard  No     Yes
+             HIP 88582NY4890001 1762.33 3524.66  True     Standard  No      No
+             UHC 54235NY0010003 1910.72 3821.44  True     Standard  No     Yes
+            UHIC 54297NY0060002 1998.32 3996.64 False     Standard  No     Yes
+
+== Queens: Gold plans, dependents to 26, approved 2027 monthly rates
+         carrier           plan  single  couple    on          std hsa non_ehb
+           NYQHC 25303NY0030001 1219.05 2438.10  True     Standard  No      No
+       MetroPlus 11177NY0080001 1242.19 2484.38  True     Standard  No      No
+           NYQHC 25303NY0550001 1246.01 2492.02  True Non-Standard  No     Yes
+       MetroPlus 11177NY0220001 1277.73 2555.46  True Non-Standard  No     Yes
+Healthfirst_PHSP 91237NY0020011 1309.89 2619.78  True     Standard  No      No
+       Anthem_HP 41046NY0010006 1316.96 2633.92  True     Standard  No     Yes
+       Anthem_HP 41046NY0020018 1317.98 2635.96 False     Standard  No     Yes
+Healthfirst_PHSP 91237NY0020081 1365.86 2731.72  True Non-Standard  No     Yes
+Healthfirst_PHSP 91237NY0020056 1368.36 2736.72  True Non-Standard  No     Yes
+           Oscar 74289NY2770020 1536.32 3072.64  True Non-Standard  No     Yes
+           Oscar 74289NY2770004 1610.76 3221.52  True     Standard  No     Yes
+      Aetna_Life 17210NY0120018 1611.53 3223.06 False Non-Standard  No      No
+             HIP 88582NY4890001 1762.33 3524.66  True     Standard  No      No
+             UHC 54235NY0010003 1910.72 3821.44  True     Standard  No     Yes
+            UHIC 54297NY0060002 1998.32 3996.64 False     Standard  No     Yes
+
+== 2026 in-force Region 4 rates, exchange gold plans (Exhibit 23)
+         carrier           hios16             prev child_age  rate2026
+           NYQHC 25303NY003000101 25303NY003000101        26   1123.85
+           NYQHC 25303NY057000101 25303NY057000101        26   1124.27
+           NYQHC 25303NY055000101 25303NY055000101        26   1148.70
+           NYQHC 25303NY017000101 25303NY017000101        30   1179.96
+           NYQHC 25303NY058000101 25303NY058000101        30   1180.41
+           NYQHC 25303NY056000101 25303NY056000101        30   1206.05
+       MetroPlus 11177NY008000101 11177NY008000101        26   1238.96
+Healthfirst_PHSP 91237NY002001101 91237NY002001101        26   1246.04
+Healthfirst_PHSP 91237NY002001201 91237NY002001201        30   1258.44
+       MetroPlus 11177NY022000101 11177NY022000101        26   1270.98
+       MetroPlus 11177NY008000201 11177NY008000201        30   1276.94
+Healthfirst_PHSP 91237NY002008101 91237NY002008101        26   1299.29

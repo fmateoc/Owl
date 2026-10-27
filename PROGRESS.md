@@ -2594,6 +2594,13 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/determined-goodall-f5yxft` (2026-10-27)
+
+The user's call: `main` moves from `92e49bd` (`claude/clever-hypatia-6l8txj`) to this branch:
+upstream `dev` `07b9a77` merged (#229-#232 fixed upstream, the fork's strict xfails removed,
+`employer ctrb` in the household HFP generator; suite 3588 passed, 1 skipped), #236 and the
+issue states recorded, and the 2027 figures checked against 91 FR 67380.
+
 ## 2027 figures checked against 91 FR 67380 (2026-10-27, on `claude/determined-goodall-f5yxft`)
 
 The notice "Cost-of-Living Increase and Other Determinations for 2027" (SSA, document

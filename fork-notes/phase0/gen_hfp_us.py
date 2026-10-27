@@ -24,6 +24,17 @@ earnings only in a year with wages or a 401k deferral (otherwise it is taken as 
 working (the grace year); 0 or blank means 12 in a year with wages.
 'big-ticket items' (negative = outflow) and 'other inc' (negative = an above-the-line deduction,
 e.g. an HSA contribution without wages, upstream #225) are the only signed columns.
+
+The Budget sheet starts with two lines, read only under spending_profile = "budget":
+'gold over benchmark' (medical, essential): the cheapest gold plan's premium over the silver
+benchmark for the couple, 2027 NY Rating Region 4 approved rates (Fidelis gold 25303NY0030001
+2,438.10/mo vs Anthem silver 41046NY0010004 2,107.36/mo, x 12 = 3,969; fork-notes/aca-ny/README.md,
+"Gold plans"). Owl prices the marketplace at the benchmark, so this is the extra for buying gold.
+2027-2028: both on the marketplace (aca_start_year 2027); survivor 50, one adult pays half the
+couple's rate. 2029: the template's dates (A born in January, B in December 1964) leave B alone on
+the marketplace for about 11 months, so half the couple's extra x 11/12 = 1,819; survivor 100.
+Redo both lines when the real dates and aca_start_year are in. Amounts in 2027 dollars entered
+as today's (2026): about one year of inflation high.
 """
 
 import sys
@@ -38,12 +49,17 @@ COLUMNS = [
     "taxable ctrb", "401k ctrb", "employer ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb", "HSA ctrb",
     "Roth conv", "Roth conv fixed", "QCD", "big-ticket items",
 ]
-# Household sheets, headers only (rows are added per scenario; see phase0-scenarios.md, section 5).
+# Household sheets: headers, and BUDGET_LINES in Budget (more rows per scenario; phase0-scenarios.md, section 5).
 HOUSE_SHEETS = {
     "Debts": ["active", "name", "type", "year", "term", "amount", "rate", "property"],
     "Fixed Assets": ["active", "name", "type", "year", "basis", "value", "rate", "yod", "commission"],
-    "Budget": ["active", "name", "type", "year", "end", "amount", "rate", "survivor"],
+    "Budget": ["active", "name", "type", "year", "end", "amount", "rate", "survivor", "essential"],
 }
+# Lines written into the Budget sheet (see the docstring).
+BUDGET_LINES = [
+    [True, "gold over benchmark", "medical", 2027, 2028, 3969, 0, 50, True],
+    [True, "gold over benchmark, B alone", "medical", 2029, 2029, 1819, 0, 100, True],
+]
 
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "otherFiles/HFP_us.xlsx")
 if out.exists():
@@ -58,12 +74,17 @@ for name in NAMES:
     for year in YEARS:
         ws.append([year] + [0] * (len(COLUMNS) - 1))
 for sheet, columns in HOUSE_SHEETS.items():
-    wb.create_sheet(sheet).append(columns)
+    ws = wb.create_sheet(sheet)
+    ws.append(columns)
+    if sheet == "Budget":
+        for line in BUDGET_LINES:
+            ws.append(line)
 wb.save(out)
 
 print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
 print("Fill in: anticipated wages (as in AGI, upstream #221) and months worked (the year work stops) for the working years;")
 print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
-print("         Budget sheet (spending_profile = \"budget\"): core spending plus rent / property tax / insurance /")
+print("         Budget sheet (spending_profile = \"budget\"): has the 'gold over benchmark' lines (2027-29); add core,")
+print("         rent / property tax / insurance /")
 print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")
 print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")

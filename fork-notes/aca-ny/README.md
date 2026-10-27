@@ -150,8 +150,11 @@ benchmark jumps (silver discontinuations) while this gold plan rises 8.47%.
   percentage x MAGI), `tax_federal.acaCosts`), so a gold plan's extra premium over the benchmark
   is not in the model. The credit does not depend on the plan bought, so the extra is the same
   at every income while the credit is below the gold premium: 3.97k/yr for the couple at 2027
-  rates, 6.14k at 2026 rates. To model gold, add it as a `medical` budget line (premiums are
-  medical expenses for the itemized claims), ending when Medicare starts.
+  rates, 6.14k at 2026 rates. In the household's HFP (since 2026-10-27, the user's call):
+  `fork-notes/phase0/gen_hfp_us.py` writes two essential `medical` Budget lines, 3,969 in
+  2027-2028 and 1,819 in 2029 (B alone for about 11 months under the template's dates), read
+  only under `spending_profile = "budget"` (premiums are medical expenses for the itemized
+  claims).
 - **Lone enrollee (verified in the code, `data/aca_age_rating.py:110`, used at
   `tax_federal.py:722` and `:725`):** when one spouse is on Medicare, Owl prices the other's
   benchmark as `f(younger) / (3.000 + f(younger))` of the couple's (CMS age curve). Under NY's

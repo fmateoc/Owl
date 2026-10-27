@@ -221,8 +221,11 @@ first and last calendar years (`end` 0 = through the plan end; negative counts b
 housing types). A line whose positive `end` is before its start adds nothing and draws a warning.
 With a move, split the housing lines at the move year.
 
-One HFP workbook per variant (`gen_hfp_us.py` writes empty `Debts`, `Fixed Assets` and `Budget`
-sheets), with the same non-housing lines in each:
+One HFP workbook per variant (`gen_hfp_us.py` writes empty `Debts` and `Fixed Assets` sheets and a
+`Budget` sheet holding two essential `medical` lines, "gold over benchmark": 3,969 in 2027-2028
+and 1,819 in 2029 for B alone, the cheapest gold plan's premium over the silver benchmark;
+`fork-notes/aca-ny/README.md`, "Gold plans"; drop them for a silver plan), with the same
+non-housing lines in each:
 
 - **Rent** (`HFP_us_rent.xlsx`): `core` (and any car, travel, care lines) + one `rent` line.
 - **Buy with cash** (`HFP_us_buy_cash.xlsx`): the same non-housing lines + owner's lines

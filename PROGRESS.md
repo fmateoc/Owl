@@ -2622,6 +2622,12 @@ The user's question (the R6 input SLCSP). Details, sources and rerun steps:
   tables). Cheapest gold in both counties: Fidelis `25303NY0030001`, 1,219.05/mo single, couple
   29,257/yr, +3,969 over the benchmark (2026: +6,136). Owl prices the benchmark only; gold's extra
   would go in as a `medical` budget line.
+- The user's call: `gen_hfp_us.py` now writes it into the Budget sheet, essential `medical` lines
+  "gold over benchmark" 3,969 (2027-2028, survivor 50) and "..., B alone" 1,819 (2029, half x
+  11/12 from the template's December birth date, survivor 100). Checked on a scratch copy of the
+  template (budget profile, stand-in core line and balances): medical by year 0 / 3,969 / 3,969 /
+  1,819 / 0, all essential; the plan solves. Read only under `spending_profile = "budget"`: the
+  template's `flat` runs ignore them and warn "The Budget sheet is not used".
 
 ## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
 

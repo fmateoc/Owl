@@ -51,7 +51,9 @@ social_security_ages = [ 67.0, 67.0, ]    # default: claim at FRA; scenarios var
 
 [aca_settings]
 # Pre-65 marketplace premiums. withACA does nothing while slcsp_annual is 0.
-slcsp_annual = 0.0                       # TODO: county benchmark Silver premium, household, $k/yr
+# 2026 NY Rating Region 4 benchmark (Yonkers, Westchester, NYC alike): Fidelis 25303NY0020001,
+# 868.20/mo single x 2 x 12, age-29 twins not counted ("dep26"); fork-notes/aca-ny/README.md.
+slcsp_annual = 20.84                     # household benchmark Silver premium, $k/yr, today's $
 aca_start_year = 2027                    # first year without employer coverage
 
 [rates_selection]

@@ -2614,6 +2614,9 @@ The user's question (the R6 input SLCSP). Details, sources and rerun steps:
 - NY is community rated (couple = 2.000 x single on every family-tier row): Owl's lone-enrollee
   share from the CMS age curve (0.43-0.49 for a younger spouse 55-62) is 0.5 here. Small for
   the household (both born 1964); not filed.
+- The user's call: the template takes `dep26`, `slcsp_annual = 20.84`
+  (`fork-notes/phase0/Case_us.template.toml`); `phase0-scenarios.md` runs 25.29 (2027) as the
+  sensitivity.
 
 ## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
 

@@ -331,8 +331,14 @@ Pre-65 marketplace premiums come from `aca_settings.slcsp_annual` (household ben
 premium, $k/yr, today's dollars). `withACA` does nothing while it is 0. Medicare, including IRMAA,
 is priced endogenously by `withMedicare = "optimize"`.
 
+The template carries 20.84: the 2026 Region 4 benchmark, the same for Yonkers, the rest of
+Westchester and NYC (`fork-notes/aca-ny/README.md`, reading `dep26`). The 2027 benchmark is
+21.4% higher (25.29 in 2027 dollars, so slightly high as a today's-dollar input), well above
+inflation, because Fidelis drops its cheapest silver
+plans; Owl grows the input with inflation only, so run that as a sensitivity:
+
 ```bash
-owlcli compare otherFiles/Case_us.toml --set aca_settings.slcsp_annual=18.0
+owlcli compare otherFiles/Case_us.toml --set aca_settings.slcsp_annual=25.29
 ```
 
 ## IRMAA $218k threshold
@@ -342,7 +348,7 @@ needs the Phase 6 sweep.
 
 ## Checklist
 
-- [ ] Fill in `otherFiles/Case_us.toml` TODOs (names, dates of birth, balances as of `start_date`, basis, PIAs, SLCSP)
+- [ ] Fill in `otherFiles/Case_us.toml` TODOs (names, dates of birth, balances as of `start_date`, basis, PIAs; SLCSP is in the template, 20.84)
 - [ ] Keep `basic_info.names` and the HFP sheet names identical
 - [ ] Fill in `otherFiles/HFP_us.xlsx` (2026 wages as they enter AGI: pay minus pre-tax 401k, deductible IRA and payroll HSA contributions, each after-tax contribution from pay offset by a negative big-ticket item, upstream #221; Budget lines)
 - [ ] Fill in `otherFiles/HFP_us_2027.xlsx` for the work-one-more-year variant

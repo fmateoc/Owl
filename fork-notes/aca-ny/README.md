@@ -102,8 +102,8 @@ silver plans.
 
 ## For Owl
 
-- `aca.slcsp_annual` is today's dollars, household benchmark, in $k. With the plan starting in
-  2026: **20.84** (`dep26`, 2026 rates) or 20.32 (`all`). Owl grows it with `_medical_n(gamma_n)` (inflation, or
+- `aca_settings.slcsp_annual` is today's dollars, household benchmark, in $k. With the plan starting
+  in 2026: **20.84** (in the template since 2026-10-27, the user's call) (`dep26`, 2026 rates) or 20.32 (`all`). Owl grows it with `_medical_n(gamma_n)` (inflation, or
   `setMedicalInflation`'s rate; `plan.py`, the `acaVals` call), so the 2027 jump above inflation is not represented; entering the
   2027 benchmark deflated one year is the conservative alternative (25.29 nominal 2027).
 - **Lone enrollee (verified in the code, `data/aca_age_rating.py:110`, used at

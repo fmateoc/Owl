@@ -853,7 +853,8 @@ def test_zero_earnings_couple_with_survivor_matches_today():
 
 
 def test_exempt_amounts_table_projection():
-    """RS 02501.025 D: 2024-2026 chart; later years held at the last known amount."""
+    """RS 02501.025 D: 2024-2026 chart, 2027 from 91 FR 67380; later years held at the last
+    known nominal amount."""
     a26 = ss.get_exempt_amounts(2026)
     assert a26.annual == pytest.approx(24_480.0)
     assert a26.annual_fra == pytest.approx(65_160.0)
@@ -872,10 +873,33 @@ def test_exempt_amounts_table_projection():
     assert a24.monthly == pytest.approx(1_860.0)
     assert a24.monthly_fra == pytest.approx(4_960.0)
 
-    # Projection: later years hold the last known amount (today's dollars).
+    a27 = ss.get_exempt_amounts(2027)
+    assert a27.annual == pytest.approx(25_560.0)
+    assert a27.annual_fra == pytest.approx(67_920.0)
+    assert a27.monthly == pytest.approx(2_130.0)
+    assert a27.monthly_fra == pytest.approx(5_660.0)
+
+    # Projection: later years hold the last known nominal amount.
     a30 = ss.get_exempt_amounts(2030)
-    assert a30.annual == pytest.approx(24_480.0)
-    assert a30.monthly == pytest.approx(2_040.0)
+    assert a30.annual == pytest.approx(25_560.0)
+    assert a30.monthly == pytest.approx(2_130.0)
+
+
+def test_plan_exempt_amounts_are_deflated_not_reinflated():
+    """#231: a plan in 2026 dollars reads 2027's published amount deflated by 2027's factor, and
+    holds it flat in real terms after; a plan starting in 2027 reads it as its own dollars; one
+    starting after the table takes the last amount as its first year's dollars (a floor)."""
+    g = np.array([1.0, 1.025, 1.025**2, 1.025**3])
+    e26 = ss.plan_exempt_for_year(2026, g, 3)
+    assert e26(2026).annual == pytest.approx(24_480.0)
+    assert e26(2027).annual == pytest.approx(25_560.0 / 1.025)
+    assert e26(2028).annual_fra == pytest.approx(67_920.0 / 1.025)
+    assert e26(2025).annual == pytest.approx(23_400.0)  # before the plan: nominal
+    e27 = ss.plan_exempt_for_year(2027, g, 3)
+    assert e27(2027).annual == pytest.approx(25_560.0)
+    assert e27(2029).annual == pytest.approx(25_560.0)
+    e30 = ss.plan_exempt_for_year(2030, g, 3)
+    assert e30(2030).annual == pytest.approx(25_560.0)
 
 
 # --------------------------------------------------------------------------------------
@@ -1235,3 +1259,31 @@ def test_spousal_crediting_months_stop_at_the_auxiliarys_fra():
     own = 800 * (0.8 - 0.05 * 23 / 12)
     spousal = 700 * (1 - 5 / 144)
     assert res.zeta_in[0, 8] == pytest.approx(12 * (own + spousal))
+
+
+@pytest.mark.parametrize("wage, arf_sp", [(60_000.0, 26), (70_000.0, 32)])
+def test_worker_charge_after_spouse_fra_is_at_the_adjusted_add_on(wage, arf_sp):
+    """#232: the spouse's add-on from their FRA month is the ARF-adjusted one (404.412(b)), and a
+    worker still under FRA charges against it (403(b)(1)). Charged at the pre-ARF rate and scaled
+    after, dollars went missing: in payment year 2029, where the worker's excess is used up, the
+    household's paid + withheld now equals the benefits due. Worker born 1963-08, PIA \\$2,400 at
+    62y1m, earning 2026-2030; spouse born 1962-03 (FRA March 2029), PIA \\$400 at 63y10m."""
+    N_n = 8
+    kw = dict(pias=[2400, 400], ages=[62 + 1 / 12, 63 + 10 / 12], yobs=[1963, 1962], mobs=[8, 3], tobs=[15, 15],
+              horizons=[N_n, N_n], N_i=2, N_n=N_n, thisyear=THISYEAR, exempt_for_year=_exempt_2026)
+    earnings = np.zeros((2, N_n))
+    earnings[0, :5] = wage
+    res = ss.earnings_test(earnings_in=earnings, **kw)
+    base = ss.earnings_test(earnings_in=np.zeros((2, N_n)), **kw)
+    assert res.arf_months_spousal[1] == arf_sp  # crediting months: before FRA, as before the fix
+
+    n = 2029 - THISYEAR
+    fra = float(ss.getFRAs(np.array([1962]), np.array([3]), np.array([15]))[0])
+    old = ss.getSpousalFactor(fra, 63 + 10 / 12, False)
+    new = ss.arf_spousal_factor(fra, 63 + 10 / 12, arf_sp, False)
+    add_on = ss.getSpousalBenefits(np.array([2400, 400]))[1] * old
+    # Payment year 2029: checks for December 2028 to November 2029, nine of them from FRA.
+    due = base.zeta_in[:, n].sum() + 9 * add_on * (new / old - 1)
+    assert res.excess_by_year[0, n] < due  # the excess is used up within the year
+    assert res.withheld_in[:, n].sum() == pytest.approx(res.excess_by_year[0, n])
+    assert res.zeta_in[:, n].sum() + res.withheld_in[:, n].sum() == pytest.approx(due, abs=0.01)

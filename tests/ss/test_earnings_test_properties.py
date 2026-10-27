@@ -17,11 +17,13 @@ examples miss (upstream #229, #231, #232 were all found this way):
   withheld depends on that year's nominal earnings and exempt amount, not on the year the
   plan starts (42 U.S.C. 403(f)(8): the amounts are published in nominal dollars).
 
-The cases that fail today are strict xfails naming their upstream issue, so a fix shows up as
-an XPASS to remove. "Due" below is rebuilt from the rule functions (`getSelfFactor`,
-`getSpousalFactor`, `arf_*_factor`), not from the charging code under test. Domain of the
-random households: no death within the plan (equal horizons), no trim, claims between
-eligibility and FRA (no delayed credits), births on the 1st, 2nd or 15th.
+The cases that failed when this file was written were strict xfails naming their upstream
+issue; all three were fixed upstream (2026-10-27: #229 `69d00c7`, #231 `3ea6f0f`, #232
+`d9d0bd0`) and the markers removed. A new known failure goes back under `_known`. "Due"
+below is rebuilt from the rule functions (`getSelfFactor`, `getSpousalFactor`,
+`arf_*_factor`), not from the charging code under test. Domain of the random households:
+no death within the plan (equal horizons), no trim, claims between eligibility and FRA (no
+delayed credits), births on the 1st, 2nd or 15th.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -54,13 +56,8 @@ N_YEARS = 25
 
 
 def _known(issue, reason):
-    """A strict xfail for a property that fails today on upstream issue `issue`."""
+    """A strict xfail for a property that fails today on upstream issue `issue` (none now)."""
     return pytest.mark.xfail(strict=True, raises=AssertionError, reason=f"{issue}: {reason}")
-
-
-XFAIL_229 = _known("#229", "the omega_in > 0 gate drops an all-deferred year's deferral")
-XFAIL_231 = _known("#231", "nominal exempt amounts read as the plan's first-year dollars")
-XFAIL_232 = _known("#232", "the worker's excess is charged on the spouse's pre-ARF add-on")
 
 
 # --------------------------------------------------------------------------------------
@@ -184,7 +181,6 @@ def test_random_households_reach_the_charging_paths():
     assert any(r.excess_by_year[1].sum() > 0 and h[0][1] < h[0][0] // 2 for h, r, _ in hs)
 
 
-@XFAIL_232
 @pytest.mark.parametrize("wage", [60_000, 70_000])
 def test_paid_plus_withheld_is_due_after_the_spouses_fra(wage):
     """#232's two households: W born 1963-08-15, PIA 2,400, claims at 62y1m, earns `wage` in
@@ -210,17 +206,21 @@ def test_withheld_never_exceeds_the_excess(couple):
 # --------------------------------------------------------------------------------------
 
 
-def _earnings(wages, deferral):
+def _earnings(wages, deferral, ira=0.0):
+    """Earnings of a year with `wages`, a 401(k) `deferral` and an `ira` contribution, entered
+    as setContributions does since #229: the 401(k) share in `kappa401k_in`, the
+    tax-deferred sum in `kappa_ijn[:, 1]`."""
     p = owl.Plan(["A"], ["1976-07-01"], [90], "props", verbose=False, logstreams=[io.StringIO()])
     p.omega_in[0, 0] = wages
-    p.kappa_ijn[0, 1, 0] = deferral
+    p.kappa401k_in[0, 0] = deferral
+    p.kappa_ijn[0, 1, 0] = deferral + ira
     return p._earnings_test_inputs()[0][0, 0]
 
 
 @pytest.mark.parametrize(
     "wages, deferral",
     [
-        pytest.param(0, 23_500, marks=XFAIL_229),
+        (0, 23_500),
         (1, 23_500),
         (50_000, 23_500),
         (0, 0),
@@ -232,6 +232,20 @@ def test_a_dollar_of_pay_moves_the_earnings_by_a_dollar(wages, deferral):
     pay too, so earnings = wages + deferral whatever the wages."""
     assert _earnings(wages, deferral) == pytest.approx(wages + deferral)
     assert _earnings(wages + 1, deferral) - _earnings(wages, deferral) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "wages, deferral, expected",
+    [
+        (0, 0, 0.0),  # no pay: a spousal IRA (upstream's rule; pay all to an IRA is missed)
+        (1, 0, 7_001.0),
+        (0, 23_500, 30_500.0),  # a 401(k) deferral is pay
+    ],
+)
+def test_an_ira_contribution_counts_only_in_a_year_with_pay(wages, deferral, expected):
+    """#229's fix (`69d00c7`): an IRA contribution is earnings only beside wages or a 401(k)
+    deferral; without either it is taken as a spousal IRA."""
+    assert _earnings(wages, deferral, ira=7_000) == pytest.approx(expected)
 
 
 # --------------------------------------------------------------------------------------
@@ -274,16 +288,16 @@ def _nominal_withheld_for_2027(monkeypatch, start, inflation, earnings_2027):
     "inflation",
     [
         0.0,
-        pytest.param(0.025, marks=XFAIL_231),
+        0.025,
     ],
 )
 def test_withholding_in_a_tabled_year_does_not_depend_on_the_start_year(monkeypatch, inflation):
-    """With 2027 in the exempt table (the amounts #231 cites; the property needs only that the
-    year is covered), a 2026 plan and a 2027 plan withhold the same nominal amount for 2027's
-    $40,000. The excess (7,220) is below the year's benefit, so the amount withheld is the
-    excess itself and the PIA, entered in each plan's own today's dollars, does not enter. At
-    zero inflation the two dollar bases coincide: that case checks the start-year harness
-    itself."""
+    """With 2027 in the exempt table (upstream's since #231's fix; set here too, since the property
+    needs only that the year is covered), a 2026 plan and a 2027 plan withhold the same nominal
+    amount for 2027's $40,000. The excess (7,220) is below the year's benefit, so the amount
+    withheld is the excess itself and the PIA, entered in each plan's own today's dollars, does
+    not enter. At zero inflation the two dollar bases coincide: that case checks the start-year
+    harness itself."""
     table = dict(ss._EXEMPT_TABLE)
     table[2027] = (25_560.0, 67_920.0)
     monkeypatch.setattr(ss, "_EXEMPT_TABLE", table)

@@ -36,9 +36,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import contextlib
+import datetime
 import glob
 import io
 import os
+import sys
 
 import numpy as np
 import pytest
@@ -286,7 +288,8 @@ def test_earnings_are_the_wages_before_pre_tax_deferrals():
     """The test counts wages before pre-tax deferrals (W-2 box 5), and `anticipated wages` are
     the wages in AGI, net of them (#221): in a year with wages, the earnings add back the
     tax-deferred contributions. After-tax ones (taxable, Roth) are already in the wages, and a
-    payroll HSA is not box 5. Without wages, contributions are not earnings."""
+    payroll HSA is not box 5. Without wages, a 401k deferral is still earnings, having been paid
+    out of wages that all went to it (#229), while an IRA contribution is not (a spousal IRA)."""
     p = _load("chris+pat")
     earnings, months = p._earnings_test_inputs()
     pat, n = 1, int(np.argmax(p.year_n == 2028))
@@ -299,6 +302,10 @@ def test_earnings_are_the_wages_before_pre_tax_deferrals():
     p.kappa_ijn[pat, 3, n] = 5_000.0  # an HSA contribution is not box 5
     assert p._earnings_test_inputs()[0][pat, n] == pytest.approx(p.omega_in[pat, n] + deferred)
     p.omega_in[pat, n] = 0.0
+    earnings, months = p._earnings_test_inputs()
+    assert p.kappa401k_in[pat, n] == pytest.approx(deferred), "test setup: Pat's deferral is a 401k"
+    assert earnings[pat, n] == pytest.approx(deferred) and months[pat, n] == 12
+    p.kappa401k_in[pat, n] = 0.0  # the same amount as an IRA contribution
     earnings, months = p._earnings_test_inputs()
     assert earnings[pat, n] == 0.0 and months[pat, n] == 0
 
@@ -567,3 +574,36 @@ def test_json_output_reports_the_withholding():
     assert s["ss_withheld_nominal"] == round(float(np.sum(p.ss_withheld_in)))
     assert s["ss_withheld_nominal"] > 0  # Jill's 2028
     assert s["ss_withheld_today_dollars"] == round(float(np.sum(p.ss_withheld_in / p.gamma_n[: p.N_n])))
+
+
+def _withheld_for_2027(monkeypatch, start, inflation):
+    """Nominal amount withheld for \\$40,000 of 2027 wages by a plan starting in ``start``. The
+    excess is below the year's benefit, so the PIA's dollar base does not enter."""
+
+    class Day(datetime.date):
+        @classmethod
+        def today(cls):
+            return datetime.date(start, 1, 1)
+
+    with monkeypatch.context() as mp:
+        for name, mod in list(sys.modules.items()):
+            d = getattr(mod, "date", None) if name.startswith("owlplanner") and mod else None
+            if isinstance(d, type) and issubclass(d, datetime.date):
+                mp.setattr(mod, "date", Day)
+        p = owl.Plan(["W"], ["1963-08-15"], [89], "t", verbose=False, logstreams=[io.StringIO()])
+        p.setSocialSecurity([2000], [62 + 1 / 12])  # entitled before either plan
+        p.omega_in[0, 2027 - start] = 40_000
+        gamma = (1 + inflation) ** np.arange(p.N_n + 1)
+        res = p._earningsTestResult(gamma_n=gamma)
+    return float(np.sum(res.withheld_in[0] * gamma[: p.N_n]))
+
+
+@pytest.mark.parametrize("inflation", [0.0, 0.025])
+def test_withholding_in_a_published_year_does_not_depend_on_the_start_year(monkeypatch, inflation):
+    """#231: a year's withholding depends only on its nominal earnings and its published nominal
+    exempt amount, so a plan starting in 2026 and one starting in 2027 withhold the same for 2027
+    (test contributed on the issue)."""
+    early = _withheld_for_2027(monkeypatch, 2026, inflation)
+    late = _withheld_for_2027(monkeypatch, 2027, inflation)
+    assert late == pytest.approx((40_000 - 25_560) / 2, abs=1.0)
+    assert early == pytest.approx(late, abs=1.0)

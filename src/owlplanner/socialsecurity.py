@@ -21,8 +21,8 @@ Limitations and known omissions:
   streams by ``Plan._ss_streams`` in every solve; where it withholds nothing the plan
   keeps ``compute_social_security_benefits``' streams. Assumptions of the rule
   implementation: earnings
-  are spread evenly over ``months worked``; exempt amounts after 2026 are held at the
-  2026 real level (statute indexes them to wages with a two-year lag); years before
+  are spread evenly over ``months worked``; exempt amounts after the last published year (2027)
+  are held at its real level (statute indexes them to wages with a two-year lag); years before
   the plan have no earnings (so anyone entitled before the plan has used their grace
   year); the test is not applied to checks paid from the year of the first death on
   (survivor benefits under the test and the survivor ARF are not modeled),
@@ -64,6 +64,7 @@ __all__ = [
     "validate_survivor_claim_age",
     "ExemptAmounts",
     "get_exempt_amounts",
+    "plan_exempt_for_year",
     "excess_earnings",
     "countable_earnings",
     "is_non_service_month",
@@ -79,6 +80,8 @@ import math
 import numpy as np
 from datetime import date
 from typing import Callable, NamedTuple, Optional, Sequence
+
+from . import utils as u
 
 # SSA-mandated benefit reduction rates (own-benefit and spousal, first 36 months before FRA).
 # Expressed as a per-year rate since 'diff' (fra - ssage) is measured in years.
@@ -832,21 +835,23 @@ def compute_social_security_benefits(
 # fixed function of that month: no LP piece here.
 # --------------------------------------------------------------------------------------
 
-# POMS RS 02501.025 D (TN 55, 11/21/2025). Annual amounts; monthly = annual / 12.
-# After the last known year the amounts are held at that level in today's dollars
-# (statute indexes them to wages with a two-year lag, 404.430(a)(2); Owl has no wage
-# index, so this slightly overstates withholding after 2026).
+# POMS RS 02501.025 D (TN 55, 11/21/2025); 2027 from SSA's notice of 10/26/2026, 91 FR
+# 67380. Annual amounts, each year's nominal dollars; monthly = annual / 12. A plan reads
+# them in its own dollars through plan_exempt_for_year. After the last known year they are
+# held at that level in real terms (statute indexes them to wages with a two-year lag,
+# 404.430(a)(2); Owl has no wage index, so this slightly overstates withholding later on).
 _EXEMPT_TABLE = {
     2024: (22_320.0, 59_520.0),
     2025: (23_400.0, 62_160.0),
     2026: (24_480.0, 65_160.0),
+    2027: (25_560.0, 67_920.0),
 }
 _EXEMPT_TABLE_FIRST_YEAR = min(_EXEMPT_TABLE)
 _EXEMPT_TABLE_LAST_YEAR = max(_EXEMPT_TABLE)
 
 
 class ExemptAmounts(NamedTuple):
-    """Annual earnings-test exempt amounts for one year (today's dollars)."""
+    """Annual earnings-test exempt amounts for one year, in the caller's dollars."""
 
     annual: float
     """Under FRA for the whole year (RS 02501.025 D)."""
@@ -865,11 +870,12 @@ class ExemptAmounts(NamedTuple):
 
 def get_exempt_amounts(year: int, table: Optional[dict] = None) -> ExemptAmounts:
     """
-    Return the earnings-test exempt amounts for ``year`` in today's dollars.
+    Return the earnings-test exempt amounts for ``year`` in that year's nominal dollars.
 
-    Years present in ``table`` (default: the POMS 2024-2026 chart) use those
-    amounts. Later years are projected at the last known amount (held flat in
-    real terms); earlier years use the first known amount (tests only).
+    Years present in ``table`` (default: the published 2024-2027 amounts) use those
+    amounts. Later years hold the last known nominal amount, a floor; earlier years
+    use the first known amount (tests only). A plan, whose earnings are in its first
+    year's dollars, reads them through :func:`plan_exempt_for_year` instead.
     """
     tbl = _EXEMPT_TABLE if table is None else table
     if year in tbl:
@@ -879,6 +885,34 @@ def get_exempt_amounts(year: int, table: Optional[dict] = None) -> ExemptAmounts
     else:
         annual, annual_fra = tbl[min(tbl)]
     return ExemptAmounts(float(annual), float(annual_fra))
+
+
+def plan_exempt_for_year(year0, gamma_n, N_n, table=None) -> Callable[[int], ExemptAmounts]:
+    """
+    Return ``year -> ExemptAmounts`` for a plan whose dollars are those of ``year0``,
+    with inflation factors ``gamma_n`` (1 in ``year0``).
+
+    A plan year in the table takes its nominal amount deflated by that year's factor, so
+    a published amount is not inflated a second time; a later one holds the last amount
+    flat in real terms (u.nominal_by_year). Years outside the plan, which the grace-year
+    scan reads without earnings, take the nominal amount (:func:`get_exempt_amounts`).
+    """
+    tbl = _EXEMPT_TABLE if table is None else table
+    gamma = np.asarray(gamma_n, dtype=float)[:N_n]
+    plan_amounts = u.nominal_by_year(tbl, year0, gamma, N_n) / gamma[:, None]
+
+    def exempt_for_year(year):
+        n = int(year) - int(year0)
+        if 0 <= n < N_n:
+            return ExemptAmounts(float(plan_amounts[n, 0]), float(plan_amounts[n, 1]))
+        return get_exempt_amounts(year, tbl)
+
+    return exempt_for_year
+
+
+def exempt_table_last_year() -> int:
+    """The last year whose exempt amounts are published in the table."""
+    return _EXEMPT_TABLE_LAST_YEAR
 
 
 def countable_earnings(
@@ -1338,11 +1372,6 @@ def earnings_test(
             )
 
     # --- Charge ----------------------------------------------------------------
-    paid_own = own.copy()
-    paid_sp = spousal.copy()
-    withheld_own = np.zeros((N_i, M))
-    withheld_sp = np.zeros((N_i, M))
-
     # Checks paid from the year of the first death on are not charged (docstring).
     survivor_stop = (thisyear + death_year_n) * 12 - 1 if survivor_idx >= 0 and death_year_n < N_n else None
 
@@ -1377,53 +1406,64 @@ def earnings_test(
     # Within each year the workers' excess is charged before any auxiliary's own excess
     # (RS 02501.095); excess never carries into another year, so years are independent.
     order = [i for i in range(N_i) if i not in aux_on] + [i for i in range(N_i) if i in aux_on]
-    for n in range(N_n):
-        for i in order:
-            if excess_by_year[i, n] <= 0:
-                continue
-            idx = [m - g0 for m in _year_months(i, n)]
-            if not idx:
-                continue
-            excess = float(excess_by_year[i, n])
-            if i in aux_on:
-                # Auxiliary's own excess: only their remaining check (RS 02501.095 B.3).
-                remaining = [[paid_own[i, k] + paid_sp[i, k] for k in idx]]
-                w_left, _, _ = charge_excess_months(remaining, excess)
-                for pos, k in enumerate(idx):
-                    take = w_left[0][pos]
-                    tot = paid_own[i, k] + paid_sp[i, k]
-                    if take <= 0 or tot <= 0:
-                        continue
-                    o_share = paid_own[i, k] / tot
-                    withheld_own[i, k] += take * o_share
-                    withheld_sp[i, k] += take * (1.0 - o_share)
-                    paid_own[i, k] -= take * o_share
-                    paid_sp[i, k] -= take * (1.0 - o_share)
-            else:
-                # Worker's excess: the family on i's record (RS 02501.095 B.2).
-                fam_aux = [k for k, rec in aux_on.items() if rec == i]
-                if fam_aux:
-                    j = fam_aux[0]
-                    family = [[paid_own[i, k] for k in idx], [paid_sp[j, k] for k in idx]]
-                    shares = [float(pias[i]), float(spousalBenefits[j])]
-                    if sum(shares) <= 0:
-                        shares = None
+
+    def _charge(own_rate, sp_rate):
+        """Charge every year's excess against these monthly rates: (paid_own, paid_sp,
+        withheld_own, withheld_sp)."""
+        paid_own = own_rate.copy()
+        paid_sp = sp_rate.copy()
+        withheld_own = np.zeros((N_i, M))
+        withheld_sp = np.zeros((N_i, M))
+        for n in range(N_n):
+            for i in order:
+                if excess_by_year[i, n] <= 0:
+                    continue
+                idx = [m - g0 for m in _year_months(i, n)]
+                if not idx:
+                    continue
+                excess = float(excess_by_year[i, n])
+                if i in aux_on:
+                    # Auxiliary's own excess: only their remaining check (RS 02501.095 B.3).
+                    remaining = [[paid_own[i, k] + paid_sp[i, k] for k in idx]]
+                    w_left, _, _ = charge_excess_months(remaining, excess)
+                    for pos, k in enumerate(idx):
+                        take = w_left[0][pos]
+                        tot = paid_own[i, k] + paid_sp[i, k]
+                        if take <= 0 or tot <= 0:
+                            continue
+                        o_share = paid_own[i, k] / tot
+                        withheld_own[i, k] += take * o_share
+                        withheld_sp[i, k] += take * (1.0 - o_share)
+                        paid_own[i, k] -= take * o_share
+                        paid_sp[i, k] -= take * (1.0 - o_share)
                 else:
-                    family = [[paid_own[i, k] for k in idx]]
-                    shares = [float(pias[i])] if pias[i] > 0 else None
-                w_family, _, _ = charge_excess_months(family, excess, shares=shares)
-                for pos, k in enumerate(idx):
-                    withheld_own[i, k] += w_family[0][pos]
-                    paid_own[i, k] = family[0][pos]
+                    # Worker's excess: the family on i's record (RS 02501.095 B.2).
+                    fam_aux = [k for k, rec in aux_on.items() if rec == i]
                     if fam_aux:
-                        withheld_sp[j, k] += w_family[1][pos]
-                        paid_sp[j, k] = family[1][pos]
+                        j = fam_aux[0]
+                        family = [[paid_own[i, k] for k in idx], [paid_sp[j, k] for k in idx]]
+                        shares = [float(pias[i]), float(spousalBenefits[j])]
+                        if sum(shares) <= 0:
+                            shares = None
+                    else:
+                        family = [[paid_own[i, k] for k in idx]]
+                        shares = [float(pias[i])] if pias[i] > 0 else None
+                    w_family, _, _ = charge_excess_months(family, excess, shares=shares)
+                    for pos, k in enumerate(idx):
+                        withheld_own[i, k] += w_family[0][pos]
+                        paid_own[i, k] = family[0][pos]
+                        if fam_aux:
+                            withheld_sp[j, k] += w_family[1][pos]
+                            paid_sp[j, k] = family[1][pos]
+        return paid_own, paid_sp, withheld_own, withheld_sp
 
     # Crediting months (RS 00615.482), counted separately on each record (B.3, NOTE):
     # own record, months with a deduction from the own benefit; spouse record, months
     # with a deduction from the spousal add-on, including the worker's charge (B.2).
     # Only months before the person's FRA count: the ARF is computed once, at FRA, from
     # the reduction months; the worker's excess can still reduce a spousal add-on later.
+    # They come from a first charge on the pre-ARF rates, which those months carry.
+    _, _, withheld_own, withheld_sp = _charge(own, spousal)
     tol = 1e-9
     pre_fra = [max(0, fra_abs[i] - g0) for i in range(N_i)]
     arf_months = np.array(
@@ -1434,18 +1474,26 @@ def earnings_test(
     )
 
     # --- ARF from FRA (RS 00615.480/.482) --------------------------------------
+    # The adjusted benefit is the one entitled from the FRA month (404.412(b)), so a worker's
+    # excess charged against a spouse past FRA is charged at it (403(b)(1)): charge again on
+    # the adjusted rates rather than scale what the first charge left (#232). Charging runs
+    # forward within each year and the rates before FRA are unchanged, so the months before
+    # FRA, and with them the crediting months, are charged as in the first pass.
+    own_arf = own.copy()
+    sp_arf = spousal.copy()
     for i in range(N_i):
         k0 = max(0, fra_abs[i] - g0)
         if arf_months[i] > 0:
             old = getSelfFactor(float(fras[i]), float(ages[i]), born_on_first[i])
             new = arf_self_factor(float(fras[i]), float(ages[i]), int(arf_months[i]), born_on_first[i])
             if old > 0:
-                paid_own[i, k0:] *= new / old
+                own_arf[i, k0:] *= new / old
         if arf_months_sp[i] > 0:
             old = getSpousalFactor(float(fras[i]), spousal_age[i], born_on_first[i])
             new = arf_spousal_factor(float(fras[i]), spousal_age[i], int(arf_months_sp[i]), born_on_first[i])
             if old > 0:
-                paid_sp[i, k0:] *= new / old
+                sp_arf[i, k0:] *= new / old
+    paid_own, paid_sp, withheld_own, withheld_sp = _charge(own_arf, sp_arf)
 
     # --- Aggregate to annual payment-year amounts (check for month a arrives in a+1)
     zeta_in = np.zeros((N_i, N_n))

@@ -1,5 +1,57 @@
 ### Version 2026.10.26
 
+#### Fixed: a worker's earnings charged against a spouse past full retirement age use the adjusted benefit
+
+When a worker still under full retirement age has excess earnings and their spouse, collecting a
+spousal add-on on the worker's record, has passed it, the excess is charged against that add-on.
+From the spouse's FRA month the add-on is the one raised by the adjustment of the reduction
+factor, but **Owl** charged the unadjusted one and then scaled what was left, so dollars were
+neither paid nor withheld: in the case of #232, paid plus withheld fell short of the benefits due
+by \$810.11 (worker earning \$60,000) and \$1,381.31 (\$70,000) in a year. The excess is now
+charged a second time on the adjusted benefits, after the crediting months have been counted from
+the months before FRA, which the second charge leaves unchanged.
+
+#### Fixed: the earnings test's exempt amounts and the payroll wage base are read in the plan's dollars
+
+The exempt amounts are published in each year's nominal dollars, but the earnings test compared
+them with earnings in the plan's first-year dollars, and for a year after the table used the last
+year's nominal amount as if it were in those dollars. That held only for a plan starting in 2026.
+A plan starting in 2027 used 2026's \$24,480 for 2027, and withheld \$540 too much on \$40,000 of
+wages ((40,000 − 24,480)/2 against (40,000 − 25,560)/2). Each published amount is now deflated by
+its year's inflation factor, and held flat in real terms after the last one. The 2027 amounts
+(\$25,560 and \$67,920, SSA notice of Oct. 26, 2026, 91 FR 67380) are added: a plan starting in
+2026 now withholds the same for 2027 as one starting in 2027. The Social Security wage base of the
+payroll tax, a single value held at its 2026 level in today's dollars, is now keyed by year the
+same way, with 2027's \$192,300 from the same notice: at 2.5% inflation, wages above the base in
+2027 pay \$197.63 more than under 2026's base grown with inflation. A plan starting after the last
+published year takes that year's amounts as its own dollars, an understatement, and warns.
+
+#### Fixed: pay that all goes to a 401k is still payroll-taxed earnings
+
+*Anticipated wages* are net of pre-tax contributions, and the earnings that the payroll tax and
+the SSA earnings test read added the year's 401k and IRA contributions back only in a year with
+wages. Pay deferred in full into a 401k, as part-time pay can be at the catch-up limits, carried
+neither tax nor test, and one dollar of wages switched both on for the whole deferral: \$1,798 of
+payroll tax on \$23,500 deferred. A 401k elective deferral is wages for both (26 U.S.C.
+3121(v)(1)(A)), so it now counts with or without other wages. An IRA contribution still counts
+only in a year with pay, the 401k's included: without pay it is taken as a spousal IRA, funded
+by the other spouse. The *401k ctrb* column is kept apart from *IRA ctrb* for this, and a
+workbook saved from a plan now writes both columns instead of their sum under *401k ctrb*. In
+the assistant's tools, a traditional IRA contribution is the new account `"ira"`;
+`"tax_deferred"` is the employee's deferral to an employer plan (401k/403b). An account the
+tools do not recognize is now refused rather than taken as tax-deferred, where a mistyped Roth or
+HSA contribution would have counted as payroll-taxed earnings.
+
+#### New: an *employer ctrb* column for the employer's 401k contributions
+
+The employer's match or profit-sharing contribution had to be entered in *401k ctrb*, beside the
+employee's own deferral, and was therefore counted as earnings, raising the payroll tax by 7.65%
+of it (\$382.50 on a \$5,000 match) and the earnings it tests. It was never wages (26 U.S.C.
+3121(a)(5)(A)). The new HFP column *employer ctrb*, and the assistant's account `"employer"`, put
+it in the same tax-deferred account but leave it out of the earnings. A workbook without the
+column reads it as zero, which keeps its previous meaning, so its absence is not reported; move
+the employer's share out of *401k ctrb* to have it left out. The template carries the column.
+
 #### Fixed: branch-and-bound loops that never settled, although their parameters had
 
 Branch-and-bound returns any plan within its gap of the optimum, 0.3% when Medicare is solved as

@@ -40,6 +40,7 @@ _timeHorizonItems = [
     "net inv",
     "taxable ctrb",
     "401k ctrb",
+    "employer ctrb",
     "Roth 401k ctrb",
     "IRA ctrb",
     "Roth IRA ctrb",
@@ -59,6 +60,11 @@ _optionalTimeHorizonItems = [c for c in _timeHorizonItems if c not in _requiredT
 # derived from other columns (Plan._earnings_test_inputs). An absent one is read as zero
 # like any other but not reported as "treated as zero": most households have no use for it.
 _derivedTimeHorizonItems = ["months worked"]
+
+# Columns whose absence is not reported as "treated as zero": the derived ones, and
+# 'employer ctrb', whose zero leaves the employer's contributions in '401k ctrb' where
+# workbooks older than the column put them.
+_quietTimeHorizonItems = _derivedTimeHorizonItems + ["employer ctrb"]
 
 # Columns holding a flag rather than an amount. They are excluded from the
 # non-negativity check below and coerced to bool on load.
@@ -252,6 +258,11 @@ def derivedTimeHorizonItems():
     return list(_derivedTimeHorizonItems)
 
 
+def quietTimeHorizonItems():
+    """Person-sheet columns whose absence is not reported as "treated as zero"."""
+    return list(_quietTimeHorizonItems)
+
+
 def _normalizeHeader(col):
     """
     Fold a column header for near-miss comparison: case, surrounding and internal
@@ -337,7 +348,7 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
         for col in absent:
             df[col] = 0
         absentCols[iname] = absent
-        zeroed = [col for col in absent if col not in _derivedTimeHorizonItems]
+        zeroed = [col for col in absent if col not in _quietTimeHorizonItems]
         if zeroed:
             mylog.print(
                 f"Column(s) absent from HFP sheet {iname!r}, treated as zero: {zeroed}.",
@@ -680,10 +691,11 @@ def build_hfp_dataframes(plan):
     The full column set is always written, so exporting a workbook that was read
     with optional columns absent fills them in explicitly with zeros.
 
-    Note that the internal arrays merge '401k ctrb' with 'IRA ctrb'
-    (tax-deferred) and 'Roth 401k ctrb' with 'Roth IRA ctrb' (tax-free);
-    the original column split cannot be recovered. Merged amounts are written
-    to the '401k ctrb' and 'Roth IRA ctrb' columns respectively.
+    Note that the internal arrays merge 'Roth 401k ctrb' with 'Roth IRA ctrb'
+    (tax-free); the original column split cannot be recovered and the merged
+    amount is written to the 'Roth IRA ctrb' column. The tax-deferred sum is
+    split back into '401k ctrb', 'employer ctrb' and 'IRA ctrb' from the plan's
+    kappa401k_in and kappaEmployer_in.
 
     Parameters
     ----------
@@ -717,7 +729,11 @@ def build_hfp_dataframes(plan):
             df.at[row, "big-ticket items"] = float(plan.Lambda_in[i, n])
             df.at[row, "QCD"] = float(plan.qcd_in[i, n])
             df.at[row, "taxable ctrb"] = float(plan.kappa_ijn[i, 0, n])
-            df.at[row, "401k ctrb"] = float(plan.kappa_ijn[i, 1, n])
+            df.at[row, "401k ctrb"] = float(plan.kappa401k_in[i, n])
+            df.at[row, "employer ctrb"] = float(plan.kappaEmployer_in[i, n])
+            df.at[row, "IRA ctrb"] = float(
+                plan.kappa_ijn[i, 1, n] - plan.kappa401k_in[i, n] - plan.kappaEmployer_in[i, n]
+            )
             df.at[row, "Roth IRA ctrb"] = float(plan.kappa_ijn[i, 2, n])
             # The array holds the share of the year before Medicare (Plan._setHSAStop); the workbook
             # holds the amount entered, which reading it scales again. Nothing is left to recover
@@ -730,7 +746,11 @@ def build_hfp_dataframes(plan):
         for r in range(lead_in):
             slot = plan.N_n + r
             df.at[r, "taxable ctrb"] = float(plan.kappa_ijn[i, 0, slot])
-            df.at[r, "401k ctrb"] = float(plan.kappa_ijn[i, 1, slot])
+            df.at[r, "401k ctrb"] = float(plan.kappa401k_in[i, slot])
+            df.at[r, "employer ctrb"] = float(plan.kappaEmployer_in[i, slot])
+            df.at[r, "IRA ctrb"] = float(
+                plan.kappa_ijn[i, 1, slot] - plan.kappa401k_in[i, slot] - plan.kappaEmployer_in[i, slot]
+            )
             df.at[r, "Roth IRA ctrb"] = float(plan.kappa_ijn[i, 2, slot])
             df.at[r, "HSA ctrb"] = float(plan.kappa_ijn[i, 3, slot])
             df.at[r, "Roth conv"] = float(plan.myRothX_in[i, slot])
@@ -753,8 +773,8 @@ def time_lists_agree(a, b):
     """
     Check whether two time-list dictionaries represent the same values.
 
-    Columns that are merged in the plan's internal arrays ('401k ctrb' +
-    'IRA ctrb', and 'Roth 401k ctrb' + 'Roth IRA ctrb') are compared as sums.
+    Columns that are merged in the plan's internal arrays ('Roth 401k ctrb' +
+    'Roth IRA ctrb') are compared as sums.
     Used by Plan.saveHFP() to detect time lists that are stale with respect
     to the plan's arrays (e.g., when a plan was populated by writing directly
     into the arrays).
@@ -781,6 +801,9 @@ def time_lists_agree(a, b):
     # Carried by the arrays for every row, the five lead-in years included.
     plainCols = [
         "taxable ctrb",
+        "401k ctrb",
+        "employer ctrb",
+        "IRA ctrb",
         "HSA ctrb",
         "Roth conv",
         "Roth conv fixed",
@@ -794,7 +817,7 @@ def time_lists_agree(a, b):
         "QCD",
         "big-ticket items",
     ]
-    mergedCols = [("401k ctrb", "IRA ctrb"), ("Roth 401k ctrb", "Roth IRA ctrb")]
+    mergedCols = [("Roth 401k ctrb", "Roth IRA ctrb")]
     allCols = plainCols + planOnlyCols + [col for pair in mergedCols for col in pair] + ["year"]
     thisyear = date.today().year
     for iname in a:

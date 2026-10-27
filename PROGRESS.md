@@ -2594,6 +2594,27 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## NY marketplace benchmark for Yonkers, Westchester, NYC (2026-10-27, on `claude/youthful-einstein-nvadcx`)
+
+The user's question (the R6 input SLCSP). Details, sources and rerun steps:
+`fork-notes/aca-ny/README.md` (`fetch.sh`, parsers, output `slcsp_2026-10-27.txt`).
+
+- Source: DFS approved 2027 rate templates and Final Exhibits on `myportal.dfs.ny.gov` (direct
+  links, no login). NYSOH's plan tool not used: it needs a browser cookie session, which the
+  auto-mode classifier refused; `info.nystateofhealth.ny.gov` blocks curl (CloudFront 403).
+- Zip codes 10701, 10603 and 11354 are all Rating Region 4 (5 boroughs, Rockland, Westchester);
+  the two lowest silver plans (Fidelis) are sold in both counties, so all three get the same
+  benchmark.
+- 2027 benchmark, monthly single (couple x2): **1,053.68** (Anthem, if age-29 twins don't count)
+  or 988.67 (Fidelis's age-29 twin, if they do). Couple per year 25,288 / 23,728. Which reading
+  NYSOH uses is not resolved (26 CFR 1.36B-3 read; NYSOH tool or a 1095-A would settle it).
+- 2026: 868.20 / 846.86 (couple 20,837 / 20,325 per year), so Owl's `slcsp_annual` = 20.84
+  (or 20.32). 2027 is +21.4% / +16.7%, against the market's +6.0%: Fidelis drops its four
+  cheapest silver plans.
+- NY is community rated (couple = 2.000 x single on every family-tier row): Owl's lone-enrollee
+  share from the CMS age curve (0.43-0.49 for a younger spouse 55-62) is 0.5 here. Small for
+  the household (both born 1964); not filed.
+
 ## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
 
 The user's call: `main` moves from `7e4b7df` to this branch, adding the #236 check against the

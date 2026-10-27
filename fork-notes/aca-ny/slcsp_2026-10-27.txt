@@ -1,0 +1,40 @@
+
+== Westchester: exchange silver plans, approved 2027 monthly rates
+         carrier           plan  single  couple          std  child_age non_ehb
+           NYQHC 25303NY0020001  941.66 1883.32     Standard       26.0      No
+           NYQHC 25303NY0140001  988.67 1977.34     Standard       30.0      No
+       Anthem_HP 41046NY0010004 1053.68 2107.36     Standard       26.0     Yes
+Healthfirst_PHSP 91237NY0020007 1084.36 2168.72     Standard       26.0      No
+Healthfirst_PHSP 91237NY0020008 1095.23 2190.46     Standard       30.0      No
+       Anthem_HP 41046NY0010014 1098.04 2196.08     Standard       30.0     Yes
+Healthfirst_PHSP 91237NY0020078 1128.11 2256.22 Non-Standard       26.0     Yes
+Healthfirst_PHSP 91237NY0020054 1129.67 2259.34 Non-Standard       26.0     Yes
+   SLCSP [all]: NYQHC 25303NY0140001  single 988.67/mo  couple 1,977.34/mo  = 23,728/yr
+   SLCSP [dep26]: Anthem_HP 41046NY0010004  single 1,053.68/mo  couple 2,107.36/mo  = 25,288/yr
+
+== Queens: exchange silver plans, approved 2027 monthly rates
+         carrier           plan  single  couple      std  child_age non_ehb
+           NYQHC 25303NY0020001  941.66 1883.32 Standard       26.0      No
+           NYQHC 25303NY0140001  988.67 1977.34 Standard       30.0      No
+       Anthem_HP 41046NY0010004 1053.68 2107.36 Standard       26.0     Yes
+       MetroPlus 11177NY0040001 1064.37 2128.74 Standard       26.0      No
+Healthfirst_PHSP 91237NY0020007 1084.36 2168.72 Standard       26.0      No
+Healthfirst_PHSP 91237NY0020008 1095.23 2190.46 Standard       30.0      No
+       MetroPlus 11177NY0040002 1095.61 2191.23 Standard       30.0      No
+       Anthem_HP 41046NY0010014 1098.04 2196.08 Standard       30.0     Yes
+   SLCSP [all]: NYQHC 25303NY0140001  single 988.67/mo  couple 1,977.34/mo  = 23,728/yr
+   SLCSP [dep26]: Anthem_HP 41046NY0010004  single 1,053.68/mo  couple 2,107.36/mo  = 25,288/yr
+
+         carrier           hios16             prev child_age  rate2026
+           NYQHC 25303NY063000101 25303NY063000101        26    806.61
+           NYQHC 25303NY064000101 25303NY064000101        30    846.86
+           NYQHC 25303NY002000101 25303NY002000101        26    868.20
+           NYQHC 25303NY046000101 25303NY046000101        26    890.27
+           NYQHC 25303NY014000101 25303NY014000101        30    911.53
+           NYQHC 25303NY050000101 25303NY050000101        30    934.70
+Healthfirst_PHSP 91237NY002000701 91237NY002000701        26   1031.51
+Healthfirst_PHSP 91237NY002000801 91237NY002000801        30   1041.85
+Healthfirst_PHSP 91237NY002007801 91237NY002007801        26   1073.12
+Healthfirst_PHSP 91237NY002005401 91237NY002005401        26   1074.61
+Healthfirst_PHSP 91237NY002007901 91237NY002007901        30   1083.86
+Healthfirst_PHSP 91237NY002005501 91237NY002005501        30   1085.38

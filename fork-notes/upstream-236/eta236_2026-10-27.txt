@@ -1,0 +1,33 @@
+dec   objective     A split          value     vs 0.5  LP dep A  LP dep B   netted deposit years (yr, dA, dB, s)      s
+exact maxSpending  92   0.0     164,247.88     139.30         0         0        0                                    0
+exact maxSpending  92   0.5     164,108.58       0.00         0         0        0                                    0
+exact maxSpending  92   1.0     164,064.24     -44.34         0         0        0                                    0
+exact maxSpending  92  free     164,131.21      22.63         0         0        0                                    0
+exact maxSpending  85   0.0     170,391.32       0.00         0         0        0                                    0
+exact maxSpending  85   0.5     170,391.32       0.00         0         0        0                                    0
+exact maxSpending  85   1.0     170,391.32       0.00         0         0        0                                    0
+exact maxSpending  85  free     170,391.29      -0.03         0         0        0                                    0
+exact maxBequest   92   0.0   1,971,239.02     415.80    42,618         0        0 2026:42k/0k                        1
+exact maxBequest   92   0.5   1,970,823.22       0.00    21,309    21,309        0 2026:21k/21k                       1
+exact maxBequest   92   1.0   1,956,108.24 -14,714.98         0    42,618        0 2026:0k/42k                        0
+exact maxBequest   92  free   1,970,526.32    -296.90    42,618         0        0 2026:42k/0k                        1
+exact maxBequest   85   0.0   2,127,284.33     453.80    42,618         0        0 2026:42k/0k                        0
+exact maxBequest   85   0.5   2,126,830.53       0.00    21,309    21,309        0 2026:21k/21k                       0
+exact maxBequest   85   1.0   2,126,042.84    -787.69         0    42,618        0 2026:0k/42k                        0
+exact maxBequest   85  free   2,127,284.33     453.80    42,618         0        0 2026:42k/0k                        0
+ls    maxSpending  92   0.0     160,976.84      -2.44         0         0        0                                  252
+ls    maxSpending  92   0.5     160,979.28       0.00         0         0        0                                  230
+ls    maxSpending  92   1.0     160,975.32      -3.96         0         0        0                                  262
+ls    maxSpending  92  free     160,985.80       6.52         0         0        0                                  279
+ls    maxSpending  85   0.0     167,712.42      -5.76         0         0        0                                  143
+ls    maxSpending  85   0.5     167,718.18       0.00         0         0        0                                  160
+ls    maxSpending  85   1.0     167,707.93     -10.25         0         0        0                                  159
+ls    maxSpending  85  free     167,706.26     -11.92         0         0        0                                  218
+ls    maxBequest   92   0.0   1,855,929.87       0.00    11,939         0        0 2055:13k/0k;2056:13k/0k          313
+ls    maxBequest   92   0.5   1,855,929.86       0.00     5,969     5,969        0 2055:6k/6k;2056:6k/6k            339
+ls    maxBequest   92   1.0   1,855,772.72    -157.14         0    11,939        0 2055:0k/13k;2056:0k/13k          351
+ls    maxBequest   92  free   1,856,016.73      86.87         0    11,939        0 2055:0k/13k;2056:0k/13k          317
+ls    maxBequest   85   0.0   2,015,182.02    -512.46         0         0        0                                  371
+ls    maxBequest   85   0.5   2,015,694.48       0.00         0         0        0                                  321
+ls    maxBequest   85   1.0   2,015,221.18    -473.30         0         0        0                                  308
+ls    maxBequest   85  free   2,015,182.02    -512.46         0         0        0                                  304

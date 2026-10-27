@@ -43,7 +43,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77` |
 | #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified then, verified 2026-10-27 from 91 FR 67380); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
 | #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open |
-| #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Not checked here (read through the fetch tool, a summary). Household: `work_sweep.py --eta` already measures the same question |
+| #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Code claim (where `eta` is read) holds. **Checked against the household's structure 2026-10-27** (`fork-notes/upstream-236/README.md`): equal horizons (no survivor phase), so the reporter's mechanism cannot arise; on a stand-in, no deposits under `maxSpending`, at most $157 of bequest (0.008%) under `maxBequest` with local search; the free split does not dominate (noise as large as the effect). Nothing to change; `work_sweep.py --eta` stays as a sensitivity on the real inputs |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2593,6 +2593,37 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## #236 checked against the household's deposit split (2026-10-27, on `claude/determined-goodall-f5yxft`)
+
+The user's question. Details, table and rerun steps: `fork-notes/upstream-236/README.md`
+(script `eta236.py`, output `eta236_2026-10-27.jsonl` / `.txt`).
+
+- Code claim checked by grep: `eta` is read only by `_add_surplus_deposit_linking` and the
+  uncalled `amorepair.deposit_split`, and saved with the case. Holds.
+- Household structure (template): both born 1964, both 92, so equal horizons, `n_d = N_n`, no
+  survivor phase. The reporter's gain comes through a first death within the plan. Both spouses
+  have the same allocation, so while both live the accounts differ only in basis (a loop
+  parameter).
+- Stand-in (template with illustrative balances, gain shares 25% / 60%, 2026 wages), splits
+  0 / 0.5 / 1 / free, horizons 92/92 and 85/92, `maxSpending` and `maxBequest` (120k), local
+  search and exact LP: 32 solves, 19 min.
+  - `maxSpending`: no deposit in any run, so the split cannot matter (spreads: local search
+    up to $12/yr, exact LP up to $139/yr, both noise).
+  - `maxBequest`, local search: deposits only in 2055-56 ($13.5k/yr) at equal horizons, split
+    effect at most $157 (0.008%), free +$87 vs 0.5; none at 85.
+  - The free split scored below 0.5 in three rows although its feasible set contains 0.5: noise
+    as large as the effect.
+  - Exact LP at equal horizons, `eta` = 1: -$14,715, its 2026 deposit going to the 60%-gain
+    account; local search makes no 2026 deposit, so not decision-relevant.
+- Verdict: nothing to change in the case or in `work_sweep.py`; its `--eta` check stays as a
+  sensitivity on the real inputs.
+- A first run was discarded: the pool reused workers, so the free-split patch leaked into later
+  fixed-split jobs (CLAUDE.md gotcha added).
+
+api.govinfo.gov (added to the environment's allow list by the user): answers with `DEMO_KEY`
+(10 requests per hour; one 429 when it ran out). The granule summary for 2026-21796 gives the
+title, NOTICE, 2026-10-26, SSA, and pdf/htm/mods links.
 
 ## `main` fast-forwarded to `claude/determined-goodall-f5yxft` (2026-10-27)
 

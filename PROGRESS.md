@@ -41,7 +41,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77` |
-| #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified here); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
+| #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified then, verified 2026-10-27 from 91 FR 67380); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
 | #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open |
 | #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Not checked here (read through the fetch tool, a summary). Household: `work_sweep.py --eta` already measures the same question |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
@@ -2594,6 +2594,27 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## 2027 figures checked against 91 FR 67380 (2026-10-27, on `claude/determined-goodall-f5yxft`)
+
+The notice "Cost-of-Living Increase and Other Determinations for 2027" (SSA, document
+2026-21796, 91 FR 67380, published 2026-10-26), found through the Federal Register API
+(`https://www.federalregister.gov/api/v1/documents.json?...`, which answers now; the site's
+citation pages and full-text URLs redirect) and read from GovInfo's PDF
+(`https://www.govinfo.gov/content/pkg/FR-2026-10-26/pdf/2026-21796.pdf`, 6 pages, text
+extracted with pypdf). Quoted figures:
+
+- OASDI contribution and benefit base "$192,300 for remuneration paid in 2027"
+  ($60,600 x 72,800.33 / 22,935.42 = $192,353.14, rounded to $192,300; recomputed here: same).
+- Earnings-test monthly exempt amounts for 2027: "$2,130 for beneficiaries who will attain
+  their Normal Retirement Age (NRA) ... after 2027 and $5,660 for those who attain NRA in
+  2027"; annual "$25,560" and "$67,920" ($670 x 72,800.33 / 22,935.42 = $2,126.68 and
+  $2,500 x 72,800.33 / 32,154.82 = $5,660.14; recomputed here: same).
+- 2026 amounts the notice names as current: base $184,500, monthly exempt $2,040 / $5,430
+  (x 12 = 24,480 / 65,160).
+
+All match upstream's tables (`socialsecurity._EXEMPT_TABLE` 2026-2027,
+`tax_federal.payrollWageBase`). No code change.
+
 ## Upstream `dev` `07b9a77` merged: #229-#232 fixed (2026-10-27, on `claude/determined-goodall-f5yxft`)
 
 Upstream `dev` = `main` = `07b9a77`, 7 commits since `4dcfabb`, all 2026-10-27:
@@ -2608,7 +2629,8 @@ Upstream `dev` = `main` = `07b9a77`, 7 commits since `4dcfabb`, all 2026-10-27:
 - `cc5377b` (#230): docs only; a nondeductible IRA is not supported.
 - `3ea6f0f` (#231): exempt amounts and the payroll wage base are nominal tables by year,
   deflated by `gamma`, held flat in real terms after the last year (`utils.nominal_by_year`);
-  2027 added (25,560 / 67,920, wage base 192,300, cited to 91 FR 67380; not verified here);
+  2027 added (25,560 / 67,920, wage base 192,300, cited to 91 FR 67380; verified the same day
+  from the notice, section "2027 figures checked against 91 FR 67380");
   `payrollTax` takes an optional `year0`.
 - `d9d0bd0` (#232): the worker's excess charged on the ARF-adjusted add-on (two passes).
 - `38b16b9` / `64e647f` (PR #237, setup-uv), `07b9a77` (MOSEK bump).

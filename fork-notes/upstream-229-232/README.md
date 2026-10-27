@@ -5,7 +5,7 @@
 in a year with pay, as the spousal-IRA note below asked; employer contributions in a new
 `employer ctrb` column), #230 `cc5377b` (docs: where the match goes; a nondeductible IRA is not
 supported), #231 `3ea6f0f` (nominal tables by year, 2027 added: 25,560 / 67,920 and wage base
-192,300, cited to 91 FR 67380, not verified here), #232 `d9d0bd0` (two-pass charge on the
+192,300, cited to 91 FR 67380; verified 2026-10-27 from the notice's GovInfo PDF, PROGRESS.md "2027 figures checked against 91 FR 67380"), #232 `d9d0bd0` (two-pass charge on the
 ARF-adjusted add-on). The fork's strict xfails in `tests/ss/test_earnings_test_properties.py`
 turned XPASS for #231 and #232 and were removed; #229's case kept failing only because the
 test put the deferral in `kappa_ijn[:, 1]` alone, which upstream now reads as an IRA

@@ -30,6 +30,14 @@ a stochastic method, pin the window or `--seed` and record it with each output.
 owlcli run otherFiles/Case_us.toml
 ```
 
+Spending comes from the HFP Budget sheet (`spending_profile = "budget"` since 2026-10-27; section 5
+for the line format). `gen_hfp_us.py` writes a discretionary `core` line and the two essential
+gold-plan lines. Under the template's `maxSpending`, `core` only sets the shape: the solver scales
+it (the Summary's *Discretionary spending (share of budget)*), so its amount does not change the
+plan; the gold lines are paid at their amounts. With `core` alone the plan is the old `flat` one
+(checked on a stand-in: the same net spending in every year). Under `maxBequest` or with
+`netSpending`, enter the real `core` amount.
+
 `owlcli compare` always runs the case as the base and one variant defined by `--set`; at least one
 `--set` is required. Each block below is one comparison against the baseline.
 
@@ -227,7 +235,8 @@ and 1,819 in 2029 for B alone, the cheapest gold plan's premium over the silver 
 `fork-notes/aca-ny/README.md`, "Gold plans"; drop them for a silver plan), with the same
 non-housing lines in each:
 
-- **Rent** (`HFP_us_rent.xlsx`): `core` (and any car, travel, care lines) + one `rent` line.
+- **Rent** (`HFP_us_rent.xlsx`): `core` (and any car, travel, care lines; `gen_hfp_us.py` writes
+  `core` with a placeholder amount: enter the real one here, `maxBequest` spends it) + one `rent` line.
 - **Buy with cash** (`HFP_us_buy_cash.xlsx`): the same non-housing lines + owner's lines
   (`property tax`, `insurance`, `maintenance`); the price plus closing costs as a negative
   `big-ticket items` amount in the purchase year (one spouse's sheet; nominal $); the home in
@@ -257,7 +266,7 @@ to `otherFiles/Case_us_housing.toml` and in the copy set
 HFP_file_name = "HFP_us_rent.xlsx"
 
 [optimization_parameters]
-spending_profile = "budget"
+spending_profile = "budget"   # already the template's
 objective = "maxBequest"
 
 [solver_options]

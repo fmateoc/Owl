@@ -2628,6 +2628,13 @@ The user's question (the R6 input SLCSP). Details, sources and rerun steps:
   template (budget profile, stand-in core line and balances): medical by year 0 / 3,969 / 3,969 /
   1,819 / 0, all essential; the plan solves. Read only under `spending_profile = "budget"`: the
   template's `flat` runs ignore them and warn "The Budget sheet is not used".
+- The user's call: the template's `spending_profile` is now `"budget"`, and `gen_hfp_us.py` writes a
+  discretionary `core` line (placeholder 100,000, TODO). Checked on a stand-in (balances 500/500
+  taxable, 1,000/800 tax-deferred, PIAs 3,000/2,000; `maxSpending`, fixed ages, exact LP but the
+  ACA loop, which hit its cap in all runs): `flat` and budget with `core` only give the same net
+  spending in every year (max difference 0.0); with the gold lines `core` drops from 155,862 to
+  155,462/yr (today's $), 159,431 in 2027-28, 157,281 in 2029; `core` at 50,000 gives the same
+  plan (scale 3.109 vs 1.555).
 
 ## `main` fast-forwarded again to `claude/determined-goodall-f5yxft` (2026-10-27)
 

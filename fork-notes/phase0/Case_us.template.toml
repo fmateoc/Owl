@@ -76,7 +76,8 @@ type = "individual"
 generic = [ [ [ 60, 40, 0, 0,], [ 60, 40, 0, 0,],], [ [ 60, 40, 0, 0,], [ 60, 40, 0, 0,],],]
 
 [optimization_parameters]
-spending_profile = "flat"               # "budget": built from the HFP Budget sheet (phase0-scenarios.md, section 5)
+spending_profile = "budget"             # built from the HFP Budget sheet (gen_hfp_us.py writes a "core" line and
+                                        # the gold-plan lines; phase0-scenarios.md, sections "Baseline" and 5)
 surviving_spouse_spending_percent = 60
 objective = "maxSpending"
 

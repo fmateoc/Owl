@@ -25,7 +25,11 @@ working (the grace year); 0 or blank means 12 in a year with wages.
 'big-ticket items' (negative = outflow) and 'other inc' (negative = an above-the-line deduction,
 e.g. an HSA contribution without wages, upstream #225) are the only signed columns.
 
-The Budget sheet starts with two lines, read only under spending_profile = "budget":
+The Budget sheet starts with three lines (the template's spending_profile is "budget"):
+'core' (discretionary, from the first year to the plan end, survivor blank = the case's 60%):
+TODO amount, today's spending other than the lines below. Under maxSpending its amount only sets
+the shape (the solver scales it, so the result is the same for any positive amount); under
+maxBequest, or with netSpending, it is the spending: enter the real figure.
 'gold over benchmark' (medical, essential): the cheapest gold plan's premium over the silver
 benchmark for the couple, 2027 NY Rating Region 4 approved rates (Fidelis gold 25303NY0030001
 2,438.10/mo vs Anthem silver 41046NY0010004 2,107.36/mo, x 12 = 3,969; fork-notes/aca-ny/README.md,
@@ -57,6 +61,7 @@ HOUSE_SHEETS = {
 }
 # Lines written into the Budget sheet (see the docstring).
 BUDGET_LINES = [
+    [True, "core", "core", YEARS[0], 0, 100000, 0, None, False],  # TODO amount (see the docstring)
     [True, "gold over benchmark", "medical", 2027, 2028, 3969, 0, 50, True],
     [True, "gold over benchmark, B alone", "medical", 2029, 2029, 1819, 0, 100, True],
 ]
@@ -84,7 +89,7 @@ wb.save(out)
 print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
 print("Fill in: anticipated wages (as in AGI, upstream #221) and months worked (the year work stops) for the working years;")
 print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
-print("         Budget sheet (spending_profile = \"budget\"): has the 'gold over benchmark' lines (2027-29); add core,")
+print("         Budget sheet (spending_profile = \"budget\"): set 'core' (TODO amount), keep or drop the gold lines; add")
 print("         rent / property tax / insurance /")
 print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")
 print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")

@@ -2593,6 +2593,13 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/clever-hypatia-6l8txj` (2026-10-27)
+
+The user's call: `main` moves from `6c7a587` (`claude/affectionate-goldberg-l0wd1l`) to this
+branch: upstream #229-#232 and #234-#235 checked, the earnings-test property tests (suite 3565
+passed, 1 skipped, 4 xfailed), the #231 comment (posted by the user), and the `work_sweep.py`
+netting record and eta check. Upstream `dev` is unchanged at `4dcfabb`.
+
 ## `work_sweep.py`: netting record and deposit-split check (2026-10-26, on `claude/clever-hypatia-6l8txj`)
 
 The user's call after #234.

@@ -1,5 +1,16 @@
 # Upstream issues #229-#232 (filed 2026-10-26): validity and effect on the fork
 
+**Fixed upstream 2026-10-27** (`dev` `07b9a77`, merged into the fork the same day, theirs):
+#229 `69d00c7` (a 401k deferral is earnings with or without wages; an IRA contribution only
+in a year with pay, as the spousal-IRA note below asked; employer contributions in a new
+`employer ctrb` column), #230 `cc5377b` (docs: where the match goes; a nondeductible IRA is not
+supported), #231 `3ea6f0f` (nominal tables by year, 2027 added: 25,560 / 67,920 and wage base
+192,300, cited to 91 FR 67380, not verified here), #232 `d9d0bd0` (two-pass charge on the
+ARF-adjusted add-on). The fork's strict xfails in `tests/ss/test_earnings_test_properties.py`
+turned XPASS for #231 and #232 and were removed; #229's case kept failing only because the
+test put the deferral in `kappa_ijn[:, 1]` alone, which upstream now reads as an IRA
+contribution: the test sets `kappa401k_in` now, and a new case pins the IRA rule.
+
 Checked 2026-10-26 on `claude/clever-hypatia-6l8txj` (= `main`, upstream `dev` `4dcfabb` merged;
 upstream `dev` and `main` are still at `4dcfabb`, so none of the four is fixed yet). All four were filed by
 `rationalpiper` and have no comments yet. All four are about code that came from the fork and landed upstream:

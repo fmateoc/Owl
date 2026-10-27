@@ -7,6 +7,16 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream: #229-#232 fixed (`dev` `07b9a77`, merged 2026-10-27)
+
+Taken as is. A 401k deferral counts as earnings with or without wages, and the employer's
+contributions have their own HFP column, `employer ctrb` (never earnings). Exempt amounts and the
+payroll wage base are nominal tables by year, 2027 included. After the spouse's FRA, the worker's
+excess is charged on the ARF-adjusted add-on. Fork follow-ups: the strict xfails in
+`tests/ss/test_earnings_test_properties.py` removed, the #229 case entering the deferral as
+`kappa401k_in`, a case for the IRA rule, and `employer ctrb` in the household HFP generator
+(`fork-notes/phase0/gen_hfp_us.py`).
+
 ### Upstream: the payroll tax is upstream's (#227, PR #228)
 
 PR #228 landed upstream as `3a2dfc33` (2026-10-25), tree identical to the PR head, followed by

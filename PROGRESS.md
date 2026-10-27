@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-26)
+# Owl fork — progress (as of 2026-10-27)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -40,9 +40,10 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
-| #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). |
-| #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified here); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. Not fixed upstream yet (`dev` = `main` = `4dcfabb`). Fork not patched; merge the maintainer's fixes |
-| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user |
+| #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77` |
+| #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified here); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
+| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open |
+| #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Not checked here (read through the fetch tool, a summary). Household: `work_sweep.py --eta` already measures the same question |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2593,6 +2594,52 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## Upstream `dev` `07b9a77` merged: #229-#232 fixed (2026-10-27, on `claude/determined-goodall-f5yxft`)
+
+Upstream `dev` = `main` = `07b9a77`, 7 commits since `4dcfabb`, all 2026-10-27:
+
+- `69d00c7` (#229): a 401k deferral is earnings with or without wages; an IRA contribution only
+  in a year with wages or a 401k deferral (else a spousal IRA: pay all put in a deductible IRA
+  is still missed, as his docstring says). New arrays `kappa401k_in` and `kappaEmployer_in`
+  beside `kappa_ijn[:, 1]` (their sum, which the LP reads); new HFP column `employer ctrb`
+  (same account, never earnings; absent = zero, not reported); saved workbooks write `401k ctrb`,
+  `employer ctrb` and `IRA ctrb` separately; MCP contributions take `ira` and `employer`.
+- `32df086`: MCP contributions refuse an unknown account (was taken as tax-deferred).
+- `cc5377b` (#230): docs only; a nondeductible IRA is not supported.
+- `3ea6f0f` (#231): exempt amounts and the payroll wage base are nominal tables by year,
+  deflated by `gamma`, held flat in real terms after the last year (`utils.nominal_by_year`);
+  2027 added (25,560 / 67,920, wage base 192,300, cited to 91 FR 67380; not verified here);
+  `payrollTax` takes an optional `year0`.
+- `d9d0bd0` (#232): the worker's excess charged on the ARF-adjusted add-on (two passes).
+- `38b16b9` / `64e647f` (PR #237, setup-uv), `07b9a77` (MOSEK bump).
+
+Merge: no conflicts. `CHANGELOG.md` and `socialsecurity.py` are upstream's byte for byte.
+Fork code reading the changed APIs: none outside upstream's own (grep of `src`, `tests`,
+`fork-notes` for `kappa401k`, `kappaEmployer`, `_earnings_test_inputs`, `payrollTax`).
+
+Trial run before the test changes: 3581 passed, 3 failed, 1 skipped, 1 xfailed. The three
+failures were the strict xfails for #232 (both wages) and #231 (2.5% inflation) turning XPASS.
+The #229 xfail still failed, for a test-setup reason: it put the deferral in `kappa_ijn[:, 1]`
+alone, which upstream now reads as an IRA contribution (0 with no wages, its rule). Checked by
+running `_earnings_test_inputs` with the 401k share set: 0 wages + 23,500 401k -> 23,500.00;
+1 + 23,500 -> 23,501.00; 0 wages + 7,000 IRA -> 0.00; 1 + 7,000 IRA -> 7,001.00.
+
+Fork changes:
+- `tests/ss/test_earnings_test_properties.py`: markers removed (`_known` kept for the next
+  one), `_earnings` sets `kappa401k_in` and takes an `ira` amount, a new
+  `test_an_ira_contribution_counts_only_in_a_year_with_pay` (3 cases).
+- `fork-notes/phase0/gen_hfp_us.py`: `employer ctrb` column (upstream's order) and a note on
+  where the match goes. Household: an employer match must go there, not in `401k ctrb`.
+- `CLAUDE.md` (earnings-test inputs gotcha), `fork-notes/upstream-229-232/README.md`,
+  `fork-notes/CHANGELOG-fork.md`.
+
+Suite: **3588 passed, 1 skipped** (9:16). flake8 clean; Ruff only upstream's three B905.
+
+Issues read the same day through the fetch tool (summaries): new **#236** (LP-chosen spousal
+deposit split, above in the table); #233 self-assigned, label `bug`; #235 follow-up by the
+reporter; #204 the maintainer on cost vs small tax gains. No new PRs besides #237. Discussion
+#177: nothing after 2026-10-12.
+
 ## `main` fast-forwarded to `claude/clever-hypatia-6l8txj` (2026-10-27)
 
 The user's call: `main` moves from `6c7a587` (`claude/affectionate-goldberg-l0wd1l`) to this
@@ -3936,6 +3983,7 @@ and `CHANGELOG.md`. Fork changes needed by the merge, detail in `phase3-plan.md`
 
 ## Test status
 
+2026-10-27, upstream `dev` `07b9a77` merged, xfails removed: **3588 passed, 1 skipped** (9:16). flake8 clean; Ruff only upstream's three B905.
 2026-10-25, #227 PR review fixes ported (Taxes column, two #197 deep tests, `filingStatus_n`): **3541 passed, 1 skipped** (10:18). flake8 clean; Ruff only upstream's three B905. PR branch: 3232 passed, 1 skipped; `-m deep` 5 passed.
 2026-10-25, upstream `dev` `22ce72b` merged and the payroll tax aligned with the #227 PR: **3514 passed, 1 skipped** (8:54; `deep` tests deselected by upstream's `pytest.ini`). flake8 clean; Ruff only upstream's three B905. The PR branch on stock `dev`: 3205 passed, 1 skipped (7:16); `-m deep` 4 passed.
 2026-10-25, the fork's smile dropped: **3492 passed, 1 skipped** (7:14); the 23 fewer are the removed smile tests (15 in `test_smile_start_age.py`, 6 fork tests in `test_spending.py`, 2 schema round-trips of `smile_start_age`), checked by comparing collected test ids.

@@ -6,3 +6,9 @@ case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+p
   pat-part-time-2029-30: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}
 
 == base
+  (a) exact-LP search: solved, ages 68y3m/63y0m (359s)
+  (b) loop search:     solved, ages 68y6m/63y0m (50s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 653s): best 68y6m at 113,542.48
+    pass 0, Pat swept (9 ages, 563s): best 63y0m at 113,542.48
+    pass 1: no age moved

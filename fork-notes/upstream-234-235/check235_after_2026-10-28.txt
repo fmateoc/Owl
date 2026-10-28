@@ -1,0 +1,6 @@
+check235_after.py, 2026-10-28, upstream dev b6a3ba7 merged (#235 fixed in 92afe10)
+case 1, no past earnings (as before the fix): paid {2026: 1,408.33, 2027: 15,491.67, 2028: 16,900.00, 2030: 17,500.00, 2031: 18,100.00}, ARF months 12
+case 1, worked all of 2025 for 80,000: paid {2026: 7,041.67, 2027: 16,900.00, 2028: 16,900.00, 2030: 17,500.00, 2031: 18,100.00}, ARF months 12
+case 2, no plan-year work, no past earnings: paid {2026: 16,900.00, 2027: 16,900.00, 2028: 16,900.00, 2030: 16,900.00, 2031: 16,900.00}, ARF months 0
+case 2, worked all of 2025 for 80,000 (Jul-Dec 2025 withheld): paid {2026: 15,491.67, 2027: 16,900.00, 2028: 16,900.00, 2030: 17,200.00, 2031: 17,500.00}, ARF months 6
+monthly with 6 crediting months from FRA: 1458.33 x 12 = 17500.0

@@ -42,7 +42,7 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
 | #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77`. **Fixed upstream as filed** (`4aa4887`, 2026-10-27), merged 2026-10-28; the issue's four cases reproduce the patched rows to the cent (section "Upstream `dev` `1bdc3b2` merged") |
 | #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified then, verified 2026-10-27 from 91 FR 67380); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
-| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open. **#234 fixed upstream** (`3931c8a`, 2026-10-28: only a round trip that realizes no gain is netted; local search starts from the un-netted withdrawals), merged 2026-10-28; jack+jill now nets one year at gain fraction 0 (section "Upstream `dev` `1bdc3b2` merged"). #235 not checked this session |
+| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open. **#234 fixed upstream** (`3931c8a`, 2026-10-28: only a round trip that realizes no gain is netted; local search starts from the un-netted withdrawals), merged 2026-10-28; jack+jill now nets one year at gain fraction 0 (section "Upstream `dev` `1bdc3b2` merged"). #235 not checked this session. **#235 fixed upstream** (`92afe10`, 2026-10-28: the five years before the plan read for someone already claiming), merged the same day; the law-side figures of 2026-10-26 reproduced (section "Upstream `dev` `b6a3ba7` merged") |
 | #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Code claim (where `eta` is read) holds. **Checked against the household's structure 2026-10-27** (`fork-notes/upstream-236/README.md`): equal horizons (no survivor phase), so the reporter's mechanism cannot arise; on a stand-in, no deposits under `maxSpending`, at most $157 of bequest (0.008%) under `maxBequest` with local search; the free split does not dominate (noise as large as the effect). Nothing to change; `work_sweep.py --eta` stays as a sensitivity on the real inputs. **Implemented upstream** (`1bdc3b2`, 2026-10-28) as an option, `spousal_surplus_deposit_fraction = "optimize"`; merged 2026-10-28 |
 | #238, #239 (new; issues not read, known from the commits) | **Fixed upstream** 2026-10-28 and merged the same day: #238 (`f21486b`) the survivor's inherited taxable account takes its value at the death as basis, and an account that starts empty is tracked from $0; #239 (`b6e695b`) a warning when the LTCG loop does not settle. Household: #238 cannot apply (equal horizons) |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
@@ -2594,6 +2594,49 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Upstream `dev` `b6a3ba7` merged: #235 fixed (2026-10-28, on `claude/intelligent-keller-0acb9o`)
+
+Upstream `dev` = `main` = `b6a3ba7`, 2 commits since `1bdc3b2`:
+
+- `92afe10` (**#235, on our earnings test**): `earnings_test` takes `past_earnings_in` /
+  `past_work_months_in` (5 years before the plan, oldest first, nominal) and tests a person
+  entitled before the plan from entitlement on: the grace year, the months withheld before the
+  plan (credited at FRA), and the December check before the plan (paid in January of the first
+  plan year). New plan arrays `omegaPast_in` / `etMonthsPast_in`, read from the HFP's lead-in rows
+  (`anticipated wages`, `months worked`) and written back on save; `_earnings_test_inputs(past=True)`.
+  Blank past years change nothing. Exempt amounts 2021-2023 added (SSA COLA fact sheets, per his
+  comment; not checked here). MCP: wages, months worked and contributions take pre-plan years;
+  results name the unsettled families (SS, LTCG) and the option that settles them. Overpayment
+  recovery (the reporter's follow-up) is stated as not modeled.
+- `b6a3ba7`: version 2026.10.28, dependency bumps (fonttools, narwhals, tzdata), two stochastic
+  test files reformatted.
+
+Merge: **no conflicts**. Fork code reading what changed (grep of `src`, `tests`, `fork-notes` for
+`_earnings_test_inputs`, `earnings_test(`, `omegaPast`, `etMonthsPast`, `past_earnings`): the
+fork's payroll tax and `_earningsReachable` call `_earnings_test_inputs()` with the default
+(`past=False`), plan years only, unchanged. No duplicated `def`. `uv sync` took the new lock.
+
+Check against #235's law-side figures (`fork-notes/upstream-234-235/check235_after.py`, output
+`check235_after_2026-10-28.txt`; same person as `check235.py`: PIA 2,000, born 1963-06-15, claims
+62y1m = July 2025, plan from 2026):
+- Case 1 (works Jan-Jun 2026 for 80,000): with no past earnings, unchanged (1,408.33 in 2026,
+  15,491.67 in 2027, 12 ARF months). With 2025 worked in full for 80,000: **7,041.67 in 2026,
+  16,900 in 2027**, 12 ARF months, the law's side as recorded on 2026-10-26.
+- Case 2 (no plan-year work): with Jul-Dec 2025 withheld, 15,491.67 in 2026 (the December 2025
+  check withheld), 6 ARF months, 17,200 in 2030 (FRA June 2030: 6 x 1,408.33 + 6 x 1,458.33) and
+  17,500 from 2031 (1,458.33/mo, $600/yr more), as recorded.
+The rules themselves (404.435, 404.412) were not reread this session.
+
+Household: no change today (born 1964, nobody claims before 2026, the first plan year). The HFP
+rows are matched by year (`hfp_io`: rows from `thisyear - 5`), so in a plan built in a later year
+the generator's earlier rows become the lead-in rows by themselves: a spouse who claimed while
+working is then tested on those rows' `anticipated wages` and `months worked`, which must be the
+real ones.
+
+Suite: **3609 passed, 1 skipped** (12:12; +6 upstream tests). Ruff: upstream's four B905.
+flake8: 8 new hits (E301/E304) in `tests/stochastic/test_spending_bequest_frontier.py` and
+`test_spending_units.py`, upstream's files as `b6a3ba7` left them (identical to `upstream/dev`).
 
 ## Upstream `dev` `1bdc3b2` merged: #233 (ours), #234, #236, #238, #239 fixed (2026-10-28, on `claude/intelligent-keller-0acb9o`)
 

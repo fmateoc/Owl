@@ -2,6 +2,9 @@
 
 **Update 2026-10-28:** #234 fixed upstream (`3931c8a`) and merged: only a round trip that realizes no gain is
 netted. Rerun: `scan234_2026-10-28_dev1bdc3b2.txt` (jack+jill nets one year, gain fraction 0).
+**#235 fixed upstream** (`92afe10`) and merged the same day: `check235_after.py` (output
+`check235_after_2026-10-28.txt`) gives the law-side figures of the table below (case 1: 7,041.67 in
+2026, 16,900 in 2027; 6 pre-plan crediting months: 1,458.33/mo from FRA).
 
 Checked 2026-10-26 on `claude/clever-hypatia-6l8txj` (upstream `dev` = `main` = `4dcfabb`, so
 neither is fixed). Both were filed by `rationalpiper` and have no comments yet. Their texts were

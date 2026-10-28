@@ -7,6 +7,13 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream: #235 (`dev` `b6a3ba7`, merged 2026-10-28)
+
+Taken as is, no conflicts. The earnings test reads the five years before the plan for someone
+already claiming (grace year, months withheld before the plan, the December check before the
+plan). Version 2026.10.28 and dependency bumps. Fork follow-up: `check235_after.py` (the
+law-side figures of the 2026-10-26 check reproduced).
+
 ### Upstream: #233, #234, #236, #238, #239 (`dev` `1bdc3b2`, merged 2026-10-28)
 
 Taken as is, no conflicts. #233 (ours): a sticky-binaries tie no longer takes a plan outside the

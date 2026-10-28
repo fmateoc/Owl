@@ -2637,6 +2637,26 @@ value to the cent, except base: eta 0 and "optimize" +0.21 (unresolved against 1
   stand-in case. Not changed in the script (a refinement around the decided ages, e.g. +-1 to
   3 months per person, would cover it): the user's call.
 
+**Decision (user, 2026-10-28): no refinement pass.** A +-1-3-month pass around the decided ages
+(4-12 more plans per variant, 80-130 s each) is not added: a $2/yr miss does not justify it, and
+no case was found where the miss would be significant. Reasoning, not measured:
+- (a) and (b) each search every open month (`Plan._ssAgeSearch` solves each one), so (c) misses
+  only when its best month is not a whole year and both proxies misprice a month-sensitive effect.
+- ACA cliff: (a) over-values staying under it ($528/yr vs the case's $14,
+  `plan-review-2026-10-22.md` §3.2), so it points at the cliff-safe month. Earnings test: a fixed
+  table in the streams, the same in all three stages.
+- IRMAA tiers ((a) has no Medicare; (b) prices them one loop iterate late) are the one candidate.
+  With income that cannot move, MAGI does not depend on the plan and (b) prices IRMAA exactly;
+  with movable income, branch-and-bound steps under the tier by shifting conversions or
+  withdrawals at small cost, so its value is smooth in the claiming month. Only income partly
+  movable falls between; the ceiling there is about one year's tier-1 surcharge for a couple
+  (about $2.3k, recalled, not checked), on the order of $80/yr over a 30-year plan; no such case
+  was built.
+- Measured in this run: the best two candidates within $0.13-2.33/yr of each other in every
+  sweep; slopes away from the optimum up to about $10-13/yr per month.
+Revisit if a real-input sweep shows a sweep whose best two ages are far apart in months with a
+steep value between them.
+
 ## `main` fast-forwarded to `claude/intelligent-keller-0acb9o` (2026-10-28)
 
 The user's call: `main` moves from `0f93a14` to this branch: upstream `dev` `1bdc3b2` (#233 ours,

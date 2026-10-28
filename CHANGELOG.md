@@ -1,5 +1,75 @@
 ### Version 2026.10.26
 
+#### New: the optimizer can split each surplus between the spouses
+
+While both spouses live, a surplus is deposited in their taxable accounts by a fixed fraction, half
+each by default. The fraction can now be set to `"optimize"` (*Let the optimizer split each
+surplus* in the interface), and the optimizer then chooses the split each year (#236). It can help
+when the two accounts differ: for a Pennsylvania couple whose larger account is mostly gain, the
+free split spends at least as much as any fixed fraction. Most example cases are unchanged, to
+within 0.004%. Jack+jill spends 0.5% more but stops at the loop's iteration cap instead of
+settling, as a fixed fraction that deposits with the survivor sometimes does. It is not meant for
+beneficiary fractions below 1: what other heirs receive at the first death counts for only 1% in
+the objective, so the optimizer deposits every surplus with the survivor and leaves them nothing.
+In jordan+taylor and avery+quinn the partial bequest falls from \$2.47M and \$3.40M to \$0. The
+log warns when the two are combined, and the fixed fraction stays the default.
+
+#### Changed: options that do not apply are disabled, not hidden
+
+On *Run Options*, the claiming ages to optimize are now chosen with one box per person. Someone
+whose entered claiming age is already past keeps a box, disabled, instead of disappearing from the
+list. On *Account Balances*, the surplus deposit fraction is disabled while the optimizer splits
+the surplus.
+
+#### New: the loop says when the tax on capital gains did not settle
+
+Under the default loop, the room in the 0% and 15% capital-gains brackets is the threshold less the
+previous iterate's ordinary income. A plan that moves Roth conversions into a year is charged gain
+tax against room it no longer leaves, and the loop can cycle between plans whose gain tax is too low
+in one year and too high in another. On a couple with \$1.5M taxable and \$900k tax-deferred, the
+loop's plan was charged \$0 in a year whose income implies \$2,407, and \$2,292 in a year whose gains
+all sit in the 0% bracket; `withLTCG = "optimize"` settles exactly and spends \$92 a year more
+(#239). When the loop leaves the gain tax unsettled (the plan's own income implies more than the
+loop's tolerance, \$50 a year by default, of different gain tax over the horizon), the log now says
+so and points to `withLTCG = "optimize"`, as it does for Social Security. None of the example cases
+is affected: their gain tax is within \$5 over the plan.
+
+#### Fixed: the taxable account a survivor inherits takes its value at the death as basis
+
+With a cost basis set, the survivor's basis gained nothing for the taxable account inherited at
+the first death, so every dollar of it counted as unrealized gain and was taxed again when sold.
+Under IRC 1014 the inherited account takes its value at the death as basis. It now does: the
+amount moved to the survivor is added to their basis at the death (#238). For a couple with
+\$1.5M at \$1M basis in the first to die's taxable account, the survivor's gain fraction falls
+from 1 to about 0 at the death, and first-year spending rises \$2,052 in Florida and \$3,201 in
+Pennsylvania. A person whose taxable account starts empty is now tracked from a \$0 basis rather
+than with the legacy approximation, so the inherited basis has somewhere to go. Pennsylvania does
+not step up a surviving joint tenant's share; that difference is not modeled.
+
+#### Fixed: the reported taxable flows no longer hide a sale at a gain
+
+When a surplus is deposited into the taxable account it was just sold from, **Owl** reported the
+withdrawal and the deposit net of that round trip in every year whose gains reached no taxed
+federal bracket. But the sale realizes its gain whatever the federal bracket: the gain is in the
+year's capital gains, in MAGI and in the state base, and the rebuy resets the basis that later
+years' gains are computed from. The fixed spousal split of a surplus can force such a sale, and
+it can be gain harvesting. The display then could not explain the plan beside it: in
+jack+jill, the displayed flows missed \$17,047 of a year's gains, and in the case of #234 (a
+Pennsylvania couple) they missed \$25,022 of gains that the state taxed. Only the part of a
+round trip that realizes no gain is now netted. Local search, which starts from the loop's
+withdrawals, now starts from the solved ones rather than the netted ones. Taxes, spending and
+balances are unchanged.
+
+#### Fixed: keeping the previous binaries no longer takes a plan outside the requested gap
+
+Under the branch-and-bound breakpoint method, the self-consistent loop keeps the previous
+iteration's binaries when the plan they give is within the loop's tolerance of the new one, and
+restates the solver's gap against the kept plan. That gap could exceed the one requested: at
+`gap = 1e-5`, a plan was accepted at 1.833e-5 (#233). The previous binaries are now kept only if
+the restated gap stays within the requested one, or if the solve itself stopped above it (a node
+or time limit). Under MOSEK at the default gap of 3e-3, the cases that settle by keeping binaries
+(joe, jack+jill, avery+quinn) refuse no tie and are unchanged.
+
 #### Fixed: a worker's earnings charged against a spouse past full retirement age use the adjusted benefit
 
 When a worker still under full retirement age has excess earnings and their spouse, collecting a

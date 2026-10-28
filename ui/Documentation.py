@@ -1151,13 +1151,28 @@ In some situations, unconventional transfers from tax-deferred savings accounts 
 savings accounts, through surpluses and deposits, can be part of the optimal solution.
 
 A surplus is deposited into the same taxable account a withdrawal may have been taken from
-in that year. Where that happens, worksheets and graphs report the withdrawal and the surplus
-net of one another, since the money never left the account. Years in which the sale realizes
-taxable capital gains are reported in full, so that a withdrawal always accounts for the
-capital gains tax shown beside it.
+in that year. Where the sale realizes no capital gain, worksheets and graphs report the
+withdrawal and the surplus net of one another, since the money never left the account.
+A sale at a gain is reported in full, as is the deposit that buys back: the gain counts in
+the year's income, taxed or not, and the purchase resets the account's cost basis.
 
-Setting a surplus fraction that deposits some or all surpluses in the survivor's account
-can also sometimes lead to slow convergence. This is especially noticeable when solving with
+The surplus fraction can also be left to the optimizer, which then chooses each year, while both
+spouses live, how much of a surplus goes to each spouse's taxable account. The fraction entered is
+then ignored. This can help when the two accounts differ, for instance when one spouse's account
+carries more unrealized gains than the other's.
+**Do not let the optimizer split surpluses when the beneficiary fractions are not all 1.**
+What passes to other heirs at the first death, the partial bequest, counts in the objective at
+only 1% of a dollar of spending or of final bequest by default (`partialBequestWeight`), enough
+to break ties and no more. The natural
+consequence of maximizing spending or the final bequest is then to keep money out of the first
+estate: given the choice, the optimizer deposits surpluses in the survivor's account, where they
+still serve the objective, rather than in the account of the spouse who passes first, where part of
+them would leave with the partial bequest. The other heirs receive as little as the plan allows.
+Keep a fixed fraction there, with all surplus deposited in the account of the first spouse to pass,
+as recommended above, unless that outcome is what you intend.
+
+Setting a surplus fraction that deposits some or all surpluses in the survivor's account,
+or letting the optimizer split them, can also sometimes lead to slow convergence. This is especially noticeable when solving with
 varying rates and not so common when using constant rates.
 When using varying rates, it is recommended to set surpluses to be
 deposited in the taxable account of first spouse to pass unless exploring specific scenarios.
@@ -1173,6 +1188,8 @@ realizing a gain equal to the *unrealized-gain fraction* of the account,
 where gain fraction = (current balance − cost basis) / current balance.
 The gain fraction evolves each year as the SC loop tracks how basis changes
 (withdrawals reduce it proportionally; new contributions restore it at full value).
+At the first death of a couple, the taxable account the survivor inherits takes its value at the
+death as basis (IRC 1014), so the gain it carried is never taxed.
 
 The cost basis to enter is the total **adjusted cost basis** of the taxable account as
 reported by your brokerage — the sum of what you paid for all lots currently held,
@@ -1181,7 +1198,9 @@ All amounts are in \\$k.
 Leave the field at **0** if your basis is unknown — Owl treats zero (or blank) as *no basis
 supplied* and uses the legacy approximation. Enter a **positive** value to enable average-cost
 tracking. (In TOML or the Python API the same rule applies to each person: a zero entry, in the
-case file or in `setCostBasis()`, means the legacy approximation for that person.)
+case file or in `setCostBasis()`, means the legacy approximation for that person.) A person whose
+taxable account starts empty is tracked from \\$0 instead, so that what the account later receives,
+purchases or an inherited account, carries its basis.
 A higher gain fraction means more capital gains tax per dollar withdrawn from the taxable account,
 increasing total tax drag and reducing the maximum achievable spending or bequest.
 """)
@@ -1844,7 +1863,9 @@ against future IRMAA simultaneously.
   stacking with a MILP formulation. Binary variables select the 0%/15%/20% bracket each year,
   so the optimizer simultaneously finds the best withdrawal strategy and bracket assignment.
   Can be slower due to additional binary variables; most useful for high-income plans where LTCG bracket
-  placement significantly affects the objective.
+  placement significantly affects the objective, and for a large taxable account whose gains sit near the
+  top of the 0% bracket while Roth conversions compete for the same room. When the iteration leaves the
+  tax on gains unsettled, the log says so and suggests this option.
 - *Solve NIIT threshold with MILP (expert)* – decides inside the optimization whether income crosses the NIIT threshold.
   A binary variable per year selects which term of the minimum bounds the tax: investment income, or MAGI
   above the threshold (\\$200k single / \\$250k MFJ).

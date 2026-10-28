@@ -580,6 +580,7 @@ class Plan:
         self.heir_tax_liability = 0.0  # Heir taxes on final bequest (IRA+HSA), today's $
         self.partial_heir_tax_liability = 0.0  # Heir taxes on partial bequest, today's $
         self.eta = (self.N_i - 1) / 2  # Spousal deposit ratio (0 or .5)
+        self.etaOptimize = False  # True: the LP splits each surplus between the spouses
         self.phi_j = np.array([1, 1, 1, 1])  # Fractions left to other spouse at death (j=3: HSA)
         self._setHSAStop([65] * self.N_i)  # Sets n_hsa_i and hsaFrac_in: HSA contributions end at Medicare
         self.slcsp_annual = 0.0  # Today-dollar annual ACA benchmark Silver plan premium ($)
@@ -1000,14 +1001,25 @@ class Plan:
 
     def setSpousalDepositFraction(self, eta):
         """
-        Set spousal deposit and withdrawal fraction. Default 0.5.
-        Fraction eta is use to split surplus deposits between spouses as
+        Set the spousal surplus deposit fraction. Default 0.5.
+        While both spouses live, fraction eta splits each surplus s_n between their taxable accounts as
         d_0n = (1 - eta)*s_n,
         and
-        d_1n = eta*s_n,
-        where s_n is the surplus amount. Here d_0n is the taxable account
-        deposit for the first spouse while d_1n is for the second spouse.
+        d_1n = eta*s_n.
+        Here d_0n is the taxable account deposit for the first spouse while d_1n is for the second
+        spouse. With eta = "optimize", the optimizer chooses the split each year: d_0n + d_1n = s_n (#236).
+        After the first death, the surplus goes to the survivor either way.
         """
+        if isinstance(eta, str):
+            if eta.strip().lower() != "optimize":
+                raise ValueError(f"Deposit fraction must be a number between 0 and 1 or 'optimize', not '{eta}'.")
+            if self.N_i != 2:
+                self.mylog.print("Deposit fraction can only be 0 for single individuals.")
+                return
+            self.mylog.vprint("Setting spousal surplus deposit fraction to be optimized.")
+            self.etaOptimize = True
+            self.caseStatus = "modified"
+            return
         if not (0 <= eta <= 1):
             raise ValueError("Fraction must be between 0 and 1.")
         if self.N_i != 2:
@@ -1017,6 +1029,7 @@ class Plan:
             self.mylog.vprint(f"Setting spousal surplus deposit fraction to {eta:.1f}.")
             self.mylog.vprint(f"\t{self.inames[0]}: {1 - eta:.1f}, {self.inames[1]}: {eta:.1f}")
             self.eta = eta
+            self.etaOptimize = False
 
     def setDefaultPlots(self, value):
         """
@@ -4989,9 +5002,22 @@ class Plan:
 
     @_fixedAcrossIterations
     def _add_surplus_deposit_linking(self, options):
+        if self.etaOptimize and self.N_i == 2:
+            # The optimizer splits each surplus between the spouses while both live (#236).
+            if np.any(self.phi_j < 1) and self.n_d < self.N_n:
+                self.mylog.print(
+                    "The surplus deposit fraction is optimized while beneficiary fractions are below 1: the "
+                    "optimizer will deposit surpluses with the survivor rather than leave them to the other "
+                    "heirs of the first spouse to pass. A fixed fraction depositing all surplus with the "
+                    "first spouse to pass is recommended.",
+                    tag="WARNING",
+                )
+            for n in range(self.n_d):
+                rowDic = {self.vm["d"].idx(0, n): 1, self.vm["d"].idx(1, n): 1, self.vm["s"].idx(n): -1}
+                self.A.addNewRow(rowDic, 0, 0, tag=("surplus_deposit", 0, n))
         for i in range(self.N_i):
             fac1 = u.krond(i, 0) * (1 - self.eta) + u.krond(i, 1) * self.eta
-            for n in range(self.n_d):
+            for n in range(self.n_d if not self.etaOptimize else 0):
                 rowDic = {self.vm["d"].idx(i, n): 1, self.vm["s"].idx(n): -fac1}
                 self.A.addNewRow(rowDic, 0, 0, tag=("surplus_deposit", i, n))
             fac2 = u.krond(self.i_s, i)
@@ -6129,6 +6155,11 @@ class Plan:
                 for j in range(self.N_j):
                     for n in range(self.N_n):
                         c_arr[self.vm["w"].idx(1, j, n)] += epsilon
+                if self.etaOptimize:
+                    # Where the split of a surplus does not matter, deposit it with spouse 0, so
+                    # that the reported deposits do not move between solves.
+                    for n in range(self.n_d):
+                        c_arr[self.vm["d"].idx(1, n)] += epsilon
 
             # Take the full state deduction and exemptions even where a personal credit already
             # cancels the year's state tax: nothing else then prices state taxable income, so the
@@ -7127,7 +7158,7 @@ class Plan:
         self.mylog.vprint(f"Local search: the loop's plan is worth {u.d(floor)}; searching from it.")
 
         self._localSearch = localsearch.LocalSearch(
-            self, self.w_ijn.copy(), self.x_in.copy(),
+            self, self.w_ijn_lp.copy(), self.x_in.copy(),
             step_time=u.get_numeric_option(myoptions, "localSearchStepTime", localsearch.STEP_TIME, min_value=0),
             total_time=u.get_numeric_option(myoptions, "localSearchTime", localsearch.TOTAL_TIME, min_value=0),
             radius=int(u.get_numeric_option(myoptions, "localSearchRadius", localsearch.RADIUS, min_value=0)),
@@ -7385,29 +7416,47 @@ class Plan:
             "tag": "WARNING",
         }
 
-    def _netSurplusRoundTrip(self):
-        """Report the surplus and the taxable withdrawal net of the round-trip between them.
+    def _withdrawal_gain_fraction(self):
+        """Capital gain per dollar of taxable withdrawal, shape (N_i, N_n), or (1, N_n) without a basis.
 
-        A surplus is deposited straight back into the taxable account it may have just been
-        withdrawn from, so the gross figures describe a movement that never happens. When
-        the optimizer is indifferent to that round-trip — which is precisely when it occurs,
-        since a round-trip that costs anything is never chosen — it can leave an arbitrary
-        amount of it in the solution. Reporting the net is both truthful and stable.
+        The tracked gain fraction where a person's basis is known; otherwise last year's price
+        appreciation (tau_0 - mu), the legacy coefficient.
+        """
+        Nn = self.N_n
+        legacy = np.maximum(0, np.roll(np.array(self.tau_kn[0, :]), 1) - self.mu)
+        if self.gain_fraction_in is None:
+            return legacy[np.newaxis, :]
+        cgr = self.gain_fraction_in[:, :Nn].copy()
+        nan_mask = np.isnan(cgr)
+        if nan_mask.any():  # mixed: some persons use legacy
+            cgr[nan_mask] = np.broadcast_to(legacy, cgr.shape)[nan_mask]
+        return cgr
+
+    def _netSurplusRoundTrip(self):
+        """Report the surplus and the taxable withdrawal net of a round-trip that realizes no gain.
+
+        A surplus deposited back into the taxable account it was withdrawn from is a sale and a
+        rebuy. With epsilon off, the optimizer can leave an arbitrary amount of it where it costs
+        nothing; reporting the net keeps the display stable.
+
+        Only a sale that realizes no gain is netted. A sale at a gain is a real transaction,
+        whether a fixed surplus split forces it or the plan harvests gains: the gain sits in Q_n,
+        in MAGI and in the state base whatever the federal bracket, and the rebuy resets the
+        basis that every later year's gain fraction is computed from (#234). Selling and
+        rebuying at no gain moves neither Q_n nor the basis, so the gross and the net
+        describe the same plan.
 
         The cash flow identity is unaffected: the surplus sits on its left-hand side and the
         deposit is part of the withdrawals on its right, so cancelling the two removes the
         same amount from both. Balances, taxes, spending and the bequest are untouched.
-
-        Years whose capital gains reach a taxed bracket are left gross, so that a displayed
-        withdrawal always explains the capital-gains tax displayed beside it.
         """
-        taxed_gains_n = self.q_pn[1, :] + self.q_pn[2, :]
+        cgr = np.broadcast_to(self._withdrawal_gain_fraction(), (self.N_i, self.N_n))
         for n in range(self.N_n):
-            if self.s_n[n] <= 0.01 or taxed_gains_n[n] > 1.0:
+            if self.s_n[n] <= 0.01:
                 continue
             for i in range(self.N_i):
                 delta = min(self.d_in[i, n], self.w_ijn[i, 0, n], self.s_n[n])
-                if delta <= 0.01:
+                if delta <= 0.01 or cgr[i, n] * self.alpha_ijkn[i, 0, 0, n] * delta > 0.01:
                     continue
                 self.w_ijn[i, 0, n] -= delta
                 self.d_in[i, n] -= delta
@@ -7461,16 +7510,25 @@ class Plan:
         tau_prev = self.tau_kn[0, n - 1]  # n=0 → tau_kn[0,-1] (last rate), matches roll convention
         return max(0.0, tau_prev - self.mu)
 
+    def _tracks_basis(self, i):
+        """Whether individual i's basis is tracked: a basis was given, or there is nothing to give it for.
+
+        Zero basis on a funded account means 'use the legacy approximation for that person'. An
+        account that starts empty is tracked from $0, so that what it later receives, purchases or
+        an inherited account, carries its basis.
+        """
+        return self.taxable_basis_i[i] > 0 or self.beta_ij[i, 0] == 0
+
     def _init_gain_fraction(self):
         """Initialize gain_fraction_in from user-supplied cost basis before first LP solve.
-        Zero basis for an individual means 'use legacy approximation for that person' (NaN sentinel).
+        An untracked individual keeps NaN entries, the legacy-approximation sentinel.
         """
         if self.taxable_basis_i is None:
             self.gain_fraction_in = None
             return
         self.gain_fraction_in = np.full((self.N_i, self.N_n), np.nan)
         for i in range(self.N_i):
-            if self.taxable_basis_i[i] == 0:
+            if not self._tracks_basis(i):
                 continue  # NaN → legacy fallback for this person
             b0 = self.beta_ij[i, 0]
             alpha0 = self.alpha_ijkn[i, 0, 0, 0]
@@ -7482,16 +7540,29 @@ class Plan:
         because they are new purchases at the current market price. So do the dividends and the
         bond/cash returns taxed each year, which stay in the account and are reinvested: leaving
         them out would tax them a second time on sale.
-        Persons with zero basis are skipped (their NaN entries mean legacy fallback)."""
+        The taxable account a survivor inherits at the first death takes its value at the death as
+        basis (IRC 1014(a)): the deceased's account is in their gross estate (#238).
+        Untracked persons are skipped (their NaN entries mean legacy fallback)."""
         if self.gain_fraction_in is None:
             return
         # Same yield the model taxes each year as dividends and interest (see _add_taxable_income).
         fak_in = np.sum(np.maximum(0, self.tau_kn[1:, :]) * self.alpha_ijkn[:, 0, 1:, : self.N_n], axis=1)
+        inherited = 0.0
+        if self.N_i == 2 and 0 < self.n_d < self.N_n:
+            # What _add_account_balance_carryover moves into the survivor's taxable account.
+            i_d, nx = self.i_d, self.n_d - 1
+            tau = float(np.sum(self.alpha_ijkn[i_d, 0, :, nx] * self.tau_kn[:, nx]))
+            inherited = self.phi_j[0] * (
+                (self.b_ijn[i_d, 0, nx] - self.w_ijn[i_d, 0, nx] + self.d_in[i_d, nx]) * (1 + tau)
+                + self.kappa_ijn[i_d, 0, nx] * (1 + tau / 2)
+            )
         for i in range(self.N_i):
-            if self.taxable_basis_i[i] == 0:
+            if not self._tracks_basis(i):
                 continue  # stays NaN → legacy
             basis = float(self.taxable_basis_i[i])
             for n in range(self.N_n):
+                if inherited > 0 and i == self.i_s and n == self.n_d:
+                    basis += inherited
                 b_n = self.b_ijn[i, 0, n]
                 w_n = self.w_ijn[i, 0, n]
                 d_n = self.d_in[i, n]
@@ -7844,6 +7915,7 @@ class Plan:
             self._check_itemizing()
             self._computeFixedPointResidual(includeMedicare)
             self._warnSSResidual(fixed_psi)
+            self._warnLTCGResidual()
             self._warnACACoverageGap()
             if options.get("withDuals", False):
                 self._computeDuals(xx, options)
@@ -8070,6 +8142,30 @@ class Plan:
             tag="WARNING",
         )
 
+    def _warnLTCGResidual(self):
+        """Point to the exact model when the loop leaves the tax on gains unsettled.
+
+        Under the loop, the room in the 0% and 15% brackets is the threshold less the previous
+        iterate's ordinary income. A plan that moves ordinary income, Roth conversions mostly, into a
+        year is charged gain tax against room it no longer leaves, and the loop can cycle between
+        plans whose gain tax is too low in one year and too high in another (#239). The LTCG residual
+        measures it: the gain tax the plan's own income implies, against the one it was charged.
+        Above the loop's own tolerance summed over the plan, say so. Not under withLTCG="optimize",
+        nor inside a local search, whose result is judged elsewhere.
+        """
+        if getattr(self, "_ltcg_lp", False) or getattr(self, "_localSearchSeeding", False):
+            return
+        res = (self.fixedPointResidual or {}).get("LTCG")
+        if res is None or res["abs_sum"] <= self.N_n * self._residual_tol:
+            return
+        self.mylog.print(
+            f"The tax on capital gains did not settle: this plan's own income implies {u.d(res['abs_sum'])} "
+            f"of different gain tax over the horizon ({u.d(res['max_abs'])} in one year). The loop sizes "
+            "the 0% and 15% brackets from the previous iterate's ordinary income, and its plan can "
+            'misplace Roth conversions against them; withLTCG="optimize" solves for the brackets exactly.',
+            tag="WARNING",
+        )
+
     def _amoContext(self, options):
         """Bundle what amorepair needs from this plan."""
         col_lb, _ = self.B.arrays()
@@ -8080,7 +8176,6 @@ class Plan:
             N_n=self.N_n,
             n_d=self.n_d,
             i_s=self.i_s,
-            eta=self.eta,
             n595=self.n595,
             horizons=self.horizons,
             xnet=self.xnet,
@@ -8888,11 +8983,21 @@ class Plan:
                 self._use_mosek = saved
             obj, gap = result[0], result[4]
             if res[2] and res[0] is not None and res[0] <= obj + self._sticky_tol * abs(obj):
+                kept_gap = gap
                 if gap is not None and gap >= 0:  # the same bound, against the kept plan
                     bound = obj - gap * abs(obj)
-                    gap = (res[0] - bound) / max(abs(res[0]), 1e-12)
-                chosen = (res[0], res[1], True, result[3], gap)
-                self.mylog.vprint(f"Kept the previous binaries (objective {res[0] - obj:+.2e} against the new plan).")
+                    kept_gap = (res[0] - bound) / max(abs(res[0]), 1e-12)
+                # A tie may not take a plan the solver proved within the requested gap outside it (#233).
+                requested = u.get_numeric_option(options, "gap", GAP, min_value=0)
+                if gap is None or gap < 0 or gap > requested or kept_gap <= requested:
+                    chosen = (res[0], res[1], True, result[3], kept_gap)
+                    self.mylog.vprint(
+                        f"Kept the previous binaries (objective {res[0] - obj:+.2e} against the new plan)."
+                    )
+                else:
+                    self.mylog.vprint(
+                        f"Refused the previous binaries: gap {kept_gap:.3e} above the requested {requested:.3e}."
+                    )
         self._stickyPrev = chosen[1].copy()
         return chosen
 
@@ -9075,19 +9180,7 @@ class Plan:
 
         self.G_n = np.sum(self.f_tn, axis=0)
 
-        tau_0 = np.array(self.tau_kn[0, :])
-        # Last year's rates.
-        tau_0prev = np.roll(tau_0, 1)
-        # Capital gain coefficient per withdrawal: tracked gain fraction when basis is known,
-        # otherwise current-year price appreciation only (tau_0 - mu).
-        if self.gain_fraction_in is not None:
-            cgr = self.gain_fraction_in[:, :Nn].copy()  # shape (N_i, N_n)
-            nan_mask = np.isnan(cgr)
-            if nan_mask.any():  # mixed: some persons use legacy
-                legacy = np.maximum(0, tau_0prev - self.mu)
-                cgr[nan_mask] = np.broadcast_to(legacy, cgr.shape)[nan_mask]
-        else:
-            cgr = np.maximum(0, tau_0prev - self.mu)[np.newaxis, :]  # broadcast to (1, N_n)
+        cgr = self._withdrawal_gain_fraction()
         self.Q_n = np.sum(
             (
                 self.mu
@@ -9243,6 +9336,8 @@ class Plan:
             self.partialBequest = 0
             self.partial_heir_tax_liability = 0.0
 
+        # Local search starts from the loop's solution, before any round trip is netted.
+        self.w_ijn_lp = self.w_ijn.copy()
         self._netSurplusRoundTrip()
 
         # Split the tax-deferred withdrawal into the part the RMD forced and the

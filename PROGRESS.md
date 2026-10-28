@@ -2641,10 +2641,30 @@ Checks on the merged code:
   cannot apply (no first death inside the plan); #236's "optimize" was measured there before it
   existed, as a free split, and moved nothing beyond the solves' noise. Not rerun.
 
-Fork changes: `work_sweep.py` docstring (#233 fixed: `--gap` now bounds the plan by itself,
-`relTol` = `--gap` still passed; #234 fixed: the recorded hidden gain should now be 0, kept as a
-check). Not changed: `--eta` takes numbers only; `"optimize"` could be one more value to score
-(an upper bound on what any fixed split gives), not done.
+Fork changes: `work_sweep.py` docstring (#234 fixed: the recorded hidden gain should now be 0,
+kept as a check).
+
+Follow-up the same day (user: drop `relTol` unless it serves another purpose; add `"optimize"` to
+`--eta` unless there is a downside):
+- `relTol` = `--gap` **dropped** from `work_sweep.py`'s branch-and-bound scores. It was added only
+  to bound the sticky tie (2026-10-26). Its other effects are the loop's convergence and cycle
+  tolerances (`plan.py`: `tol = max(abs_tol, rel_tol * scale)`; in a branch-and-bound loop the
+  convergence test is widened to the solve's own gap anyway). Measured on the merged code with
+  `reltol_probe.py` (the same 15 chris+pat plans as 2026-10-26, default `relTol` vs 1e-5): every
+  plan identical in value, reported gap, convergence, iterations and residual, no sticky keep in
+  either, every gap <= 1e-5 (1,944 s; `fork-notes/phase5/reltol_probe_2026-10-28_dev1bdc3b2.txt`).
+  Values differ from 2026-10-26 where a keep was refused (e.g. base 67y0m/63y0m 113,450.58 ->
+  113,451.71, 3 iterations instead of 2), the #233 fix itself.
+- `--eta` takes `"optimize"` (upstream #236), and the default is now `0 1 optimize`. Every fixed
+  split is feasible under "optimize", so its score bounds what any fixed split gives (up to the
+  solves' tolerances and the epsilon tie-break toward spouse 0). Downsides found: one more scored
+  plan per couple variant (a branch-and-bound solve, 90-600 s on chris+pat, run in the pool with
+  the others); upstream's warning for "optimize" with beneficiary fractions below 1 does not
+  arise for the household (template fractions 1.0, and its condition needs a first death inside
+  the plan). Checked: chris+pat base at 68y6m/63y0m under stage (a)'s exact LP, through
+  `work_sweep.make_plan`: eta 0, 0.5, 1 and "optimize" all 117,116.96, "optimize" deposits all
+  with spouse 0 (its tie-break); argument parsing, a bad value refused, `_report_eta` with
+  "optimize" rows, `--report-from` on the 2026-10-26 run unchanged. Not run: a full sweep.
 
 Suite: **3603 passed, 1 skipped** (14:35; 3588 before, +15 upstream tests). flake8 clean; Ruff
 upstream's four B905 (the three known, plus `ui/Run_Options.py:257` from `1bdc3b2`).

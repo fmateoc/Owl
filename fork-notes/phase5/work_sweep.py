@@ -20,16 +20,14 @@ Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, r
   loosens Owl's gap to 3e-3, about $340/yr on chris+pat) and --max-time per MIP (Owl's 900 s). A
   plan is *proved* when every HiGHS run ended "Optimal" and none stopped on time or at the node
   limit; its *tolerance* is the accepted solve's reported gap x score, the distance to the model's
-  optimum at those ages that HiGHS's bound allows. The reported gap can exceed --gap (1.0-2.0e-5
-  on 12 of 84 chris+pat plans at --gap 1e-5): HiGHS stops within --gap, but the branch-and-bound
-  loop's sticky binaries (upstream `6250a5b0`) may keep the previous iteration's plan when it is
-  within the loop's relTol (5e-5 by default) of HiGHS's, and re-express the bound against it
-  (`highs_gap_probe.py`). So --gap alone bounded the plan to --gap + relTol; the script passes
-  relTol = --gap (2026-10-26, the user's call), which bounds it to 2 x --gap (on 15 chris+pat
-  plans it changed nothing: `reltol_probe_2026-10-26.txt`). Upstream fixed this as #233 (`4aa4887`,
-  merged 2026-10-28): a tie is refused when it would take a plan HiGHS proved within --gap outside
-  it, so --gap now bounds the plan by itself; relTol = --gap is still passed (it only narrows
-  which ties are kept). An unproved plan is also scored by
+  optimum at those ages that HiGHS's bound allows. Before upstream fixed #233 (`4aa4887`, merged
+  2026-10-28), the reported gap could exceed --gap (1.0-2.0e-5 on 12 of 84 chris+pat plans at
+  --gap 1e-5): the loop's sticky binaries kept the previous iteration's plan within the loop's
+  relTol (5e-5) and re-expressed the bound against it (`highs_gap_probe.py`), and the script
+  passed relTol = --gap (2026-10-26). A tie that would leave --gap is now refused, so --gap bounds
+  the plan by itself; relTol = --gap was dropped (2026-10-28) after the 15-plan probe gave the
+  same value, gap, iterations and convergence under both
+  (`reltol_probe_2026-10-28_dev1bdc3b2.txt`). An unproved plan is also scored by
   local search and the better of the two kept, labelled by the method that produced it. On
   chris+pat branch-and-bound at 1e-5 beat local search by $15-74/yr on all 6 plans checked, in
   94-288 s each (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other
@@ -59,9 +57,12 @@ Two checks on the decided plans (2026-10-26, after upstream #234):
 - Deposit split. The surplus goes to the spouses' taxable accounts in a fixed split (`eta`,
   `spousal_surplus_deposit_fraction`), a modelling constraint, not a household fact; a forced
   split can make the plan sell in one account to deposit in the other (#234). For couples, each
-  variant's decided ages are scored again at every --eta value (default 0 and 1) with the same
-  decider, and the report gives the change against the case's own split. The ages are not
-  re-decided: a difference beyond the tolerances says the split matters, not which ages it picks.
+  variant's decided ages are scored again at every --eta value (default 0, 1 and "optimize")
+  with the same decider, and the report gives the change against the case's own split. The ages
+  are not re-decided: a difference beyond the tolerances says the split matters, not which ages it
+  picks. "optimize" (upstream #236, `1bdc3b2`) lets the LP choose the split each year while both
+  live (`d_0n + d_1n = s_n`): every fixed split is feasible there, so its score bounds what any
+  fixed split can give, up to the solves' tolerances and an epsilon tie-break toward spouse 0.
 
 Variants are generic case and HFP overrides, so the script also serves the locality and rent/buy
 comparisons (Phase 6 folded in, decision R5). A JSON file describes them:
@@ -218,7 +219,7 @@ def make_plan(diconf, dirname, ages=None, eta=None):
     if ages is not None:
         d.setdefault("fixed_income", {})["social_security_ages"] = [m / 12 for m in months(ages)]
     if eta is not None:
-        d.setdefault("savings_assets", {})["spousal_surplus_deposit_fraction"] = float(eta)
+        d.setdefault("savings_assets", {})["spousal_surplus_deposit_fraction"] = eta
     buf = io.StringIO()
     p = config_to_plan(d, dirname, verbose=True, logstreams=[buf])
     return p, buf
@@ -339,7 +340,7 @@ def _score_bb(diconf, dirname, ages, cfg):
     _HIGHS_RUNS.clear()
     p, _ = make_plan(diconf, dirname, ages, cfg.get("eta"))
     opts = base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
-                        gap=cfg["gap"], relTol=cfg["gap"], maxTime=cfg["max_time"])
+                        gap=cfg["gap"], maxTime=cfg["max_time"])
     t0 = time.time()
     p.solve(p.objective, opts)
     out = _solved(p, t0)
@@ -489,18 +490,42 @@ def run_variant(name, diconf, dirname, args, pool, log):
     return summarize(name, free, best, cache, sweeps, ref, loop, etas)
 
 
+OPTIMIZE = "optimize"  # spousal_surplus_deposit_fraction chosen by the LP each year (upstream #236)
+
+
+def eta_value(text):
+    """An --eta value: a fraction in [0, 1] or "optimize"."""
+    if text.strip().lower() == OPTIMIZE:
+        return OPTIMIZE
+    e = float(text)
+    if not 0 <= e <= 1:
+        raise argparse.ArgumentTypeError(f"eta must be in [0, 1] or '{OPTIMIZE}', not {text}")
+    return e
+
+
+def _same_eta(a, b):
+    if OPTIMIZE in (a, b):
+        return a == b
+    return abs(a - b) <= 1e-9
+
+
+def _eta_label(e):
+    return e if e == OPTIMIZE else f"{e:.2f}"
+
+
 def eta_check(diconf, dirname, best, pool, cfg, etas, log):
     """The decided ages scored again at each other deposit split: [[eta, cell]] (couples only)."""
     p, _ = make_plan(diconf, dirname)
-    own = float(p.eta)
-    others = [e for e in etas if abs(e - own) > 1e-9]
+    own = OPTIMIZE if p.etaOptimize else float(p.eta)
+    others = [e for e in etas if not _same_eta(e, own)]
     if p.N_i != 2 or not others:
         return []
     t0 = time.time()
     ages = [m / 12 for m in best]
     cells = list(pool.map(score, [(diconf, dirname, ages, dict(cfg, eta=e)) for e in others]))
-    log(f"  deposit split at the decided ages ({time.time() - t0:.0f}s): case's {own:.2f}; "
-        + ", ".join(f"{e:.2f} -> {c.get('value', float('nan')):,.2f}" for e, c in zip(others, cells, strict=True)))
+    log(f"  deposit split at the decided ages ({time.time() - t0:.0f}s): case's {_eta_label(own)}; "
+        + ", ".join(f"{_eta_label(e)} -> {c.get('value', float('nan')):,.2f}"
+                    for e, c in zip(others, cells, strict=True)))
     return [[e, c] for e, c in zip(others, cells, strict=True)]
 
 
@@ -664,14 +689,14 @@ def _report_eta(rows, log):
         parts = []
         for e, c in r["eta"]:
             if c.get("value") is None or b.get("value") is None:
-                parts.append(f"eta {e:.2f}: {c.get('status')}")
+                parts.append(f"eta {_eta_label(e)}: {c.get('status')}")
                 continue
             d = c["value"] - b["value"]
             ta, tb = c.get("tolerance"), b.get("tolerance")
             verdict = ("resolved" if abs(d) > ta + tb else "unresolved") if ta is not None and tb is not None \
                 else "not proved"
             nt = (c.get("netting") or {}).get("netted")
-            parts.append(f"eta {e:.2f}: {d:+,.2f} ({verdict}{'' if nt is None else f'; netted {nt:,.0f}'})")
+            parts.append(f"eta {_eta_label(e)}: {d:+,.2f} ({verdict}{'' if nt is None else f'; netted {nt:,.0f}'})")
         log(f"  {r['name']:<22}{'; '.join(parts)}")
 
 
@@ -688,8 +713,9 @@ def main():
     ap.add_argument("--ls-time", type=float, default=7200.0, help="localSearchTime (s); default lifts the cap")
     ap.add_argument("--ls-step-time", type=float, default=1800.0, help="localSearchStepTime (s)")
     ap.add_argument("--no-loop", action="store_true", help="skip stage (b)")
-    ap.add_argument("--eta", type=float, nargs="*", default=[0.0, 1.0],
-                    help="deposit splits to score at the decided ages (couples; none: --eta with no value)")
+    ap.add_argument("--eta", type=eta_value, nargs="*", default=[0.0, 1.0, OPTIMIZE],
+                    help="deposit splits to score at the decided ages: fractions in [0, 1] or 'optimize' "
+                         "(couples; none: --eta with no value)")
     ap.add_argument("--only", nargs="*", help="run only these variants (the first listed is the reference)")
     ap.add_argument("--json", help="write every score to this file")
     ap.add_argument("--report-from", metavar="JSON", help="print the report of a saved --json run, solving nothing")
@@ -715,11 +741,11 @@ def main():
     log(f"work_sweep.py, {date.today().isoformat()}, owlplanner {owl.__version__} from {owl.__file__}")
     log(f"case {args.case}, variants {args.variants}, jobs {args.jobs}, passes {args.passes}, "
         f"decider {DECIDER[args.decider]}"
-        + (f" (gap {args.gap:.0e}, relTol {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search "
+        + (f" (gap {args.gap:.0e}, maxTime {args.max_time:.0f}s per MIP; local search "
            f"for unproved plans)"
            if args.decider == "bb" else "")
         + f", localSearchTime {args.ls_time:.0f}s, localSearchStepTime {args.ls_step_time:.0f}s"
-        + f", eta check {', '.join(f'{e:.2f}' for e in args.eta) or 'off'}")
+        + f", eta check {', '.join(_eta_label(e) for e in args.eta) or 'off'}")
     for name, _, _, sets in variants:
         log(f"  {name}: {'; '.join(sets) or '(no overrides)'}")
     objective = None

@@ -1,0 +1,24 @@
+ws_parttime_a_check.py, 2026-10-28: stage (a) of work_sweep (exact LP, withSSAges) on chris+pat pat-part-time-2029-30,
+with exact-LP scores at three fixed ages; three code versions, run the same day (plans start today).
+Usage: PYTHONPATH=<checkout>/src python ws_parttime_a_check.py <checkout> <out dir>
+
+== current (upstream b6a3ba7 merged)
+/home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py 2026.10.28
+(a) 68y3m/64y7m 119,962.22 469s
+exact LP at 68y3m/64y7m 119,962.22 solved
+exact LP at 68y3m/65y0m 119,959.24 solved
+exact LP at 68y5m/65y0m 119,956.70 solved
+
+== 0f93a14 (main before the 2026-10-28 merges)
+/home/user/wt/old/fork-notes/phase5/../../src/owlplanner/__init__.py 2026.10.26
+(a) 68y3m/64y7m 119,962.22 470s
+exact LP at 68y3m/64y7m 119,962.22 solved
+exact LP at 68y3m/65y0m 119,959.24 solved
+exact LP at 68y5m/65y0m 119,956.70 solved
+
+== 92e49bd (before merging upstream 07b9a77, the #229-#232 earnings-test fixes)
+/home/user/wt/old/fork-notes/phase5/../../src/owlplanner/__init__.py 2026.10.26
+(a) 68y3m/65y0m 119,959.24 235s
+exact LP at 68y3m/64y7m 119,936.58 solved
+exact LP at 68y3m/65y0m 119,959.24 solved
+exact LP at 68y5m/65y0m 119,956.70 solved

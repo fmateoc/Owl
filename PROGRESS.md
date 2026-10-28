@@ -2595,6 +2595,48 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## chris+pat work sweep with `--eta 0 1 optimize` (2026-10-28, on `claude/intelligent-keller-0acb9o`)
+
+`work_sweep.py` as on `main` `d3e16bf` (upstream `b6a3ba7`; no `relTol`; `--eta` default
+`0 1 optimize`), the same variants and stand-ins as the 2026-10-26 dry run (SLCSP 20, same PIAs:
+a mechanics test, not a decision). `--jobs 4`, 8,824 s. Log and report
+`fork-notes/phase5/work_sweep_chris+pat_bb_2026-10-28.txt`, scores `..._bb_2026-10-28.json`.
+Every scored plan solved and proved by branch-and-bound; reported gaps 8.9e-6 to 1.0e-5 (the
+2026-10-26 run: up to 2.0e-5, before #233); no plan nets a round trip (#234).
+
+| Variant | Decided | Objective | tol | 2026-10-26 |
+|---|---|---:|---:|---|
+| base | 68y6m/63y0m | 113,542.48 | 1.10 | same ages, same value |
+| Pat stops end of 2027 | 68y7m/62y3m | 108,721.05 | 1.08 | same |
+| Pat stops mid-2028 | 68y6m/62y6m | 111,433.21 | 1.11 | same |
+| Pat part time 2029-30 | 68y3m/64y7m | 116,246.11 | 1.15 | 68y5m/65y0m, 116,248.30 |
+
+**Deposit split.** At every variant's decided ages, eta 0, 1 and "optimize" give the case's 0.5
+value to the cent, except base: eta 0 and "optimize" +0.21 (unresolved against 1.10 + 1.10).
+"optimize" is never below a fixed split, as it must be. On these inputs the split does not matter.
+
+**Part-time variant: a different pick, and a miss.** Traced the same day:
+- Stage (a) (exact-LP `withSSAges` search) picks 68y3m/64y7m today, 68y3m/65y0m on 2026-10-26.
+  Run today on three code versions (`ws_parttime_a_check.py`, output
+  `ws_parttime_a_check_2026-10-28.txt`): the current code and `0f93a14` (main before today's
+  merges) both pick 68y3m/64y7m (119,962.22); `92e49bd`, before the #229-#232 earnings-test fixes
+  (upstream `07b9a77`, merged 2026-10-27), picks 68y3m/65y0m and values 68y3m/64y7m at 119,936.58.
+  So those fixes moved it: Pat (born 1966-01) claims at 64y7m in August 2030, inside her
+  2029-30 part-time work, where the test applies (decided plan: 4,889 withheld, today's $); at
+  65y0m she claims after it. Which of the four fixes does it was not isolated. Stage (b) (loop
+  search) also moved, 68y5m/63y7m -> 68y9m/65y0m; not traced.
+- With (a) and (b) moved, Chris 68y5m was no longer among the candidate ages (whole years, the
+  held age, and the (a)/(b) picks: `decide()`), so the sweep never scored it. Scored afterwards by
+  branch-and-bound at gap 1e-5 (`ws_parttime_bb_check.py`, output
+  `ws_parttime_bb_check_2026-10-28.txt`): 68y5m/64y7m 116,248.44, 68y5m/65y0m 116,248.30 (the
+  2026-10-26 value), 68y3m/64y7m 116,246.11 (the sweep's pick, reproduced). The best plan found
+  is 68y5m/64y7m, $2.33/yr above the sweep's pick, against tolerances 1.15 + about 1.15: at the
+  edge of resolved. Pat 64y7m vs 65y0m at Chris 68y5m: 0.14 apart, unresolved.
+- So the script's coordinate search only compares the ages it is given; it can stop short of
+  the best nearby month when (a) and (b) do not point at it. Here the cost is about $2/yr on a
+  stand-in case. Not changed in the script (a refinement around the decided ages, e.g. +-1 to
+  3 months per person, would cover it): the user's call.
+
 ## `main` fast-forwarded to `claude/intelligent-keller-0acb9o` (2026-10-28)
 
 The user's call: `main` moves from `0f93a14` to this branch: upstream `dev` `1bdc3b2` (#233 ours,

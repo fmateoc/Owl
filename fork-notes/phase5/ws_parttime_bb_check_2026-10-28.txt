@@ -1,0 +1,4 @@
+ws_parttime_bb_check.py, 2026-10-28, current code: branch-and-bound (gap 1e-5) scores of pat-part-time-2029-30 at ages the sweep did not score
+68y5m/65y0m solved 116,248.30 gap 9.96e-06 branch-and-bound 87s
+68y5m/64y7m solved 116,248.44 gap 9.63e-06 branch-and-bound 80s
+68y3m/64y7m solved 116,246.11 gap 9.93e-06 branch-and-bound 129s

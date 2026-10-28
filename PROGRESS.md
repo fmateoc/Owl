@@ -2595,6 +2595,12 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded again to `claude/intelligent-keller-0acb9o` (2026-10-28)
+
+The user's call: `main` moves from `d3e16bf` to this branch: the chris+pat work sweep with
+`--eta 0 1 optimize`, the part-time pick traced to the #229-#232 fixes, and the decision not to
+add a month refinement pass. Docs and fork-notes only since `d3e16bf`.
+
 ## chris+pat work sweep with `--eta 0 1 optimize` (2026-10-28, on `claude/intelligent-keller-0acb9o`)
 
 `work_sweep.py` as on `main` `d3e16bf` (upstream `b6a3ba7`; no `relTol`; `--eta` default

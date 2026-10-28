@@ -34,3 +34,6 @@ case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+p
   deposit split at the decided ages (157s): case's 0.50; 0.00 -> 111,433.21, 1.00 -> 111,433.21, optimize -> 111,433.21
 
 == pat-part-time-2029-30
+  (a) exact-LP search: solved, ages 68y3m/64y7m (243s)
+  (b) loop search:     solved, ages 68y9m/65y0m (110s)
+  (c) branch-and-bound at fixed ages:

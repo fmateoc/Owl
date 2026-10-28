@@ -1,5 +1,8 @@
 # Upstream #236 (LP-chosen spousal deposit split) against the household's structure
 
+**Update 2026-10-28:** implemented upstream (`1bdc3b2`) as an option, `spousal_surplus_deposit_fraction =
+"optimize"` (one row `d_0n + d_1n = s_n` while both live, epsilon tie-break toward spouse 0); merged.
+
 Checked 2026-10-27 on `claude/determined-goodall-f5yxft` (upstream `dev` `07b9a77` merged).
 The issue was read through the fetch tool (a summary, not verbatim): `rationalpiper`, 2026-10-26,
 label enhancement, self-assigned by the maintainer 2026-10-27, no comments.

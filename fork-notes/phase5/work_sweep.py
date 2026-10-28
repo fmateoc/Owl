@@ -24,9 +24,12 @@ Scoring in (c), --decider (2026-10-26, the user's call after `ws_bb_check.py`, r
   on 12 of 84 chris+pat plans at --gap 1e-5): HiGHS stops within --gap, but the branch-and-bound
   loop's sticky binaries (upstream `6250a5b0`) may keep the previous iteration's plan when it is
   within the loop's relTol (5e-5 by default) of HiGHS's, and re-express the bound against it
-  (`highs_gap_probe.py`). So --gap alone bounds the plan to --gap + relTol; the script passes
+  (`highs_gap_probe.py`). So --gap alone bounded the plan to --gap + relTol; the script passes
   relTol = --gap (2026-10-26, the user's call), which bounds it to 2 x --gap (on 15 chris+pat
-  plans it changed nothing: `reltol_probe_2026-10-26.txt`). An unproved plan is also scored by
+  plans it changed nothing: `reltol_probe_2026-10-26.txt`). Upstream fixed this as #233 (`4aa4887`,
+  merged 2026-10-28): a tie is refused when it would take a plan HiGHS proved within --gap outside
+  it, so --gap now bounds the plan by itself; relTol = --gap is still passed (it only narrows
+  which ties are kept). An unproved plan is also scored by
   local search and the better of the two kept, labelled by the method that produced it. On
   chris+pat branch-and-bound at 1e-5 beat local search by $15-74/yr on all 6 plans checked, in
   94-288 s each (`ws_bb_check_2026-10-26.txt`); HiGHS branch-and-bound can be far slower on other
@@ -47,7 +50,9 @@ Two checks on the decided plans (2026-10-26, after upstream #234):
 
 - Round-trip netting. Owl's worksheet nets a taxable sale against the surplus deposit that rebuys
   it in years with no federally taxed gains (`Plan._netSurplusRoundTrip`), while the gains, the
-  state tax and the cost basis keep the gross flows. Every scored plan records what was netted
+  state tax and the cost basis keep the gross flows. Since upstream fixed #234 (`3931c8a`, merged
+  2026-10-28), only a round trip that realizes no gain is netted, so the hidden gain recorded
+  below should be 0; it stays recorded as a check. Every scored plan records what was netted
   per year, in today's $: the amount, and the gain it hides (amount x gain coefficient x equity
   share, the part of `Q_n` the displayed flows no longer explain), with that year's state tax.
   NY taxes the gain, so a netted NY year carries state tax on a sale the worksheet does not show.

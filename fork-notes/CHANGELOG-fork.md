@@ -7,6 +7,15 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream: #233, #234, #236, #238, #239 (`dev` `1bdc3b2`, merged 2026-10-28)
+
+Taken as is, no conflicts. #233 (ours): a sticky-binaries tie no longer takes a plan outside the
+requested gap (our patch). #234: the worksheet nets only a surplus round trip that realizes no
+gain. #236: `spousal_surplus_deposit_fraction = "optimize"`. #238: the survivor's inherited
+taxable account is stepped up at the first death; an initially empty taxable account is tracked
+from a $0 basis. #239: a warning when the LTCG loop does not settle. Fork follow-up: the
+`work_sweep.py` docstring.
+
 ### Upstream: #229-#232 fixed (`dev` `07b9a77`, merged 2026-10-27)
 
 Taken as is. A 401k deferral counts as earnings with or without wages, and the employer's

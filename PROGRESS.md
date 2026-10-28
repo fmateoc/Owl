@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-27)
+# Owl fork — progress (as of 2026-10-28)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -40,10 +40,11 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 | #178 MIP money scaling (not ours) | Upstream `419a5ee`/`00d9bad`/`0ca30f4`: MILPs solved in hundreds of dollars (`mipScaleOrder`, default 2), tighter withdrawal-ordering big-M. Merged 2026-10-09. Effects on the fork: the NJ exclusion MILP closes its gap at the root (the 200-node cap test now runs at `mipScaleOrder=0`); local search on the NJ test couple 4x faster (43 -> 11 s) and +$154/yr; it also returned a plan that claimed the exclusion short of the statute (fixed in the fork, `b2ef9b2`, below). Not an upstream bug: their LP has no such exclusion |
 | #173 Mortgage outlives the sale of its home | **Implemented upstream with another design** (`431aee0`): optional Debts `property` naming a residence/real estate in Fixed Assets; the loan is paid off in the year it is sold; a bad link is a configuration error. Maintainer: a typed year drifts from a `yod` counted from the plan end. Our payoff mechanics kept. Merged 2026-10-08, ours dropped |
 | #174 `--solver-opt withSSTaxability=0.85` ignored | **Fixed upstream** (`fcf1b0b`), broader than our patch: all six mode options normalized or refused (`utils.normalize_mode_option`). Merged 2026-10-08, ours dropped; rechecked: jack+jill pins to 101,448 on both runs |
-| #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77` |
+| #233 Sticky-binaries tie can take a plan outside a requested `gap` (ours; `fork-notes/issue-sticky-gap.md`) | **Filed by the user 2026-10-26.** Stock repro on `dev` `4dcfabb` (chris+pat at `gap=1e-5`: `solverGap` 1.8-2.0e-5 with every HiGHS run within 1e-5) and patch (refuse a tie that would leave a gap the solve met; one more loop iteration where it refuses). Open risk: MOSEK's `test_pathological_cases_settle`, not runnable here; fallback offered: cap the tie at the gap. Fork not patched (`work_sweep.py` passes `relTol` = gap). 2026-10-27: maintainer "Thanks for looking into this.", self-assigned, label `bug`; not fixed on `dev` `07b9a77`. **Fixed upstream as filed** (`4aa4887`, 2026-10-27), merged 2026-10-28; the issue's four cases reproduce the patched rows to the cent (section "Upstream `dev` `1bdc3b2` merged") |
 | #229-#232 (not ours; filed 2026-10-26 by `rationalpiper`, on code from our PRs #222/#228) | **All four valid**, numbers reproduced here (`fork-notes/upstream-229-232/README.md`): #229 the `omega_in > 0` gate drops an all-deferred year's deferral from the earnings; #230 an employer match in `401k ctrb` and a nondeductible IRA counted as earnings; #231 exempt amounts after 2026 used as first-year dollars (a plan starting 2027 loses a year; 2027 amounts not verified then, verified 2026-10-27 from 91 FR 67380); #232 the worker's excess charged on the spouse's pre-ARF add-on after the spouse's FRA. **All four fixed upstream 2026-10-27** (#229 `69d00c7`: 401k deferral always earnings, new `employer ctrb` column; #230 docs `cc5377b`; #231 `3ea6f0f`: nominal exempt and wage-base tables with 2027; #232 `d9d0bd0`: two-pass charge) and **merged here 2026-10-27**, theirs; the fork's strict xfails removed (section "Upstream `dev` `07b9a77` merged") |
-| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open |
-| #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Code claim (where `eta` is read) holds. **Checked against the household's structure 2026-10-27** (`fork-notes/upstream-236/README.md`): equal horizons (no survivor phase), so the reporter's mechanism cannot arise; on a stand-in, no deposits under `maxSpending`, at most $157 of bequest (0.008%) under `maxBequest` with local search; the free split does not dominate (noise as large as the effect). Nothing to change; `work_sweep.py --eta` stays as a sensitivity on the real inputs |
+| #234-#235 (not ours / ours; filed 2026-10-26 by `rationalpiper`) | #234 (upstream's `_netSurplusRoundTrip`, `8bd1f3d`): code claims **valid** (netting after the solve, federal-only test, basis and `Q_n` on gross flows, local search seeded netted); numbers not reproduced (setup incomplete). Fork examples: only jack+jill nets ($118,626 in 3 years, basis tracked, TN). #235 (our earnings test, a documented premise): Owl's numbers reproduced, the law's arithmetic checked; feature request. Fork not patched (`fork-notes/upstream-234-235/README.md`). #231: our comment posted by the user. 2026-10-27: #235 has a follow-up by the reporter (overpayment recovered by withholding later checks, 20 CFR 404.501/502), self-assigned by the maintainer, label "Tax law"; #234 unchanged; both open. **#234 fixed upstream** (`3931c8a`, 2026-10-28: only a round trip that realizes no gain is netted; local search starts from the un-netted withdrawals), merged 2026-10-28; jack+jill now nets one year at gain fraction 0 (section "Upstream `dev` `1bdc3b2` merged"). #235 not checked this session |
+| #236 LP-chosen spousal deposit split (not ours; filed 2026-10-26 by `rationalpiper`, enhancement) | Replace the fixed `eta` rows (`_add_surplus_deposit_linking`) by `d_0n + d_1n = s_n` while both are alive. Reporter's PA case: free split = best fixed `eta` (1.0), +$5,038 over the plan vs 0.5; FL +$365/yr. Self-assigned by the maintainer 2026-10-27, no comment. Code claim (where `eta` is read) holds. **Checked against the household's structure 2026-10-27** (`fork-notes/upstream-236/README.md`): equal horizons (no survivor phase), so the reporter's mechanism cannot arise; on a stand-in, no deposits under `maxSpending`, at most $157 of bequest (0.008%) under `maxBequest` with local search; the free split does not dominate (noise as large as the effect). Nothing to change; `work_sweep.py --eta` stays as a sensitivity on the real inputs. **Implemented upstream** (`1bdc3b2`, 2026-10-28) as an option, `spousal_surplus_deposit_fraction = "optimize"`; merged 2026-10-28 |
+| #238, #239 (new; issues not read, known from the commits) | **Fixed upstream** 2026-10-28 and merged the same day: #238 (`f21486b`) the survivor's inherited taxable account takes its value at the death as basis, and an account that starts empty is tracked from $0; #239 (`b6e695b`) a warning when the LTCG loop does not settle. Household: #238 cannot apply (equal horizons) |
 | Upstream workflow | Branch from and target `dev` (CONTRIBUTING) |
 
 ## Phase 0 — baseline case and scenarios
@@ -2593,6 +2594,60 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Upstream `dev` `1bdc3b2` merged: #233 (ours), #234, #236, #238, #239 fixed (2026-10-28, on `claude/intelligent-keller-0acb9o`)
+
+Upstream `dev` `1bdc3b2`, 6 commits since `07b9a77` (2026-10-27/28; `main` = `3931c8a`, the first
+two of them). Commit messages read; the issues themselves were not (this session's GitHub access
+covers the fork only), so #238 and #239 are known only from their commits.
+
+- `4aa4887` (**#233, ours**): a sticky-binaries tie is kept only if the gap restated against the
+  kept plan stays within the requested `gap`, or if the solve itself stopped above it. The code
+  is our patch from `fork-notes/issue-sticky-gap.md` line for line (the `min(rel_tol, gap)`
+  fallback not needed); two new tests, and the gap passed to the existing tie test.
+- `3931c8a` (#234): `_netSurplusRoundTrip` nets only a round trip that realizes no gain
+  (`cgr * alpha_0 * delta <= 0.01`), whatever the federal bracket; the gain fraction is now one
+  helper, `_withdrawal_gain_fraction()`. Local search starts from `w_ijn_lp`, the withdrawals
+  before netting. `2175eb0`: the docs follow.
+- `f21486b` (#238, new): at the first death the survivor's taxable basis gains what
+  `_add_account_balance_carryover` moves into the account (IRC 1014(a)); a taxable account that
+  starts empty is tracked from a $0 basis (`_tracks_basis`) instead of the legacy approximation.
+- `b6e695b` (#239, new): under `withLTCG="loop"`, a warning when the LTCG fixed-point residual
+  exceeds `N_n x residual_tol`, pointing to `withLTCG="optimize"` (as the SS warning does).
+- `1bdc3b2` (#236): `spousal_surplus_deposit_fraction = "optimize"` (`Plan.etaOptimize`): one row
+  `d_0n + d_1n = s_n` while both live, epsilon tie-break toward spouse 0, a warning with
+  beneficiary fractions below 1; UI disables the fraction; `amorepair.deposit_split` and the
+  `eta` field of the AMO context removed.
+
+Merge: **no conflicts**. Fork code reading what changed (grep of `src`, `fork-notes` for
+`gain_fraction_in`, `tau_0prev`, `.eta`, `etaOptimize`, `w_ijn_lp`, `_ltcg_lp`, `_residual_tol`,
+`"LTCG"`): only upstream's own, plus the fork's `_add_net_cash_flow` `tau_0prev` (dividends, not
+touched) and `work_sweep.py` (below). The fork's `_computeFixedPointResidual` returns the
+`{"abs_sum", "max_abs"}` per family that `_warnLTCGResidual` reads. No duplicated `def` in the
+merged files. CHANGELOG.md upstream's.
+
+Checks on the merged code:
+- #233: `sticky_iter_probe.py 1e-5` (the issue's four chris+pat cases) gives the "patched" rows
+  of 2026-10-26 to the cent: 114,327.09 / 113,451.71 / 113,362.69 / 113,542.48, accepted gaps
+  9.94e-6 / 9.87e-6 / 9.98e-6 / 9.72e-6, 3/3/3/2 iterations
+  (`fork-notes/phase5/sticky_iter_probe_2026-10-28_dev1bdc3b2.txt`).
+- #234: `scan234.py` over the 19 examples (outside pytest, today's date): jack+jill is still the
+  only case that nets, now $45,909 in one year (2035) instead of $118,626 in three (2034, 2036,
+  2038 on 2026-10-26). A probe on the same plan: 2034, 2036 and 2038 carry gain fractions
+  0.62 / 0.02-0.05 / 0.37 on the selling spouse and are now shown gross; 2035 has gain fraction 0
+  for both (the 2034 sale and rebuy reset the basis) and is netted
+  (`fork-notes/upstream-234-235/scan234_2026-10-28_dev1bdc3b2.txt`).
+- Household (from `fork-notes/upstream-236/README.md`: equal horizons, no survivor phase): #238
+  cannot apply (no first death inside the plan); #236's "optimize" was measured there before it
+  existed, as a free split, and moved nothing beyond the solves' noise. Not rerun.
+
+Fork changes: `work_sweep.py` docstring (#233 fixed: `--gap` now bounds the plan by itself,
+`relTol` = `--gap` still passed; #234 fixed: the recorded hidden gain should now be 0, kept as a
+check). Not changed: `--eta` takes numbers only; `"optimize"` could be one more value to score
+(an upper bound on what any fixed split gives), not done.
+
+Suite: **3603 passed, 1 skipped** (14:35; 3588 before, +15 upstream tests). flake8 clean; Ruff
+upstream's four B905 (the three known, plus `ui/Run_Options.py:257` from `1bdc3b2`).
 
 ## `main` fast-forwarded to `claude/youthful-einstein-nvadcx` (2026-10-28)
 

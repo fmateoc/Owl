@@ -1,0 +1,18 @@
+sticky_iter_probe.py 1e-5, 2026-10-28, after merging upstream dev 1bdc3b2 (#233 fixed as filed): matches the
+patched_1e-5 rows of sticky_iter_probe_2026-10-26.txt to the cent.
+owlplanner 2026.10.26 /home/user/Owl/src/owlplanner/__init__.py gap=1e-05
+as shipped         solved value=114,327.09 solverGap=9.942e-06 iters=3 repairs_improved=0 conv='monotonic' 173s
+    MIP gap 9.706e-06        returned plan: true gap 9.706e-06, reported 9.706e-06
+    MIP gap 9.445e-06        returned plan: true gap 9.445e-06, reported 9.445e-06
+    MIP gap 9.942e-06        returned plan: true gap 9.942e-06, reported 9.942e-06
+SLCSP 20, 67/63    solved value=113,451.71 solverGap=9.867e-06 iters=3 repairs_improved=0 conv='monotonic' 264s
+    MIP gap 9.872e-06        returned plan: true gap 9.872e-06, reported 9.872e-06
+    MIP gap 9.809e-06        returned plan: true gap 9.809e-06, reported 9.809e-06
+    MIP gap 9.867e-06        returned plan: true gap 9.867e-06, reported 9.867e-06
+SLCSP 20, 70/63    solved value=113,362.69 solverGap=9.981e-06 iters=3 repairs_improved=0 conv='monotonic' 384s
+    MIP gap 9.976e-06        returned plan: true gap 9.976e-06, reported 9.976e-06
+    MIP gap 9.858e-06        returned plan: true gap 9.858e-06, reported 9.858e-06
+    MIP gap 9.981e-06        returned plan: true gap 9.981e-06, reported 9.981e-06
+SLCSP 20, 68.5/63  solved value=113,542.48 solverGap=9.720e-06 iters=2 repairs_improved=0 conv='monotonic' 171s
+    MIP gap 9.834e-06        returned plan: true gap 9.834e-06, reported 9.834e-06
+    MIP gap 9.720e-06        returned plan: true gap 9.720e-06, reported 9.720e-06

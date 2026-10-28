@@ -15,3 +15,7 @@ case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+p
   deposit split at the decided ages (233s): case's 0.50; 0.00 -> 113,542.69, 1.00 -> 113,542.48, optimize -> 113,542.69
 
 == pat-stops-2027
+  (a) exact-LP search: solved, ages 68y3m/62y1m (391s)
+  (b) loop search:     solved, ages 68y7m/62y3m (64s)
+  (c) branch-and-bound at fixed ages:
+    pass 0, Chris swept (10 ages, 499s): best 68y7m at 108,720.87

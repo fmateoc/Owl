@@ -2594,6 +2594,12 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/youthful-einstein-nvadcx` (2026-10-28)
+
+The user's call: `main` moves from `e142198` to this branch: the NY marketplace benchmark and gold
+plans (`fork-notes/aca-ny/`), the template's `slcsp_annual = 20.84` and budget spending profile,
+and the HFP generator's `core` and gold-plan Budget lines. Docs and fork-notes only.
+
 ## NY marketplace benchmark for Yonkers, Westchester, NYC (2026-10-27, on `claude/youthful-einstein-nvadcx`)
 
 The user's question (the R6 input SLCSP). Details, sources and rerun steps:

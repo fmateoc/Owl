@@ -12,3 +12,6 @@ case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+p
     pass 0, Chris swept (10 ages, 653s): best 68y6m at 113,542.48
     pass 0, Pat swept (9 ages, 563s): best 63y0m at 113,542.48
     pass 1: no age moved
+  deposit split at the decided ages (233s): case's 0.50; 0.00 -> 113,542.69, 1.00 -> 113,542.48, optimize -> 113,542.69
+
+== pat-stops-2027

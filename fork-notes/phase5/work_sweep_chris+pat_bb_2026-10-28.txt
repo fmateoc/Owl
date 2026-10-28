@@ -1,0 +1,8 @@
+work_sweep.py, 2026-10-28, owlplanner 2026.10.28 from /home/user/Owl/fork-notes/phase5/../../src/owlplanner/__init__.py
+case examples/Case_chris+pat.toml, variants fork-notes/phase5/work_sweep_chris+pat.json, jobs 4, passes 2, decider branch-and-bound (gap 1e-05, maxTime 900s per MIP; local search for unproved plans), localSearchTime 7200s, localSearchStepTime 1800s, eta check 0.00, 1.00, optimize
+  base: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029
+  pat-stops-2027: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2028; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 0, "401k ctrb": 0}]}
+  pat-stops-mid-2028: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2028, 2028], "anticipated wages": 42500, "401k ctrb": 13950, "months worked": 6}]}
+  pat-part-time-2029-30: aca_settings.slcsp_annual=20; solver_options.withSSAges=optimize; aca_settings.aca_start_year=2029; hfp: {"Pat": [{"years": [2029, 2030], "anticipated wages": 40000}]}
+
+== base

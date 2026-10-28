@@ -2595,6 +2595,13 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/intelligent-keller-0acb9o` (2026-10-28)
+
+The user's call: `main` moves from `0f93a14` to this branch: upstream `dev` `1bdc3b2` (#233 ours,
+#234, #236, #238, #239) and `b6a3ba7` (#235, version 2026.10.28) merged, and `work_sweep.py`
+without `relTol` = `--gap` and with `--eta optimize`. Suite on the last code commit: 3609 passed,
+1 skipped.
+
 ## Upstream `dev` `b6a3ba7` merged: #235 fixed (2026-10-28, on `claude/intelligent-keller-0acb9o`)
 
 Upstream `dev` = `main` = `b6a3ba7`, 2 commits since `1bdc3b2`:

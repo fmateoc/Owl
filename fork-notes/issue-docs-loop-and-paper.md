@@ -4,6 +4,8 @@
 
 ## Recheck against upstream `dev` `226ff54` (2026-10-29)
 
+**Superseded the same day by a full read of the paper: `fork-notes/paper-review-226ff54.md`** (finds more, corrects item 1 and the Tx2 row below; section D there compares the two).
+
 Read against upstream's `papers/owl.tex` (`git show upstream/dev:papers/owl.tex`, not the fork's copy), `info/*.md` and `ui/Documentation.py`. "Fixed" means the paper now says what this draft says the code does; the code was re-read only where noted. **Most of the draft is obsolete; the text below this section must not be filed as is.** What is left is short enough for a small issue.
 
 | Item | Status on `226ff54` |

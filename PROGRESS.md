@@ -126,7 +126,7 @@ Review of the paper (`papers/owl.tex`) against the implementation: `fork-notes/m
 - [x] Survivor of a worker who died before claiming got 82.5% of PIA. **Fixed 2026-10-04** (`adeea31`): full PIA, plus DRCs to death after FRA. Rule from memory and secondary summaries of POMS RS 00615.320 (ssa.gov, ecfr, govinfo blocked); **user to confirm before filing**. Draft `fork-notes/issue-survivor-never-claimed.md`. Upstream #169; theirs since the 2026.10.7 merge.
 - [x] New: ACA loop mode 133-150% FPL band started at 2.10% instead of 3.14% (Rev. Proc. 2025-25; irs.gov blocked, table from secondary sources). **Fixed 2026-10-04** (`5bd010e`). Draft `fork-notes/issue-aca-133-150.md`. Upstream #164; theirs since the 2026.10.7 merge.
 - [x] ACA optimize: step rates (each band charged its final %) and the <138% FPL rule differs from loop mode (repro: optimize ends $1,786/yr higher where income drifts below 138%). **Fixed upstream** (#165, `7ad4c7e`): tangent-line sliding scale, Medicaid at no premium up to 138% FPL in both modes.
-- [ ] Paper vs code drift, loop mode as a fixed point, taxable bond returns, plan year: one docs issue drafted, `fork-notes/issue-docs-loop-and-paper.md`. Rechecked 2026-10-29 against `226ff54`: most items fixed upstream; left: MedDecomp2/3, Eq. (PI), Ch. 2 state indexing / add-back / moves, the loop caveat in the paper (in the docs already), minor longevity and CVaR wording. Rewrite to those before filing.
+- [ ] Paper vs code drift, loop mode as a fixed point, taxable bond returns, plan year: one docs issue drafted, `fork-notes/issue-docs-loop-and-paper.md`. Rechecked 2026-10-29 against `226ff54`, then superseded by a full review of the paper (`fork-notes/paper-review-226ff54.md`): many new verified items, and the 2026 QCD cap in `tax_federal.py` is wrong (\$111,000, Notice 2025-67). File per its section E.
 
 **Filed by the user on 2026-10-04**: ACA 133-150% band (#164), survivor never claimed (#169), cost basis (#166), SS-age taxes (#168), partial first year (#167), ACA optimize rates (#165); numbers from upstream's CHANGELOG and commit messages. **Not filed:** docs/paper drift (`issue-docs-loop-and-paper.md`). The last two were verified on 2026-10-04 against the primary text: Rev. Proc. 2025-25 section 3.01 (irs.gov) and 26 CFR 1.36B-3(g)(1) for the ACA band; 42 U.S.C. 402(e)(2)(D) (govinfo.gov), 20 CFR 404.338 and 404.313(e)(1) (ecfr.gov) and POMS RS 00615.320 (secure.ssa.gov) for the survivor rule. Repro numbers re-run on this branch match the drafts. Note: www.ssa.gov itself answers 403 to curl (the site, not the proxy); POMS is on secure.ssa.gov. Rule from the user: never file a draft that asks the maintainer to check a source we didn't check; mark it not ready instead. Each patch draft has a `.patch` verified on stock `dev` `c1e5619` (full suite with each patch alone: 2604-2606 passed, 1 skipped; flake8 clean). Applied in the fork on branch `claude/project-thread-qx5fy0`.
 
@@ -2594,6 +2594,22 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Full review of upstream's paper at `226ff54` (2026-10-29, on `claude/quirky-franklin-yul9qg`)
+
+`fork-notes/paper-review-226ff54.md`: the whole of upstream's `owl.tex` read, suspect
+statements checked against upstream's code or primary sources. New and verified: the SS
+taxability MIP rows (BinQ/BinT) printed with `1 - z` where the code has `z` (as printed, the
+taxable share could drop to 0); the **2026 QCD cap is \$111,000** (IRS Notice 2025-67), not
+\$115,000 as in the paper **and in `tax_federal.py:157`** (an upstream code bug); Medigap is
+not HSA-qualified (Pub. 969); HSA withdrawals are capped by medical costs and contributions
+prorated in the Medicare year, contrary to the paper; earnings-test text predates #229/#235 and
+the 2027 tables; spousal 5/12 rule missing; ACA `N_r` 7 vs 8; state pension exemption pooled
+in the paper, per person in the code; NII clip; MFJ-to-single year; Eq. C3b's references print
+the net-spending equation's number; `A^c` missing from `Q_n`; owlcli commands; KS/MO examples
+obsolete. The earlier recheck was wrong on the loop caveat (the senior-bonus section states it
+for that family) and too strong on the Tx2 clip (C6/C6' still lack it). Section E proposes a
+separate QCD code issue and one rewritten docs issue.
 
 ## Paper-drift draft rechecked against `226ff54` (2026-10-29, on `claude/quirky-franklin-yul9qg`)
 

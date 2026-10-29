@@ -2611,7 +2611,7 @@ which goes first.
 (`issue-qcd-limit-repro.py`, via the HFP `QCD` column and `setContributions`): \$113,000 and
 \$115,000 accepted; with the patch (`issue-qcd-limit.patch`: the figure, a pinning test, four
 doc mentions) refused. `test_qcd.py` 22 passed with the patch; full stock suite with the patch:
-pending at commit time.
+3285 passed, 1 skipped (6:37).
 
 ## Full review of upstream's paper at `226ff54` (2026-10-29, on `claude/quirky-franklin-yul9qg`)
 

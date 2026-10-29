@@ -10,7 +10,7 @@ item A2). Every figure below comes from stock upstream `dev` `226ff54`, run 2026
   `https://www.irs.gov/pub/irs-drop/n-25-67.pdf`, fetched and read 2026-10-29 (quote below).
   The same notice confirms the 2025 figure Owl has (\$108,000).
 
-Upstream suite on `226ff54` with the patch: SUITE_RESULT. Changed files flake8-clean.
+Upstream suite on `226ff54` with the patch: 3285 passed, 1 skipped (6:37). Changed files flake8-clean.
 
 Not in the patch: `CHANGELOG.md` line 1920 (the entry that introduced the limit says
 \$115,000); it is history, the maintainer's call.
@@ -58,4 +58,4 @@ QCD of $115,001 in 2026: refused: QCD of $115,001 for Alice in 2026 exceeds the 
 same figure in `info/PARAMETERS.md`, `info/modeling-capabilities.md`, `ui/Documentation.py` and
 `papers/owl.tex` (l. 1866). The existing tests read the limit through `qcdLimitForYear`, so none
 pins the number; the patch adds one that does (`test_published_limits`). Patch attached; upstream
-suite with it: SUITE_RESULT.
+suite with it: 3285 passed, 1 skipped (6:37).

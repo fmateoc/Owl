@@ -2595,6 +2595,40 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## Upstream `dev` `1cf1925` merged: #240 and #241 fixed (2026-10-29, on `claude/optimistic-sagan-3onvdj`)
+
+Upstream `dev` = `main` = `1cf1925` (2026.10.29, six commits since `226ff54`):
+- `8ac888d` **#240 fixed as filed**: `qcdLimit[2026]` = 111,000 (Notice 2025-67), a test pinning
+  2025 and 2026, the same four doc mentions as our patch.
+- `13d45ed` **#241 fixed**: `owl.tex` / `owl.pdf`. Each of the 11 numbered items of
+  `issue-paper-226ff54.md` and the short items looked up in the new `owl.tex` (BinQ/BinT carry `z`;
+  MedDecomp2 with no `e`, positive signs, `a-bar`, `max(0, tau)`; Eq. PI on `G^aca`; pension
+  exemption per person; HSA (Medigap, cap, proration); earnings test (`employer ctrb`, IRA only with
+  pay, lead-in rows, 2027); 5/12; single from the year after the death; `N_r = 8`; C3b numbered;
+  the loop caveat in 3.5; per-asset clip in `I_n`, C6, C6'; `A^c` in `Q_n`; owlcli commands;
+  KS/MO; state indexing, AGI add-back; longevity per person; SC stop with the residual; `chi`;
+  `gamma^med` and the frozen top tier; smile delay; horizon; `xi_n`; `q_d(i, n)`): all fixed.
+- `2e70957`, `f51be59`: KS/MO data comments; `ss_exemption_threshold` removed from
+  `taxes_state.toml` and `st_taxParams` (never read by the LP; results unchanged).
+- `0713477` version and CHANGELOG; `1cf1925` a pytest-benchmark shim for pytest 9.2.
+
+Conflicts: `tax_state.py` (3), `plan.py` (1), `test_state_tax.py` (9), `modeling-capabilities.md`
+(1), `owl.tex` (1). Fork kept its typed `StateTaxParams` and dropped `ss_thresh_n` from it (class,
+`st_taxParams`, `st_schedule`, one test assertion, the `plan.py` comment); upstream's dict
+`st_schedule` that reappeared at the end of the file dropped (the fork's is the one definition).
+Docs: the fork's state-tax paragraph in `owl.tex` takes "Single in the year after the passing of a
+spouse"; the fork's state row in `modeling-capabilities.md` takes upstream's KS/MO sentence.
+`CHANGELOG.md` = upstream's.
+
+Suite: **3611 passed, 1 skipped** (13:41, on a container that restarted mid-run once). flake8:
+upstream's known E301/E304; Ruff: upstream's four B905.
+
+Typed `StateTaxParams` vs upstream's tuple / dict (user's question, same day): named fields and one
+type for the single-state and per-year paths; no result depends on it (the #158 patch was rebuilt
+without it, plans identical). Cost: a conflict on each upstream change to these functions (this
+merge: 13 hunks). Kept for now, nothing new built on it; revert to upstream's shapes (fork extras as
+dict keys) if upstream changes these functions more often.
+
 ## #240 and #241 filed; `main` fast-forwarded (2026-10-29)
 
 The user filed the QCD limit issue as **#240** (`fork-notes/issue-qcd-limit.md`) and the paper

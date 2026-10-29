@@ -71,8 +71,10 @@ by one year of the case's inflation from 2027 on, with no real growth: the same 
     --out-dir fork-notes/synthetic/runs/$(date +%F)
 ```
 
-About 76 runs: the claiming-age searches one at a time, the fixed-age solves in parallel
-(`--jobs`, default the core count); `--only condo ltc` runs a subset after the baseline.
+About 650 runs (about 500 of them fast exact-LP runs of the rate group), in parallel (`--jobs`,
+default the core count; spawned processes). A run that searches claiming ages does it in two stages
+(the exact LP, then the pick and its +-1-year neighbours at fixed ages under the case's model).
+`--only condo ltc` (groups) or `--only main/ss-62` (runs) runs a subset after the baseline.
 
 Offline, on the real case: a copy of `make_cases.py` in `otherFiles/` with the real figures writes
 the real case files, workbooks and scenario file there; then the same command on those files,
@@ -104,6 +106,20 @@ cash (a reference point, not a recommendation). Groups:
   at the baseline's claiming ages, with a pivot (purchase year against place and financing) and a
   table that says whether local search and the exact LP agree.
 - **ltc**: care late in life, the condo kept or sold.
+- **rates-exact**: the rate sensitivity. Every 28-year historical window of returns and inflation
+  (start years 1928-1998, 71 windows, in their order), under the exact LP: the reference purchase
+  and four decisions (Yonkers 2027 with a mortgage, White Plains 2027, Queens 2027, Yonkers 2031,
+  all cash unless said) plus both claiming at 62 and at 67, each against the reference in the same
+  window. The report gives per decision the median, worst and best difference and the windows where
+  it comes out ahead; `rates_exact.csv` has every window. The workbooks hold the purchase in its
+  year's nominal dollars, written with the case's own inflation path (`nominal_gamma` in the
+  scenario file), so each run rescales them to its window's inflation (`rescale_nominal`): the condo
+  is the same in today's dollars in every window (a feature check: a condo kept to the end passes at
+  its full proceeds with a stepped-up basis, `fixedassets.py`, so its value at 89 must not move).
+  The Budget's flat-in-2027 rent line was built with the case's inflation, so under another window
+  2027 rent is not exactly flat in nominal terms.
+- **rates-ls**: three of those decisions under local search in five telling windows (1929, 1966,
+  1973, 1982, 1998) and on the 1928-2025 average, with the exact LP's difference beside each.
 - **Run checks** (a run that did not solve, a loop that did not settle, cash-flow or infeasibility
   warnings), **feature checks** (each modeled rule fires where it should: payroll tax, ACA,
   Medicare, the Yonkers surcharge and the NYC tax, STAR for the owner, itemizing of the property

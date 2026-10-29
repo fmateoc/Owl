@@ -2681,11 +2681,49 @@ No conversions at all: main -1,118/yr, local search -978, exact LP -192 (\$280-3
 over the plan): every method says conversions pay; the size is unresolved (spread 786). Neither
 counts the first-Roth clock (above). The Roth pair now also runs in the condo groups.
 
+**Financing and rate sensitivity (later on 2026-10-29).** User: a 5/6 ARM at about 5.9% for a
+purchase now or soon, paid down within its fixed 5 years or refinanced if advantageous. Owl's Debts
+rows are fixed-rate, level-payment loans ended early only at the linked property's sale
+(`debts.resolve_payoff_years`), so the 2027 purchases gained `arm5` (a 5-year loan at 5.9%, the
+paydown branch) and `arm30` (30 years at 5.9%: the refinance branch at no higher rate, an upper bound
+on its cost). New groups: `rates-exact`, every 28-year historical window (start years 1928-1998,
+71 windows) for the reference and five decisions plus claiming at 62 and 67; `rates-ls`, local search
+in 1929, 1966, 1973, 1982, 1998 and on the 1928-2025 average. Each run rescales the workbooks'
+nominal purchase amounts (Fixed Assets, Debts, big-ticket items, wages, contributions) to its own
+inflation path (`rescale_nominal`); a feature check confirms the condo kept to 89 is \$760,861 in
+every window (`fixedassets.py`: kept to the end at full proceeds, stepped-up basis). In run (d)
+(20:46, 660 runs, 5,602 s) 153 of 568 `rates-exact` runs did not settle (error bars median +-2,782,
+up to +-12,856; 138 on the LTCG loop): the exact groups now also take `withLTCG="optimize"` (four
+probed runs settled, 11-15 s each instead of 0.5-1 s), rerun as (e) (21:39, `--only condo-exact
+rates-exact`, 3,001 s): 44 of 568 unsettled, `condo-exact` all settled.
+
+Run (e), against the Yonkers 2027 cash purchase in the same window (first-year discretionary
+spending, \$/yr; "settled" excludes windows where either run's loop did not settle):
+
+| decision | ahead in | median | worst (window) | best (window) | settled only |
+|---|---:|---:|---|---|---|
+| Yonkers 2027, 6.25% fixed 30 years | 66 / 71 | +8,392 | -12,219 (1929) | +24,685 (1981) | 53 of 58, +6,409 |
+| Yonkers 2027, ARM paid in 5 years | 48 / 71 | +1,250 | -17,874 (1929) | +7,713 (1981) | 39 of 62, +1,000 |
+| White Plains 2027, cash | 9 / 71 | -431 | -1,181 (1966) | +905 (1949) | 7 of 68, -481 |
+| Queens 2027, cash | 0 / 71 | -11,029 | -16,271 (1982) | -5,689 (1965) | 0 of 71 |
+| Yonkers 2031, cash | 38 / 71 | +610 | -16,318 (1977) | +20,083 (1931) | 35 of 68, +503 |
+| both claim at 62 | 36 / 71 | +412 | -9,172 (1961) | +9,016 (1977) | 28 of 56, +60 |
+| both claim at 67 | 46 / 71 | +912 | -3,405 (1960) | +5,200 (1977) | 46 of 70, +936 |
+
+The reference itself scores 94,195 (1973) to 204,187 (1982): the rate path moves spending more than
+any of these choices. Reading, on these invented numbers: under the conservative fixed rates (5.2%
+nominal for 60/40) cash beats every loan (local search: ARM paid in 5 years -928, refinanced ARM
+-2,677, 6.25% fixed -3,711 in Yonkers), but over historical windows the 6.25% fixed loan beats cash in
+66 of 71, so "cash first" is the conservative rates' artifact; Queens is behind in every window;
+White Plains is a few hundred dollars behind in most; the purchase year (2027 vs 2031), the ARM
+paydown and claiming at 62 / 67 / 70 split the windows and stay unresolved. Local search in the five
+windows matched the exact model's signs (run (d), e.g. Queens -6,082 to -16,091 vs -6,148 to
+-15,635). Report fixes: settled-only columns, n/a feature checks summarized in one line.
+
 **For the offline run (user):** a copy of `make_cases.py` in `otherFiles/` with the real figures
 (balances, wages, the 401k on its owner, PIAs per variant, property tax per place, closing costs,
 mortgage rate), then the same `run_suite.py` command; `work_sweep.py` for the ages per work variant.
-Not in the suite yet: a rate sensitivity (historical windows or stochastic), which the condo ranking
-depends on.
+Not in the suite: stochastic rates (Monte Carlo); the historical windows above are deterministic.
 
 ## `main` fast-forwarded to `claude/optimistic-sagan-3onvdj` (2026-10-29)
 

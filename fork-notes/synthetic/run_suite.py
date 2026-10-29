@@ -786,8 +786,14 @@ def report(recs, skipped, out_dir, header):
     lines += ["", "## Feature checks", "",
               "Each line checks that a modeled rule shows up in the scenario that should trigger it, not that its "
               "amount is right.", "", "| check | result | detail |", "|---|---|---|"]
-    for label, ok, detail in feature_checks(by):
-        lines.append(f"| {label} | {'ok' if ok else ('n/a' if ok is None else '**FAIL**')} | {detail} |")
+    checks = feature_checks(by)
+    for label, ok, detail in checks:
+        if ok is not None:
+            lines.append(f"| {label} | {'ok' if ok else '**FAIL**'} | {detail} |")
+    absent = [label for label, ok, _ in checks if ok is None]
+    if absent:
+        lines += ["", f"{len(absent)} check(s) not applicable: their runs are not in this suite run (a partial "
+                  "run with --only, or a scenario that did not solve; Run checks lists the latter)."]
     lines += ["", "## Warnings in the logs", "",
               "Owl's warnings from each run's final solve, grouped by message (amounts as #, with their range).", ""]
     groups = {}

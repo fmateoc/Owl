@@ -49,6 +49,8 @@ Maintainer's responses as relayed by the user on 2026-10-06; issue states not re
 
 ## Phase 0 — baseline case and scenarios
 
+The unchecked items below are the user's offline runs on the real case (CLAUDE.md, "Household data", 2026-10-29); cloud sessions check the same scenarios on the synthetic household (`fork-notes/synthetic/`).
+
 - [x] Templates in the repo, placeholders only: `fork-notes/phase0/` (case template, HFP generator, scenario commands)
 - [x] Template checked: solves with placeholder numbers; Yonkers, NJ move, fixed SS ages and the alternate HFP all run
 - [ ] Copy the template to `otherFiles/Case_us.toml` and fill in the TODOs (names, DOBs, balances as of `start_date`, basis, PIAs, SLCSP)

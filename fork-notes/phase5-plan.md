@@ -598,7 +598,7 @@ a doc sentence corrected; 21 tests.
 *(2026-10-25/26: `fork-notes/phase5/work_sweep.py` written and dry-run on chris+pat with a stand-in
 SLCSP; PROGRESS.md "Phase 5 step 6". 2026-10-26, the user's call: stage (c) decided by
 branch-and-bound at gap 1e-5 instead of local search (revises R1 below), rerun the same day.
-Left: the household's inputs (R6) and the real run.)*
+Left: the real run, made offline by the user on the household's inputs (R6; CLAUDE.md "Household data", 2026-10-29); the scenarios are checked on the synthetic household, `fork-notes/synthetic/`.)*
 
 **Method revised 2026-10-22** (`fork-notes/plan-review-2026-10-22.md` §3.2, measured on
 chris+pat): a local-search age search costs hours per variant (about 2 minutes per candidate,

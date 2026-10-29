@@ -66,30 +66,41 @@ BUDGET_LINES = [
     [True, "gold over benchmark, B alone", "medical", 2029, 2029, 1819, 0, 100, True],
 ]
 
-out = Path(sys.argv[1] if len(sys.argv) > 1 else "otherFiles/HFP_us.xlsx")
-if out.exists():
-    sys.exit(f"{out} exists; not overwriting it. Pass another path or delete it first.")
-out.parent.mkdir(parents=True, exist_ok=True)
 
-wb = openpyxl.Workbook()
-wb.remove(wb.active)
-for name in NAMES:
-    ws = wb.create_sheet(name)
-    ws.append(COLUMNS)
-    for year in YEARS:
-        ws.append([year] + [0] * (len(COLUMNS) - 1))
-for sheet, columns in HOUSE_SHEETS.items():
-    ws = wb.create_sheet(sheet)
-    ws.append(columns)
-    if sheet == "Budget":
-        for line in BUDGET_LINES:
-            ws.append(line)
-wb.save(out)
+def write_hfp(out, names=NAMES, years=YEARS, budget_lines=BUDGET_LINES, overwrite=False):
+    """Write an HFP workbook with zeroed person sheets and the household sheets; return the workbook.
 
-print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
-print("Fill in: anticipated wages (as in AGI, upstream #221) and months worked (the year work stops) for the working years;")
-print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
-print("         Budget sheet (spending_profile = \"budget\"): set 'core' (TODO amount), keep or drop the gold lines; add")
-print("         rent / property tax / insurance /")
-print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")
-print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")
+    Used by the CLI below and by fork-notes/synthetic/make_cases.py (which fills the cells it needs)."""
+    out = Path(out)
+    if out.exists() and not overwrite:
+        sys.exit(f"{out} exists; not overwriting it. Pass another path or delete it first.")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for name in names:
+        ws = wb.create_sheet(name)
+        ws.append(COLUMNS)
+        for year in years:
+            ws.append([year] + [0] * (len(COLUMNS) - 1))
+    for sheet, columns in HOUSE_SHEETS.items():
+        ws = wb.create_sheet(sheet)
+        ws.append(columns)
+        if sheet == "Budget":
+            for line in budget_lines:
+                ws.append(line)
+    wb.save(out)
+    return wb
+
+
+if __name__ == "__main__":
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else "otherFiles/HFP_us.xlsx")
+    wb = write_hfp(out)
+    print(f"Wrote {out}: sheets {wb.sheetnames}, years {YEARS[0]}-{YEARS[-1]} ({len(YEARS)} rows)")
+    print("Fill in: anticipated wages (as in AGI, upstream #221) and months worked (the year work stops)")
+    print("         for the working years;")
+    print("         big-ticket items, negative, for long-term-care and other one-off outflows.")
+    print("         Budget sheet (spending_profile = \"budget\"): set 'core' (TODO amount), keep or drop the gold")
+    print("         lines; add")
+    print("         rent / property tax / insurance /")
+    print("         maintenance / car / travel / care lines (year, end, amount in today's $, rate, survivor %).")
+    print("         Buying: Fixed Assets (residence) and Debts (mortgage; property = the residence's name).")

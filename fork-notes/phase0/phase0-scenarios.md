@@ -1,5 +1,10 @@
 # Phase 0: first scenarios with `owlcli run` and `owlcli compare`
 
+These runs are made **offline, by the user**, on the real case in `otherFiles/` (CLAUDE.md,
+"Household data"). The whole set below except the work sweep also runs in one command,
+`fork-notes/synthetic/run_suite.py` (one report, feature checks); cloud sessions run it on the
+synthetic household of `fork-notes/synthetic/` to check that every scenario solves and reads well.
+
 ## Where the files live
 
 | File | In the repo (templates, no personal data) | Filled-in copy (private) |

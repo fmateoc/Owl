@@ -23,6 +23,12 @@ so that each scenario is known to solve and to report readably before the real n
   $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000),
   with cash or a mortgage. The purchase year is one of the things to decide.
 - No bequest goal: savings spent by 89; the condo kept to the end as a reserve for long-term care.
+- Married filing jointly; each has 40 SS credits (insured on their own record).
+- Accounts: a joint brokerage account, larger than their two IRAs together, and one IRA each. Owl
+  keeps one taxable account per spouse, so the joint account is entered as two equal halves (at a
+  first death only the deceased's half gets a new basis, which is what Owl does with the
+  deceased's own account, upstream #238). Taken as all their accounts: no Roth, no HSA, no 401k;
+  wages come with an IRA contribution, not a 401k deferral.
 - Rent $4,000/month, the same in 2027, then growing with inflation; condo HOA $800/month in every
   place, growing with inflation.
 
@@ -48,8 +54,8 @@ How Owl takes these:
 - Long-term care: a care line from 2050 (age 86) with the condo kept (care paid from savings) or
   sold that year to pay for it.
 
-Invented in the synthetic case (all stand-ins; the real ones go in the offline files): balances,
-wages, PIAs (a little higher per extra work year), property tax and insurance of each condo,
+Invented in the synthetic case (all stand-ins; the real ones go in the offline files): balances
+(brokerage 2 x $800k, basis 70%; IRAs $550k and $400k), wages, the 2026 IRA contribution, PIAs (a little higher per extra work year), property tax and insurance of each condo,
 closing costs, the mortgage rate, the condo's growth and selling commission, the care cost.
 
 Rent in the Budget sheet is two lines in today's dollars: $48,000 in 2026, then $48,000 deflated

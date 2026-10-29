@@ -4,13 +4,15 @@ Phase 0 template.
 
 Structure from the user (2026-10-29): a couple born in April and December 1964 (neither on the
 1st), both working in 2026, retiring at the end of 2026 at the earliest (part-time work and the SS
-claiming ages open), renting in Yonkers (10701), considering a condo in Yonkers (10701, about
-$700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000), the
-purchase year open, no bequest goal: savings spent by 89, a condo kept as a reserve for long-term
-care. Also from the user: rent $4,000/month, the same in 2027, then growing with inflation; condo
-HOA $800/month, growing with inflation. Every other amount is invented (balances, wages, PIAs,
-property tax, insurance, closing costs, care): the cases exercise the household's scenarios, they
-are not the household's case, which is run offline by the user (CLAUDE.md "Household data").
+claiming ages open), married filing jointly, each with 40 SS credits (insured on their own record),
+a joint brokerage account larger than their two IRAs together, renting in Yonkers (10701),
+considering a condo in Yonkers (10701, about $700,000), White Plains (10603, about $700,000) or
+Flushing, Queens (11354, about $850,000), the purchase year open, no bequest goal: savings spent by
+89, a condo kept as a reserve for long-term care. Also from the user: rent $4,000/month, the same
+in 2027, then growing with inflation; condo HOA $800/month, growing with inflation. Every other
+amount is invented (balances, wages, PIAs, property tax, insurance, closing costs, care): the cases
+exercise the household's scenarios, they are not the household's case, which is run offline by the
+user (CLAUDE.md "Household data").
 
 Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
 
@@ -69,23 +71,26 @@ START = 2026
 YEARS = list(range(START, 1964 + HORIZON + 1))
 
 # Invented figures ($k for balances, monthly $ for PIAs).
+# Accounts as the household's (user, 2026-10-29): a joint brokerage account, entered as two equal
+# halves, larger than the two IRAs together; one IRA each; no Roth, no HSA. Amounts invented.
 BALANCES = {
-    "taxable_savings_balances": [500.0, 350.0],
-    "taxable_cost_basis": [380.0, 270.0],
-    "tax_deferred_savings_balances": [1100.0, 650.0],
-    "tax_free_savings_balances": [120.0, 60.0],
-    "hsa_savings_balances": [30.0, 18.0],
+    "taxable_savings_balances": [800.0, 800.0],
+    "taxable_cost_basis": [560.0, 560.0],
+    "tax_deferred_savings_balances": [550.0, 400.0],
+    "tax_free_savings_balances": [0.0, 0.0],
+    "hsa_savings_balances": [0.0, 0.0],
 }
 PIAS = [3150, 2500]
 
-# Wages in AGI (upstream #221: pay less the pre-tax 401k deferral), deferral, employer match.
+# Wages in AGI (upstream #221) and an IRA contribution in a full-time year (their accounts are IRAs:
+# no 401k deferral, no employer match). Amounts invented.
 FULL = {
-    "Ari": {"anticipated wages": 168000, "401k ctrb": 32500, "employer ctrb": 9000},
-    "Noa": {"anticipated wages": 121000, "401k ctrb": 32500, "employer ctrb": 6000},
+    "Ari": {"anticipated wages": 168000, "IRA ctrb": 8000},
+    "Noa": {"anticipated wages": 121000, "IRA ctrb": 8000},
 }
 PART = {
-    "Ari": {"anticipated wages": 60000, "401k ctrb": 0, "employer ctrb": 0},
-    "Noa": {"anticipated wages": 45000, "401k ctrb": 0, "employer ctrb": 0},
+    "Ari": {"anticipated wages": 60000, "IRA ctrb": 0},
+    "Noa": {"anticipated wages": 45000, "IRA ctrb": 0},
 }
 
 # Work variants: (name, what, {person: (kind, years)}, aca_start_year, PIAs). 2026 is a full work

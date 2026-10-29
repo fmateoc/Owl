@@ -35,11 +35,15 @@ school_district = ""                     # NY STAR credit, for an owner: "Yonker
 #   a later change of residence within NY: a condo bought outside Yonkers (a NYC condo is tax class 2)
 
 [savings_assets]
-taxable_savings_balances = [ 0.0, 0.0, ]       # TODO: $k
-tax_deferred_savings_balances = [ 0.0, 0.0, ]  # TODO: $k (401k/IRA)
-tax_free_savings_balances = [ 0.0, 0.0, ]      # TODO: $k (Roth)
-hsa_savings_balances = [ 0.0, 0.0, ]           # TODO: $k
-taxable_cost_basis = [ 0.0, 0.0, ]             # TODO: $k cost basis of taxable
+# Accounts (user, 2026-10-29): a joint brokerage account, larger than the two IRAs together, and one IRA
+# each. Owl keeps one taxable account per spouse: enter half of the joint account (and half its basis) for
+# each. At a first death only the deceased's half of a joint account gets a new basis, which is what Owl
+# does with the deceased's own taxable account (upstream #238). Roth and HSA: 0 unless there are some.
+taxable_savings_balances = [ 0.0, 0.0, ]       # TODO: $k, half of the joint brokerage account each
+tax_deferred_savings_balances = [ 0.0, 0.0, ]  # TODO: $k, each one's IRA (a 401k balance would go here too)
+tax_free_savings_balances = [ 0.0, 0.0, ]      # $k (Roth)
+hsa_savings_balances = [ 0.0, 0.0, ]           # $k
+taxable_cost_basis = [ 0.0, 0.0, ]             # TODO: $k, half of the joint account's cost basis each
 beneficiary_fractions = [ 1.0, 1.0, 1.0, ]
 spousal_surplus_deposit_fraction = 0.5
 

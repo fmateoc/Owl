@@ -84,6 +84,10 @@ generic = [ [ [ 60, 40, 0, 0,], [ 60, 40, 0, 0,],], [ [ 60, 40, 0, 0,], [ 60, 40
 spending_profile = "budget"             # built from the HFP Budget sheet (gen_hfp_us.py writes a "core" line and
                                         # the gold-plan lines; phase0-scenarios.md, sections "Baseline" and 5)
 surviving_spouse_spending_percent = 60
+other_medical_expenses = 0.0             # TODO: $k/yr, today's $: the budget's out-of-pocket medical (deductibles,
+                                         # copays). It only caps HSA withdrawals here (a budget "medical" line does
+                                         # not), so without it an HSA can pay Medicare premiums only; the claims
+                                         # for itemizing come from the budget line (never both)
 objective = "maxSpending"
 
 [solver_options]

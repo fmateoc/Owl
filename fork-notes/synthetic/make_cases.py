@@ -138,6 +138,7 @@ RENT = 4000 * 12               # Yonkers rent (user, 2026-10-29): $4,000/month, 
 #                                growing with inflation (rent_lines)
 CARE = 110000                  # care per year from 2050 (age 86), today's $ (stand-in)
 CARE_YEAR = 2050
+OUT_OF_POCKET = 4500             # out-of-pocket medical per year, today's $ (stand-in)
 
 
 def line(name, typ, year, end, amount, rate=0.0, survivor=None, essential=False, **age):
@@ -153,7 +154,7 @@ def line(name, typ, year, end, amount, rate=0.0, survivor=None, essential=False,
 COMMON = [
     line("core", "core", START, 0, 72000),
     line("travel while able", "travel", None, None, 12000, clock="age", start_age=62, end_age=80, index="younger"),
-    line("out of pocket medical", "medical", START, 0, 4500, rate=2.0, survivor=60, essential=True),
+    line("out of pocket medical", "medical", START, 0, OUT_OF_POCKET, rate=2.0, survivor=60, essential=True),
     *[line(gl[1], gl[2], gl[3], gl[4], gl[5], rate=gl[6], survivor=gl[7], essential=gl[8])
       for gl in gen.BUDGET_LINES[1:]],
     line("charity", "charity", START, 0, 3000),
@@ -222,6 +223,9 @@ def case(template, hfp, **changes):
     c["household_financial_profile"]["HFP_file_name"] = hfp
     c["fixed_income"]["social_security_pia_amounts"] = PIAS
     c["optimization_parameters"]["medical_inflation_excess"] = 1.5
+    # The HSA cap: Medicare premiums plus other_medical_expenses; the budget's medical line does not
+    # raise it, so the out-of-pocket line's amount goes here too (it is not claimed twice).
+    c["optimization_parameters"]["other_medical_expenses"] = OUT_OF_POCKET / 1000
     for section, values in changes.items():
         c.setdefault(section, {}).update(values)
     return c

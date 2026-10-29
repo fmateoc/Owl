@@ -284,8 +284,9 @@ def group_table(g, rows):
     if solved(base):
         out += [f"Objective {base['objective']}; score = {score_label(base)}. Base: `{base['name']}`"
                 + (f", overrides `{' '.join(base['overrides'])}`" if base["overrides"] else "") + ". "
-                "*Savings left*: what bequest 0 leaves (about 0). *Home at the end*: the home net of commission and "
-                "of any loan left.", ""]
+                "*Savings left* (after heirs' tax): bequest 0 is a floor, so this is what repays a loan still owed "
+                "at the end, or money the budget's shape cannot spend (a sale late in the plan), else 0. *Home at "
+                "the end*: the home net of commission and of any loan left.", ""]
     out += ["| scenario | what changes | score | vs base | % | savings left | home at the end | claiming ages | "
             "method / convergence | s |", "|---|---|---:|---:|---:|---:|---:|---|---|---:|"]
     for r in rows:
@@ -361,20 +362,23 @@ def agreement(by, ls, ex, base_name):
             continue
         d_ls, d_ex = score(quad[1]) - score(quad[0]), score(quad[3]) - score(quad[2])
         spread = abs(d_ls - d_ex)
+        bars = sum(x["error_bar"] for x in quad)
         if (d_ls > 0) != (d_ex > 0):
             verdict = "unresolved: the two disagree on the sign"
-        elif min(abs(d_ls), abs(d_ex)) <= spread:
-            verdict = "unresolved: smaller than the spread"
+        elif min(abs(d_ls), abs(d_ex)) <= spread + bars:
+            verdict = "unresolved: smaller than the spread" + (" and error bars" if bars > 0.5 else "")
         else:
             verdict = "resolved: " + ("ahead of" if d_ls > 0 else "behind") + f" the {base_name}"
-        rows.append(f"| {n} | {signed(d_ls)} | {signed(d_ex)} | {money(spread)} | {verdict} |")
+        rows.append(f"| {n} | {signed(d_ls)} | {signed(d_ex)} | {money(spread)} | {money(bars)} | {verdict} |")
     if not rows:
         return []
     return [f"### {ls} vs {ex}", "",
             "Score difference from the reference under local search and under the exact LP (Medicare off, SS "
             "taxability 0.85: a different model, so only its differences compare). A difference counts when both "
-            "give it the same sign and it is larger than their spread.", "",
-            "| scenario | local search | exact LP | spread | reading |", "|---|---:|---:|---:|---|", *rows, ""]
+            "give it the same sign and it is larger than their spread plus the error bars of the four runs (a loop "
+            "that did not settle).", "",
+            "| scenario | local search | exact LP | spread | error bars | reading |", "|---|---:|---:|---:|---:|---|",
+            *rows, ""]
 
 
 def feature_checks(by):
@@ -451,7 +455,7 @@ def run_checks(rec):
     if rec["error_bar"] > 0.5:
         issues.append(f"loop did not settle: objective error bar ±{money(rec['error_bar'])} ({rec['convergence']})")
     for w in rec["warnings"]:
-        if "Cash flow balance" in w or "infeasible" in w.lower():
+        if "Cash flow balance" in w or "infeasible" in w.lower() or "maximum iterations" in w:
             issues.append(w)
     return issues
 

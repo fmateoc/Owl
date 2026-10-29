@@ -35,8 +35,9 @@ benchmark for the couple, 2027 NY Rating Region 4 approved rates (Fidelis gold 2
 2,438.10/mo vs Anthem silver 41046NY0010004 2,107.36/mo, x 12 = 3,969; fork-notes/aca-ny/README.md,
 "Gold plans"). Owl prices the marketplace at the benchmark, so this is the extra for buying gold.
 2027-2028: both on the marketplace (aca_start_year 2027); survivor 50, one adult pays half the
-couple's rate. 2029: the template's dates (A born in January, B in December 1964) leave B alone on
-the marketplace for about 11 months, so half the couple's extra x 11/12 = 1,819; survivor 100.
+couple's rate. 2029: A (born in April 1964) is on Medicare from April and B (December) from
+December, so A stays on the marketplace 3 months and B 11: half the couple's extra x 14/12 =
+2,315; survivor 100.
 Redo both lines when the real dates and aca_start_year are in. Amounts in 2027 dollars entered
 as today's (2026): about one year of inflation high.
 """
@@ -47,7 +48,7 @@ from pathlib import Path
 import openpyxl
 
 NAMES = ("SpouseA", "SpouseB")  # must match basic_info.names in the case file
-YEARS = list(range(2026, 2057))  # through the year both reach 92 (born 1964)
+YEARS = list(range(2026, 2054))  # through the year both reach 89 (born 1964)
 COLUMNS = [
     "year", "anticipated wages", "months worked", "other inc", "net inv",
     "taxable ctrb", "401k ctrb", "employer ctrb", "Roth 401k ctrb", "IRA ctrb", "Roth IRA ctrb", "HSA ctrb",
@@ -63,7 +64,7 @@ HOUSE_SHEETS = {
 BUDGET_LINES = [
     [True, "core", "core", YEARS[0], 0, 100000, 0, None, False],  # TODO amount (see the docstring)
     [True, "gold over benchmark", "medical", 2027, 2028, 3969, 0, 50, True],
-    [True, "gold over benchmark, B alone", "medical", 2029, 2029, 1819, 0, 100, True],
+    [True, "gold over benchmark, 2029", "medical", 2029, 2029, 2315, 0, 100, True],
 ]
 
 

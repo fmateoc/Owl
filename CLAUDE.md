@@ -1,6 +1,8 @@
 # CLAUDE.md — fork `fmateoc/Owl` (not part of upstream)
 
-This fork extends Owl (upstream `mdlacasse/Owl`) so that one NY-metro couple can decide when to retire, when to claim SS, whether to work part time, where to live (Yonkers / NYC / rest of Westchester, or a later move within NY; NJ dropped from the investigation on 2026-10-17, see "Dropped by decision") and whether to rent or buy. Changes stay generic and data-driven so they can go upstream.
+This fork extends Owl (upstream `mdlacasse/Owl`) so that one NY-metro couple can decide when to retire, when to claim SS, whether to work part time, and where, when and how to buy a condo (NJ dropped from the investigation on 2026-10-17, see "Dropped by decision"). Changes stay generic and data-driven so they can go upstream.
+
+The household's structure (user, 2026-10-29): born April and December 1964, neither on the 1st; both working in 2026, retiring at the end of 2026 at the earliest; renting in Yonkers (10701); a condo in Yonkers (10701) or White Plains (10603) at about \$700,000, or Flushing, Queens (11354) at about \$850,000, cash or mortgage, the purchase year to be decided; **renting to the end is not an option** (no landlord asking them to move at 85), so every comparison is against a purchase; no bequest goal: savings spent by 89, the condo kept as a reserve for long-term care. The synthetic household of `fork-notes/synthetic/` has this structure with invented amounts.
 
 Read these first, in this order:
 

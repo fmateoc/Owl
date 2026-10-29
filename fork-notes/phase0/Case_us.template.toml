@@ -6,29 +6,33 @@
 
 case_name = "us"
 description = """
-NY-metro couple, both born 1964 (FRA 67), currently renting. No pensions or
-457(b). Goal: spend down to $0 by age 92. Exploring retirement timing (end of
-2026 vs later), SS claiming, part-time work, residency (Yonkers / NYC /
-rest of Westchester, or a later move within NY), and rent vs buy. Healthcare
-cost growth is the main worry.
+NY-metro couple, born April and December 1964 (FRA 67), both working in 2026,
+renting in Yonkers. No pensions or 457(b). Goal: savings spent by 89, no
+bequest; a condo, if bought, is kept as a reserve for long-term care.
+Exploring retirement timing (end of 2026 at the earliest), part-time work, SS
+claiming, and whether and when to buy a condo in Yonkers, White Plains or
+Queens (NYC), with cash or a mortgage. Healthcare cost growth is the main
+worry.
 """
 
 [basic_info]
 status = "married"
 names = [ "SpouseA", "SpouseB", ]        # TODO: real names
 sexes = [ "M", "F", ]                    # TODO: adjust
-date_of_birth = [ "1964-01-01", "1964-12-01", ]  # TODO: exact dates (A: early 1964, B: Dec 1964)
-life_expectancy = [ 92, 92, ]
+date_of_birth = [ "1964-04-01", "1964-12-01", ]  # TODO: exact dates (A: April 1964, B: Dec 1964; neither on the 1st)
+life_expectancy = [ 89, 89, ]           # plan through the year both turn 89: savings spent by then
 start_date = "2026-01-01"               # TODO: balances must be as of this date (year-end statements).
 # Year 0 is always a full calendar year; a later date only back-projects growth (upstream #167).
 # If only later balances are at hand: keep 2026 wages, SS and pensions at full-year amounts, enter
 # only the contributions still to come, and add to the taxable balance the 2026 spending and taxes
 # paid so far minus the wages and benefits received so far (negative while saving).
-state = "NY"                             # scenarios vary it; Westchester outside Yonkers = plain NY
-locality = ""                            # "" | "Yonkers" | "NYC" (see data/taxes_local.toml)
+state = "NY"
+locality = "Yonkers"                     # renting in Yonkers today; "" = Westchester outside Yonkers (White Plains),
+                                         # "NYC" (Queens) (see data/taxes_local.toml)
 school_district = ""                     # NY STAR credit, for an owner: "Yonkers", "City of Rye / Rye", "New York City (class 1)"
                                          # (data/property_tax_relief.toml); needs a budget "property tax" line
-# moves = [ { year = 2032, state = "FL" }, ]   # optional later change of residence (may name a school_district)
+# moves = [ { year = 2032, state = "NY", locality = "NYC", school_district = "New York City (class 2)" }, ]
+#   a later change of residence within NY: a condo bought outside Yonkers (a NYC condo is tax class 2)
 
 [savings_assets]
 taxable_savings_balances = [ 0.0, 0.0, ]       # TODO: $k
@@ -53,6 +57,7 @@ social_security_ages = [ 67.0, 67.0, ]    # default: claim at FRA; scenarios var
 # Pre-65 marketplace premiums. withACA does nothing while slcsp_annual is 0.
 # 2026 NY Rating Region 4 benchmark (Yonkers, Westchester, NYC alike): Fidelis 25303NY0020001,
 # 868.20/mo single x 2 x 12, age-29 twins not counted ("dep26"); fork-notes/aca-ny/README.md.
+# The same region covers Yonkers, White Plains and NYC (the README lists the counties).
 slcsp_annual = 20.84                     # household benchmark Silver premium, $k/yr, today's $
 aca_start_year = 2027                    # first year without employer coverage
 
@@ -82,7 +87,8 @@ surviving_spouse_spending_percent = 60
 objective = "maxSpending"
 
 [solver_options]
-bequest = 0                             # spend down to $0 at 92 (read here, not under optimization_parameters)
+bequest = 0                             # savings spent by 89 (read here, not under optimization_parameters); the floor
+                                        # counts savings only: a home is kept and reported in the final bequest
 withSSAges = "optimize"                 # co-optimize claiming ages (the full model; with withMedicare
                                         # "optimize" every candidate is a MIP: decide ages with
                                         # fork-notes/phase5/work_sweep.py, phase0-scenarios.md section 4)

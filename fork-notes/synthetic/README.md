@@ -2,50 +2,72 @@
 
 The household's own case is run **offline, by the user, on their own machine** (decision
 2026-10-29; CLAUDE.md, "Household data"). Cloud sessions never ask for the real inputs or for
-running the household case. What they do instead is this directory: a fictional household shaped
-like the real one, and a suite that runs every scenario of `fork-notes/phase0/phase0-scenarios.md`
-on it, so that by the time the real numbers go in, each scenario is known to solve and to report
-readably.
+running the household case. They work here instead: a fictional household with the real one's
+structure, and a suite that runs every scenario of `fork-notes/phase0/phase0-scenarios.md` on it,
+so that each scenario is known to solve and to report readably before the real numbers go in.
 
 | File | What it is |
 |---|---|
-| `make_cases.py` | Writes the synthetic household (invented numbers) to `cases/` (gitignored): two case files and seven HFP workbooks, plus `work_variants.json` for the work sweep |
-| `run_suite.py` | Runs the scenario set on any case pair (synthetic here, the real one offline) and writes `report.md`, one workbook and one synopsis per run |
+| `make_cases.py` | Writes the synthetic household to `cases/` (gitignored): two case files, the workbooks, `condo_grid.json` (the suite's scenarios) and `work_variants.json` (for `work_sweep.py`) |
+| `run_suite.py` | Runs the scenario set on a case pair (synthetic here, the real one offline) and writes `report.md`, plus a workbook, a synopsis and a log per run |
 | `runs/` | Suite outputs (gitignored) |
 
-## The synthetic household
+## The household's structure (user, 2026-10-29)
 
-"Ari" and "Noa", both born in 1964 (January and December, the template's shape), married filing
-jointly, both living to 92, renting in Westchester outside Yonkers, no pensions. Both have wages in
-2026 (pre-tax 401k deferral and an employer match) and stop at the end of the year. Marketplace
-coverage from 2027 at the template's NY Region 4 benchmark (20.84 $k), gold-plan lines, Medicare
-from 65 with medical prices 1.5%/yr above inflation, HSA balances. The budget profile has a
-discretionary `core` line, a travel line on an age clock (62 to 80), essential medical lines, charity
-and rent. The case file is the Phase 0 template with its TODOs filled, so a template change is
-tested the next time the suite runs. All balances, PIAs and wages are invented.
+- A couple born in April and December 1964, neither on the 1st (FRA 67; Medicare from April and
+  December 2029).
+- Both working in 2026; retiring at the end of 2026 at the earliest; part-time work and the SS
+  claiming ages are open.
+- Renting in Yonkers (10701). **Renting to the end is not an option** (no landlord asking them to
+  move at 85): the question is where, when and how to buy a condo, in Yonkers (10701, about
+  $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000),
+  with cash or a mortgage. The purchase year is one of the things to decide.
+- No bequest goal: savings spent by 89; the condo kept to the end as a reserve for long-term care.
 
-Workbooks per scenario: one more work year (`_2027`), one spouse working part time 2027-2028
-(`_oneworks`), renting (`_rent`), buying a Yonkers home at the end of 2026 with cash (`_buy_cash`)
-or a 30-year mortgage at 6.25% (`_buy_mortgage`), and renting until 2031 then buying in New
-Rochelle (`_move`, used with a `basic_info.moves` entry naming the school district).
+How Owl takes these:
+
+- `life_expectancy = 89` for both, `maxSpending` with `bequest = 0`. The bequest floor counts
+  savings only (`plan.py`, the `bequest_floor` row: fixed assets are added outside it), so savings
+  are spent down and the condo is kept and reported in the final bequest.
+- A purchase is rent until the year before, then the owner's Budget lines (property tax, common
+  charges as `maintenance`, insurance; all `essential`), the condo in Fixed Assets, the price
+  (cash) or the down payment and closing costs (mortgage) as a big-ticket item, the loan in Debts
+  linked to the condo. Fixed Assets values, Debts amounts and big-ticket items are in the purchase
+  year's dollars (`fixedassets.py`: "Basis and value are in reference-year dollars"), so the
+  generator grows today's prices by the case's own inflation path.
+- A purchase outside Yonkers is a move within NY in that year (`basic_info.moves`): White Plains
+  has no local income tax; Queens is NYC (city income tax; a condo is tax class 2 for STAR,
+  recalled, not checked against DOF). 10603 is split among school districts (White Plains City,
+  Greenburgh Central, Valhalla per statisticalatlas.com, a secondary source): the condo's address
+  decides; the synthetic case uses White Plains. A grep of `data/property_tax_relief.toml` finds no
+  Valhalla.
+- Owl has no purchase-year decision variable, so the year is a grid: 2027, 2029, 2031, 2034,
+  2038, for each place and financing (30 variants).
+- Long-term care: a care line from 2050 (age 86) with the condo kept (care paid from savings) or
+  sold that year to pay for it.
+
+Invented in the synthetic case (all stand-ins; the real ones go in the offline files): balances,
+wages, PIAs (a little higher per extra work year), rent, condo costs, closing costs, the mortgage
+rate, the condo's growth and selling commission, the care cost.
 
 ## Running it
 
 ```bash
 .venv/bin/python fork-notes/synthetic/make_cases.py
 .venv/bin/python fork-notes/synthetic/run_suite.py fork-notes/synthetic/cases/Case_ari+noa.toml \
-    fork-notes/synthetic/cases/Case_ari+noa_housing.toml --out-dir fork-notes/synthetic/runs/$(date +%F)
+    fork-notes/synthetic/cases/Case_ari+noa_condo.toml fork-notes/synthetic/cases/condo_grid.json \
+    --out-dir fork-notes/synthetic/runs/$(date +%F)
 ```
 
-Offline, on the real case (files in `otherFiles/`, named as in `phase0-scenarios.md`; the housing
-case is `Case_us_housing.toml`, section 5):
+About 76 runs: the claiming-age searches one at a time, the fixed-age solves in parallel
+(`--jobs`, default the core count); `--only condo ltc` runs a subset after the baseline.
 
-```bash
-.venv/bin/python fork-notes/synthetic/run_suite.py otherFiles/Case_us.toml otherFiles/Case_us_housing.toml \
-    --out-dir otherFiles/suite/$(date +%F)
-```
+Offline, on the real case: a copy of `make_cases.py` in `otherFiles/` with the real figures writes
+the real case files, workbooks and scenario file there; then the same command on those files,
+with `--out-dir otherFiles/suite/$(date +%F)`.
 
-The work sweep (section 4) is separate, because it takes hours:
+The work sweep (claiming ages decided by branch-and-bound at fixed ages; hours per variant) is
+separate:
 
 ```bash
 .venv/bin/python fork-notes/phase5/work_sweep.py fork-notes/synthetic/cases/Case_ari+noa.toml \
@@ -54,30 +76,36 @@ The work sweep (section 4) is separate, because it takes hours:
 
 ## What the report holds
 
-`report.md` has one section per group, each against its own base:
+Every comparison is against a purchase: the baseline buys in Yonkers at the start of 2027 with
+cash (a reference point, not a recommendation). Groups:
 
-- **main**: the baseline as the case says (claiming ages searched), and per scenario of
-  `phase0-scenarios.md` sections 1-3, 4b and 6 (retire a year later, claiming at 62/67/70, Yonkers,
-  NYC, no itemizing, one keeps working, the 2032 reversion, the 2027 benchmark). Differences under
-  1% are marked `~`: loop noise can produce them, with either sign.
-- **residency-ls / residency-exact**: Yonkers and NYC again at the baseline's claiming ages, under
-  local search and under the exact LP; a table then says whether the two agree on the sign and
-  exceed their spread (the decision rule of CLAUDE.md "Loop noise").
-- **housing / housing-exact**: buy with cash, with a mortgage (with and without itemizing), STAR
-  off, and the 2032 move, against renting, under `maxBequest`; the same agreement table.
-- **Run checks**: any run that did not solve, a loop that did not settle, cash-flow or
-  infeasibility warnings.
-- **Feature checks**: each modeled rule appears in the scenario that should trigger it (payroll
-  tax on wages, ACA before 65, Yonkers and NYC tax, STAR for an owner and not for a renter,
-  itemizing of property tax and mortgage interest, the home in the bequest, the move ending the
-  Yonkers surcharge, ...). A check says the rule fired, not that its amount is right.
-- **Warnings in the logs**, deduplicated, with the runs that raised each.
+- **main**: the baseline with its claiming ages searched; the work variants (stop at the end of
+  2026; one or both full time in 2027; one or both part time 2027-2028), each with its stand-in
+  PIA; both claiming at 62, 67 or 70; no itemizing; the 2032 reversion; the 2027 benchmark.
+  Differences under 1% are marked `~` (loop noise can make them, either sign). `both-stop-2026`
+  repeats the baseline: its difference is the noise of the age search itself.
+- **condo** (local search) and **condo-exact** (exact LP): the 30 purchases against the reference,
+  at the baseline's claiming ages, with a pivot (purchase year against place and financing) and a
+  table that says whether local search and the exact LP agree.
+- **ltc**: care late in life, the condo kept or sold.
+- **Run checks** (a run that did not solve, a loop that did not settle, cash-flow or infeasibility
+  warnings), **feature checks** (each modeled rule fires where it should: payroll tax, ACA,
+  Medicare, the Yonkers surcharge and the NYC tax, STAR for the owner, itemizing of the property
+  tax and of the mortgage interest, the move ending the surcharge, the condo kept or sold, ...; a
+  check says the rule fired, not that its amount is right), and the deduplicated **warnings**.
+
+**Score.** The budget's housing and medical lines are essential, so under `maxSpending` net
+spending is those lines plus k x the discretionary lines (core, travel, charity). The comparable
+score is the first year's discretionary spending, k x D_0. The spending basis would not do: it
+also holds the first year's essential lines, which differ between renting and owning. Beside the
+score: savings left (about 0) and the home at the end, net of commission and of any loan still
+owed. A later or cheaper purchase can give more spending and less home at the end; the report
+shows both and does not add them.
 
 Each run also leaves `<group>_<scenario>.xlsx` (the workbook `owlcli run` writes), `.txt` (its
-Summary sheet as text) and `.log`; `results.json` keeps every metric, and `--report-from
+Summary sheet as text) and `.log`; `results.json` keeps every metric; `--report-from
 results.json` reprints the report without solving.
 
 ## Results
 
-See PROGRESS.md, "Synthetic household and scenario suite", for the runs made so far and what they
-found.
+PROGRESS.md, "Synthetic household and scenario suite": the runs made so far and what they found.

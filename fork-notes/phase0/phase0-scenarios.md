@@ -224,6 +224,14 @@ Two inputs to set per scenario by hand:
 
 ## 5. Rent, buy with cash, or buy with a mortgage (Phases 2 and 2b)
 
+**2026-10-29 (user): renting to the end is not an option**, so the question is where, when and how
+to buy, against a purchase, not against renting. The household spends its savings by 89
+(`maxSpending`, `bequest = 0`; the bequest floor counts savings only, so the condo is kept and
+shows in the final bequest). With the housing lines essential, the comparable score is the first
+year's discretionary spending, beside the home at the end. `fork-notes/synthetic/run_suite.py`
+runs that grid (three places, five purchase years, cash or mortgage) in one command; the text
+below, written for rent against buy under `maxBequest`, still describes the workbook format.
+
 Spending comes from a budget: `spending_profile = "budget"` builds the spending profile from the
 `Budget` sheet of the HFP workbook, one line per item (`core` spending, `rent`, `property tax`,
 `insurance`, `maintenance`, `car`, `travel`, `care`, `medical`, `charity`, `other`; `property tax`,
@@ -236,7 +244,7 @@ With a move, split the housing lines at the move year.
 
 One HFP workbook per variant (`gen_hfp_us.py` writes empty `Debts` and `Fixed Assets` sheets and a
 `Budget` sheet holding two essential `medical` lines, "gold over benchmark": 3,969 in 2027-2028
-and 1,819 in 2029 for B alone, the cheapest gold plan's premium over the silver benchmark;
+and 2,315 in 2029 (A 3 months, B 11), the cheapest gold plan's premium over the silver benchmark;
 `fork-notes/aca-ny/README.md`, "Gold plans"; drop them for a silver plan), with the same
 non-housing lines in each:
 

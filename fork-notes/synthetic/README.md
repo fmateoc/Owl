@@ -98,7 +98,9 @@ cash (a reference point, not a recommendation). Groups:
   wages: Ari is entitled from May 2026, at 62 and one month); no itemizing; the 2032 reversion; the 2027 benchmark.
   Differences under 1% are marked `~` (loop noise can make them, either sign). `both-stop-2026`
   repeats the baseline: its difference is the noise of the age search itself.
-- **condo** (local search) and **condo-exact** (exact LP): the 30 purchases against the reference,
+- **condo** (local search) and **condo-exact** (exact LP): the Roth pair again (no conversion in
+  2026; none at all: the main group's method alone does not settle it) and the 30 purchases against
+  the reference,
   at the baseline's claiming ages, with a pivot (purchase year against place and financing) and a
   table that says whether local search and the exact LP agree.
 - **ltc**: care late in life, the condo kept or sold.

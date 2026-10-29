@@ -2597,6 +2597,96 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## Synthetic household and scenario suite (2026-10-29, on `claude/nifty-fermat-v742k9`)
+
+**Decision (user):** the household's case is run offline, by the user; cloud sessions never ask for
+its inputs or for running it (CLAUDE.md "Household data"). Cloud work checks the tools on a
+synthetic case with the household's structure: `fork-notes/synthetic/` (`make_cases.py`,
+`run_suite.py`, README).
+
+**The household's structure (user, the same day; CLAUDE.md top):** MFJ, born April and December 1964
+(neither on the 1st), 40 SS credits each, both working in 2026 and retiring at the end of 2026 at
+the earliest (part time and SS ages open), renting in Yonkers at \$4,000/month (flat in 2027, then
+inflation), a condo in Yonkers (10701) or White Plains (10603) at about \$700,000 or Flushing,
+Queens (11354) at about \$850,000, HOA \$800/month with inflation, cash or mortgage, the year open;
+**renting to the end is not an option**; savings spent by 89, no bequest, the condo kept as a
+reserve for long-term care; a joint brokerage account larger than the two IRAs, one IRA each, one
+401k (rolled into its owner's IRA when work stops), no Roth, no HSA; opening Roth IRAs this year
+under consideration. Template updated to match (`Case_us.template.toml`: dates, horizon 89, Yonkers,
+accounts, `other_medical_expenses`; `gen_hfp_us.py`: horizon 89, 2029 gold line 2,315 for an April
+birth).
+
+**How Owl takes it** (verified in the code): `maxSpending` with `bequest = 0` spends savings only:
+the `bequest_floor` row counts savings, fixed assets come outside it (`plan.py:4982`), so the condo
+stays and shows as the final bequest. Fixed Assets values, Debts amounts and big-ticket items are in
+the purchase year's dollars (`fixedassets.py:118`), so `make_cases.py` grows today's prices by the
+case's own `gamma_n`. A Budget `medical` line does not raise the HSA withdrawal cap (Medicare
+premiums + `other_medical_expenses` only). Roth: Owl chooses conversions per year and holds each
+for five years at any age (`_add_roth_maturation_constraints`, "intentionally conservative"), so
+starting the first-Roth clock early is worth nothing in the model. Owl's "conservative" rates
+(`rates.get_fixed_rate_values`): 6.0% stocks, 4.0% bonds, 3.3% T-notes, 2.8% inflation.
+
+**Suite** (`run_suite.py CASE CONDO_CASE SCENARIOS.json`): groups main (work variants, SS at
+62/67/70, an earnings-test case, no itemizing, the 2032 reversion, the 2027 benchmark, Roth from 2027
+or none), condo and condo-exact (a reference purchase, Yonkers 2027 cash, against 30 purchases:
+3 places x 2027/2029/2031/2034/2038 x cash/mortgage, plus the two Roth cases), ltc (care from 2050,
+condo kept or sold). Score under `maxSpending` with essential lines: the first year's
+discretionary spending k x D_0 (the spending basis also holds the year's essential lines, which
+differ between renting and owning), beside savings left and the home at the end. Run checks,
+feature checks (each modeled rule fires where it should), Owl's warnings grouped by message, a
+local-search vs exact-LP agreement table with error bars, the claiming-age candidates.
+
+**Found and fixed while building it:**
+
+- `ProcessPoolExecutor` with `fork` after the parent had solved: workers spun 21 minutes in HiGHS
+  on a 0.4 s solve (`py-spy`: `_run_highs`); `spawn` fixes it (CLAUDE.md gotcha; `work_sweep.py`
+  already spawned).
+- Owl's own `withSSAges` search on the full model became too slow on the brokerage-heavy case: a
+  fixed-age solve takes 14 s there (the loop iterates longer; each MIP still closes at the root),
+  about 270 candidates. The suite decides ages in two stages (`two_stage_ages`): search under the
+  exact LP (0.5 s per candidate; ACA left on the loop: `withACA="optimize"` made it 9 s per
+  candidate, and the exact LP mis-prices ACA years anyway, plan-review §3.2), then the pick and its
+  +-1-year neighbours (clipped to 62-70) at fixed ages under the case's model.
+- Under the exact LP (no Medicare) an HSA had nothing to pay: \$64,117 left in every cash row of
+  run (a). The template now asks for the out-of-pocket amount in `other_medical_expenses`.
+- Report: "savings left" is the loan still owed at the end, or money the budget's shape cannot
+  spend (the condo sold late), not "about 0"; the agreement table counts the runs' error bars; a
+  loop at its iteration cap is a run check; warnings come from the final solve only.
+
+**Run (c)** (17:18, Owl 2026.10.29, 77 runs, 3,406 s on 4 cores; invented balances: brokerage 2 x
+\$800k at 70% basis, IRAs \$550k / \$400k): every run solved, every feature check ok. Claiming ages:
+70 / 70 for the baseline (stage-2 candidates within \$13-255/yr of each other: a neighbourhood, not
+a pick). Main, first-year discretionary spending vs the baseline (111,653): both full time 2027
++10,642 (+9.5%), Ari full time +7,108, Noa +4,517, both part time 2027-28 +6,023; both claim at 62
+-7,414, at 67 -2,511; the earnings-test case -4,851 (\$36,059 withheld; plain `ss-62` withholds
+\$17,745 from Ari's 2026 wages: entitled from May 2026); no itemizing -518, the 2032 reversion
+-2,584, the 2027 benchmark -427. Condo (local search, reference 112,862): the earliest year (2027)
+is best in every place-financing row, under both models; cash ahead of the mortgage (Yonkers 2027:
+3,711 local search, 2,377 exact); White Plains -829, Queens -7,331 with \$163k more home at 89; every
+difference resolved but `yonkers-2038-cash` (exact LP error bar +-4,877). Mechanism, from the
+inputs: a 60/40 portfolio earns 5.2% nominal at these rates, under the 6.25% mortgage; rent \$48k
+against owner costs of about \$20k plus about \$16.5k of forgone real return on the price. Care:
+selling the condo in 2050 gives +17,742/yr against keeping it, with \$179,829 the late budget
+cannot spend. Loops: most main runs end "oscillatory" with a zero error bar; `ss-62` +-1,196,
+`noa-part-claim-62` +-932; seven condo-exact mortgage or late-purchase runs did not settle
+(+-50 to 4,877).
+
+**Roth, three methods** (the condo reference at 70 / 70; local search and exact LP runs 2026-10-29
+evening, main from run (c)): the main group's method (branch-and-bound on IRMAA, loop on the rest)
+converts nothing in 2026, local search converts \$40,000 that year and scores \$1,209/yr higher
+(112,862 vs 111,653). Forbidding the 2026 conversion: main +0, local search **+23**, exact LP +0:
+a 2026 conversion is a tie on these numbers (worth about \$0; which plan carries one is solver
+noise), so the earlier "Owl does not convert in 2026" held for one method only and is withdrawn.
+No conversions at all: main -1,118/yr, local search -978, exact LP -192 (\$280-323k converted
+over the plan): every method says conversions pay; the size is unresolved (spread 786). Neither
+counts the first-Roth clock (above). The Roth pair now also runs in the condo groups.
+
+**For the offline run (user):** a copy of `make_cases.py` in `otherFiles/` with the real figures
+(balances, wages, the 401k on its owner, PIAs per variant, property tax per place, closing costs,
+mortgage rate), then the same `run_suite.py` command; `work_sweep.py` for the ages per work variant.
+Not in the suite yet: a rate sensitivity (historical windows or stochastic), which the condo ranking
+depends on.
+
 ## `main` fast-forwarded to `claude/optimistic-sagan-3onvdj` (2026-10-29)
 
 The user's call: `main` moves from `d1ce58b` to this branch: upstream `dev` `1cf1925` merged

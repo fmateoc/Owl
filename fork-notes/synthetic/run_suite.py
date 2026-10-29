@@ -66,6 +66,7 @@ import io
 import json
 import multiprocessing as mp
 import os
+import re
 import sys
 import time
 import traceback
@@ -88,6 +89,7 @@ _spec = importlib.util.spec_from_file_location("work_sweep", ROOT / "fork-notes"
 work_sweep = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(work_sweep)
 
+_NUM = re.compile(r"\$?\d[\d,]*(?:\.\d+)?(?![\d.,%])")  # amounts and counts; a percentage stays
 EXACT = ["solver_options.breakpointMethod=loop", "solver_options.withMedicare=none",
          "solver_options.withSSTaxability=0.85"]
 
@@ -144,10 +146,16 @@ def scenario_groups(case, condo, scen):
     ref_row = [("reference", f"the baseline's purchase ({ref})", [], None,
                 next((r[4] for r in grid if r[0] == ref), {}))]
     grid = [r for r in grid if r[0] != ref]
+    # The Roth questions again under local search and the exact LP: the main group's method (branch-
+    # and-bound on IRMAA, loop on the rest) converted nothing in 2026 where local search converted
+    # $40,000 on the same case and ages (synthetic run 2026-10-29-c), so one method does not settle it.
+    roth = [("roth-from-2027", "the reference, no Roth conversion in 2026 (conversions from 2027)",
+             ["solver_options.startRothConversions=2027"], None, {}),
+            ("no-roth", "the reference, no Roth conversions at all", ["solver_options.maxRothConversion=0"], None, {})]
     ltc = [(t["name"], t["what"], t["set"], None, {}) for t in scen.get("ltc", [])]
     groups = [("main", case, [], main, False),
-              ("condo", condo, [], ref_row + grid, True),
-              ("condo-exact", condo, EXACT, ref_row + grid, True)]
+              ("condo", condo, [], ref_row + roth + grid, True),
+              ("condo-exact", condo, EXACT, ref_row + roth + grid, True)]
     if ltc:
         groups.append(("ltc", condo, [], ltc, True))
     return groups
@@ -248,12 +256,12 @@ def solve_one(job, out_dir):
     stem = f"{group}_{name}"
     t0 = time.time()
     rec = {"group": group, "name": name, "what": what, "overrides": sets, "case": case_file, **extra}
-    buf = io.StringIO()
+    buf, sbuf = io.StringIO(), io.StringIO()  # the final solve's log; the age stages' log
     try:
         diconf, dirname, _ = load_toml(case_file)
         diconf = apply_overrides(diconf, sets)
         if str(diconf.get("solver_options", {}).get("withSSAges", "fixed")).lower() != "fixed":
-            ages, cands = two_stage_ages(diconf, dirname, buf)
+            ages, cands = two_stage_ages(diconf, dirname, sbuf)
             rec["age_candidates"] = cands
             diconf = apply_overrides(diconf, fixed_ages(ages))
         p = _solve(_plan(diconf, dirname, buf))
@@ -290,6 +298,10 @@ def solve_one(job, out_dir):
         buf.write(traceback.format_exc())
     log = buf.getvalue()
     with open(os.path.join(out_dir, stem + ".log"), "w", encoding="utf-8") as f:
+        if sbuf.getvalue():
+            f.write("===== claiming-age stages (their warnings are not in the report) =====\n")
+            f.write(sbuf.getvalue())
+            f.write("===== final solve =====\n")
         f.write(log)
     rec["warnings"] = sorted({ln.split("|", 3)[-1].strip() if "|" in ln else ln.strip()
                               for ln in log.splitlines() if "WARNING" in ln or "ERROR" in ln})
@@ -448,7 +460,9 @@ def age_decisions(recs):
         return []
     out = ["## Claiming ages: two-stage decisions", "",
            "Stage 1 searched the ages under the exact LP; its pick is the first candidate. Stage 2 scored it and "
-           "its +-1-year neighbours at fixed ages under the case's model; the chosen ages are in bold.", "",
+           "its +-1-year neighbours at fixed ages under the case's model; the chosen ages are in bold. Candidates "
+           "within loop noise of each other (under about 1%, CLAUDE.md \"Loop noise\") are a tie, not a pick: "
+           "read the bold ages as the neighbourhood the model prefers.", "",
            "| scenario | candidates (ages: score) |", "|---|---|"]
     for r in rows:
         best = max((c for c in r["age_candidates"] if c[1] is not None), key=lambda c: c[1], default=None)
@@ -504,6 +518,8 @@ def feature_checks(by):
     check("No Roth conversion in 2026 when they start in 2027", "main", "roth-from-2027", "roth_conversions_year1",
           zero)
     check("No Roth conversions at all", "main", "no-roth", "roth_conversions_today", zero)
+    check("No Roth conversion in 2026 under local search either", "condo", "roth-from-2027", "roth_conversions_year1",
+          zero)
     check("Higher benchmark raises marketplace premiums", "main", "slcsp-2027", "aca_today", more, ("main", "base"))
     for place in ("yonkers", "whiteplains", "queens"):
         if place != "yonkers":
@@ -574,15 +590,26 @@ def report(recs, skipped, out_dir, header):
               "amount is right.", "", "| check | result | detail |", "|---|---|---|"]
     for label, ok, detail in feature_checks(by):
         lines.append(f"| {label} | {'ok' if ok else ('n/a' if ok is None else '**FAIL**')} | {detail} |")
-    warns = {}
+    lines += ["", "## Warnings in the logs", "",
+              "Owl's warnings from each run's final solve, grouped by message (amounts as #, with their range).", ""]
+    groups = {}
     for r in recs:
         for w in r.get("warnings", []):
-            warns.setdefault(w, []).append(f"{r['group']}/{r['name']}")
-    lines += ["", "## Warnings in the logs", ""]
-    if not warns:
+            key = _NUM.sub("#", w)
+            g = groups.setdefault(key, {"runs": [], "nums": []})
+            if f"{r['group']}/{r['name']}" not in g["runs"]:
+                g["runs"].append(f"{r['group']}/{r['name']}")
+            first = _NUM.search(w)
+            if first:
+                g["nums"].append(first.group(0))
+    if not groups:
         lines.append("None.")
-    for w, where in sorted(warns.items(), key=lambda kv: -len(kv[1])):
-        lines.append(f"- {w}  \n  ({len(where)} run(s): {', '.join(where[:6])}{' ...' if len(where) > 6 else ''})")
+    for key, g in sorted(groups.items(), key=lambda kv: -len(kv[1]["runs"])):
+        nums = sorted({n for n in g["nums"]}, key=lambda n: float(n.lstrip("$").replace(",", "") or 0))
+        rng = f"; first amount {nums[0]}" + (f" to {nums[-1]}" if len(nums) > 1 else "") if nums else ""
+        where = g["runs"]
+        lines.append(f"- {key}  \n  ({len(where)} run(s){rng}: {', '.join(where[:6])}"
+                     f"{' ...' if len(where) > 6 else ''})")
     lines += ["", f"Per run: `<group>_<scenario>.xlsx` (the workbook `owlcli run` writes), `.txt` (its Summary as "
               f"text), `.log`. All in `{out_dir}`.", ""]
     text = "\n".join(lines)

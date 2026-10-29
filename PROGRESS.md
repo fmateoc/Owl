@@ -126,7 +126,7 @@ Review of the paper (`papers/owl.tex`) against the implementation: `fork-notes/m
 - [x] Survivor of a worker who died before claiming got 82.5% of PIA. **Fixed 2026-10-04** (`adeea31`): full PIA, plus DRCs to death after FRA. Rule from memory and secondary summaries of POMS RS 00615.320 (ssa.gov, ecfr, govinfo blocked); **user to confirm before filing**. Draft `fork-notes/issue-survivor-never-claimed.md`. Upstream #169; theirs since the 2026.10.7 merge.
 - [x] New: ACA loop mode 133-150% FPL band started at 2.10% instead of 3.14% (Rev. Proc. 2025-25; irs.gov blocked, table from secondary sources). **Fixed 2026-10-04** (`5bd010e`). Draft `fork-notes/issue-aca-133-150.md`. Upstream #164; theirs since the 2026.10.7 merge.
 - [x] ACA optimize: step rates (each band charged its final %) and the <138% FPL rule differs from loop mode (repro: optimize ends $1,786/yr higher where income drifts below 138%). **Fixed upstream** (#165, `7ad4c7e`): tangent-line sliding scale, Medicaid at no premium up to 138% FPL in both modes.
-- [ ] Paper vs code drift, loop mode as a fixed point, taxable bond returns, plan year: one docs issue drafted, `fork-notes/issue-docs-loop-and-paper.md`. Upstream rewrote parts of `papers/owl.tex` in 2026.10.6-7: recheck before filing.
+- [ ] Paper vs code drift, loop mode as a fixed point, taxable bond returns, plan year: one docs issue drafted, `fork-notes/issue-docs-loop-and-paper.md`. Rechecked 2026-10-29 against `226ff54`: most items fixed upstream; left: MedDecomp2/3, Eq. (PI), Ch. 2 state indexing / add-back / moves, the loop caveat in the paper (in the docs already), minor longevity and CVaR wording. Rewrite to those before filing.
 
 **Filed by the user on 2026-10-04**: ACA 133-150% band (#164), survivor never claimed (#169), cost basis (#166), SS-age taxes (#168), partial first year (#167), ACA optimize rates (#165); numbers from upstream's CHANGELOG and commit messages. **Not filed:** docs/paper drift (`issue-docs-loop-and-paper.md`). The last two were verified on 2026-10-04 against the primary text: Rev. Proc. 2025-25 section 3.01 (irs.gov) and 26 CFR 1.36B-3(g)(1) for the ACA band; 42 U.S.C. 402(e)(2)(D) (govinfo.gov), 20 CFR 404.338 and 404.313(e)(1) (ecfr.gov) and POMS RS 00615.320 (secure.ssa.gov) for the survivor rule. Repro numbers re-run on this branch match the drafts. Note: www.ssa.gov itself answers 403 to curl (the site, not the proxy); POMS is on secure.ssa.gov. Rule from the user: never file a draft that asks the maintainer to check a source we didn't check; mark it not ready instead. Each patch draft has a `.patch` verified on stock `dev` `c1e5619` (full suite with each patch alone: 2604-2606 passed, 1 skipped; flake8 clean). Applied in the fork on branch `claude/project-thread-qx5fy0`.
 
@@ -2594,6 +2594,21 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Paper-drift draft rechecked against `226ff54` (2026-10-29, on `claude/quirky-franklin-yul9qg`)
+
+`fork-notes/issue-docs-loop-and-paper.md` read item by item against upstream's own `owl.tex`,
+`info/*.md` and `ui/Documentation.py` on `dev` `226ff54` (per-item table at the top of the
+draft). Fixed upstream: the Roth cap (per individual), AMO binaries, decomposition/Benders,
+the 10^8 big-M, the survivor claim, the lexicographic terms, the Tx2 clip, the scenario
+distribution, the `J_3` IRMAA rows, the plan year. The loop-is-not-optimal caveat is now in
+`modeling-capabilities.md` and the UI docs (2026-10-24), not in the paper. Still wrong:
+Eqs. MedDecomp2/3 (`-e` and flipped signs; `J_3` is right), Eq. (PI) (AGI-basis MAGI where the
+code uses full SS), the longevity sentence (code passes each person's drawn age), and in Ch. 2
+the state indexing claim (70 of 103 `brackets_indexed = false`), the AGI add-back (the
+formulation section has it) and the change of state (not mentioned). The measurement table
+(`a85ff76`) is stale. The draft must be rewritten to the remaining items before filing; the
+original text is kept below the recheck.
 
 ## `main` fast-forwarded to `claude/intelligent-keller-0acb9o` after the `226ff54` merge (2026-10-29)
 

@@ -2,6 +2,36 @@
 
 **Not filed yet.** Documentation only. No code change is proposed, except possibly the defaults question at the end.
 
+## Recheck against upstream `dev` `226ff54` (2026-10-29)
+
+Read against upstream's `papers/owl.tex` (`git show upstream/dev:papers/owl.tex`, not the fork's copy), `info/*.md` and `ui/Documentation.py`. "Fixed" means the paper now says what this draft says the code does; the code was re-read only where noted. **Most of the draft is obsolete; the text below this section must not be filed as is.** What is left is short enough for a small issue.
+
+| Item | Status on `226ff54` |
+|---|---|
+| 1. Loop = fixed point, not optimum | **Mostly addressed, not in the paper.** `info/modeling-capabilities.md` (SC-loop row: "can settle on a fixed point that is self-consistent yet not optimal") and `ui/Documentation.py` ("cannot see that a little less income would drop an IRMAA bracket") say it, added 2026-10-24 (`241175c`). The paper's loop section (§"The Self-Consistent Iteration Loop") says a fixed point is required, that branch-and-bound is "not exact", and local search's "never worse than the loop ... improved 17 of 23 cases"; a grep for "not optimal", "not the best", "cannot weigh", "marginal cost", "torpedo" finds no statement that the loop does not price the marginal cost. The measurement table (on `a85ff76`, before local search, `residualTol` and many fixes) is stale and should not be filed. The defaults question is superseded by `breakpointMethod="local-search"`; `withMedicare` still defaults to `"loop"` |
+| 2. Taxable bond/cash returns clipped | **Clip documented**: Eq. Tx2 now has `max(0, tau_kn)` and "Only positive returns are taxable: a loss on bonds or cash does not reduce income". Not stated: the consequence under variable rates (`E[max(0,tau)] > E[tau]`; price gains taxed before sale) |
+| 3. Plan year is today's year | **Addressed**: §"Planning Horizon" says the horizon "runs from the current calendar year (year 0)"; `PARAMETERS.md` `start_date` too. The reproducibility consequence (same file, other result after Jan 1) is not stated; minor |
+| 4. Roth cap combined (Ch. 7) | **Fixed**: "For couples, the cap applies to each individual's conversions"; solver options and constraint text say per individual |
+| 4. IRMAA MAGI expansion | **Half fixed.** The `J_3` rows now match the code (no `e` term; "so `e_{n-2}` does not appear"; code re-read: `w`, `x` at -1, comment "Subtracting e here as well would add it a second time"). **Eqs. MedDecomp2/MedDecomp3 are unchanged**: `-e_(n-2)`, `-Σ[w_i1 + x]` and `-Σ(b - w + d)(...)` (signs flipped against Tx2 and `J_3`); they also lack `ā_i` and the `max(0, tau)` clip that `J_3` has |
+| 4. Eq. (PI) basis | **Still wrong**: `Π_n = G_n - ½Σζ` with the AGI-basis `G_n`; the intermediate-variables entry says `Π_n = G^aca_n - ½Σζ` (full SS), which is what the code does (`plan.py`: "PI = MAGI_aca - 0.5*SS") |
+| 4. AMO binaries | **Fixed**: §"Mutually exclusive transactions" says Owl no longer uses them; `amorepair.py` documented; `amoConstraints` etc. under "Retired" |
+| 4. Decomposition / Benders | **Fixed**: no "benders" or "certified global"; `withDecomposition` under "Retired" |
+| 4. Big-M 10^8, `3 B20` | **Fixed**: per-year `M` from the income ceiling; `bigM*` keys under "Retired" |
+| 4. Survivor claimed in year of death | **Fixed**: chapters renumbered; `survivor_claim_age` described, no "year of death" claim found |
+| 4. Lexicographic term incomplete | **Fixed** (§"Lexicographic tie-breaking": `eps(1+n)` on `x`, `eps` on `w_i2n`, `s_n`, the second individual's withdrawals, `f^s`; `1e-4` on `tss` and others); code not re-read |
+| 4. Eq. Tx2 omits the clip | **Fixed** (see 2) |
+| 4. Scenarios "drawn from the lognormal model" | **Fixed**: "drawn from the plan's stochastic rate model" |
+| 4. Longevity: last-survivor horizon | **Still drifts**: §"Longevity risk" says the clone's "life expectancy is set to the drawn last-survivor horizon"; `stresstests.py` passes each person's drawn age (`clone(plan, expectancy=drawn_list[i])`, code re-read). Minor |
+| 4. CVaR / efficient frontier framing | **Unchanged** in the commitment-LP section ("equivalent to minimizing CVaR", "Every frontier point is Pareto-optimal"). Perfect foresight is now said for the year-1 robustness view (§"Monte Carlo and stress testing") and implied for SS ages, not for the bases. A framing point, not an error; weakest item |
+
+Also from `fork-review-2026-10-25.md` item 2 (upstream code the upstream paper did not describe): the formulation section now has the federal deduction added back (Eq. StateTI, explained), the SS exclusion through `t^σ`, and personal credits. **Still missing**: Ch. 2 §"State Income Tax" says "bracket widths and deductions are indexed to inflation through `γ_n`", while upstream's `taxes_state.toml` has `brackets_indexed = false` in 70 of 103 entries (#157); and it describes state taxable income from "federal ordinary taxable income" without the add-back; the change of state (#159) is not mentioned (grep for "move", "resid", "relocat", "change of state": nothing on it). The fork's `owl.tex` has its own text for all three (`git diff upstream/dev -- papers/owl.tex`).
+
+**Remaining for a filing**: MedDecomp2/3 signs and `e` term; Eq. (PI) basis; Ch. 2 state indexing, AGI add-back and moves; one sentence in the paper's loop section (the docs already have it); optionally the longevity sentence, the bond-return consequence and the CVaR wording.
+
+---
+
+*Original draft (2026-10-04, on `a85ff76`/`c1e5619`), kept for the record:*
+
 **Title:** Paper: say that loop mode returns a self-consistent plan, not an optimal one; correct places where the text no longer matches the code
 
 ---

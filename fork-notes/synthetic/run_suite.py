@@ -31,9 +31,11 @@ baseline).
 
 Groups, each against its own base (its first row):
 
-- "main": the baseline (claiming ages searched), the work variants, both claiming at 62, 67 or
-  70, no itemizing, the 2032 reversion, the 2027 benchmark. Differences under 1% are marked `~`:
-  loop noise can make them, with either sign (CLAUDE.md "Loop noise").
+- "main": the baseline (claiming ages searched in two stages, two_stage_ages: under the exact LP,
+  then the pick and its +-1-year neighbours at fixed ages under the case's model), the work
+  variants, both claiming at 62, 67 or 70, no itemizing, the 2032 reversion, the 2027 benchmark,
+  Roth conversions from 2027 or none. Differences under 1% are marked `~`: loop noise can make
+  them, with either sign (CLAUDE.md "Loop noise").
 - "condo" (local search) and "condo-exact" (exact LP: Medicare off, SS taxability 0.85): the
   reference purchase, then every grid variant, at the claiming ages the baseline chose. A pivot
   shows the purchase year against place and financing; a table puts local search and the exact LP
@@ -121,7 +123,7 @@ def fixed_ages(ages):
 def scenario_groups(case, condo, scen):
     """Return [(group, case_file, group_sets, rows, ages_from_base)]; rows = [(name, what, sets, hfp, extra)]."""
     main = [("base", "the case as written", [], None, {})]
-    # A work entry without workbook edits repeats the baseline (its difference shows the age search's noise).
+    # A work entry without workbook edits repeats the baseline (a check that a rerun gives the same plan).
     main += [(w["name"], w["what"], w["set"], w.get("hfp"), {}) for w in scen.get("work", [])]
     main += [(w["name"], w["what"], w["set"], w.get("hfp"), {}) for w in scen.get("extra", [])]
     main += [
@@ -180,10 +182,61 @@ def build(spec, base_ages, out_dir):
     return jobs, skipped
 
 
-def searches_ages(job):
-    diconf, _, _ = load_toml(job[3])
-    d = apply_overrides(diconf, job[4])
-    return str(d.get("solver_options", {}).get("withSSAges", "fixed")).lower() != "fixed"
+def _plan(diconf, dirname, buf, sets=()):
+    d = apply_overrides(diconf, list(sets)) if sets else copy.deepcopy(diconf)
+    return config_to_plan(d, dirname, verbose=True, logstreams=[buf], loadHFP=True)
+
+
+def _solve(p):
+    p.solve(p.objective, parse_solver_options(dict(p.solverOptions)))
+    return p
+
+
+def two_stage_ages(diconf, dirname, buf):
+    """Claiming ages for a case that searches them, without Owl's own search on the full model.
+
+    Stage 1: the case's own withSSAges search under the exact LP (Medicare off, SS taxability 0.85),
+    a pure LP per candidate (about 0.5 s on the synthetic case). Unlike work_sweep.py stage (a), ACA
+    stays on the loop: withACA="optimize" makes each candidate a MIP (9 s there, so about 10 minutes
+    for the search's ~270 candidates), and the exact LP mis-prices the ACA years even then
+    (plan-review-2026-10-22.md §3.2). Stage 2: the pick and each searched person's pick +-1 year (within
+    62-70, one person at a time), each solved at fixed ages under the case's own model; the best
+    score wins. Owl's search on the full model makes every candidate a branch-and-bound MIP: on the
+    synthetic case with brokerage-heavy balances one search ran past 20 minutes (2026-10-29).
+    Returns (ages, candidates) with candidates = [(ages, score or None)].
+    """
+    p = _solve(_plan(diconf, dirname, buf, EXACT))
+    if p.caseStatus != "solved":
+        raise RuntimeError(f"stage 1 (exact LP age search) did not solve: {p.caseStatus}")
+    pick = [float(a) for a in p.ssecAges]
+    sel = diconf.get("solver_options", {}).get("withSSAges", "optimize")
+    names = list(p.inames)
+    free = range(len(names)) if str(sel).lower() == "optimize" else [names.index(n) for n in sel]
+    trials = [pick]
+    for i in free:
+        for d in (-1.0, 1.0):
+            a = pick[i] + d
+            if 62.0 - 1e-9 <= a <= 70.0 + 1e-9:
+                t = list(pick)
+                t[i] = a
+                trials.append(t)
+    cands = []
+    for t in trials:
+        q = _solve(_plan(diconf, dirname, buf, fixed_ages(t)))
+        cands.append(([round(float(a), 4) for a in q.ssecAges],
+                      _score_plan(q) if q.caseStatus == "solved" else None))
+    good = [c for c in cands if c[1] is not None]
+    if not good:
+        raise RuntimeError("stage 2: no candidate ages solved")
+    return max(good, key=lambda c: c[1])[0], cands
+
+
+def _score_plan(p):
+    m = plan_metrics(p)
+    if p.objective != "maxSpending":
+        return m["final_bequest_today"]
+    k = m.get("discretionary_scale")
+    return k * float(p.budget.discretionary_n[0]) if k is not None else m["spending_basis"]
 
 
 def _arr(p, attr):
@@ -199,9 +252,11 @@ def solve_one(job, out_dir):
     try:
         diconf, dirname, _ = load_toml(case_file)
         diconf = apply_overrides(diconf, sets)
-        p = config_to_plan(copy.deepcopy(diconf), dirname, verbose=True, logstreams=[buf], loadHFP=True)
-        opts = parse_solver_options(dict(p.solverOptions))
-        p.solve(p.objective, opts)
+        if str(diconf.get("solver_options", {}).get("withSSAges", "fixed")).lower() != "fixed":
+            ages, cands = two_stage_ages(diconf, dirname, buf)
+            rec["age_candidates"] = cands
+            diconf = apply_overrides(diconf, fixed_ages(ages))
+        p = _solve(_plan(diconf, dirname, buf))
         rec["status"] = p.caseStatus
         rec["objective"] = p.objective
         if p.caseStatus == "solved":
@@ -386,6 +441,25 @@ def agreement(by, ls, ex, base_name):
             *rows, ""]
 
 
+def age_decisions(recs):
+    """The two-stage claiming-age decisions: each candidate's score under the case's own model."""
+    rows = [r for r in recs if r.get("age_candidates")]
+    if not rows:
+        return []
+    out = ["## Claiming ages: two-stage decisions", "",
+           "Stage 1 searched the ages under the exact LP; its pick is the first candidate. Stage 2 scored it and "
+           "its +-1-year neighbours at fixed ages under the case's model; the chosen ages are in bold.", "",
+           "| scenario | candidates (ages: score) |", "|---|---|"]
+    for r in rows:
+        best = max((c for c in r["age_candidates"] if c[1] is not None), key=lambda c: c[1], default=None)
+        cells = []
+        for ages, sc in r["age_candidates"]:
+            txt = " / ".join(ym(a) for a in ages) + ": " + (money(sc) if sc is not None else "not solved")
+            cells.append(f"**{txt}**" if best is not None and list(ages) == list(best[0]) else txt)
+        out.append(f"| {r['group']}/{r['name']} | {'; '.join(cells)} |")
+    return out + [""]
+
+
 def feature_checks(by):
     """Each modeled rule shows up where the scenario says it should: (label, ok, detail)."""
     out = []
@@ -486,6 +560,7 @@ def report(recs, skipped, out_dir, header):
         if g.startswith("condo"):
             lines += condo_pivot(rows, g)
     lines += agreement(by, "condo", "condo-exact", "reference")
+    lines += age_decisions(recs)
     lines += ["## Run checks", ""]
     bad = [(r, i) for r in recs for i in run_checks(r)]
     if not bad:
@@ -523,8 +598,8 @@ def main():
     ap.add_argument("scenarios", nargs="?")
     ap.add_argument("--out-dir")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2,
-                    help="parallel fixed-age solves; runs that search claiming ages go one at a time (they "
-                         "run their candidates in parallel themselves)")
+                    help="parallel runs (spawned processes); a run that searches claiming ages does its "
+                         "two stages in its own process")
     ap.add_argument("--only", nargs="*",
                     help="groups or group/scenario names to run besides main/base (e.g. condo ltc main/ss-62)")
     ap.add_argument("--report-from", help="results.json of an earlier run: reprint its report without solving")
@@ -556,18 +631,9 @@ def main():
     jobs = jobs[1:]
     if args.only:
         jobs = [j for j in jobs if j[0] in set(args.only) or f"{j[0]}/{j[1]}" in set(args.only)]
-    serial = [j for j in jobs if searches_ages(j)]
-    parallel = [j for j in jobs if j not in serial]
     recs = [base]
-    for j in serial:
-        rec = solve_one(j, str(out_dir))
-        print(f"{rec['group']}/{rec['name']}: {rec['status']} in {rec['seconds']} s (age search)", flush=True)
-        recs.append(rec)
-    # "spawn", not Linux's default "fork": a worker forked after the age searches above inherits
-    # HiGHS's thread state without its threads and spins in its first MIP (2026-10-29: the 70/70 solve
-    # that takes 0.4 s alone ran 21 minutes in a forked worker). work_sweep.py spawns too.
     with ProcessPoolExecutor(max_workers=args.jobs, mp_context=mp.get_context("spawn")) as pool:
-        for rec in pool.map(_run, [(j, str(out_dir)) for j in parallel]):
+        for rec in pool.map(_run, [(j, str(out_dir)) for j in jobs]):
             print(f"{rec['group']}/{rec['name']}: {rec['status']} in {rec['seconds']} s", flush=True)
             recs.append(rec)
     recs.sort(key=lambda r: order.get((r["group"], r["name"]), -1))

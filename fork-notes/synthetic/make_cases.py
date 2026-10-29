@@ -5,7 +5,8 @@ Phase 0 template.
 Structure from the user (2026-10-29): a couple born in April and December 1964 (neither on the
 1st), both working in 2026, retiring at the end of 2026 at the earliest (part-time work and the SS
 claiming ages open), married filing jointly, each with 40 SS credits (insured on their own record),
-a joint brokerage account larger than their two IRAs together, renting in Yonkers (10701),
+a joint brokerage account larger than their two IRAs together, one 401k (rolled into its owner's
+IRA when work stops), no Roth, no HSA, renting in Yonkers (10701),
 considering a condo in Yonkers (10701, about $700,000), White Plains (10603, about $700,000) or
 Flushing, Queens (11354, about $850,000), the purchase year open, no bequest goal: savings spent by
 89, a condo kept as a reserve for long-term care. Also from the user: rent $4,000/month, the same
@@ -82,15 +83,19 @@ BALANCES = {
 }
 PIAS = [3150, 2500]
 
-# Wages in AGI (upstream #221) and an IRA contribution in a full-time year (their accounts are IRAs:
-# no 401k deferral, no employer match). Amounts invented.
+# Wages in AGI (upstream #221: pay less the pre-tax 401k deferral). One of them has a 401k (user,
+# 2026-10-29), rolled into that one's IRA at the end of work: in Owl both are the same tax-deferred
+# account, so the rollover is no event. Here Ari has it (the real case puts it on whoever does):
+# a deferral and an employer match while working full time. No IRA contribution for Noa: with Ari
+# covered by a workplace plan, its deduction depends on the household's income (recalled, not
+# checked), and Owl takes every IRA contribution as deductible. Amounts invented.
 FULL = {
-    "Ari": {"anticipated wages": 168000, "IRA ctrb": 8000},
-    "Noa": {"anticipated wages": 121000, "IRA ctrb": 8000},
+    "Ari": {"anticipated wages": 168000, "401k ctrb": 31000, "employer ctrb": 7000},
+    "Noa": {"anticipated wages": 121000},
 }
 PART = {
-    "Ari": {"anticipated wages": 60000, "IRA ctrb": 0},
-    "Noa": {"anticipated wages": 45000, "IRA ctrb": 0},
+    "Ari": {"anticipated wages": 60000, "401k ctrb": 0, "employer ctrb": 0},
+    "Noa": {"anticipated wages": 45000},
 }
 
 # Work variants: (name, what, {person: (kind, years)}, aca_start_year, PIAs). 2026 is a full work

@@ -105,6 +105,7 @@ COSTS = [
     ("medicare_today", "Medicare"),
     ("aca_today", "ACA"),
     ("ss_withheld_today", "SS withheld"),
+    ("roth_conversions_year1", "Roth conv. 2026"),
     ("roth_conversions_today", "Roth conv."),
     ("itemized_deductions_today", "Fed. itemized"),
     ("state_itemized_today", "NY itemized"),
@@ -131,6 +132,9 @@ def scenario_groups(case, condo, scen):
         ("obbba-2032", "pre-TCJA federal law from 2032 (Owl's default)",
          ["rates_selection.obbba_expiration_year=2032"], None, {}),
         ("slcsp-2027", "2027 marketplace benchmark (25.29 $k)", ["aca_settings.slcsp_annual=25.29"], None, {}),
+        ("roth-from-2027", "no Roth conversion in 2026 (conversions from 2027)",
+         ["solver_options.startRothConversions=2027"], None, {}),
+        ("no-roth", "no Roth conversions at all", ["solver_options.maxRothConversion=0"], None, {}),
     ]
     ref = scen.get("reference")
     grid = [(g["name"], g["what"], g["set"], None, {k: g[k] for k in ("place", "year", "financing") if k in g})
@@ -207,6 +211,7 @@ def solve_one(job, out_dir):
             m["local_tax_today"] = float(np.sum(_arr(p, "lt_T_n") * inv_g))
             m["star_credit_today"] = float(np.sum(_arr(p, "st_star_n") * inv_g))
             m["home_at_end_today"] = m["final_bequest_today"] - m["final_bequest_savings_today"]
+            m["roth_conversions_year1"] = float(np.sum(p.x_in[:, 0]))
             k = m.get("discretionary_scale")
             if k is not None:
                 m["discretionary_year1"] = k * float(p.budget.discretionary_n[0])
@@ -421,6 +426,10 @@ def feature_checks(by):
     check("No itemizing: no NY itemized deduction", "main", "no-itemizing", "state_itemized_today", zero)
     check("2032 reversion changes the federal tax", "main", "obbba-2032", "federal_income_tax_today",
           lambda v, r: abs(v - r) > 1, ("main", "base"))
+    check("Roth conversions in the baseline", "main", "base", "roth_conversions_today", pos)
+    check("No Roth conversion in 2026 when they start in 2027", "main", "roth-from-2027", "roth_conversions_year1",
+          zero)
+    check("No Roth conversions at all", "main", "no-roth", "roth_conversions_today", zero)
     check("Higher benchmark raises marketplace premiums", "main", "slcsp-2027", "aca_today", more, ("main", "base"))
     for place in ("yonkers", "whiteplains", "queens"):
         if place != "yonkers":

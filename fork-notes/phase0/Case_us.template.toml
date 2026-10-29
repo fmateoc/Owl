@@ -38,9 +38,10 @@ school_district = ""                     # NY STAR credit, for an owner: "Yonker
 # Accounts (user, 2026-10-29): a joint brokerage account, larger than the two IRAs together, and one IRA
 # each. Owl keeps one taxable account per spouse: enter half of the joint account (and half its basis) for
 # each. At a first death only the deceased's half of a joint account gets a new basis, which is what Owl
-# does with the deceased's own taxable account (upstream #238). Roth and HSA: 0 unless there are some.
+# does with the deceased's own taxable account (upstream #238). No Roth, no HSA (user).
 taxable_savings_balances = [ 0.0, 0.0, ]       # TODO: $k, half of the joint brokerage account each
-tax_deferred_savings_balances = [ 0.0, 0.0, ]  # TODO: $k, each one's IRA (a 401k balance would go here too)
+tax_deferred_savings_balances = [ 0.0, 0.0, ]  # TODO: $k, each one's IRA plus, for the one who has it, the 401k
+                                               # (rolled into the IRA when work stops: one account in Owl)
 tax_free_savings_balances = [ 0.0, 0.0, ]      # $k (Roth)
 hsa_savings_balances = [ 0.0, 0.0, ]           # $k
 taxable_cost_basis = [ 0.0, 0.0, ]             # TODO: $k, half of the joint account's cost basis each

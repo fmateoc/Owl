@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-28)
+# Owl fork — progress (as of 2026-10-29)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -2594,6 +2594,41 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Upstream `dev` `226ff54` merged: docs pass, DCC-GARCH fix (2026-10-29, on `claude/intelligent-keller-0acb9o`)
+
+Upstream `dev` = `main` = `226ff54` (2026-10-28, one commit since `b6a3ba7`): a docs pass
+(`papers/owl.tex` largely rewritten, `owl.pdf` rebuilt, `PARAMETERS.md`, `modeling-capabilities.md`,
+`Documentation.py`), a DCC-GARCH fix in the stochastic rate model (`garch_dcc.py`: each residual
+scaled before its own shock enters the variance; `Q_bar` normalized to a correlation; the DCC
+recursion and the terminal forecast realigned; `inflation_transform.py`), and explain-registry
+entries (`roth_early_basis`, `senior_bonus_*`) with a new test that every row tag `plan.py` emits
+is registered. Household: the DCC-GARCH model is a stochastic rate option, not in the template.
+
+Conflicts, docs only:
+- `info/modeling-capabilities.md` (2): the fork's lines kept with upstream's edits applied to
+  them (fixed-asset growth rates real/nominal by type; the survivor's \$500k home-sale exclusion;
+  #234's netting rule; the SC-loop list now with ACA premiums and gain fractions, plus the fork's
+  itemizing branches). What still differs from upstream is fork-only text (checked with a word diff).
+- `papers/owl.tex` (2): upstream's rewrite taken, the fork's 4 hunks (vs `b6a3ba7`) reapplied
+  where still needed: the state-tax paragraph (indexing flags, exemptions and credits, federal-AGI
+  base, NY recapture, local tax, several moves, federal standard deduction) kept; the other three
+  dropped because upstream's new text covers them: Eq. StateTI with `e_n` added back and
+  `t^sigma_n` under `"optimize"`; ACA brackets above the full-premium MAGI pinned off; the
+  $10^{-4}$ bracket tie-break ("Tax pricing, switched on when needed").
+
+Fork follow-up: upstream's `test_every_emitted_tag_is_registered` failed on two fork row tags;
+`local_taxable_income` (the city-tax identity, structural) and `star_enhanced_income` (the
+STAR `zst` big-M link, artifact) added to `CONSTRAINT_FAMILIES`.
+
+Suite: first run 1 failed (that test), 3609 passed; after the fix **3610 passed, 1 skipped**
+(11:17). flake8: only upstream's known E301/E304; Ruff: upstream's four B905.
+
+The paper-drift draft (`fork-notes/issue-docs-loop-and-paper.md`, not filed): a grep of the new
+`owl.tex` finds none of "benders", "always contributes" (the 4 N_n AMO binaries), the 10^8 big-M
+or "combined conversions" (each present in `b6a3ba7`'s), and "fixed point" / "self-consistent
+plan" three times (none before). Several of its items may be fixed; it needs a full recheck
+before filing.
 
 ## `main` fast-forwarded again to `claude/intelligent-keller-0acb9o` (2026-10-28)
 

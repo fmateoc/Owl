@@ -7,6 +7,13 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream: docs pass and DCC-GARCH fix (`dev` `226ff54`, merged 2026-10-29)
+
+Taken, with the doc conflicts resolved toward upstream's text (`papers/owl.tex` keeps only the
+fork's state-tax paragraph). Fork follow-up: the city-tax identity `local_taxable_income` and the
+STAR big-M link `star_enhanced_income` registered in the explainer's `CONSTRAINT_FAMILIES`, which
+upstream's new registry test requires.
+
 ### Upstream: #235 (`dev` `b6a3ba7`, merged 2026-10-28)
 
 Taken as is, no conflicts. The earnings test reads the five years before the plan for someone

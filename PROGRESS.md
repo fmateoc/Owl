@@ -2595,6 +2595,15 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## QCD limit issue drafted (2026-10-29, on `claude/quirky-franklin-yul9qg`)
+
+`fork-notes/issue-qcd-limit.md` (not filed): upstream's `tax_federal.qcdLimit[2026]` is
+115,000; IRS Notice 2025-67 (irs.gov, read) says \$111,000. Repro on stock `dev` `226ff54`
+(`issue-qcd-limit-repro.py`, via the HFP `QCD` column and `setContributions`): \$113,000 and
+\$115,000 accepted; with the patch (`issue-qcd-limit.patch`: the figure, a pinning test, four
+doc mentions) refused. `test_qcd.py` 22 passed with the patch; full stock suite with the patch:
+pending at commit time.
+
 ## Full review of upstream's paper at `226ff54` (2026-10-29, on `claude/quirky-franklin-yul9qg`)
 
 `fork-notes/paper-review-226ff54.md`: the whole of upstream's `owl.tex` read, suspect

@@ -2595,6 +2595,12 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/optimistic-sagan-3onvdj` (2026-10-29)
+
+The user's call: `main` moves from `d1ce58b` to this branch: upstream `dev` `1cf1925` merged
+(#240, #241 fixed, `ss_thresh_n` dropped from `StateTaxParams`). Suite on the merge: 3611 passed,
+1 skipped.
+
 ## Upstream `dev` `1cf1925` merged: #240 and #241 fixed (2026-10-29, on `claude/optimistic-sagan-3onvdj`)
 
 Upstream `dev` = `main` = `1cf1925` (2026.10.29, six commits since `226ff54`):

@@ -1,6 +1,6 @@
 # Draft upstream issue: the 2026 QCD limit is \$111,000, not \$115,000
 
-Status: **not filed**. Drafted 2026-10-29 from the paper review (`fork-notes/paper-review-226ff54.md`,
+Status: **filed by the user as #240** (2026-10-29). Drafted 2026-10-29 from the paper review (`fork-notes/paper-review-226ff54.md`,
 item A2). Every figure below comes from stock upstream `dev` `226ff54`, run 2026-10-29:
 - `fork-notes/issue-qcd-limit-repro.py`, run on stock and then with the patch (outputs below);
 - the patch `fork-notes/issue-qcd-limit.patch` (`tax_federal.py` +3/-2, one test in

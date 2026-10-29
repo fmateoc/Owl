@@ -80,6 +80,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import numpy as np  # noqa: E402
 
 from owlplanner import __version__  # noqa: E402
+from owlplanner import rates as owlrates  # noqa: E402
 from owlplanner.cli.set_override import apply_overrides  # noqa: E402
 from owlplanner.config import config_to_plan, load_toml  # noqa: E402
 from owlplanner.config.schema import parse_solver_options  # noqa: E402
@@ -158,7 +159,90 @@ def scenario_groups(case, condo, scen):
               ("condo-exact", condo, EXACT, ref_row + roth + grid, True)]
     if ltc:
         groups.append(("ltc", condo, [], ltc, True))
+    groups += rate_groups(condo, scen)
     return groups
+
+
+def rate_windows(n_years):
+    """Start years of every historical window of n_years that the rates data covers."""
+    years = owlrates.df["year"].astype(int)
+    return list(range(int(years.min()), int(years.max()) - n_years + 2)), int(years.min()), int(years.max())
+
+
+def rate_groups(condo, scen):
+    """The rate-sensitivity groups: decisions against the reference in historical windows.
+
+    rates-exact: every window, the exact LP (fast), the scenario file's "rates" decisions plus both
+    claiming at 62 and at 67. rates-ls: local search in a few windows and on the historical average.
+    Each run rescales the workbook's nominal amounts to its own inflation path (rescale_nominal).
+    """
+    cfg, gamma = scen.get("rates"), scen.get("nominal_gamma")
+    if not cfg or not gamma:
+        return []
+    n_years = len(gamma) - 1
+    windows, first, last = rate_windows(n_years)
+    by_name = {g["name"]: g for g in scen.get("grid", [])}
+    ref = scen.get("reference")
+
+    def sel(w):
+        if w == "avg":
+            return ["rates_selection.method=historical_average", f"rates_selection.from={first}",
+                    f"rates_selection.to={last}"]
+        return ["rates_selection.method=historical", f"rates_selection.from={w}",
+                f"rates_selection.to={w + n_years - 1}"]
+
+    def rows(decisions, wins, claims):
+        out = []
+        for w in wins:
+            extra = {"window": w, "nominal_gamma": gamma}
+            label = f"{first}-{last} average" if w == "avg" else f"{w}-{w + n_years - 1}"
+            out.append((f"reference@{w}", f"{ref}, rates {label}", sel(w), None, {**extra, "decision": "reference"}))
+            for d in decisions:
+                if d in by_name:
+                    out.append((f"{d}@{w}", f"{by_name[d]['what']}, rates {label}", sel(w) + by_name[d]["set"], None,
+                                {**extra, "decision": d}))
+            for age in claims:
+                out.append((f"claim-{age}@{w}", f"{ref}, both claim at {age}, rates {label}",
+                            sel(w) + fixed_ages([float(age), float(age)]), None,
+                            {**extra, "decision": f"claim-{age}", "fixed_ages": True}))
+        return out
+
+    return [("rates-exact", condo, EXACT, rows(cfg.get("decisions", []), windows, (62, 67)), True),
+            ("rates-ls", condo, [], rows(cfg.get("ls_decisions", []), [*cfg.get("ls_windows", []), "avg"], ()), True)]
+
+
+def rescale_nominal(p, nominal_gamma):
+    """Put the workbook's nominal amounts on this plan's inflation path.
+
+    The workbooks hold a purchase in its year's nominal dollars (Fixed Assets value and basis, the
+    loan, the big-ticket item), written with the case's own gamma. Under another rate path the
+    same nominal number is another condo in today's dollars, so each year's amounts are multiplied
+    by gamma_new / gamma_written: the purchase stays the same in today's dollars. Wages and
+    contributions get the same factor (1 in 2026). The Budget lines are in today's dollars already.
+    """
+    old = np.asarray(nominal_gamma, dtype=float)
+    N = p.N_n
+    ratio = np.asarray(p.gamma_n[:N], dtype=float) / old[:N]
+    y0 = int(p.year_n[0])
+
+    def factor(year):
+        n = int(year) - y0
+        return float(ratio[n]) if 0 <= n < N else 1.0
+
+    fa = p.houseLists.get("Fixed Assets")
+    if fa is not None and len(fa):
+        f = fa["year"].map(factor)
+        for col in ("value", "basis"):
+            fa[col] = fa[col].astype(float) * f
+    debts_df = p.houseLists.get("Debts")
+    if debts_df is not None and len(debts_df):
+        debts_df["amount"] = debts_df["amount"].astype(float) * debts_df["year"].map(factor)
+    p.Lambda_in[:, :N] *= ratio
+    p.omega_in[:, :N] *= ratio
+    p.kappa_ijn[:, :, :N] *= ratio
+    p.kappa401k_in[:, :N] *= ratio
+    p.kappaEmployer_in[:, :N] *= ratio
+    return float(ratio.max()), float(ratio.min())
 
 
 def _hfp_of(sets):
@@ -264,7 +348,11 @@ def solve_one(job, out_dir):
             ages, cands = two_stage_ages(diconf, dirname, sbuf)
             rec["age_candidates"] = cands
             diconf = apply_overrides(diconf, fixed_ages(ages))
-        p = _solve(_plan(diconf, dirname, buf))
+        p = _plan(diconf, dirname, buf)
+        if extra.get("nominal_gamma"):
+            rec["rescale_max_min"] = rescale_nominal(p, extra["nominal_gamma"])
+            rec.pop("nominal_gamma", None)
+        p = _solve(p)
         rec["status"] = p.caseStatus
         rec["objective"] = p.objective
         if p.caseStatus == "solved":
@@ -285,8 +373,10 @@ def solve_one(job, out_dir):
             rec["convergence"] = p.convergenceType
             rec["method"] = getattr(p, "breakpointMethodUsed", "loop")
             rec["error_bar"] = float(p.oscillationAbs) / 2.0
-            p.saveWorkbook(basename=os.path.join(out_dir, stem + ".xlsx"), overwrite=True, with_config="first")
-            with open(os.path.join(out_dir, stem + ".txt"), "w", encoding="utf-8") as f:
+            if group != "rates-exact":  # about 500 runs: no workbook or synopsis each
+                p.saveWorkbook(basename=os.path.join(out_dir, stem + ".xlsx"), overwrite=True, with_config="first")
+            with open(os.path.join(out_dir, stem + ".txt") if group != "rates-exact" else os.devnull, "w",
+                      encoding="utf-8") as f:
                 f.write(f"{group} / {name}: {what}\nOverrides: {sets}\n\n")
                 f.write(build_summary_string(p))
                 f.write("\n")
@@ -453,6 +543,75 @@ def agreement(by, ls, ex, base_name):
             *rows, ""]
 
 
+def _rate_diffs(recs, group):
+    """{decision: {window: (difference from the reference, unsettled?)}} and the references' scores."""
+    ref = {r["window"]: r for r in recs if r["group"] == group and r.get("decision") == "reference" and solved(r)}
+    out = {}
+    for r in recs:
+        if r["group"] != group or r.get("decision") in (None, "reference") or not solved(r):
+            continue
+        b = ref.get(r["window"])
+        if b is None:
+            continue
+        unsettled = bool(run_checks(r) or run_checks(b))
+        out.setdefault(r["decision"], {})[r["window"]] = (score(r) - score(b), unsettled)
+    return out, ref
+
+
+def rates_report(recs, out_dir):
+    """The rate-sensitivity groups: how each decision's difference from the reference moves with the rates."""
+    out = []
+    diffs, ref = _rate_diffs(recs, "rates-exact")
+    if diffs:
+        refs = sorted(ref.items(), key=lambda kv: score(kv[1]))
+        lo, hi = refs[0], refs[-1]
+        out += ["## rates-exact: every historical window (exact LP)", "",
+                f"Each decision against the reference purchase ({next(iter(ref.values()))['what'].split(',')[0]}) in "
+                f"the same window, {len(ref)} windows of historical returns and inflation in their order; the exact "
+                "LP (Medicare off, SS taxability 0.85), at the baseline's claiming ages except the claim rows. "
+                "The workbook's nominal amounts are rescaled to each window's inflation (rescale_nominal), so the "
+                "condo is the same in today's dollars. Score: the first year's discretionary spending. The "
+                f"reference itself scores {money(score(lo[1]))} ({lo[0]}) to {money(score(hi[1]))} ({hi[0]}).", "",
+                "| decision | median | worst (window) | best (window) | ahead in | windows | not settled |",
+                "|---|---:|---:|---:|---:|---:|---:|"]
+        for d, per in diffs.items():
+            vals = sorted(per.items(), key=lambda kv: kv[1][0])
+            v = [x[1][0] for x in vals]
+            ahead = sum(1 for x in v if x > 0.5)
+            out.append(f"| {d} | {signed(float(np.median(v)))} | {signed(vals[0][1][0])} ({vals[0][0]}) | "
+                       f"{signed(vals[-1][1][0])} ({vals[-1][0]}) | {ahead} | {len(v)} | "
+                       f"{sum(1 for x in per.values() if x[1])} |")
+        path = os.path.join(out_dir, "rates_exact.csv")
+        wins = sorted({w for per in diffs.values() for w in per})
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("window,reference," + ",".join(diffs) + "\n")
+            for w in wins:
+                f.write(f"{w},{score(ref[w]):.0f}," + ",".join(
+                    f"{diffs[d][w][0]:.0f}" if w in diffs[d] else "" for d in diffs) + "\n")
+        out += ["", f"Per window: `{os.path.basename(path)}` (the reference's score and each decision's "
+                "difference).", ""]
+    ls, lref = _rate_diffs(recs, "rates-ls")
+    if ls:
+        wins = sorted({w for per in ls.values() for w in per}, key=lambda w: (w == "avg", w if w != "avg" else 0))
+        out += ["## rates-ls: local search in a few windows", "",
+                "The same differences under local search (the case's model), with the exact LP's for the same "
+                "window in parentheses; `*` marks a run whose loop did not settle.", "",
+                "| decision | " + " | ".join(str(w) for w in wins) + " |", "|---|" + "---:|" * len(wins),
+                "| reference (score) | " + " | ".join(money(score(lref[w])) if w in lref else "" for w in wins) + " |"]
+        for d, per in ls.items():
+            cells = []
+            for w in wins:
+                if w not in per:
+                    cells.append("")
+                    continue
+                v, uns = per[w]
+                ex = diffs.get(d, {}).get(w)
+                cells.append(f"{signed(v)}{'*' if uns else ''}" + (f" ({signed(ex[0])})" if ex else ""))
+            out.append(f"| {d} | " + " | ".join(cells) + " |")
+        out.append("")
+    return out
+
+
 def age_decisions(recs):
     """The two-stage claiming-age decisions: each candidate's score under the case's own model."""
     rows = [r for r in recs if r.get("age_candidates")]
@@ -537,6 +696,18 @@ def feature_checks(by):
           ("condo", "reference"))
     check("A later purchase pays more rent first", "condo", "yonkers-2038-cash", "housing_costs_today", more,
           ("condo", "reference"))
+    homes = [(r["window"], r["metrics"]["home_at_end_today"]) for r in by.values()
+             if r["group"] == "rates-exact" and r.get("decision") == "reference" and solved(r)]
+    ref_home = by.get(("condo-exact", "reference"))
+    if homes and solved(ref_home):
+        h0 = ref_home["metrics"]["home_at_end_today"]
+        worst = max(homes, key=lambda wh: abs(wh[1] - h0))
+        out.append(("Rates: the rescaled condo is the same in today's dollars in every window (home at the end "
+                    "within 1% of the conservative run's: a condo kept to the end passes at its full proceeds, "
+                    "stepped-up basis, fixedassets.py)",
+                    abs(worst[1] - h0) <= 0.01 * h0,
+                    f"home_at_end_today {money(min(h for _, h in homes))} to {money(max(h for _, h in homes))} "
+                    f"vs {money(h0)}; farthest {worst[0]}"))
     check("Care, condo sold: no home at the end", "ltc", "ltc-sell", "home_at_end_today", zero)
     check("Care, condo kept: home at the end", "ltc", "ltc-keep", "home_at_end_today", pos)
     check("Care, condo kept: the care lowers discretionary spending", "ltc", "ltc-keep", "discretionary_year1", less,
@@ -571,18 +742,29 @@ def report(recs, skipped, out_dir, header):
         if r["group"] not in groups:
             groups.append(r["group"])
     for g in groups:
+        if g.startswith("rates"):
+            continue
         rows = [r for r in recs if r["group"] == g]
         lines += group_table(g, rows)
         if g.startswith("condo"):
             lines += condo_pivot(rows, g)
     lines += agreement(by, "condo", "condo-exact", "reference")
+    lines += rates_report(recs, out_dir)
     lines += age_decisions(recs)
     lines += ["## Run checks", ""]
-    bad = [(r, i) for r in recs for i in run_checks(r)]
+    bad = [(r, i) for r in recs for i in run_checks(r) if not r["group"].startswith("rates")]
     if not bad:
-        lines += ["Every run solved, its loop settled (error bar 0) and its log has no cash-flow or infeasibility "
-                  "warning.", ""]
+        lines += ["Every run outside the rate groups solved, its loop settled (error bar 0) and its log has no "
+                  "cash-flow or infeasibility warning.", ""]
     lines += [f"- {r['group']}/{r['name']}: {i}" for r, i in bad]
+    for g in [g for g in groups if g.startswith("rates")]:
+        rr = [r for r in recs if r["group"] == g]
+        unsolved = [r["name"] for r in rr if not solved(r)]
+        unsettled = [r["name"] for r in rr if solved(r) and run_checks(r)]
+        lines.append(f"- {g}: {len(rr)} runs, {len(unsolved)} not solved"
+                     + (f" ({', '.join(unsolved[:8])}{' ...' if len(unsolved) > 8 else ''})" if unsolved else "")
+                     + f", {len(unsettled)} with a run check (loop not settled or a warning)"
+                     + (f" ({', '.join(unsettled[:8])}{' ...' if len(unsettled) > 8 else ''})" if unsettled else ""))
     if skipped:
         lines += ["", "Skipped:", ""] + [f"- {g}/{n}: {why}" for g, n, why in skipped]
     lines += ["", "## Feature checks", "",

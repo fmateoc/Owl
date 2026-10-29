@@ -26,7 +26,9 @@ Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
     HFP_ari+noa_condo_<place>_<year>_<cash|mortgage>.xlsx   rent until <year>, then own (PLACES, BUY_YEARS)
     HFP_ari+noa_ltc_keep.xlsx   Yonkers condo bought in 2027 with cash, care from 2050 paid from savings
     HFP_ari+noa_ltc_sell.xlsx   the same, the condo sold in 2050 to pay for the care
-    condo_grid.json             the scenarios run_suite.py reads: "work" ({name, what, set, hfp}: the
+    condo_grid.json             the scenarios run_suite.py reads (also "nominal_gamma", the inflation
+                                path the nominal amounts were written with, and "rates", the
+                                rate-sensitivity settings): "work" ({name, what, set, hfp}: the
                                 hfp edits as in work_sweep.py), "extra" (more main scenarios, same
                                 format: the earnings-test case), "grid" (also place, year,
                                 financing), "ltc", and "reference" (the grid entry equal to the baseline)
@@ -148,6 +150,15 @@ RENT = 4000 * 12               # Yonkers rent (user, 2026-10-29): $4,000/month, 
 #                                growing with inflation (rent_lines)
 CARE = 110000                  # care per year from 2050 (age 86), today's $ (stand-in)
 CARE_YEAR = 2050
+# The rate-sensitivity groups (run_suite.py): the decisions scored against the reference in every
+# historical window under the exact LP, and the local-search check (fewer decisions, telling windows:
+# the Depression start, the 1966 and 1973 stagflation starts, the 1982 bull market, the 1998 start with
+# two crashes; the 1928-2025 average is added by the suite).
+RATES = {
+    "decisions": ["yonkers-2027-mortgage", "whiteplains-2027-cash", "queens-2027-cash", "yonkers-2031-cash"],
+    "ls_decisions": ["yonkers-2027-mortgage", "queens-2027-cash", "yonkers-2031-cash"],
+    "ls_windows": [1929, 1966, 1973, 1982, 1998],
+}
 OUT_OF_POCKET = 4500             # out-of-pocket medical per year, today's $ (stand-in)
 
 
@@ -336,7 +347,7 @@ def main():
     with open(out / "condo_grid.json", "w", encoding="utf-8") as f:
         json.dump({"description": "Condo purchase grid and long-term-care pair (make_cases.py); invented costs.",
                    "reference": "-".join(map(str, REFERENCE)), "grid": grid, "ltc": ltc, "work": work_json,
-                   "extra": extra},
+                   "extra": extra, "nominal_gamma": [float(g) for g in gamma], "rates": RATES},
                   f, indent=1)
         f.write("\n")
     with open(out / "work_variants.json", "w", encoding="utf-8") as f:

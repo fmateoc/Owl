@@ -2595,6 +2595,12 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/intelligent-keller-0acb9o` after the `226ff54` merge (2026-10-29)
+
+The user's call: `main` moves from `2e37cc5` to this branch: upstream `dev` `226ff54` merged
+(docs pass, DCC-GARCH fix, explain-registry test) and the two fork row tags registered. Suite on
+the merge: 3610 passed, 1 skipped.
+
 ## Upstream `dev` `226ff54` merged: docs pass, DCC-GARCH fix (2026-10-29, on `claude/intelligent-keller-0acb9o`)
 
 Upstream `dev` = `main` = `226ff54` (2026-10-28, one commit since `b6a3ba7`): a docs pass

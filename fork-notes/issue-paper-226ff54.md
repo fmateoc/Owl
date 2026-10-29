@@ -1,6 +1,6 @@
 # Draft upstream issue: paper (`owl.tex`) errors and drift at `dev` `226ff54`
 
-Status: **filed by the user as #241** (2026-10-29). Drafted 2026-10-29 from `fork-notes/paper-review-226ff54.md` (section E),
+Status: **filed by the user as #241** (2026-10-29); **fixed upstream** (`13d45ed`, 2026-10-29; the 11 numbered items and the short ones spot-checked against the new `owl.tex`, all fixed; merged into the fork the same day). Drafted 2026-10-29 from `fork-notes/paper-review-226ff54.md` (section E),
 replacing `fork-notes/issue-docs-loop-and-paper.md` (2026-10-04, written against `a85ff76`; most
 of it was fixed by upstream's 2026-10-28 rewrite). Documentation only; no code change proposed.
 The 2026 QCD limit, which is wrong in the code as well, is a separate issue

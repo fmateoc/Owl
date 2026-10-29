@@ -6853,9 +6853,6 @@ class Plan:
         self._dual_data = None  # Shadow prices from binaries-fixed LP re-solve; set when withDuals=True
 
         # Compute state tax parameters when a state is configured.
-        # Note: st_ss_thresh_n (AGI threshold for SS exemption, e.g. KS $75k, MO $100k) is
-        # returned but not yet used in the LP — those states are currently treated as binary
-        # (SS fully exempt or fully taxed). Full threshold modeling is a known limitation.
         self.N_st = 0
         self.N_lt = 0
         self.lt_surcharge_n = np.zeros(self.N_n)

@@ -77,7 +77,6 @@ def test_st_taxparams_shape():
     assert sp.sigmaBar_n.shape == (30,)
     assert sp.re_cap_in.shape == (1, 30)
     assert sp.pe_cap_in.shape == (1, 30)
-    assert sp.ss_thresh_n.shape == (30,)
     assert sp.N_st >= 4  # MN has 4 brackets for single
 
 

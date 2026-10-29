@@ -123,7 +123,6 @@ class StateTaxParams:
                       that individual meets exemption_age (0 = none, np.inf = fully exempt)
     pe_cap_in      -- shape (N_i, N_n) pension-only exemption cap per individual
                       (0 = pensions count toward re_cap_in instead)
-    ss_thresh_n    -- shape (N_n,) AGI threshold below which SS is exempt (0 = not applicable)
     conv_n         -- shape (N_n,) str, the state's treatment of Roth conversion income
                       (CONVERSION_MODES): "exemption" counts toward re_cap_in, "taxed" never
                       does, "excluded" is left out of state income at any age
@@ -147,7 +146,6 @@ class StateTaxParams:
     sigmaBar_n: np.ndarray
     re_cap_in: np.ndarray
     pe_cap_in: np.ndarray
-    ss_thresh_n: np.ndarray
     conv_n: np.ndarray
     tax_ss_n: np.ndarray
     pension_eligible_n: np.ndarray
@@ -474,8 +472,6 @@ def st_taxParams(
     # for all current states, but prefer the filing-status-appropriate entry for correctness.
     ss_entry = entry_mfj if N_i == 2 else entry_single
     tax_ss = bool(ss_entry["tax_social_security"])
-    ss_thresh_base = float(ss_entry.get("ss_exemption_threshold", 0))
-    ss_thresh_n = ss_thresh_base * g_exemptions[:N_n]
 
     fed_sd, senior_bonus = federal_deduction(state, toml_path)
 
@@ -489,7 +485,6 @@ def st_taxParams(
         sigmaBar_n=sigmaBar_n,
         re_cap_in=re_cap_in,
         pe_cap_in=pe_cap_in,
-        ss_thresh_n=ss_thresh_n,
         conv_n=np.full(N_n, conv, dtype=object),
         tax_ss_n=flag(tax_ss),
         pension_eligible_n=flag(pe_base == 0),
@@ -526,7 +521,6 @@ def st_schedule(
     sigmaBar_n = np.zeros(N_n)
     re_cap_in = np.zeros((N_i, N_n))
     pe_cap_in = np.zeros((N_i, N_n))
-    ss_thresh_n = np.zeros(N_n)
     flag_names = ("tax_ss_n", "pension_eligible_n", "fed_sd_n", "senior_bonus_n")
     flags = {name: np.zeros(N_n, dtype=bool) for name in flag_names}
     flags["conv_n"] = np.full(N_n, "exemption", dtype=object)
@@ -545,7 +539,6 @@ def st_schedule(
         sigmaBar_n[n] = p.sigmaBar_n[n]
         re_cap_in[:, n] = p.re_cap_in[:, n]
         pe_cap_in[:, n] = p.pe_cap_in[:, n]
-        ss_thresh_n[n] = p.ss_thresh_n[n]
         credit_n[n] = p.credit_n[n]
         for name, arr in flags.items():
             arr[n] = getattr(p, name)[n]
@@ -559,7 +552,6 @@ def st_schedule(
         sigmaBar_n=sigmaBar_n,
         re_cap_in=re_cap_in,
         pe_cap_in=pe_cap_in,
-        ss_thresh_n=ss_thresh_n,
         recap_start_n=recap[0],
         recap_width_n=recap[1],
         recap_until_n=recap[2],

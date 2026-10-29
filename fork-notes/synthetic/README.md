@@ -23,6 +23,14 @@ so that each scenario is known to solve and to report readably before the real n
   $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000),
   with cash or a mortgage. The purchase year is one of the things to decide.
 - No bequest goal: savings spent by 89; the condo kept to the end as a reserve for long-term care.
+- Financing (user): a 5/6 ARM at about 5.9% for a purchase now or soon, paid down within its fixed
+  5 years, or refinanced if advantageous. Owl's Debts rows are fixed-rate loans paid evenly over
+  their term, ended early only at the sale of the linked property (`debts.resolve_payoff_years`): no
+  balloon, no reset. So for the 2027 purchases the grid adds `arm5` (a 5-year loan at 5.9%: level
+  payments that retire it within the fixed period) and `arm30` (30 years at 5.9%: the refinance
+  branch at no higher rate, an upper bound on its cost; a rate rise is the paydown branch). The
+  6.25% 30-year fixed rows stay, as a stand-in. Only `arm5` enters the rate groups: an ARM held at
+  5.9% for 30 years through a high-inflation window would not exist.
 - Married filing jointly; each has 40 SS credits (insured on their own record).
 - Accounts: a joint brokerage account, larger than their two IRAs together, and one IRA each. Owl
   keeps one taxable account per spouse, so the joint account is entered as two equal halves (at a

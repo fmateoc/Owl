@@ -690,6 +690,10 @@ def feature_checks(by):
         check(f"{place} 2027 mortgage: loan payments", "condo", f"{place}-2027-mortgage", "debt_payments_today", pos)
         check(f"{place} 2027 mortgage: interest itemized federally", "condo", f"{place}-2027-mortgage",
               "itemized_deductions_today", pos)
+    check("ARM paid down in 5 years: less paid on the loan than over 30 years at the same rate", "condo",
+          "yonkers-2027-arm5", "debt_payments_today", less, ("condo", "yonkers-2027-arm30"))
+    check("ARM at 5.9% costs less than the 6.25% fixed loan (30 years each)", "condo", "yonkers-2027-arm30",
+          "debt_payments_today", less, ("condo", "yonkers-2027-mortgage"))
     check("White Plains: no Yonkers surcharge after the move", "condo", "whiteplains-2027-cash", "local_tax_today",
           less, ("condo", "reference"))
     check("Queens: NYC tax above the Yonkers surcharge", "condo", "queens-2027-cash", "local_tax_today", more,

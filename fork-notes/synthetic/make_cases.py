@@ -6,14 +6,15 @@ Structure from the user (2026-10-29): a couple born in April and December 1964 (
 1st), both working in 2026, retiring at the end of 2026 at the earliest (part-time work and the SS
 claiming ages open), married filing jointly, each with 40 SS credits (insured on their own record),
 a joint brokerage account larger than their two IRAs together, one 401k (rolled into its owner's
-IRA when work stops), no Roth, no HSA, renting in Yonkers (10701),
-considering a condo in Yonkers (10701, about $700,000), White Plains (10603, about $700,000) or
-Flushing, Queens (11354, about $850,000), the purchase year open, no bequest goal: savings spent by
-89, a condo kept as a reserve for long-term care. Also from the user: rent $4,000/month, the same
-in 2027, then growing with inflation; condo HOA $800/month, growing with inflation. Every other
-amount is invented (balances, wages, PIAs, property tax, insurance, closing costs, care): the cases
-exercise the household's scenarios, they are not the household's case, which is run offline by the
-user (CLAUDE.md "Household data").
+IRA when work stops), no Roth, no HSA, renting in Yonkers (10701), considering a condo in Yonkers
+(10701, about $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about
+$850,000), the purchase year open, no bequest goal: savings spent by 89, a condo kept as a reserve
+for long-term care. Also from the user: a 5/6 ARM at about 5.9% for a purchase now or soon, paid
+down within its fixed 5 years or refinanced if advantageous; rent $4,000/month, the same in 2027,
+then growing with inflation; condo HOA $800/month, growing with inflation. Every other amount is
+invented (balances, wages, PIAs, property tax, insurance, closing costs, care): the cases exercise
+the household's scenarios, they are not the household's case, which is run offline by the user
+(CLAUDE.md "Household data").
 
 Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
 
@@ -24,6 +25,8 @@ Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
                                 condo at the start of 2027 with cash (REFERENCE; renting to the end is
                                 not an option)
     HFP_ari+noa_condo_<place>_<year>_<cash|mortgage>.xlsx   rent until <year>, then own (PLACES, BUY_YEARS)
+    HFP_ari+noa_condo_<place>_2027_<arm5|arm30>.xlsx        the 5/6 ARM at 5.9%: paid down in 5 years, or
+                                refinanced at no higher rate (ARM_RATE, ARM_YEARS)
     HFP_ari+noa_ltc_keep.xlsx   Yonkers condo bought in 2027 with cash, care from 2050 paid from savings
     HFP_ari+noa_ltc_sell.xlsx   the same, the condo sold in 2050 to pay for the care
     condo_grid.json             the scenarios run_suite.py reads (also "nominal_gamma", the inflation
@@ -144,6 +147,8 @@ CLOSING = 0.03                 # buyer's closing costs, share of the price (stan
 MORTGAGE_EXTRA = 0.02          # extra closing costs with a loan (recording tax, lender fees), share of the loan
 DOWN = 0.20
 MORTGAGE_RATE = 6.25           # nominal, 30-year fixed (stand-in)
+ARM_RATE = 5.9                 # 5/6 ARM initial rate (user, 2026-10-29: the lowest quotes found)
+ARM_YEARS = (2027,)            # a purchase now or soon: later rates are unknown
 HOME_RATE = 0.5                # real growth of the condo's value (stand-in)
 COMMISSION = 5.0               # selling cost at the plan end or at a sale (stand-in)
 RENT = 4000 * 12               # Yonkers rent (user, 2026-10-29): $4,000/month, the same in 2027, then
@@ -155,8 +160,11 @@ CARE_YEAR = 2050
 # the Depression start, the 1966 and 1973 stagflation starts, the 1982 bull market, the 1998 start with
 # two crashes; the 1928-2025 average is added by the suite).
 RATES = {
-    "decisions": ["yonkers-2027-mortgage", "whiteplains-2027-cash", "queens-2027-cash", "yonkers-2031-cash"],
-    "ls_decisions": ["yonkers-2027-mortgage", "queens-2027-cash", "yonkers-2031-cash"],
+    # The ARM paid down in 5 years holds on any rate path; arm30 (5.9% for 30 years) would not under
+    # the windows' inflation, where an ARM resets, so it is left out here.
+    "decisions": ["yonkers-2027-mortgage", "yonkers-2027-arm5", "whiteplains-2027-cash", "queens-2027-cash",
+                  "yonkers-2031-cash"],
+    "ls_decisions": ["yonkers-2027-arm5", "queens-2027-cash", "yonkers-2031-cash"],
     "ls_windows": [1929, 1966, 1973, 1982, 1998],
 }
 OUT_OF_POCKET = 4500             # out-of-pocket medical per year, today's $ (stand-in)
@@ -325,6 +333,23 @@ def main():
                 grid.append({"name": f"{place}-{year}-{fin}", "place": place, "year": year, "financing": fin,
                              "what": f"buy in {c['what']} in {year}, {fin}",
                              "set": [f"household_financial_profile.HFP_file_name={hfp}", *sets]})
+            if year in ARM_YEARS:
+                # The 5/6 ARM (user, 2026-10-29: about 5.9% for a purchase now or soon), two ways out of it.
+                # Owl's Debts rows are fixed-rate loans paid evenly over their term, and a loan ends early only
+                # at the sale of its property (debts.resolve_payoff_years): no balloon, no rate reset.
+                # "arm5": paid down within the fixed 5 years, as a 5-year loan at the ARM rate (level payments).
+                # "arm30": refinanced at a rate no higher than the ARM's when the fixed period ends (else paid
+                # down, as arm5), so a 30-year loan at the ARM rate is the upper bound of that branch's cost.
+                loan = round(price * (1 - DOWN))
+                for fin, term, what in (("arm5", 5, "5/6 ARM at 5.9%, paid down within 5 years"),
+                                        ("arm30", 30, "5/6 ARM at 5.9%, refinanced at no higher rate (30 years)")):
+                    hfp = f"HFP_{SLUG}_condo_{place}_{year}_{fin}.xlsx"
+                    write_hfp(out / hfp, budget, assets=[asset],
+                              debts=[[True, f"{place} ARM", "mortgage", year, term, loan, ARM_RATE, f"{place} condo"]],
+                              big_ticket=[("Ari", year, -round(price * (DOWN + CLOSING) + loan * MORTGAGE_EXTRA))])
+                    grid.append({"name": f"{place}-{year}-{fin}", "place": place, "year": year, "financing": fin,
+                                 "what": f"buy in {c['what']} in {year}, {what}",
+                                 "set": [f"household_financial_profile.HFP_file_name={hfp}", *sets]})
 
     # Long-term care: the Yonkers condo bought in 2027 with cash, care from CARE_YEAR to the end.
     price = nominal(PLACES["yonkers"]["price"], 2027)

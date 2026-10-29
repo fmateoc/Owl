@@ -14,8 +14,8 @@ the SPIA premium timing (judgment calls, not errors), and three points I only re
 1983/1994 threshold dates, the Roth-earnings penalty wording, MOSEK and Gurobi called modeling languages) — review items 20, 32,
 35-37. Line numbers are `papers/owl.tex` at `226ff54`; spot-checked again before drafting.
 
-Deviation from section E: items 25 (duplicate QCD paragraph) and 30 (previous MAGIs) are in the
-short list too; E left them out without a reason.
+Beyond section E: items 25 (duplicate QCD paragraph) and 30 (previous MAGIs) are in the short
+list too (E left them out without a reason; kept by the user, 2026-10-29).
 
 ---
 

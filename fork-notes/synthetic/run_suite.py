@@ -36,9 +36,10 @@ Groups, each against its own base (its first row):
   variants, both claiming at 62, 67 or 70, no itemizing, the 2032 reversion, the 2027 benchmark,
   Roth conversions from 2027 or none. Differences under 1% are marked `~`: loop noise can make
   them, with either sign (CLAUDE.md "Loop noise").
-- "condo" (local search) and "condo-exact" (exact LP: Medicare off, SS taxability 0.85): the
+- "condo" (local search) and "condo-exact" (the exact model: Medicare off, SS taxability 0.85,
+  capital gains exact by withLTCG="optimize"): the
   reference purchase, then every grid variant, at the claiming ages the baseline chose. A pivot
-  shows the purchase year against place and financing; a table puts local search and the exact LP
+  shows the purchase year against place and financing; a table puts local search and the exact model
   side by side: a difference counts when both give it the same sign and it exceeds their spread.
 - "ltc": a care cost late in life with the condo kept or sold to pay for it.
 
@@ -93,6 +94,11 @@ _spec.loader.exec_module(work_sweep)
 _NUM = re.compile(r"\$?\d[\d,]*(?:\.\d+)?(?![\d.,%])")  # amounts and counts; a percentage stays
 EXACT = ["solver_options.breakpointMethod=loop", "solver_options.withMedicare=none",
          "solver_options.withSSTaxability=0.85"]
+# The exact groups (condo-exact, rates-exact) also price capital gains exactly: with a large brokerage
+# account the LTCG loop did not settle in 138 of 153 unsettled rates-exact runs (error bars up to
+# +-12,856, median +-2,782; synthetic run 2026-10-29-d); withLTCG="optimize" settled the four probed
+# (error bar 0) at 11-15 s per run instead of 0.5-1 s. Stage 1 of the age search keeps the pure LP.
+EXACT_GROUP = EXACT + ["solver_options.withLTCG=optimize"]
 
 # Lifetime amounts in the cost tables, today's dollars (plan_metrics keys, plus the fork's state-tax
 # parts and the STAR credit added in solve_one()).
@@ -156,7 +162,7 @@ def scenario_groups(case, condo, scen):
     ltc = [(t["name"], t["what"], t["set"], None, {}) for t in scen.get("ltc", [])]
     groups = [("main", case, [], main, False),
               ("condo", condo, [], ref_row + roth + grid, True),
-              ("condo-exact", condo, EXACT, ref_row + roth + grid, True)]
+              ("condo-exact", condo, EXACT_GROUP, ref_row + roth + grid, True)]
     if ltc:
         groups.append(("ltc", condo, [], ltc, True))
     groups += rate_groups(condo, scen)
@@ -172,7 +178,7 @@ def rate_windows(n_years):
 def rate_groups(condo, scen):
     """The rate-sensitivity groups: decisions against the reference in historical windows.
 
-    rates-exact: every window, the exact LP (fast), the scenario file's "rates" decisions plus both
+    rates-exact: every window, the exact model, the scenario file's "rates" decisions plus both
     claiming at 62 and at 67. rates-ls: local search in a few windows and on the historical average.
     Each run rescales the workbook's nominal amounts to its own inflation path (rescale_nominal).
     """
@@ -207,7 +213,7 @@ def rate_groups(condo, scen):
                             {**extra, "decision": f"claim-{age}", "fixed_ages": True}))
         return out
 
-    return [("rates-exact", condo, EXACT, rows(cfg.get("decisions", []), windows, (62, 67)), True),
+    return [("rates-exact", condo, EXACT_GROUP, rows(cfg.get("decisions", []), windows, (62, 67)), True),
             ("rates-ls", condo, [], rows(cfg.get("ls_decisions", []), [*cfg.get("ls_windows", []), "avg"], ()), True)]
 
 
@@ -514,7 +520,7 @@ def condo_pivot(rows, group):
 
 
 def agreement(by, ls, ex, base_name):
-    """The same variant under local search and under the exact LP: the decision rule of CLAUDE.md "Loop noise"."""
+    """The same variant under local search and under the exact model: the decision rule of CLAUDE.md "Loop noise"."""
     rows = []
     for (g, n), r in by.items():
         if g != ls or n == base_name or (ex, n) not in by:
@@ -535,11 +541,12 @@ def agreement(by, ls, ex, base_name):
     if not rows:
         return []
     return [f"### {ls} vs {ex}", "",
-            "Score difference from the reference under local search and under the exact LP (Medicare off, SS "
+            "Score difference from the reference under local search and under the exact model (Medicare off, SS "
             "taxability 0.85: a different model, so only its differences compare). A difference counts when both "
             "give it the same sign and it is larger than their spread plus the error bars of the four runs (a loop "
             "that did not settle).", "",
-            "| scenario | local search | exact LP | spread | error bars | reading |", "|---|---:|---:|---:|---:|---|",
+            "| scenario | local search | exact model | spread | error bars | reading |",
+            "|---|---:|---:|---:|---:|---|",
             *rows, ""]
 
 
@@ -565,22 +572,27 @@ def rates_report(recs, out_dir):
     if diffs:
         refs = sorted(ref.items(), key=lambda kv: score(kv[1]))
         lo, hi = refs[0], refs[-1]
-        out += ["## rates-exact: every historical window (exact LP)", "",
+        out += ["## rates-exact: every historical window (exact model)", "",
                 f"Each decision against the reference purchase ({next(iter(ref.values()))['what'].split(',')[0]}) in "
                 f"the same window, {len(ref)} windows of historical returns and inflation in their order; the exact "
-                "LP (Medicare off, SS taxability 0.85), at the baseline's claiming ages except the claim rows. "
+                "model (Medicare off, SS taxability 0.85, capital gains exact), at the baseline's claiming ages "
+                "except the claim rows. "
                 "The workbook's nominal amounts are rescaled to each window's inflation (rescale_nominal), so the "
                 "condo is the same in today's dollars. Score: the first year's discretionary spending. The "
                 f"reference itself scores {money(score(lo[1]))} ({lo[0]}) to {money(score(hi[1]))} ({hi[0]}).", "",
-                "| decision | median | worst (window) | best (window) | ahead in | windows | not settled |",
-                "|---|---:|---:|---:|---:|---:|---:|"]
+                "| decision | median | worst (window) | best (window) | ahead in | windows | not settled | "
+                "median, settled only | ahead, settled only |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for d, per in diffs.items():
             vals = sorted(per.items(), key=lambda kv: kv[1][0])
             v = [x[1][0] for x in vals]
+            st = [x[0] for x in per.values() if not x[1]]
             ahead = sum(1 for x in v if x > 0.5)
+            st_med = signed(float(np.median(st))) if st else "n/a"
             out.append(f"| {d} | {signed(float(np.median(v)))} | {signed(vals[0][1][0])} ({vals[0][0]}) | "
                        f"{signed(vals[-1][1][0])} ({vals[-1][0]}) | {ahead} | {len(v)} | "
-                       f"{sum(1 for x in per.values() if x[1])} |")
+                       f"{sum(1 for x in per.values() if x[1])} | {st_med} | "
+                       f"{sum(1 for x in st if x > 0.5)} of {len(st)} |")
         path = os.path.join(out_dir, "rates_exact.csv")
         wins = sorted({w for per in diffs.values() for w in per})
         with open(path, "w", encoding="utf-8") as f:
@@ -594,7 +606,7 @@ def rates_report(recs, out_dir):
     if ls:
         wins = sorted({w for per in ls.values() for w in per}, key=lambda w: (w == "avg", w if w != "avg" else 0))
         out += ["## rates-ls: local search in a few windows", "",
-                "The same differences under local search (the case's model), with the exact LP's for the same "
+                "The same differences under local search (the case's model), with the exact model's for the same "
                 "window in parentheses; `*` marks a run whose loop did not settle.", "",
                 "| decision | " + " | ".join(str(w) for w in wins) + " |", "|---|" + "---:|" * len(wins),
                 "| reference (score) | " + " | ".join(money(score(lref[w])) if w in lref else "" for w in wins) + " |"]

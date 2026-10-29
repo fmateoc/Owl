@@ -108,14 +108,16 @@ cash (a reference point, not a recommendation). Groups:
   wages: Ari is entitled from May 2026, at 62 and one month); no itemizing; the 2032 reversion; the 2027 benchmark.
   Differences under 1% are marked `~` (loop noise can make them, either sign). `both-stop-2026`
   repeats the baseline: its difference is the noise of the age search itself.
-- **condo** (local search) and **condo-exact** (exact LP): the Roth pair again (no conversion in
+- **condo** (local search) and **condo-exact** (the exact model: Medicare off, SS taxability 0.85,
+  capital gains exact): the Roth pair again (no conversion in
   2026; none at all: the main group's method alone does not settle it) and the 30 purchases against
   the reference,
   at the baseline's claiming ages, with a pivot (purchase year against place and financing) and a
-  table that says whether local search and the exact LP agree.
+  table that says whether local search and the exact model agree.
 - **ltc**: care late in life, the condo kept or sold.
 - **rates-exact**: the rate sensitivity. Every 28-year historical window of returns and inflation
-  (start years 1928-1998, 71 windows, in their order), under the exact LP: the reference purchase
+  (start years 1928-1998, 71 windows, in their order), under the exact model (capital gains exact:
+  their loop did not settle in 138 of 153 unsettled runs of the first rate run): the reference purchase
   and four decisions (Yonkers 2027 with a mortgage, White Plains 2027, Queens 2027, Yonkers 2031,
   all cash unless said) plus both claiming at 62 and at 67, each against the reference in the same
   window. The report gives per decision the median, worst and best difference and the windows where
@@ -127,7 +129,7 @@ cash (a reference point, not a recommendation). Groups:
   The Budget's flat-in-2027 rent line was built with the case's inflation, so under another window
   2027 rent is not exactly flat in nominal terms.
 - **rates-ls**: three of those decisions under local search in five telling windows (1929, 1966,
-  1973, 1982, 1998) and on the 1928-2025 average, with the exact LP's difference beside each.
+  1973, 1982, 1998) and on the 1928-2025 average, with the exact model's difference beside each.
 - **Run checks** (a run that did not solve, a loop that did not settle, cash-flow or infeasibility
   warnings), **feature checks** (each modeled rule fires where it should: payroll tax, ACA,
   Medicare, the Yonkers surcharge and the NYC tax, STAR for the owner, itemizing of the property

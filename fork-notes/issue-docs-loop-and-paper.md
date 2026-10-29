@@ -1,6 +1,6 @@
 # Draft upstream issue (mdlacasse/Owl): paper and docs, loop mode is self-consistent not optimal, and paper vs code drift
 
-**Not filed yet.** Documentation only. No code change is proposed, except possibly the defaults question at the end.
+**Superseded 2026-10-29 by `fork-notes/issue-paper-226ff54.md`; do not file this text.** **Not filed yet.** Documentation only. No code change is proposed, except possibly the defaults question at the end.
 
 ## Recheck against upstream `dev` `226ff54` (2026-10-29)
 

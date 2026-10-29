@@ -199,8 +199,8 @@ def two_stage_ages(diconf, dirname, buf):
     a pure LP per candidate (about 0.5 s on the synthetic case). Unlike work_sweep.py stage (a), ACA
     stays on the loop: withACA="optimize" makes each candidate a MIP (9 s there, so about 10 minutes
     for the search's ~270 candidates), and the exact LP mis-prices the ACA years even then
-    (plan-review-2026-10-22.md §3.2). Stage 2: the pick and each searched person's pick +-1 year (within
-    62-70, one person at a time), each solved at fixed ages under the case's own model; the best
+    (plan-review-2026-10-22.md §3.2). Stage 2: the pick and each searched person's pick +-1 year (clipped
+    to 62-70, one person at a time), each solved at fixed ages under the case's own model; the best
     score wins. Owl's search on the full model makes every candidate a branch-and-bound MIP: on the
     synthetic case with brokerage-heavy balances one search ran past 20 minutes (2026-10-29).
     Returns (ages, candidates) with candidates = [(ages, score or None)].
@@ -215,8 +215,8 @@ def two_stage_ages(diconf, dirname, buf):
     trials = [pick]
     for i in free:
         for d in (-1.0, 1.0):
-            a = pick[i] + d
-            if 62.0 - 1e-9 <= a <= 70.0 + 1e-9:
+            a = min(70.0, max(62.0, pick[i] + d))  # clipped: a 69y10m pick still tries 70
+            if abs(a - pick[i]) > 1e-6:
                 t = list(pick)
                 t[i] = a
                 trials.append(t)

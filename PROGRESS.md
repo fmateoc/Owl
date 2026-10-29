@@ -2597,6 +2597,12 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
 
+## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
+
+The user's call: `main` moves from `9f7a0dd` to this branch (the synthetic household and scenario
+suite below; fork-notes, the Phase 0 template, CLAUDE.md and PROGRESS.md only: no `src` or test
+change, so the suite count of 2026-10-29, 3611 passed / 1 skipped, stands).
+
 ## Synthetic household and scenario suite (2026-10-29, on `claude/nifty-fermat-v742k9`)
 
 **Decision (user):** the household's case is run offline, by the user; cloud sessions never ask for

@@ -23,6 +23,8 @@ so that each scenario is known to solve and to report readably before the real n
   $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000),
   with cash or a mortgage. The purchase year is one of the things to decide.
 - No bequest goal: savings spent by 89; the condo kept to the end as a reserve for long-term care.
+- Rent $4,000/month, the same in 2027, then growing with inflation; condo HOA $800/month in every
+  place, growing with inflation.
 
 How Owl takes these:
 
@@ -47,8 +49,12 @@ How Owl takes these:
   sold that year to pay for it.
 
 Invented in the synthetic case (all stand-ins; the real ones go in the offline files): balances,
-wages, PIAs (a little higher per extra work year), rent, condo costs, closing costs, the mortgage
-rate, the condo's growth and selling commission, the care cost.
+wages, PIAs (a little higher per extra work year), property tax and insurance of each condo,
+closing costs, the mortgage rate, the condo's growth and selling commission, the care cost.
+
+Rent in the Budget sheet is two lines in today's dollars: $48,000 in 2026, then $48,000 deflated
+by one year of the case's inflation from 2027 on, with no real growth: the same nominal rent in
+2026 and 2027, inflation after. The HOA is a `maintenance` line of $9,600 with no real growth.
 
 ## Running it
 
@@ -81,7 +87,9 @@ cash (a reference point, not a recommendation). Groups:
 
 - **main**: the baseline with its claiming ages searched; the work variants (stop at the end of
   2026; one or both full time in 2027; one or both part time 2027-2028), each with its stand-in
-  PIA; both claiming at 62, 67 or 70; no itemizing; the 2032 reversion; the 2027 benchmark.
+  PIA; both claiming at 62, 67 or 70; Noa part time 2027-2028 with both claiming at 62, for the SSA
+  earnings test (every searched variant claims at 70; `ss-62` withholds too, from Ari's 2026
+  wages: Ari is entitled from May 2026, at 62 and one month); no itemizing; the 2032 reversion; the 2027 benchmark.
   Differences under 1% are marked `~` (loop noise can make them, either sign). `both-stop-2026`
   repeats the baseline: its difference is the noise of the age search itself.
 - **condo** (local search) and **condo-exact** (exact LP): the 30 purchases against the reference,

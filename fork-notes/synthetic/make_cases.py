@@ -7,9 +7,10 @@ Structure from the user (2026-10-29): a couple born in April and December 1964 (
 claiming ages open), renting in Yonkers (10701), considering a condo in Yonkers (10701, about
 $700,000), White Plains (10603, about $700,000) or Flushing, Queens (11354, about $850,000), the
 purchase year open, no bequest goal: savings spent by 89, a condo kept as a reserve for long-term
-care. Every amount below other than those prices is invented (balances, wages, PIAs, rent, condo
-costs): the cases exercise the household's scenarios, they are not the household's case, which is
-run offline by the user (CLAUDE.md "Household data").
+care. Also from the user: rent $4,000/month, the same in 2027, then growing with inflation; condo
+HOA $800/month, growing with inflation. Every other amount is invented (balances, wages, PIAs,
+property tax, insurance, closing costs, care): the cases exercise the household's scenarios, they
+are not the household's case, which is run offline by the user (CLAUDE.md "Household data").
 
 Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
 
@@ -23,8 +24,9 @@ Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
     HFP_ari+noa_ltc_keep.xlsx   Yonkers condo bought in 2027 with cash, care from 2050 paid from savings
     HFP_ari+noa_ltc_sell.xlsx   the same, the condo sold in 2050 to pay for the care
     condo_grid.json             the scenarios run_suite.py reads: "work" ({name, what, set, hfp}: the
-                                hfp edits as in work_sweep.py), "grid" (also place, year, financing),
-                                "ltc", and "reference" (the grid entry equal to the baseline)
+                                hfp edits as in work_sweep.py), "extra" (more main scenarios, same
+                                format: the earnings-test case), "grid" (also place, year,
+                                financing), "ltc", and "reference" (the grid entry equal to the baseline)
     work_variants.json          the same work variants for fork-notes/phase5/work_sweep.py
 
 Amounts follow Owl's conventions: Budget lines in today's dollars; Fixed Assets value and basis in
@@ -104,20 +106,22 @@ WORK_VARIANTS = [
 ]
 
 # Condo places. Price: the user's figure (today's $). Costs per year in today's $: invented
-# stand-ins (property tax, common charges as 'maintenance', HO-6 insurance). NYC condos are tax
+# stand-ins (property tax, HO-6 insurance), except the HOA (common charges, as 'maintenance'): the
+# user's figure, $800/month in every place, growing with inflation (2026-10-29). NYC condos are tax
 # class 2 (recalled, not checked against DOF). 10603 is split among school districts (White Plains
 # City, Greenburgh Central, Valhalla; a secondary source, statisticalatlas.com): the condo's address
 # decides; White Plains here. Valhalla is not in data/property_tax_relief.toml.
+HOA = 800 * 12                 # condo HOA / common charges (user), today's $, real growth 0
 PLACES = {
     "yonkers": {"what": "Yonkers (10701)", "price": 700000, "locality": "Yonkers",
                 "district": "City of Yonkers / Yonkers", "move": False,
-                "property tax": 9500, "maintenance": 7200, "insurance": 900},
+                "property tax": 9500, "maintenance": HOA, "insurance": 900},
     "whiteplains": {"what": "White Plains (10603)", "price": 700000, "locality": "",
                     "district": "City of White Plains / White Plains", "move": True,
-                    "property tax": 11500, "maintenance": 7800, "insurance": 900},
+                    "property tax": 11500, "maintenance": HOA, "insurance": 900},
     "queens": {"what": "Flushing, Queens (11354)", "price": 850000, "locality": "NYC",
                "district": "New York City / New York City (class 2)", "move": True,
-               "property tax": 7000, "maintenance": 8400, "insurance": 900},
+               "property tax": 7000, "maintenance": HOA, "insurance": 900},
 }
 BUY_YEARS = [2027, 2029, 2031, 2034, 2038]
 # The baseline's purchase: renting to the end is not an option (user, 2026-10-29: no landlord
@@ -130,7 +134,8 @@ DOWN = 0.20
 MORTGAGE_RATE = 6.25           # nominal, 30-year fixed (stand-in)
 HOME_RATE = 0.5                # real growth of the condo's value (stand-in)
 COMMISSION = 5.0               # selling cost at the plan end or at a sale (stand-in)
-RENT = 36000                   # Yonkers rent today (stand-in), real growth 0.5%/yr
+RENT = 4000 * 12               # Yonkers rent (user, 2026-10-29): $4,000/month, the same in 2027, then
+#                                growing with inflation (rent_lines)
 CARE = 110000                  # care per year from 2050 (age 86), today's $ (stand-in)
 CARE_YEAR = 2050
 
@@ -155,14 +160,20 @@ COMMON = [
 ]
 
 
-def rent_lines(last_year=0):
-    return [line("rent", "rent", START, last_year, RENT, rate=0.5, essential=True)]
+def rent_lines(gamma, last_year=0):
+    """Rent from START to last_year (0: the plan end): RENT in 2026, the same nominal amount in 2027
+    (so RENT / gamma[1] in today's dollars), then that amount with inflation (real growth 0)."""
+    lines = [line("rent", "rent", START, START, RENT, essential=True)]
+    if last_year == 0 or last_year > START:
+        lines.append(line("rent from 2027", "rent", START + 1, last_year, round(RENT / float(gamma[1])),
+                          essential=True))
+    return lines
 
 
 def owner_lines(place, first_year, last_year=0):
     c = PLACES[place]
     return [line("property tax", "property tax", first_year, last_year, c["property tax"], rate=1.0, essential=True),
-            line("common charges", "maintenance", first_year, last_year, c["maintenance"], rate=0.5, essential=True),
+            line("HOA", "maintenance", first_year, last_year, c["maintenance"], essential=True),
             line("condo insurance", "insurance", first_year, last_year, c["insurance"], essential=True)]
 
 
@@ -253,12 +264,21 @@ def main():
                                   f"fixed_income.social_security_pia_amounts={json.dumps(pias)}"],
                           **({"hfp": hfp_edits} if hfp_edits else {})})
 
+    # The SSA earnings test: with these figures every variant claims at 70, so nobody is paid before
+    # FRA while working. Force it: Noa (62 in December 2026) works part time in 2027-2028 above the
+    # exempt amount, and both claim at 62.
+    noa_part = next(w for w in work_json if w["name"] == "noa-part-2027-28")
+    extra = [{"name": "noa-part-claim-62", "what": "Noa works part time 2027-2028, both claim at 62 (earnings test)",
+              "set": [*noa_part["set"], "solver_options.withSSAges=fixed",
+                      "fixed_income.social_security_ages=[62.0, 62.0]"],
+              "hfp": noa_part["hfp"]}]
+
     grid = []
     for place, c in PLACES.items():
         for year in BUY_YEARS:
             price = nominal(c["price"], year)
             asset = [True, f"{place} condo", "residence", year, price, price, HOME_RATE, 0, COMMISSION]
-            budget = COMMON + rent_lines(year - 1) + owner_lines(place, year)
+            budget = COMMON + rent_lines(gamma, year - 1) + owner_lines(place, year)
             if c["move"]:
                 sets = ["basic_info.moves=" + json.dumps(
                     [{"year": year, "state": "NY", "locality": c["locality"], "school_district": c["district"]}])]
@@ -287,10 +307,10 @@ def main():
     tix = [("Ari", 2027, -round(price * (1 + CLOSING)))]
     keep = [True, "yonkers condo", "residence", 2027, price, price, HOME_RATE, 0, COMMISSION]
     sell = [True, "yonkers condo", "residence", 2027, price, price, HOME_RATE, CARE_YEAR, COMMISSION]
-    write_hfp(out / f"HFP_{SLUG}_ltc_keep.xlsx", COMMON + rent_lines(2026) + owner_lines("yonkers", 2027) + care,
+    write_hfp(out / f"HFP_{SLUG}_ltc_keep.xlsx", COMMON + rent_lines(gamma, 2026) + owner_lines("yonkers", 2027) + care,
               assets=[keep], big_ticket=tix)
     write_hfp(out / f"HFP_{SLUG}_ltc_sell.xlsx",
-              COMMON + rent_lines(2026) + owner_lines("yonkers", 2027, CARE_YEAR - 1) + care,
+              COMMON + rent_lines(gamma, 2026) + owner_lines("yonkers", 2027, CARE_YEAR - 1) + care,
               assets=[sell], big_ticket=tix)
     district = f"basic_info.school_district={PLACES['yonkers']['district']}"
     ltc = [{"name": "ltc-keep", "what": f"Yonkers condo (2027, cash) kept; care {CARE:,}/yr from {CARE_YEAR} "
@@ -301,7 +321,8 @@ def main():
 
     with open(out / "condo_grid.json", "w", encoding="utf-8") as f:
         json.dump({"description": "Condo purchase grid and long-term-care pair (make_cases.py); invented costs.",
-                   "reference": "-".join(map(str, REFERENCE)), "grid": grid, "ltc": ltc, "work": work_json},
+                   "reference": "-".join(map(str, REFERENCE)), "grid": grid, "ltc": ltc, "work": work_json,
+                   "extra": extra},
                   f, indent=1)
         f.write("\n")
     with open(out / "work_variants.json", "w", encoding="utf-8") as f:

@@ -23,9 +23,11 @@ CASE.toml is the baseline: the Phase 0 template filled in (maxSpending, bequest 
 claiming ages searched), whose workbook holds a reference purchase (rent until it, own after).
 CONDO_CASE.toml is the same household with breakpointMethod = "local-search". SCENARIOS.json
 holds "work" ({name, what, set, hfp}: `set` items are `--set` specs; `hfp` edits the case's
-workbook per person and year, the format of work_sweep.py), "grid" ({name, what, set, place, year,
-financing}: each its own workbook, named relative to the case), "ltc" (the first is the base of
-its group) and "reference" (the grid entry that equals the baseline).
+workbook per person and year, the format of work_sweep.py), "extra" (more main scenarios in the
+same format, such as one that claims before FRA while working, for the earnings test), "grid"
+({name, what, set, place, year, financing}: each its own workbook, named relative to the case),
+"ltc" (the first is the base of its group) and "reference" (the grid entry that equals the
+baseline).
 
 Groups, each against its own base (its first row):
 
@@ -60,6 +62,7 @@ import copy
 import importlib.util
 import io
 import json
+import multiprocessing as mp
 import os
 import sys
 import time
@@ -119,6 +122,7 @@ def scenario_groups(case, condo, scen):
     main = [("base", "the case as written", [], None, {})]
     # A work entry without workbook edits repeats the baseline (its difference shows the age search's noise).
     main += [(w["name"], w["what"], w["set"], w.get("hfp"), {}) for w in scen.get("work", [])]
+    main += [(w["name"], w["what"], w["set"], w.get("hfp"), {}) for w in scen.get("extra", [])]
     main += [
         ("ss-62", "both claim at 62", fixed_ages([62.0, 62.0]), None, {}),
         ("ss-67", "both claim at 67 (FRA)", fixed_ages([67.0, 67.0]), None, {}),
@@ -405,6 +409,8 @@ def feature_checks(by):
         check(f"{n}: more wages than stopping in 2026", "main", n, "wages_today", more, ("main", "base"))
     check("Full-time work in 2027 adds payroll tax", "main", "both-full-2027", "payroll_tax_today", more,
           ("main", "base"))
+    check("Earnings test withholds SS: claim at 62 while working part time", "main", "noa-part-claim-62",
+          "ss_withheld_today", pos)
     check("Claiming at 62 pays less SS over the plan than at 70", "main", "ss-62", "ss_income_today", less,
           ("main", "ss-70"))
     check("No itemizing: no federal itemized deduction", "main", "no-itemizing", "itemized_deductions_today", zero)
@@ -506,7 +512,8 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2,
                     help="parallel fixed-age solves; runs that search claiming ages go one at a time (they "
                          "run their candidates in parallel themselves)")
-    ap.add_argument("--only", nargs="*", help="groups to run besides main/base (e.g. condo ltc)")
+    ap.add_argument("--only", nargs="*",
+                    help="groups or group/scenario names to run besides main/base (e.g. condo ltc main/ss-62)")
     ap.add_argument("--report-from", help="results.json of an earlier run: reprint its report without solving")
     args = ap.parse_args()
 
@@ -535,7 +542,7 @@ def main():
     order = {(j[0], j[1]): i for i, j in enumerate(jobs)}
     jobs = jobs[1:]
     if args.only:
-        jobs = [j for j in jobs if j[0] in set(args.only)]
+        jobs = [j for j in jobs if j[0] in set(args.only) or f"{j[0]}/{j[1]}" in set(args.only)]
     serial = [j for j in jobs if searches_ages(j)]
     parallel = [j for j in jobs if j not in serial]
     recs = [base]
@@ -543,7 +550,10 @@ def main():
         rec = solve_one(j, str(out_dir))
         print(f"{rec['group']}/{rec['name']}: {rec['status']} in {rec['seconds']} s (age search)", flush=True)
         recs.append(rec)
-    with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+    # "spawn", not Linux's default "fork": a worker forked after the age searches above inherits
+    # HiGHS's thread state without its threads and spins in its first MIP (2026-10-29: the 70/70 solve
+    # that takes 0.4 s alone ran 21 minutes in a forked worker). work_sweep.py spawns too.
+    with ProcessPoolExecutor(max_workers=args.jobs, mp_context=mp.get_context("spawn")) as pool:
         for rec in pool.map(_run, [(j, str(out_dir)) for j in parallel]):
             print(f"{rec['group']}/{rec['name']}: {rec['status']} in {rec['seconds']} s", flush=True)
             recs.append(rec)

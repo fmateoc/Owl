@@ -1,6 +1,6 @@
 # Run library: a local web interface for the household's runs
 
-Design draft, 2026-11-01. Nothing here is built yet. Decisions for the user are marked **D1-D8**
+Design draft, 2026-11-01. Nothing here is built yet. Decisions for the user are marked **D1-D10**
 at the end; each proposes an answer.
 
 ## 1. What is asked
@@ -329,7 +329,68 @@ rows.
 - **The synthetic household as a sandbox:** a read-only demo library built from `make_cases.py`,
   to try the interface before entering real data.
 
-## 14. Decisions for the user
+## 14. Ideas from other retirement planners (2026-11-01)
+
+The user asked which features of popular planners (Boldin, ProjectionLab, MaxiFi, Pralana,
+Income Lab) are worth taking, even where that means backend work in the fork.
+
+**Sources and how far they were checked:**
+
+- **"Reported"** means the feature appeared in web search results on 2026-11-01. Those results
+  are mostly the vendors' own pages and affiliate reviews, seen only as search summaries. The
+  pages could not be opened: boldin.com and robberger.com do not resolve from this container.
+- **"Recalled"** means from memory, not checked.
+- **Owl's side** was checked in the code (grep, 2026-11-01). Owl already has:
+  - Monte Carlo and historical-range backtests (`ui/Monte_Carlo.py`, `ui/Historical_Range.py`);
+  - a frontier between committed spending and shortfall risk, with spending at a target success
+    rate (`stresstests.g_for_success_rate`, `ui/Spending_Optimization.py`);
+  - a spending-versus-bequest frontier, annuities (SPIA), medical inflation above CPI, and the
+    smile spending profile;
+  - Roth conversions optimized inside the model, rather than proposed by a separate explorer.
+- **Searches with no hit in `src` or `ui`:** "sankey", "milestone", "reverse mortgage",
+  "long-term care". "guardrail" appears once, in an unrelated comment in `plan.py`.
+
+### 14.1 Worth taking, in order of value to this household
+
+| # | Idea | Seen in | What Owl has | Proposal | Cost |
+|---|---|---|---|---|---|
+| I1 | **Milestones with bindings**: events dated relative to other events, so moving one moves the rest | ProjectionLab (reported: "milestones ... dynamic bindings") | Fixed calendar years everywhere | Builder events take anchors: "the year after Noa's last work year", "at age 86", "the purchase year". The marketplace start, `months worked`, the rent end and the owner lines follow by construction. | Builder only (section 6) |
+| I2 | **Survivor and longevity variants** | Pralana (reported: "examines ... survivor scenarios"); MaxiFi plans to a maximum age (recalled) | One fixed life horizon per person (89) | A "make variants" dimension: first death at 75, 80, 85, each spouse in turn, with the survivor's spending share. Shows what the 60% survivor share and the single filer's brackets cost, and whether the condo plan holds for a survivor. | Builder and collections; no backend |
+| I3 | **"Things to look at" (threshold proximity)** | Boldin "Insights" (recalled) | Thresholds known inside the model; `owlcli explain` reports some | After each solve, list the years where MAGI sits just below or just over a threshold: IRMAA tiers, NY recapture, the Enhanced STAR limit, the 0% gains bracket, the SS taxability bands, the marketplace subsidy limits. Each with its amount (an invented example: "2031: \$1,200 over IRMAA tier 1, cost \$1,900"). | Backend: a report from the solved arrays; no model change |
+| I4 | **Yearly check-in: plan against actual** | Boldin and ProjectionLab track progress through linked accounts (recalled) | Nothing; a plan starts from the balances entered | Offline, no account linking. Once a year the user enters the actual balances and the year's spending; the library makes a child run from that date. A drift chart shows the plan's projected balances against the actual ones over the years, and the new plan's spending against the old. | Library and builder (balances' date, #167's first-year rule); no model change |
+| I5 | **Spending guardrails**: a spending level plus portfolio levels at which to cut or raise it | Income Lab (reported: risk-based guardrails, lower and upper portfolio triggers); Boldin (reported: safe spending target at 80% chance of success, guardrails at 95% and 70% when retired) | Spending at a target success rate from the stochastic frontier; no rule for the next years | For a solved run, compute the spending at the target success rate for a grid of starting balances one year ahead, and report the two portfolio levels at which that spending leaves a band (for example 70% and 95%). Shown as "if savings fall below \$X next January, plan again; expected cut \$Y/yr". | Backend: repeated stochastic-frontier solves (expensive: a Monte Carlo run per grid point); measure the cost first |
+| I6 | **Cash-flow Sankey for one year** | ProjectionLab (reported: a Sankey of money in and out for each simulated year) | A cash-flow mix chart over all years; the Cash Flow sheet | On a run's page, pick a year and see sources (wages, SS, each account, the sale of the condo) flow to uses (spending lines, taxes by kind, premiums, the purchase, conversions). The purchase year and the first Medicare year are where it explains the most. | UI only, from `plan.json` plus the cash-flow arrays |
+| I7 | **Claiming-age map** | Boldin and MaxiFi each have a Social Security explorer or strategy finder (reported) | `withSSAges` picks ages; `work_sweep.py` scores all whole-year pairs and writes `scores.json` | A heat map of the objective over the two claiming ages, ties within tolerance shaded together, for each work variant. Read from the sweep's saved scores. | UI only, over `work_sweep.py` output |
+| I8 | **Conversion and bracket view** | Boldin's Roth conversion explorer and MaxiFi's Roth optimizer (reported); Kotlikoff criticizes Boldin's explorer for not pricing future taxes and IRMAA (reported) | The conversions are optimized, with IRMAA, ACA, SS taxability and state tax in the model, so no explorer is needed | Explain them instead: per year, taxable income against the bracket edges and the IRMAA and ACA lines, with the conversion shown as the layer that fills them. The regret sweep (`stresstests.run_conversion_regret_sweep`) gives "what a different conversion would have cost". | UI, plus a regret-sweep run per request |
+| I9 | **Sensitivity "tornado"** | Generic (recalled; no planner named here) | Single variants, compared one at a time | One button on a run: re-solve with each key input moved by a set step (returns -1 point, inflation +1 point, medical inflation +2 points, condo price +10%, the 2027 marketplace benchmark, the 2032 reversion, the first death at 80). Bars sorted by effect, each with its tolerance. Tells the household which inputs deserve the most care. | Collections, under the exact LP for speed; no backend |
+| I10 | **Tapping the condo: reverse mortgage (HECM)** | Boldin models home equity (recalled; not checked) | Fixed assets can be sold (`fixedassets.sale_year_in_plan`) and loans are fixed-rate amortizing (`debts.py`); home equity cannot be borrowed against | The condo is the household's long-term-care reserve. Selling it is modeled (the suite's `ltc` group); borrowing against it is not. A HECM line of credit, whose balance grows and is repaid at the sale or the last death, would be a new Debts kind tied to the residence. **Needs the rules from HUD's own documents before any design.** | Backend (new debt kind, LP rows for draws); largest item here |
+
+### 14.2 Seen, not proposed
+
+- **Monte Carlo "chance of success"** (Boldin, reported: 1,000 simulations). Owl has Monte Carlo
+  and the success-rate frontier. The library would only show their results on the run page.
+- **Living-standard Monte Carlo**, where spending adjusts each year instead of holding fixed
+  (MaxiFi, reported). Owl's stochastic spending frontier answers a neighbouring question; adding
+  a second method is not worth it before I5.
+- **Historical backtesting** (ProjectionLab, reported). Owl's Historical Range covers it, and the
+  suite's rate group runs every 28-year window.
+- **Side-by-side comparison of up to 10 scenarios** (Boldin, reported). Section 9.2 already
+  compares any number of results.
+- **Account linking** (Boldin, recalled). It contradicts the offline rule; I4 does it by hand
+  once a year.
+- **Monthly cash flow** (recalled for Boldin). Owl is annual; a monthly budget belongs to
+  Owl-budget (#175).
+
+### 14.3 Where they fit in the build steps
+
+- **I1 and I2** come with step 4 (builder) and step 6 (collections).
+- **I3, I6 and I7** come with step 3 (run page).
+- **I4** comes after step 6.
+- **I8 and I9** come with step 6.
+- **I5 and I10** are separate backend projects, each measured or researched before it is
+  designed (D9, D10).
+
+## 15. Decisions for the user
 
 | # | Question | Proposal |
 |---|---|---|
@@ -341,3 +402,5 @@ rows.
 | D6 | First events to build | Work (with PIA per pattern), claiming, rent, condo purchase (three places, cash/mortgage/ARM stand-ins), care. Moves without a purchase, sale and re-buy later. |
 | D7 | Charts on the run page: from `plan.json` (durable) or Owl's own plots from the cached plan? | `plan.json` for the library and comparisons; Owl's plots through "Open in Owl". |
 | D8 | Upstream: propose steps 1-3 as a design issue after they work in the fork? | Yes, after step 3. |
+| D9 | Guardrails (I5): worth a measurement of their cost (one stochastic frontier per grid point)? | Yes, once the household's case runs offline and the yearly check-in (I4) exists; before that, the success-rate spending of the existing frontier is enough. |
+| D10 | Reverse mortgage (I10): research HUD's HECM rules as a possible use of the condo reserve? | Only if the long-term-care question becomes "keep the condo and borrow" rather than "keep or sell". |

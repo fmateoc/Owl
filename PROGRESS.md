@@ -2620,6 +2620,14 @@ web interface with a library of named runs. Docs only, no `src` or test change.
   generalizing `make_cases.py`, immutable run folders with results and a solve record,
   background jobs, comparisons judged against the loop-noise rules, collections and grids).
   Decisions D1-D8 open, each with a proposal; nothing built.
+- Same day, at the user's request: section 14 of the design, ideas from other planners
+  (Boldin, ProjectionLab, MaxiFi, Pralana, Income Lab).
+  - Their features come from web search summaries only: boldin.com and robberger.com do not
+    resolve from the container. Owl's side was checked by grep.
+  - Ten ideas, I1-I10, in order of value: milestone anchors, survivor/longevity variants,
+    threshold proximity, a yearly check-in, guardrails, a one-year Sankey, a claiming-age map,
+    a bracket view of conversions, a sensitivity tornado, a reverse mortgage.
+  - Two new decisions, D9 (guardrails) and D10 (HECM).
 
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 

@@ -2708,6 +2708,16 @@ module only, no change elsewhere in `src/` and none in `ui/`):
 Next: step 2 (background jobs, the date freeze as an `as_of` input), then step 3 (the library
 page, run page and comparison).
 
+### Step 1 independent review and fixes (2026-11-01, same session)
+
+An independent reviewer agent went over the step-1 code against the design (`fork-notes/run-library-step1-review.md`, V1-V10; it ran the tests, the synthetic check and its own probes). Storage core (folders, run.json-last, atomic writes, save-as-only, lineage, trash, lock, S4/S5/S10) confirmed sound; the save path had one bug class and consistency holes. All findings fixed the same day (user: V1-V7 now, V8-V10 with them):
+
+- V1/V2 (budget sidecar): `scenario_from_ui` resolves `budget_file` CWD-then-`case_dir` (the plan's own order; `case_dir=`/`budget_path=` parameters), the sidecar is captured whenever the case names one, and `export_case` refuses a frozen pair whose case references a budget file it does not carry.
+- V3/V4 (one document): the scenario is normalized before hashing *and* generating (`scenario.json` is exactly what the frozen files were built from); `normalize` preserves int/float (the TOML keeps them apart, so the hash must too); `validate` rejects `None` and non-finite floats in the case dictionary with key-path messages.
+- V6/V7/V8 (robustness and honesty): `generate` runs outside `library.lock` into a staging folder published with one rename; a damaged `run.json` is reported by `Library.damaged()` and never fatal; `SaveResult.dropped` reports the metadata the identical-inputs dedupe did not apply.
+- V5/V9/V10: with no workbook both entry paths now record the plan's zero-filled tables (same hash); import's date-dependent conditioning (V5) and `save_toml`'s 8-sig-fig floats (V10) are documented in the design (section 6.4) and pinned with step 2's `as_of`.
+- 65 tests in `tests/library/` (15 new); `check_library_roundtrip.py` stays 39/39; flake8 and ruff clean on the changed files. Full suite: **3676 passed, 1 skipped** (8:06; 3661 before the fix pass).
+
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 
 The user's call: `main` moves from `9f7a0dd` to this branch (the synthetic household and scenario

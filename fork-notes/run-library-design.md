@@ -119,19 +119,26 @@ Rules:
   solving again. A pickle can fail to load after a code change, so it is a cache, and a stale
   one costs one re-solve, never the record.
 - **Inputs hash.** A hash of the canonical `scenario.json` (S10: sorted keys, fixed separators and
-  number format, UTF-8 — two byte-different but equal documents must hash the same) and the
-  builder version. Saving inputs
+  number format, UTF-8 — two byte-different documents that differ only in key order or whitespace
+  hash the same; number *types* count, because the generated TOML keeps an int and a float apart,
+  review V3) and the
+  builder version. The scenario is normalized once, before hashing *and* before generating, so
+  `scenario.json` is exactly the document the frozen files were built from (V3). Saving inputs
   identical to an existing run's says so ("identical to *wp-2029-mortgage*") instead of making a
-  duplicate.
+  duplicate; the requested name, notes, tags and parent are reported back, not dropped (V8).
 - **Frozen generated files (R9).** A run's `Case.toml`, `HFP.xlsx` and `rates.csv` are what its
   solves read; solving again never regenerates them. A builder change shows as a "built with an
   older builder" badge (regenerating would give different files), and editing the run makes a new
   run built by the current builder.
-- **Atomic writes (R5).** Every file is written to a temporary name and renamed. A worker writes
+- **Atomic writes (R5).** Every file is written to a temporary name and renamed; a run's whole
+  folder is staged outside `runs/` and published with one rename (review V6: a save never appears
+  half-written), and `library.lock` is held only for the fast metadata work, never across a
+  workbook write. A worker writes
   only inside its own results folder; only the interface writes `run.json` and `library.json`, and
   it holds `library.lock` (create-exclusive, stale after a timeout) around every read-modify-write
   of them (S5: two browser tabs can otherwise lose each other's update; atomic rename prevents
-  corruption, not lost updates).
+  corruption, not lost updates). A `run.json` that cannot be read is a damaged run: it is shown as
+  such and skipped by every listing, never fatal (V7).
 - **Several results per run.** The same inputs solved on two days, or with local search and with
   the exact LP, are two results of one run. Comparisons pick results, not runs.
 - **Backup** is copying the folder. No database and no git: the user can open any file with
@@ -205,6 +212,14 @@ solvable from its frozen files (section 5); only "edit as new run" needs the mig
 "Import a case" reads a TOML and an HFP, such as `otherFiles/Case_us.toml` or a run made with
 `make_cases.py`, into a scenario with no events: every row is a hand row. The run is usable at
 once, and the user can turn rows into events later, or keep them as they are.
+
+What import stores are Owl's own conditioned tables (review V5): `hfp_io.read` fills every year
+to the horizon with zeros, drops rows outside `today-5 .. today+horizon`, and clamps a past
+purchase year to today, so "every row is a row the user entered" holds up to that conditioning and
+the same files imported in different years give different tables and different inputs hashes. The
+conditioning year is pinned to the run's plan year with the `as_of` input (§8.3 b) in build step
+2. `save_toml` writes floats with 8 significant figures (review V10), so the frozen `Case.toml`
+truncates what the scenario keeps verbatim.
 
 ## 7. Saving, naming and versioning
 

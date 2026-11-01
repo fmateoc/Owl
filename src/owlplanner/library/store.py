@@ -10,9 +10,10 @@ Layout (all paths relative to the library root):
         inputs/             scenario.json (the source of truth) plus the generated files
     trash/                  deleted runs (section 10)
 
-Rules implemented here: atomic writes (temporary name + rename), the inputs hash dedupe,
-save-as only (a run is never edited in place), and lineage. ``run.json`` is written last:
-a folder without it is a partial write and is ignored by ``runs()``.
+Rules implemented here: atomic writes (a run's whole folder is staged outside `runs/` and
+published with one rename, so a save never appears half-written), the inputs hash dedupe,
+save-as only (a run is never edited in place), and lineage. The lock (`library.lock`) is held
+only for the fast metadata work (V6): `generate` runs before it, into the staging folder.
 """
 
 from __future__ import annotations
@@ -28,12 +29,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Sequence
 
-from .scenario import diff_summaries, pretty_json, scenario_hash, validate
+from .scenario import diff_summaries, normalize, pretty_json, scenario_hash, validate
 
 LIBRARY_JSON = "library.json"
 LOCK_NAME = "library.lock"
 RUNS_DIR = "runs"
 TRASH_DIR = "trash"
+STAGING_DIR = ".staging"
 RUN_JSON = "run.json"
 INPUTS_DIR = "inputs"
 SCENARIO_JSON = "scenario.json"
@@ -71,12 +73,18 @@ class RunInfo:
 
 @dataclass(frozen=True)
 class SaveResult:
-    """The outcome of save_run: created, or identical to an existing run (section 5)."""
+    """The outcome of save_run: created, or identical to an existing run (section 5).
+
+    When the inputs were identical to an existing run, `dropped` lists the requested
+    metadata (name, notes, tags, parent, plan_year) that was *not* applied (V8), so the
+    interface can say what was discarded instead of losing it silently.
+    """
 
     created: bool
     run: RunInfo
     identical_to: Optional[RunInfo]
     changes: list
+    dropped: Optional[dict] = None
 
 
 class Library:
@@ -99,6 +107,12 @@ class Library:
                 raise LibraryError(f"{lib.root} is not a library (no {LIBRARY_JSON})")
             lib._init_layout()
         lib._library_doc()  # validates the file
+        # Staging folders belong to saves that never published (a crash); at start-up no
+        # save is running (one interface per library, design section 8.2), so drop them.
+        staging = lib.root / STAGING_DIR
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True, exist_ok=True)
         return lib
 
     def _init_layout(self) -> None:
@@ -154,7 +168,7 @@ class Library:
                 try:
                     stale = time.time() - path.stat().st_mtime > self.lock_stale
                 except OSError:
-                    continue  # the holder released it between open and stat
+                    stale = False  # released between open and stat; retry below
                 if stale:
                     path.unlink(missing_ok=True)
                     continue
@@ -173,32 +187,53 @@ class Library:
         return sorted(d for d in runs.iterdir() if d.is_dir())
 
     def _info_from_dir(self, folder: Path) -> Optional[RunInfo]:
-        """Read a run folder's run.json. None for a partial write (no run.json yet)."""
+        """Read a run folder's run.json. None for a partial write (no run.json yet).
+
+        A run.json that exists but cannot be read (hand-edited, truncated) is a damaged
+        run: `damaged()` reports it and every listing skips it (V7).
+        """
         path = folder / RUN_JSON
         if not path.exists():
             return None
-        doc = self._read_json(path)
-        return RunInfo(
-            id=doc["id"],
-            name=doc["name"],
-            parent=doc.get("parent"),
-            created=doc["created"],
-            notes=doc.get("notes", ""),
-            tags=tuple(doc.get("tags", ())),
-            plan_year=doc.get("plan_year"),
-            inputs_hash=doc["inputs_hash"],
-            change_summary=tuple(doc.get("change_summary", ())),
-            path=folder,
-        )
+        try:
+            doc = self._read_json(path)
+            return RunInfo(
+                id=doc["id"],
+                name=doc["name"],
+                parent=doc.get("parent"),
+                created=doc["created"],
+                notes=doc.get("notes", ""),
+                tags=tuple(doc.get("tags", ())),
+                plan_year=doc.get("plan_year"),
+                inputs_hash=doc["inputs_hash"],
+                change_summary=tuple(doc.get("change_summary", ())),
+                path=folder,
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _scan(self):
+        """(runs, damaged folders). Folders without run.json are partial writes: skipped."""
+        good, damaged = [], []
+        for folder in self._run_dirs():
+            if not (folder / RUN_JSON).exists():
+                continue
+            info = self._info_from_dir(folder)
+            if info is None:
+                damaged.append(folder)
+            else:
+                good.append(info)
+        return good, damaged
 
     def runs(self) -> list:
-        """Every run, oldest first. Folders without run.json are partial writes and skipped."""
-        out = []
-        for folder in self._run_dirs():
-            info = self._info_from_dir(folder)
-            if info is not None:
-                out.append(info)
-        return sorted(out, key=lambda r: (r.created, r.id))
+        """Every run, oldest first (damaged folders are skipped, see damaged())."""
+        good, _ = self._scan()
+        return sorted(good, key=lambda r: (r.created, r.id))
+
+    def damaged(self) -> list:
+        """Run folders whose run.json cannot be read (V7). Their files may still be useful."""
+        _, damaged = self._scan()
+        return damaged
 
     def get(self, run_id: str) -> RunInfo:
         for info in self.runs():
@@ -245,58 +280,77 @@ class Library:
         """Save a scenario as a new run (save-as; never in place, section 7).
 
         Returns created=False with identical_to set when the inputs hash matches an
-        existing run (section 5: "identical to X" instead of a duplicate). ``generate``
-        writes the generated files (Case.toml, HFP.xlsx) into inputs/; it defaults to
-        library.casefiles.export_case.
+        existing run (section 5: "identical to X" instead of a duplicate); the requested
+        name, notes, tags, parent and plan_year then arrive in ``dropped`` (V8).
+        ``generate`` writes the generated files (Case.toml, HFP.xlsx) into inputs/; it
+        defaults to library.casefiles.export_case.
+
+        The slow work (``generate``) runs outside the lock into a staging folder (V6); the
+        run is published under the lock with one rename, complete or not at all.
         """
+        scenario = normalize(scenario)
         validate(scenario)
         if not name.strip():
             raise LibraryError("a run needs a name")
         inputs_hash = scenario_hash(scenario)
         parent_info = parent if isinstance(parent, RunInfo) else (self.get(parent) if parent else None)
+        changes: list = []
+        if parent_info is not None:
+            changes = diff_summaries(self.scenario(parent_info), scenario)
+        if generate is None:
+            from . import casefiles
 
-        with self._lock():
-            existing = self.find_by_hash(inputs_hash)
-            if existing is not None:
-                return SaveResult(created=False, run=existing, identical_to=existing, changes=[])
+            generate = casefiles.export_case
 
-            changes: list = []
-            if parent_info is not None:
-                changes = diff_summaries(self.scenario(parent_info), scenario)
-
-            created_dt = datetime.now()
-            rid = uuid.uuid4().hex
-            folder = self._new_folder(name, created_dt)
-            inputs = folder / INPUTS_DIR
+        created_dt = datetime.now()
+        rid = uuid.uuid4().hex
+        staging = self.root / STAGING_DIR / rid
+        folder = None
+        try:
+            inputs = staging / INPUTS_DIR
             inputs.mkdir(parents=True)
-            try:
-                self._write_json(inputs / SCENARIO_JSON, scenario)
-                if generate is None:
-                    from . import casefiles
-
-                    generate = casefiles.export_case
-                generate(scenario, inputs)
-                self._write_json(
-                    folder / RUN_JSON,
-                    {
-                        "run_format": RUN_FORMAT,
-                        "id": rid,
-                        "name": name,
-                        "parent": parent_info.id if parent_info else None,
-                        "created": created_dt.isoformat(timespec="seconds"),
-                        "notes": notes,
-                        "tags": list(tags),
-                        "plan_year": plan_year if plan_year is not None else scenario.get("plan_year"),
-                        "inputs_hash": inputs_hash,
-                        "change_summary": changes,
-                    },
-                )
-            except BaseException:
-                shutil.rmtree(folder, ignore_errors=True)
-                raise
-            doc = self._library_doc()
-            doc["order"].append(rid)
-            self._write_json(self.root / LIBRARY_JSON, doc)
+            self._write_json(inputs / SCENARIO_JSON, scenario)
+            generate(scenario, inputs)  # slow; outside the lock (V6)
+            self._write_json(
+                staging / RUN_JSON,
+                {
+                    "run_format": RUN_FORMAT,
+                    "id": rid,
+                    "name": name,
+                    "parent": parent_info.id if parent_info else None,
+                    "created": created_dt.isoformat(timespec="seconds"),
+                    "notes": notes,
+                    "tags": list(tags),
+                    "plan_year": plan_year if plan_year is not None else scenario.get("plan_year"),
+                    "inputs_hash": inputs_hash,
+                    "change_summary": changes,
+                },
+            )
+            with self._lock():
+                existing = self.find_by_hash(inputs_hash)
+                if existing is not None:
+                    shutil.rmtree(staging, ignore_errors=True)
+                    return SaveResult(
+                        created=False,
+                        run=existing,
+                        identical_to=existing,
+                        changes=[],
+                        dropped={
+                            "name": name,
+                            "notes": notes,
+                            "tags": list(tags),
+                            "parent": parent_info.id if parent_info else None,
+                            "plan_year": plan_year,
+                        },
+                    )
+                folder = self._new_folder(name, created_dt)
+                os.replace(staging, folder)  # the publish: one rename
+                doc = self._library_doc()
+                doc["order"].append(rid)
+                self._write_json(self.root / LIBRARY_JSON, doc)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
 
         return SaveResult(created=True, run=self._info_from_dir(folder), identical_to=None, changes=changes)
 

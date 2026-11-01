@@ -15,10 +15,12 @@ class TestCanonicalJson:
     def test_key_order_does_not_change_the_text(self):
         assert sc.canonical_json({"a": 1, "b": 2}) == sc.canonical_json({"b": 2, "a": 1})
 
-    def test_int_and_float_of_one_value_hash_the_same(self):
+    def test_int_and_float_of_one_value_hash_differently(self):
+        # V3: the generated TOML keeps an int and a float apart (_clean_float writes N.0
+        # deliberately), so they are not equal documents and must not alias.
         as_int = _minimal(case={"case_name": "x", "n": 24000})
         as_float = _minimal(case={"case_name": "x", "n": 24000.0})
-        assert sc.scenario_hash(as_int) == sc.scenario_hash(as_float)
+        assert sc.scenario_hash(as_int) != sc.scenario_hash(as_float)
 
     def test_non_finite_floats_become_null(self):
         assert sc.canonical_json({"x": float("nan")}) == '{"x":null}'
@@ -43,6 +45,24 @@ class TestHash:
         assert sc.scenario_hash(_minimal()) != base
 
 
+class TestNormalize:
+    def test_types_are_preserved(self):
+        doc = sc.normalize({"a": 24000, "b": 24000.0, "c": True})
+        assert doc == {"a": 24000, "b": 24000.0, "c": True}
+        assert isinstance(doc["a"], int) and isinstance(doc["b"], float)
+
+    def test_tuples_become_lists(self):
+        assert sc.normalize({"a": (1, 2)}) == {"a": [1, 2]}
+
+    def test_idempotent(self):
+        doc = {"a": [1, 2.5, None, {"b": (3,)}]}
+        assert sc.normalize(sc.normalize(doc)) == sc.normalize(doc)
+
+    def test_unknown_types_are_rejected(self):
+        with pytest.raises(sc.ScenarioError, match="cannot be stored"):
+            sc.normalize({"a": object()})
+
+
 class TestValidate:
     def test_minimal_is_valid(self):
         assert sc.validate(_minimal()) is not None
@@ -63,6 +83,17 @@ class TestValidate:
     def test_plan_year_type(self):
         with pytest.raises(sc.ScenarioError, match="plan_year"):
             sc.validate(_minimal(plan_year="2026"))
+
+    def test_none_in_the_case_is_rejected(self):
+        with pytest.raises(sc.ScenarioError, match="None value at case.a"):
+            sc.validate(_minimal(case={"a": {"b": None}}))
+
+    def test_non_finite_in_the_case_is_rejected(self):
+        with pytest.raises(sc.ScenarioError, match="non-finite float at case.a"):
+            sc.validate(_minimal(case={"a": [1.0, float("nan")]}))
+
+    def test_none_in_hfp_rows_is_allowed(self):
+        sc.validate(_minimal(hfp={"Joe": {"columns": ["year", "amount"], "rows": [[2026, None]]}}))
 
 
 class TestMigrate:

@@ -5,6 +5,8 @@ household's own files (which stay in otherFiles/, offline).
 """
 
 import copy
+import io
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -22,7 +24,7 @@ from owlplanner.library import (
 )
 from owlplanner.library.casefiles import df_to_table, table_to_df
 
-CASE = "examples/Case_jack+jill.toml"
+CASE = str(Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml")
 
 
 def _normalized_case(case):
@@ -139,3 +141,68 @@ class TestBudgetSidecar:
         assert (tmp_path / "budget.json").exists()
         saved, _, _ = load_toml(str(tmp_path / "Case.toml"))
         assert saved["optimization_parameters"]["budget_file"] == "budget.json"
+
+    def test_export_refuses_a_dangling_budget_reference(self, tmp_path):
+        """V2: a frozen pair must never reference a file it does not carry."""
+        case = {"case_name": "budgeted", "optimization_parameters": {"budget_file": "budget.json"}}
+        scenario = scenario_from_case(case, {}, {})
+        with pytest.raises(ScenarioError, match="sidecar"):
+            export_case(scenario, tmp_path)
+
+
+class TestBudgetFromThePages:
+    def test_sidecar_resolves_against_the_case_dir(self, tmp_path, monkeypatch):
+        """V1: the pages' save finds budget.json beside the case, not only in the CWD."""
+        casedir = tmp_path / "case"
+        casedir.mkdir()
+        (casedir / "budget.json").write_text('{"lines": []}', encoding="utf-8")
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        case, _, _ = load_toml(CASE)
+        case = copy.deepcopy(case)
+        case["optimization_parameters"]["budget_file"] = "budget.json"
+        case["household_financial_profile"]["HFP_file_name"] = "None"
+        plan = config_to_plan(copy.deepcopy(case), str(casedir), verbose=False, loadHFP=False)
+        uidic = config_to_ui(copy.deepcopy(case))
+
+        scenario = scenario_from_ui(uidic, plan, case_dir=casedir)
+        assert scenario["budget_file"] == {"ref": "budget.json", "text": '{"lines": []}'}
+
+        out = tmp_path / "out"
+        export_case(scenario, out)
+        assert (out / "budget.json").read_text(encoding="utf-8") == '{"lines": []}'
+        saved, _, _ = load_toml(str(out / "Case.toml"))
+        assert saved["optimization_parameters"]["budget_file"] == "budget.json"
+        again = import_case(out / "Case.toml")
+        assert again["budget_file"] == scenario["budget_file"]
+
+    def test_a_missing_budget_file_says_how_to_pass_it(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        case, _, _ = load_toml(CASE)
+        case = copy.deepcopy(case)
+        case["optimization_parameters"]["budget_file"] = "budget.json"
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False, loadHFP=False)
+        uidic = config_to_ui(copy.deepcopy(case))
+        with pytest.raises(ScenarioError, match="budget_path"):
+            scenario_from_ui(uidic, plan)
+
+
+class TestNoWorkbook:
+    def test_both_entry_paths_agree_without_a_workbook(self, tmp_path):
+        """V9: a no-HFP case must hash the same whichever way it was saved."""
+        from owlplanner.config.toml_io import save_toml
+
+        case, _, _ = load_toml(CASE)
+        case = copy.deepcopy(case)
+        case["household_financial_profile"]["HFP_file_name"] = "None"
+        buf = io.StringIO()
+        save_toml(case, buf)
+        case_file = tmp_path / "Case_none.toml"
+        case_file.write_text(buf.getvalue(), encoding="utf-8")
+
+        imported = import_case(case_file)
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False, loadHFP=False)
+        from_ui = scenario_from_ui(config_to_ui(copy.deepcopy(case)), plan)
+        assert imported["hfp"] == from_ui["hfp"]

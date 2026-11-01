@@ -1,5 +1,6 @@
 """Library storage: run folders, the inputs hash dedupe, save-as, lineage, the lock."""
 
+import json
 import os
 import time
 
@@ -81,6 +82,59 @@ class TestSaveRun:
         with pytest.raises(RuntimeError, match="boom"):
             lib.save_run(name="x", scenario=_scenario(), generate=boom)
         assert list((lib.root / "runs").iterdir()) == []
+        assert list((lib.root / ".staging").iterdir()) == []
+
+    def test_open_clears_stale_staging(self, tmp_path):
+        root = tmp_path / "library"
+        Library.open(root)
+        (root / ".staging" / "leftover").mkdir(parents=True)
+        Library.open(root)
+        assert list((root / ".staging").iterdir()) == []
+
+    def test_the_stored_scenario_is_the_generated_document(self, lib):
+        seen = {}
+
+        def generate(scenario, inputs_dir):
+            seen["scenario"] = scenario
+
+        result = lib.save_run(
+            name="x",
+            scenario={"schema_version": 1, "case": {"n": 24000.0}, "hfp": {}},
+            generate=generate,
+        )
+        stored = json.loads((result.run.path / "inputs" / "scenario.json").read_text(encoding="utf-8"))
+        assert stored == seen["scenario"]  # V3: one document, hashed and generated and stored
+        assert isinstance(stored["case"]["n"], float)
+
+    def test_a_damaged_run_json_does_not_break_the_library(self, lib):
+        good = lib.save_run(name="good", scenario=_scenario("a"), generate=_generate)
+        bad = lib.save_run(name="bad", scenario=_scenario("b"), generate=_generate)
+        (bad.run.path / "run.json").write_text("{", encoding="utf-8")
+
+        assert [r.id for r in lib.runs()] == [good.run.id]
+        assert [d.name for d in lib.damaged()] == [bad.run.folder_name]
+        # and the library keeps working around it
+        more = lib.save_run(name="more", scenario=_scenario("c"), generate=_generate)
+        assert more.created
+
+    def test_dedupe_reports_dropped_metadata(self, lib):
+        first = lib.save_run(name="one", scenario=_scenario(), generate=_generate)
+        second = lib.save_run(
+            name="two",
+            scenario=_scenario(),
+            generate=_generate,
+            notes="typed notes",
+            tags=("candidate",),
+            plan_year=2027,
+        )
+        assert not second.created and second.identical_to.id == first.run.id
+        assert second.dropped == {
+            "name": "two",
+            "notes": "typed notes",
+            "tags": ["candidate"],
+            "parent": None,
+            "plan_year": 2027,
+        }
 
     def test_plan_year_defaults_to_the_scenario(self, lib):
         result = lib.save_run(name="x", scenario=_scenario(), generate=_generate)
@@ -123,7 +177,6 @@ class TestRenameAndDelete:
 
     def test_delete_clears_order_and_pins(self, lib):
         result = lib.save_run(name="gone", scenario=_scenario(), generate=_generate)
-        import json
 
         doc = json.loads((lib.root / "library.json").read_text(encoding="utf-8"))
         doc["order"] = [result.run.id]
@@ -140,6 +193,7 @@ class TestLock:
         (lib.root / "library.lock").write_text("", encoding="utf-8")
         with pytest.raises(LibraryLocked):
             lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+        assert list((lib.root / ".staging").iterdir()) == []
 
     def test_a_stale_lock_is_taken_over(self, lib):
         lib.lock_stale = 5.0

@@ -6,10 +6,12 @@ as JSON and nothing else: every row is a row the user entered or imported ("hand
 Events and the builder arrive in a later schema version (section 6.3a); each format change
 ships a migration (`migrate`).
 
-Canonical form (the inputs hash, section 5, S10): keys sorted, compact separators, and
-every number normalized, so an int and a float of the same value hash the same and two
-byte-different but equal documents produce one hash. Non-finite floats (NaN, inf) are
-stored as null.
+Canonical form (the inputs hash, section 5, S10): keys sorted, compact separators, and every
+number kept as entered: an int stays an int and a float stays a float (V3), because the generated
+TOML keeps them apart (`toml_io._clean_float` writes near-integer floats as `N.0` deliberately),
+so they are not equal documents. Two byte-different documents that differ only in key order or
+whitespace hash the same. Non-finite floats (NaN, inf) are stored as null in tables; `validate`
+rejects them, and `None`, inside the case dictionary (V4: TOML cannot store either).
 """
 
 from __future__ import annotations
@@ -31,42 +33,61 @@ class ScenarioError(ValueError):
     """A scenario document is not valid for this schema version."""
 
 
-def _normalize(obj: Any) -> Any:
-    """Recursively prepare a JSON value for canonical serialization."""
-    if obj is None or isinstance(obj, (bool, str)):
-        return obj
-    if isinstance(obj, int):
+def normalize(obj: Any) -> Any:
+    """Recursively prepare a JSON value for canonical serialization (types preserved)."""
+    if obj is None or isinstance(obj, (bool, str, int)):
         return obj
     if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return int(obj) if obj.is_integer() else obj
+        return obj if math.isfinite(obj) else None
     if isinstance(obj, (list, tuple)):
-        return [_normalize(x) for x in obj]
+        return [normalize(x) for x in obj]
     if isinstance(obj, dict):
         out = {}
         for key, value in obj.items():
             if not isinstance(key, str):
                 raise ScenarioError(f"non-string key in scenario: {key!r}")
-            out[key] = _normalize(value)
+            out[key] = normalize(value)
         return out
     raise ScenarioError(f"value of type {type(obj).__name__} cannot be stored: {obj!r}")
 
 
 def canonical_json(obj: Any) -> str:
     """Canonical JSON text: sorted keys, compact separators, normalized numbers."""
-    return json.dumps(_normalize(obj), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(normalize(obj), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def pretty_json(obj: Any) -> str:
     """Human-editable JSON text (the user may open scenario.json in an editor)."""
-    return json.dumps(_normalize(obj), sort_keys=True, indent=1, ensure_ascii=False) + "\n"
+    return json.dumps(normalize(obj), sort_keys=True, indent=1, ensure_ascii=False) + "\n"
 
 
 def scenario_hash(scenario: dict) -> str:
     """The inputs hash: canonical scenario plus the builder version (section 5)."""
     text = canonical_json({"builder_version": BUILDER_VERSION, "scenario": scenario})
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _check_case_values(obj: Any, where: str) -> None:
+    """Reject what TOML cannot store (V4): None values and non-finite floats, anywhere in case."""
+    if obj is None:
+        raise ScenarioError(
+            f"None value at {where}: the generated TOML would silently drop it"
+        )
+    if isinstance(obj, float):
+        if not math.isfinite(obj):
+            raise ScenarioError(f"non-finite float at {where}: the generated TOML cannot store it")
+        return
+    if isinstance(obj, (bool, str, int)):
+        return
+    if isinstance(obj, (list, tuple)):
+        for i, value in enumerate(obj):
+            _check_case_values(value, f"{where}[{i}]")
+        return
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            _check_case_values(value, f"{where}.{key}")
+        return
+    raise ScenarioError(f"value of type {type(obj).__name__} at {where} cannot be stored")
 
 
 def validate(scenario: Any) -> dict:
@@ -82,6 +103,7 @@ def validate(scenario: Any) -> dict:
     case = scenario.get("case")
     if not isinstance(case, dict):
         raise ScenarioError("scenario.case must be a dict (the Owl case dictionary)")
+    _check_case_values(case, "case")
     hfp = scenario.get("hfp")
     if not isinstance(hfp, dict):
         raise ScenarioError("scenario.hfp must be a dict of tables")
@@ -129,7 +151,7 @@ def diff_summaries(old: Any, new: Any, prefix: str = "", limit: int = 20) -> lis
 
 
 def _diff_into(old: Any, new: Any, where: str, out: list[str]) -> None:
-    if _normalize(old) == _normalize(new):
+    if normalize(old) == normalize(new):
         return
     label = where or "scenario"
     if isinstance(old, dict) and isinstance(new, dict):

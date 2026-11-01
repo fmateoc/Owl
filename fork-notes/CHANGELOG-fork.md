@@ -13,8 +13,12 @@ has) is logged in `PROGRESS.md` only.
 as JSON, with a canonical form and inputs hash), the run folder storage (`run.json`, save-as with
 the identical-inputs notice, lineage, rename and delete to trash, `library.lock`), and
 import/export of `Case.toml` + `HFP.xlsx` through `toml_io` and `hfp_io` (a `budget_file` case
-keeps its JSON as a sidecar). 50 tests in `tests/library/`; the synthetic round-trip check is
-`fork-notes/synthetic/check_library_roundtrip.py`. The design is `fork-notes/run-library-design.md`;
+keeps its JSON as a sidecar). 65 tests in `tests/library/`; the synthetic round-trip check is
+`fork-notes/synthetic/check_library_roundtrip.py`. An independent review
+(`fork-notes/run-library-step1-review.md`, V1-V10) was folded in the same day: saves are staged
+and published with one rename, the budget sidecar resolves like the plan resolves it, the stored
+scenario is exactly the document the frozen files were built from, and a damaged `run.json` is
+reported rather than fatal. The design is `fork-notes/run-library-design.md`;
 the opt-in UI section comes with later steps.
 
 ### Upstream: docs pass and DCC-GARCH fix (`dev` `226ff54`, merged 2026-10-29)

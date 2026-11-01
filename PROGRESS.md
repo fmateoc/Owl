@@ -2628,6 +2628,21 @@ web interface with a library of named runs. Docs only, no `src` or test change.
     threshold proximity, a yearly check-in, guardrails, a one-year Sankey, a claiming-age map,
     a bracket view of conversions, a sensitivity tornado, a reverse mortgage.
   - Two new decisions, D9 (guardrails) and D10 (HECM).
+- Later the same day: the user accepted D1-D9 in principle and allowed boldin.com and
+  robberger.com.
+  - Seven Boldin pages were read with curl (WebFetch still does not resolve them). robberger.com
+    answers with a Cloudflare block; help.boldin.com, projectionlab.com, maxifi.com and
+    incomelaboratory.com are refused by the proxy.
+  - Section 14 rewritten: a source table and a label per claim (verified on a Boldin page, a
+    competitor as Boldin describes it, reported, recalled).
+  - Corrections: the side-by-side scenario counts; milestone "bindings" unconfirmed; Boldin's
+    "Insights" is a chart section; the Roth Explorer's verified scope (four goals, IRMAA shown,
+    ACA not modeled).
+  - Boldin was confirmed to model a reverse mortgage and to offer "home equity as a way to pay
+    for care", the D10 trade.
+  - New ideas: I11, named downturn sequences (Boldin's Market Risk Explorer), with D11 (a rate
+    table a case file can name); I12, care anchored to the end of life (Boldin's default: the
+    last 28 months at national medians).
 
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 

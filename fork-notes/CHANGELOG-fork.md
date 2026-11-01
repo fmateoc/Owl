@@ -7,6 +7,16 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 1: the library core (2026-11-01)
+
+`src/owlplanner/library/`: scenario schema v1 (hand rows: the case dictionary and the HFP tables
+as JSON, with a canonical form and inputs hash), the run folder storage (`run.json`, save-as with
+the identical-inputs notice, lineage, rename and delete to trash, `library.lock`), and
+import/export of `Case.toml` + `HFP.xlsx` through `toml_io` and `hfp_io` (a `budget_file` case
+keeps its JSON as a sidecar). 50 tests in `tests/library/`; the synthetic round-trip check is
+`fork-notes/synthetic/check_library_roundtrip.py`. The design is `fork-notes/run-library-design.md`;
+the opt-in UI section comes with later steps.
+
 ### Upstream: docs pass and DCC-GARCH fix (`dev` `226ff54`, merged 2026-10-29)
 
 Taken, with the doc conflicts resolved toward upstream's text (`papers/owl.tex` keeps only the

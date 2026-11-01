@@ -1,9 +1,12 @@
 # Run library: a local web interface for the household's runs
 
-Design draft, 2026-11-01. Nothing here is built yet. Decisions are marked **D1-D11** (section 15;
-D1-D9 accepted in principle by the user on 2026-11-01, D4 as revised by R1 confirmed, D10
-declined, D11 accepted). Reviewed the
-same day (`fork-notes/run-library-review.md`, R1-R13); the fixes are in the text below.
+Design draft, 2026-11-01. Decisions are marked **D1-D11** (section 15; D1-D9 accepted in principle
+by the user on 2026-11-01, D4 as revised by R1 confirmed, D10 declined, D11 accepted). Reviewed
+the same day (`fork-notes/run-library-review.md`, R1-R13) and again
+(`fork-notes/run-library-review-2.md`, S1-S13); the fixes are in the text below. Build step 1 is
+implemented (`src/owlplanner/library/`, `tests/library/`, and
+`fork-notes/synthetic/check_library_roundtrip.py`: 39/39 pairs round-trip unchanged, 2026-11-01);
+nothing else is built yet.
 
 ## 1. What is asked
 
@@ -75,7 +78,7 @@ and could be offered upstream later as an opt-in for local installs (section 12)
 |---|---|
 | **Scenario** | Everything the user entered: people, accounts, income, events, budget, assumptions, run method. Editable. |
 | **Run** | A saved scenario (frozen), its generated files, and one results folder per solve. Never edited in place; editing makes a new run whose parent is this one. A run belongs to one **plan year**, the calendar year its balances and year rows were entered for (R1). |
-| **Draft** | A run that has not been solved. It may be overwritten. |
+| **Draft** | A run with no results folder: no solve has been attempted on it. It may be overwritten; a failed or interrupted solve leaves its record and is kept (S3, §7). |
 | **Collection** | A named set of runs answering one question ("Where and when to buy?"), with a comparison rule. A grid of variants (place x year x financing) is a collection. |
 | **Library** | The folder that holds the runs and collections. |
 
@@ -85,7 +88,8 @@ and could be offered upstream later as an opt-in for local installs (section 12)
 otherFiles/library/                      # gitignored (otherFiles/ is ignored upstream)
   library.json                           # collections, tags, pins, the order shown
   runs/
-    2026-11-03_wp-2029-mortgage/         # <date>_<slug>; the slug follows renames, the id does not
+    2026-11-03_wp-2029-mortgage/         # <date>_<slug>, fixed at creation (S4); the name in
+                                         # run.json follows renames, the id does not
       run.json                           # id, name, parent id, created, notes, tags, plan year,
                                          # inputs hash, change summary against the parent
       inputs/
@@ -96,14 +100,16 @@ otherFiles/library/                      # gitignored (otherFiles/ is ignored up
       results/                           # one folder per solve
         2026-11-03T14-02_local-search/
           record.json                    # solve date, method preset and options, Owl version and
-                                         # commit, solver, status, gap, iterations, converged or
-                                         # not, wall time, warnings, rate method and seed
+                                         # commit, the frozen "as of" date (S1), solver, status,
+                                         # gap, iterations, converged or not, wall time, warnings,
+                                         # rate method and seed, Python and package versions (S6)
           summary.json                   # plan_metrics (export.plan_metrics)
           plan.json                      # per-year arrays (cli/formatters.plan_to_dict)
           Results.xlsx                   # the workbook owlcli writes
           solve.log
-          plan.pkl                       # cache of the solved Plan, valid only for the Owl
-                                         # commit in record.json; dropped when stale
+          plan.pkl                       # cache of the solved Plan, valid only for the
+                                         # environment in record.json (commit, Python and package
+                                         # versions, S6); dropped when stale
 ```
 
 Rules:
@@ -112,7 +118,9 @@ Rules:
   shows and compares. `plan.pkl` only lets the existing Graphs and Worksheets pages open without
   solving again. A pickle can fail to load after a code change, so it is a cache, and a stale
   one costs one re-solve, never the record.
-- **Inputs hash.** A hash of the canonical `scenario.json` and the builder version. Saving inputs
+- **Inputs hash.** A hash of the canonical `scenario.json` (S10: sorted keys, fixed separators and
+  number format, UTF-8 — two byte-different but equal documents must hash the same) and the
+  builder version. Saving inputs
   identical to an existing run's says so ("identical to *wp-2029-mortgage*") instead of making a
   duplicate.
 - **Frozen generated files (R9).** A run's `Case.toml`, `HFP.xlsx` and `rates.csv` are what its
@@ -120,12 +128,16 @@ Rules:
   older builder" badge (regenerating would give different files), and editing the run makes a new
   run built by the current builder.
 - **Atomic writes (R5).** Every file is written to a temporary name and renamed. A worker writes
-  only inside its own results folder; only the interface writes `run.json` and `library.json`.
+  only inside its own results folder; only the interface writes `run.json` and `library.json`, and
+  it holds `library.lock` (create-exclusive, stale after a timeout) around every read-modify-write
+  of them (S5: two browser tabs can otherwise lose each other's update; atomic rename prevents
+  corruption, not lost updates).
 - **Several results per run.** The same inputs solved on two days, or with local search and with
   the exact LP, are two results of one run. Comparisons pick results, not runs.
 - **Backup** is copying the folder. No database and no git: the user can open any file with
-  Excel or a text editor, and `owlcli run runs/<run>/inputs/Case.toml` reproduces a run outside
-  the interface.
+  Excel or a text editor, and `owlcli run --as-of <the run's "as of" date>
+  runs/<run>/inputs/Case.toml` reproduces a run outside the interface (the date input of §8.3 (b),
+  S7).
 
 ## 6. Scenario and builder
 
@@ -176,6 +188,11 @@ The user may want to adjust a single generated value, for example the 2029 closi
   override is shown as orphaned and kept until the user drops it, never silently reapplied
   elsewhere.
 
+Build order (S11): this section is the heaviest machinery in step 4, and its example (one adjusted
+figure) is a hand edit to a hand row in schema v1. Step 4 ships the provenance markers first (a
+generated row is marked and regenerated wholesale, hand rows untouched); the per-cell overrides
+and the remainder decomposition follow only if a real need appears.
+
 ### 6.3a Schema versions (R8)
 
 `scenario.json` carries a `schema_version`. Version 1 (build step 1) holds hand rows only: the
@@ -209,7 +226,12 @@ Open a run ──edit──▶ unsaved changes (banner: "3 changes since wp-2029
 ```
 
 - **The rename invitation is a save-as.** A solved run is never overwritten: its results belong
-  to its inputs. "Overwrite" is offered only for an unsolved draft.
+  to its inputs. "Overwrite" is offered only for a draft with no results folder at all (§4); an
+  overwrite that would discard a results folder moves it to `trash/` instead (S3: a failed or
+  interrupted solve leaves `record.json` and `solve.log`, evidence worth keeping).
+- **Renaming (S4)** changes the `name` in `run.json` only; the run's folder keeps its
+  creation-time name (renaming folders breaks paths, and on Windows it fails outright while a job
+  writes inside one).
 - **The change summary is computed**, not typed: a field-by-field diff of the two scenarios,
   worded per event ("purchase: White Plains 2029 mortgage → White Plains 2031 mortgage"). It
   suggests the name and is stored in `run.json`, so the library can show what each run changed
@@ -217,7 +239,8 @@ Open a run ──edit──▶ unsaved changes (banner: "3 changes since wp-2029
 - **Lineage:** every run records its parent, so the library can show a tree ("baseline → stop
   2027 → stop 2027 + part time"). Deleting a run keeps its children (their parent is shown as
   deleted).
-- **Unsaved changes are kept** in a per-browser draft (browser storage, a convenience only), so a
+- **Unsaved changes are kept** in a scratch entry beside the library (server-side; Streamlit has
+  no browser storage of its own, S12 — a convenience only), so a
   closed tab does not lose them. Nothing in the library depends on it.
 
 ## 8. Running
@@ -240,8 +263,11 @@ branch-and-bound MIP (`phase0-scenarios.md`, section 4), so "quick" would not be
 ### 8.2 Background jobs
 
 - A job is one solve of one run in a separate worker program: a fresh interpreter, like `spawn`
-  (CLAUDE.md, "Fork after HiGHS hangs"). It writes `solve.log` and `status.json` (state, PID, a
-  heartbeat time) in its results folder.
+  (CLAUDE.md, "Fork after HiGHS hangs"). **The job record is on disk from the moment the job is
+  queued (S2):** the interface writes `status.json` (state=waiting) in the results folder before
+  dispatch, and the worker updates it (state, PID, a heartbeat time, written every 30 s). A
+  "run the collection again today" batch therefore survives a restart, however many of its jobs
+  were still waiting.
 - **One manager per server (R5).** The job manager is a process-wide singleton
   (`st.cache_resource`), so two browser tabs see one queue, and the queue itself lives on disk.
 - **Detached workers (R5).** Without a choice made here, whether a worker outlives the server
@@ -252,12 +278,16 @@ branch-and-bound MIP (`phase0-scenarios.md`, section 4), so "quick" would not be
   - `multiprocessing` waits at exit for non-daemon children.
 
   So workers are started in their own session (`subprocess.Popen(..., start_new_session=True)`)
-  and keep running across a server restart. At start-up the manager reads every `status.json`: a
-  live PID with a fresh heartbeat is adopted, and a dead one is marked interrupted, with "run
-  again". A "stop all jobs" button covers the case where the user wants them gone.
+  and keep running across a server restart. At start-up the manager reads every `status.json`:
+  waiting jobs are queued again, a live PID with a heartbeat under two minutes old (S8) is
+  adopted, and a dead one is marked interrupted, with "run again". A worker that wakes after the
+  machine slept re-checks its own `status.json` and stops if it has been marked interrupted, so
+  "run again" never leaves two workers on one run (S8). A "stop all jobs" button covers the case
+  where the user wants them gone.
 - A **Queue** page lists jobs: waiting, running (elapsed time, the last log line, the loop
   iteration), done, failed, interrupted. It refreshes on its own (`st.fragment(run_every=...)`,
-  present in the installed Streamlit 1.66.1). Jobs can be cancelled (by PID).
+  present in the installed Streamlit 1.66.1). Jobs can be cancelled (by a per-job token the worker
+  checks before every step, or by PID plus start time: a bare PID can be reused, S9).
 - **Parallel jobs:** a setting, default 1 until measured. HiGHS and the claiming-age search use
   threads of their own, and `work_sweep.py` runs its own process pool.
 - A time estimate comes from past solves of the same preset in the library.
@@ -278,10 +308,19 @@ So (D4, revised):
 
 - (a) Record the solve date. Flag comparisons across dates ("solved 3 days apart: run both again
   today?"), with a "run the whole collection again today" button.
-- (b) Freeze the worker's date (`date.today()`, the way `tests/conftest.py` does) to a date in the
-  run's plan year. Results are then reproducible, and old runs can be solved again. This is now
-  required, not optional, so it moves to step 2. Not yet checked outside pytest: if the freeze
-  cannot be made reliable, the library refuses to solve a run outside its plan year.
+- (b) Freeze the "as of" date (D4 b; required, in step 2), **deterministically (S1)**: the
+  worker's date is frozen to the run's own "as of" date — the balances' date of §6.1, validated to
+  fall in the run's plan year — and recorded in `record.json`. "A date in the plan year" would not
+  do: the day within the year sets `yearFracLeft`, so two freezes at different days are different
+  plans, and step 2's check ("two solves on different days give identical results") could not
+  hold. **The freeze is a first-class input, not only a monkeypatch (S7):** a small generic
+  backend change — an `as_of` date honoured where `Plan` reads today, settable by
+  `owlcli --as-of` and by the worker — so `owlcli run` reproduces a run (§5) and step 5b's check
+  is testable; it goes upstream as an issue like the rate table (§12). Until it exists, the
+  `tests/conftest.py` monkeypatch can stand in **only if applied before importing
+  `owlplanner`**: it patches just the already-imported modules, and a lazy import during the solve
+  would see the real date. Not yet checked outside pytest; if the freeze cannot be made reliable,
+  the library refuses to solve a run outside its plan year.
 - A run for a new year is made by the yearly check-in (I4): new balances, a new plan year, the
   old run as its parent.
 
@@ -314,7 +353,8 @@ So (D4, revised):
   - when the exact LP was run too, whether it orders the two the same way ("agree" /
     "disagree"). In plan years with marketplace coverage the exact LP mis-prices the ACA trade,
     so a disagreement there goes to the local-search result, not to a tie;
-  - flagged when the runs were solved on different days or with different presets.
+  - flagged when the runs were solved on different days, with different presets or under
+    different Owl commits (from `record.json`, S13).
 - **Two numbers, not one (R3).** With savings spent by 89, a plan's outcome is the score and the
   home at the end, reported side by side and never added: a cheaper or later purchase can buy
   more spending with less home (`run_suite.py`, its docstring). A variant "leads" only when it is
@@ -356,9 +396,9 @@ So (D4, revised):
 | Step | Content | Check |
 |---|---|---|
 | 1 | Library core (`run.json`, folders, inputs hash, save-as, lineage); scenario schema v1 (hand rows, R8); import of an existing TOML + HFP; saving from the existing pages through `config.ui_to_config` and `owlbridge.saveContributions`, not `getCaseString`, which is empty before the first run (R6) | unit tests; the synthetic cases import and export with the same case dictionary and HFP tables; an edited, never-solved case saves |
-| 2 | Jobs: detached worker processes with PID and heartbeat, the singleton manager, queue page, results folder, `record.json`, plan cache; the frozen "as of" date (D4 b, R1) | a synthetic run solves in the background; a closed tab and a server restart do not lose it; "Open in Owl" restores Graphs without a solve (`owlbridge.genDic` builds the page keys from a Plan, unverified); two solves on different days give identical results |
+| 2 | Jobs: detached worker processes with PID and heartbeat, the singleton manager, queue page, results folder, `record.json`, plan cache; the frozen "as of" date (D4 b, R1, S1: the run's own "as of" date, as an `owlcli --as-of` and worker input, S7) | a synthetic run solves in the background; a closed tab, a server restart and a still-waiting queue do not lose a job (S2); "Open in Owl" restores Graphs without a solve (`owlbridge.genDic` builds the page keys from a Plan, unverified); two solves on different days give identical results |
 | 3 | Library page, run page, comparison of two results with the noise rule | the synthetic baseline against a variant |
-| 4 | Scenario model and builder from `make_cases.py`; scenario editor pages with provenance and overrides | the builder reproduces `make_cases.py`'s 39 workbooks cell for cell |
+| 4 | Scenario model and builder from `make_cases.py`; scenario editor pages with provenance (markers first; §6.3's overrides are a later increment of this step, S11) | the builder reproduces `make_cases.py`'s 39 workbooks cell for cell |
 | 5 | Budget editor; the missing fork widgets (`withItemized`, `withSTAR`, all moves) | |
 | 5b | Rate table in the case file (D11): a year-by-year rates CSV the case names, read by a new rate method; the named downturn sequences | `owlcli run` of a case with a table reproduces the interface's result |
 | 6 | Collections, "make variants", grid view; the presets that run `run_suite.py`'s two-stage age search | the synthetic condo grid through the interface matches `run_suite.py`'s report |
@@ -377,6 +417,8 @@ rows.
 - The builder and scenario format would stay fork-only until the maintainer shows interest. His
   answer on #175 put budgeting in a separate project ("Owl-budget"), and the scenario's spending
   section overlaps it.
+- The `as_of` date input (§8.3 b, S7) is generic backend like the rate table (D11); both go
+  upstream as issues.
 
 ## 13. Further ideas
 
@@ -518,7 +560,7 @@ The user's answers of 2026-11-01: "D1-D9 in principle", then "D11 yes, D10 no". 
 | D1 | Inside the existing Streamlit app (new section, opt-in) or a separate app? | Inside: the case pages, results pages and multi-case session are reused; "Open in Owl" needs the same session. | accepted in principle |
 | D2 | Source of truth: the scenario (events) or Owl's own TOML + HFP? | The scenario, with TOML + HFP generated and saved beside it; imports become scenarios with hand rows. | accepted in principle |
 | D3 | May a solved run's inputs be overwritten? | No: save-as only. Drafts may be overwritten. | accepted in principle |
-| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). | accepted in principle; revision R1 confirmed 2026-11-01 |
+| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). S1/S7 fix the frozen date (the run's own "as of" date, not any date in the plan year) and the mechanism (an `as_of` input, `owlcli --as-of`; §8.3). | accepted in principle; revision R1 confirmed 2026-11-01 |
 | D5 | Where does the library live? | `otherFiles/library/`, configurable. | accepted in principle |
 | D6 | First events to build | Work (with PIA per pattern), claiming, rent, condo purchase (three places, cash/mortgage/ARM stand-ins), care. Moves without a purchase, sale and re-buy later. | accepted in principle |
 | D7 | Charts on the run page: from `plan.json` (durable) or Owl's own plots from the cached plan? | `plan.json` for the library and comparisons; Owl's plots through "Open in Owl". | accepted in principle |

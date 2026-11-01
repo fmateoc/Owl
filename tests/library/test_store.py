@@ -1,0 +1,156 @@
+"""Library storage: run folders, the inputs hash dedupe, save-as, lineage, the lock."""
+
+import os
+import time
+
+import pytest
+
+from owlplanner.library import Library, LibraryError, LibraryLocked
+
+
+def _scenario(marker="a"):
+    return {"schema_version": 1, "plan_year": 2026, "case": {"case_name": marker}, "hfp": {}}
+
+
+def _generate(scenario, inputs_dir):
+    (inputs_dir / "Case.toml").write_text("generated", encoding="utf-8")
+
+
+@pytest.fixture()
+def lib(tmp_path):
+    return Library.open(tmp_path / "library")
+
+
+class TestLayout:
+    def test_open_creates_the_layout(self, tmp_path):
+        Library.open(tmp_path / "library")
+        assert (tmp_path / "library" / "library.json").exists()
+        assert (tmp_path / "library" / "runs").is_dir()
+        assert (tmp_path / "library" / "trash").is_dir()
+
+    def test_open_without_create_rejects_a_plain_folder(self, tmp_path):
+        (tmp_path / "plain").mkdir()
+        with pytest.raises(LibraryError, match="not a library"):
+            Library.open(tmp_path / "plain", create=False)
+
+    def test_corrupt_library_json_is_reported(self, tmp_path):
+        root = tmp_path / "library"
+        root.mkdir()
+        (root / "library.json").write_text("{", encoding="utf-8")
+        with pytest.raises(LibraryError, match="cannot read"):
+            Library.open(root, create=False)
+
+
+class TestSaveRun:
+    def test_save_writes_run_and_inputs(self, lib):
+        result = lib.save_run(name="wp 2029 mortgage", scenario=_scenario(), generate=_generate)
+        assert result.created and result.identical_to is None
+        assert result.run.name == "wp 2029 mortgage"
+        assert result.run.parent is None
+        assert result.run.plan_year == 2026
+        assert result.run.inputs_hash
+        inputs = result.run.path / "inputs"
+        assert (inputs / "scenario.json").exists()
+        assert (inputs / "Case.toml").exists()
+        assert lib.get(result.run.id) == result.run
+
+    def test_folder_name_is_slug_and_date(self, lib):
+        result = lib.save_run(name="WP 2029 — Mortgage!", scenario=_scenario(), generate=_generate)
+        assert result.run.folder_name == f"{result.run.created[:10]}_wp-2029-mortgage"
+
+    def test_folder_names_never_collide(self, lib):
+        one = lib.save_run(name="same", scenario=_scenario("a"), generate=_generate)
+        two = lib.save_run(name="same", scenario=_scenario("b"), generate=_generate)
+        assert one.run.folder_name != two.run.folder_name
+
+    def test_identical_inputs_are_not_duplicated(self, lib):
+        first = lib.save_run(name="one", scenario=_scenario(), generate=_generate)
+        second = lib.save_run(name="two", scenario=_scenario(), generate=_generate)
+        assert not second.created
+        assert second.identical_to.id == first.run.id
+        assert [r.id for r in lib.runs()] == [first.run.id]
+
+    def test_empty_name_is_rejected(self, lib):
+        with pytest.raises(LibraryError, match="name"):
+            lib.save_run(name="  ", scenario=_scenario(), generate=_generate)
+
+    def test_a_failed_generate_leaves_no_partial_run(self, lib):
+        def boom(scenario, inputs_dir):
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            lib.save_run(name="x", scenario=_scenario(), generate=boom)
+        assert list((lib.root / "runs").iterdir()) == []
+
+    def test_plan_year_defaults_to_the_scenario(self, lib):
+        result = lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+        assert result.run.plan_year == 2026
+
+
+class TestLineage:
+    def test_parent_and_change_summary(self, lib):
+        parent = lib.save_run(name="parent", scenario=_scenario("a"), generate=_generate)
+        child = lib.save_run(
+            name="child", scenario=_scenario("b"), generate=_generate, parent=parent.run
+        )
+        assert child.run.parent == parent.run.id
+        assert child.changes == ["case.case_name: 'a' -> 'b'"]
+        assert child.run.change_summary == ("case.case_name: 'a' -> 'b'",)
+
+    def test_children_survive_the_parent(self, lib):
+        parent = lib.save_run(name="parent", scenario=_scenario("a"), generate=_generate)
+        child = lib.save_run(
+            name="child", scenario=_scenario("b"), generate=_generate, parent=parent.run.id
+        )
+        lib.delete_run(parent.run)
+        assert lib.get(child.run.id).parent == parent.run.id
+        assert [r.id for r in lib.runs()] == [child.run.id]
+
+
+class TestRenameAndDelete:
+    def test_rename_changes_the_name_not_the_folder(self, lib):
+        result = lib.save_run(name="old", scenario=_scenario(), generate=_generate)
+        renamed = lib.rename_run(result.run, "new name")
+        assert renamed.name == "new name"
+        assert renamed.path == result.run.path
+        assert renamed.folder_name == result.run.folder_name
+
+    def test_delete_moves_to_trash(self, lib):
+        result = lib.save_run(name="gone", scenario=_scenario(), generate=_generate)
+        trash = lib.delete_run(result.run)
+        assert trash.exists() and trash.parent.name == "trash"
+        assert lib.runs() == []
+
+    def test_delete_clears_order_and_pins(self, lib):
+        result = lib.save_run(name="gone", scenario=_scenario(), generate=_generate)
+        import json
+
+        doc = json.loads((lib.root / "library.json").read_text(encoding="utf-8"))
+        doc["order"] = [result.run.id]
+        doc["pins"] = [result.run.id]
+        (lib.root / "library.json").write_text(json.dumps(doc), encoding="utf-8")
+        lib.delete_run(result.run)
+        doc = json.loads((lib.root / "library.json").read_text(encoding="utf-8"))
+        assert doc["order"] == [] and doc["pins"] == []
+
+
+class TestLock:
+    def test_a_held_lock_raises(self, lib):
+        lib.lock_wait = 0.1
+        (lib.root / "library.lock").write_text("", encoding="utf-8")
+        with pytest.raises(LibraryLocked):
+            lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+
+    def test_a_stale_lock_is_taken_over(self, lib):
+        lib.lock_stale = 5.0
+        lock = lib.root / "library.lock"
+        lock.write_text("", encoding="utf-8")
+        old = time.time() - 60
+        os.utime(lock, (old, old))
+        result = lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+        assert result.created
+        assert not lock.exists()
+
+    def test_the_lock_is_released_after_save(self, lib):
+        lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+        assert not (lib.root / "library.lock").exists()

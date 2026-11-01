@@ -2666,6 +2666,48 @@ Review in `fork-notes/run-library-review.md`; the design is fixed in place. Docs
 - Correction: "Load a Case Example" reads local `examples/`, not GitHub (fixed in
   `running-locally.md` too).
 
+## Run-library review 2; build step 1 (2026-11-01, on `claude/run-library-step1`)
+
+Second review of `fork-notes/run-library-design.md` after R1-R13 were folded in
+(`fork-notes/run-library-review-2.md`, S1-S13). The design's code claims were checked again
+(the named functions all exist; `getCaseString`'s comment; the conftest freeze patches
+already-imported modules only; `make_cases.py`'s pieces; the 39-workbook benchmark; no `--as-of`
+in `cli/`). The fixes are folded into the design:
+
+- S1/S7: the frozen "as of" date is the run's own (balances') date, recorded in `record.json`,
+  and the freeze is a first-class `as_of` input (`owlcli --as-of`), not only a monkeypatch --
+  "a date in the plan year" would move `yearFracLeft`, and `owlcli run` must reproduce a run.
+- S2: `status.json` is written when a job is queued, so a server restart re-queues waiting jobs
+  (a "run the collection again" batch survives). S8/S9: heartbeat cadence, the worker's
+  self-check on wake, cancel by token instead of a bare PID.
+- S3/S4: a draft is a run with no results folder; a failed solve's record is kept and an
+  overwrite moves results to `trash/`; renaming changes `run.json` only, never the folder.
+- S5/S6/S10/S13: `library.lock` around every read-modify-write; `plan.pkl` staleness keys on
+  the environment (commit, Python, packages) and fails soft; explicit canonical JSON for the
+  inputs hash; the Owl commit among the comparison flags. S11: step 4 ships provenance markers
+  first. S12: a server-side scratch instead of browser storage.
+
+Then **build step 1** (`src/owlplanner/library/`; 50 tests in `tests/library/`; docs and this
+module only, no change elsewhere in `src/` and none in `ui/`):
+
+- `scenario.py`: schema v1 (hand rows: the case dictionary and the HFP tables as JSON),
+  canonical JSON and the inputs hash (builder version included), validation, the change diff.
+- `store.py`: run folders (`run.json`, `inputs/`), save-as with the identical-inputs notice,
+  lineage with the computed change summary, rename (name only), delete to `trash/`, atomic
+  writes and the lock.
+- `casefiles.py`: import of a TOML + HFP through `load_toml` and `hfp_io.read` conditioning;
+  export of the frozen `Case.toml` + `HFP.xlsx` through `save_toml` and pandas (a `budget_file`
+  case keeps its JSON as a sidecar); `scenario_from_ui` through `ui_to_config` and
+  `plan.saveContributions` (R6's route, works before the first run).
+- Checks: 50 tests pass; `fork-notes/synthetic/check_library_roundtrip.py` on the synthetic
+  household round-trips 39/39 workbook pairs with the same case dictionary and HFP tables; the
+  exported pair builds under `config_to_plan(loadHFP=True)`, `owlcli run`'s own route. flake8
+  and ruff show only upstream's known lines. Full suite: **3661 passed, 1 skipped** (8:19 on
+  this machine; 3611 on 2026-10-29 + the 50 new).
+
+Next: step 2 (background jobs, the date freeze as an `as_of` input), then step 3 (the library
+page, run page and comparison).
+
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 
 The user's call: `main` moves from `9f7a0dd` to this branch (the synthetic household and scenario

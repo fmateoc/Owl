@@ -2652,7 +2652,7 @@ Review in `fork-notes/run-library-review.md`; the design is fixed in place. Docs
 - R1: Owl starts the plan in the solve year and ignores `start_date`'s year
   (`Plan._setStartingDate`). A run's inputs are therefore valid only in their plan year. D4's
   date freeze becomes required (else refuse), and the yearly check-in makes the next year's run.
-  The user is to confirm.
+  Confirmed by the user the same day; `main` fast-forwarded to this branch.
 - R2: the noise rule. Local search reports no gap (`-1.0e+00` in the log), and the exact LP
   mis-prices ACA years, so it serves as an agreement check, not a tolerance.
 - R3: two numbers, the score and the home at the end, as `run_suite.py` reports them; a variant

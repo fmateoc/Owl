@@ -35,7 +35,7 @@ says where.
 
 ## Still open after the review
 
-- **R1:** confirm the revision of D4 (freeze the date, or refuse to solve outside the plan year).
+- ~~R1: confirm the revision of D4~~: confirmed by the user, 2026-11-01.
 - **The date freeze outside pytest** (step 2). It patches `date` in every loaded `owlplanner`
   module, as `tests/conftest.py` does; whether that covers every date use in a worker is to be
   tested.

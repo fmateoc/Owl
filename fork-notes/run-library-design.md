@@ -1,7 +1,8 @@
 # Run library: a local web interface for the household's runs
 
 Design draft, 2026-11-01. Nothing here is built yet. Decisions are marked **D1-D11** (section 15;
-D1-D9 accepted in principle by the user on 2026-11-01, D10 declined, D11 accepted). Reviewed the
+D1-D9 accepted in principle by the user on 2026-11-01, D4 as revised by R1 confirmed, D10
+declined, D11 accepted). Reviewed the
 same day (`fork-notes/run-library-review.md`, R1-R13); the fixes are in the text below.
 
 ## 1. What is asked
@@ -517,7 +518,7 @@ The user's answers of 2026-11-01: "D1-D9 in principle", then "D11 yes, D10 no". 
 | D1 | Inside the existing Streamlit app (new section, opt-in) or a separate app? | Inside: the case pages, results pages and multi-case session are reused; "Open in Owl" needs the same session. | accepted in principle |
 | D2 | Source of truth: the scenario (events) or Owl's own TOML + HFP? | The scenario, with TOML + HFP generated and saved beside it; imports become scenarios with hand rows. | accepted in principle |
 | D3 | May a solved run's inputs be overwritten? | No: save-as only. Drafts may be overwritten. | accepted in principle |
-| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). | accepted in principle; revision R1 to confirm |
+| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). | accepted in principle; revision R1 confirmed 2026-11-01 |
 | D5 | Where does the library live? | `otherFiles/library/`, configurable. | accepted in principle |
 | D6 | First events to build | Work (with PIA per pattern), claiming, rent, condo purchase (three places, cash/mortgage/ARM stand-ins), care. Moves without a purchase, sale and re-buy later. | accepted in principle |
 | D7 | Charts on the run page: from `plan.json` (durable) or Owl's own plots from the cached plan? | `plan.json` for the library and comparisons; Owl's plots through "Open in Owl". | accepted in principle |

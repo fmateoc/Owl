@@ -1,4 +1,4 @@
-# Owl fork — progress (as of 2026-10-29)
+# Owl fork — progress (as of 2026-11-01)
 
 Fork-only file, like `CLAUDE.md`; not for upstream. Keep it current at the end of each work session.
 
@@ -2596,6 +2596,30 @@ variant's decided plan, one of them among the 12) re-solved the same day at `gap
 
 Next for step 6: the household's inputs (R6: birth dates, balances, basis, one PIA per variant,
 SLCSP, HFP, variant list), then the real sweep in `otherFiles/`.
+
+## Running locally; run-library design (2026-11-01, on `claude/nice-franklin-mylpt5`)
+
+The user asked how to run the fork offline (inputs, run, results) and then for a design of a
+web interface with a library of named runs. Docs only, no `src` or test change.
+
+- `fork-notes/running-locally.md`: install, the two input files, the browser interface and
+  `owlcli`, reading the results. Checked on the synthetic household:
+  - `owlcli run` of the condo case at fixed ages 70 under local search: 5 min 10 s, 17 sheets;
+  - the Streamlit app, driven headless: the fork's TOML (Yonkers, school district) and HFP
+    loaded, budget profile shown, solved;
+  - `uv run` rebuilds the environment on Python 3.14.6 (`.python-version`), and Owl solves under
+    it.
+- Found while checking:
+  - `owlplanner.sh` leaves `server.address` unset, so the app listens beyond localhost; the
+    guide passes `--server.address=localhost`.
+  - The existing interface has no Budget editor and no widget for `withItemized`, `withSTAR` or
+    moves after the first.
+  - A solved `Plan` pickles except `mylog`, `_interpolator` and `rateModel` (they hold the log
+    stream); without them it reloads and writes its workbook (jack+jill).
+- `fork-notes/run-library-design.md`: the design (scenario JSON as the source of truth, a builder
+  generalizing `make_cases.py`, immutable run folders with results and a solve record,
+  background jobs, comparisons judged against the loop-noise rules, collections and grids).
+  Decisions D1-D8 open, each with a proposal; nothing built.
 
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 

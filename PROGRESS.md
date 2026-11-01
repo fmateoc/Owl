@@ -2644,6 +2644,28 @@ web interface with a library of named runs. Docs only, no `src` or test change.
     table a case file can name); I12, care anchored to the end of life (Boldin's default: the
     last 28 months at national medians).
 
+## Run-library design reviewed (2026-11-01, on `claude/nice-franklin-mylpt5`)
+
+The user's answers: D10 no (no reverse mortgage), D11 yes (a rate table a case file can name).
+Review in `fork-notes/run-library-review.md`; the design is fixed in place. Docs only.
+
+- R1: Owl starts the plan in the solve year and ignores `start_date`'s year
+  (`Plan._setStartingDate`). A run's inputs are therefore valid only in their plan year. D4's
+  date freeze becomes required (else refuse), and the yearly check-in makes the next year's run.
+  The user is to confirm.
+- R2: the noise rule. Local search reports no gap (`-1.0e+00` in the log), and the exact LP
+  mis-prices ACA years, so it serves as an agreement check, not a tolerance.
+- R3: two numbers, the score and the home at the end, as `run_suite.py` reports them; a variant
+  leads only by dominance.
+- R4: presets fix the claiming ages except the two Ages presets.
+- R5: own-session workers with PID and heartbeat; a singleton manager; atomic writes; one job by
+  default.
+- R6: save through `ui_to_config`, since `getCaseString` is empty before the first run.
+- R7-R9: missing scenario inputs; schema v1 in step 1; frozen generated files.
+- R10-R13: pickles, the localhost check, I12's annual grain, D11 against the plugin path.
+- Correction: "Load a Case Example" reads local `examples/`, not GitHub (fixed in
+  `running-locally.md` too).
+
 ## `main` fast-forwarded to `claude/nifty-fermat-v742k9` (2026-10-29)
 
 The user's call: `main` moves from `9f7a0dd` to this branch (the synthetic household and scenario

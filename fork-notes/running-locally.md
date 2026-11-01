@@ -99,7 +99,8 @@ Limits with the fork:
 - `withItemized` and `withSTAR` have no control on Run Options; they are taken from the TOML.
 - Only the first move can be edited; the others are kept from the file.
 - The Budget lines have no editor: they come from the uploaded workbook.
-- "Load a Case Example" fetches upstream's example cases from GitHub (no data of yours is sent).
+- "Load a Case Example" reads the example cases in `examples/` from your checkout
+  (`ui/tomlexamples.loadCaseExample`), although its caption says GitHub.
 
 ## 3b. Run it from the command line (for the decisions)
 

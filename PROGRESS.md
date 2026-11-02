@@ -4792,3 +4792,13 @@ toml cases + spending units + regret sweep: 130 passed.
 2026-10-07, review fixes on `claude/phase2-housing`: 2856 passed, 1 skipped (19 new tests); flake8 as below. Stock `dev` `004c840`: 2709 passed; with `issue-debt-payoff.patch` alone 2721, with `issue-solver-opt-numeric.patch` alone 2712. Before them: Phase 2 housing + NJ property tax deduction: 2837 passed, 1 skipped; flake8 clean on the changed files (upstream's `localsearch.py:31` and `config/schema.py:388` unchanged). Earlier: 2818 passed after merging `004c840` (2026.10.8).
 
 Merge notes (2026-10-06): `tax_federal.py` and `socialsecurity.py` are now identical to upstream. Per-year state flags carry upstream's names. Upstream's explanation omits years without a state income tax and reports the state on every row; the fork follows. Earlier merge notes: NJ's $1,000 exemption per filer aged 65+ came from upstream 2026.10.3; fork-only amounts follow upstream's indexing flags (NY recapture thresholds with `brackets_indexed`, NJ exclusion ceilings/cap with `exemptions_indexed`).
+
+## Run-library step 1: second review (2026-11-02, on `claude/run-library-design-review-97brrl`)
+
+Review of `claude/run-library-step1` at `c970bf05` in `fork-notes/run-library-step1-review-2.md`
+(T1-T6, each reproduced by a probe except T5). Checks: `tests/library` 65 passed, flake8/ruff clean,
+`check_library_roundtrip.py` 39/39. Main findings: the stored case dict is not canonical (workbook
+name, UI defaults, float precision), so an unchanged re-save makes a new run and the two entry
+paths hash differently (T1; V9's test checks the tables only); `Library.open` deletes another
+session's staging folder mid-save (T2); the UI path rewrites `plan_year` to the current year (T3);
+`diff_summaries` misses int/float and bool/int changes (T4). Not fixed here: the user's call.

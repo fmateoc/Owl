@@ -4,10 +4,10 @@ Bridge between configuration dict and Plan object.
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
-from owlplanner import asof
 import copy
 import os
 import sys
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -301,7 +301,7 @@ def _apply_solver_options_to_plan(plan: "Plan", known: dict) -> None:
         name_opt = plan.solverOptions["noRothConversions"] = "none"
     if name_opt != "none" and name_opt not in plan.inames:
         raise ValueError(f"Unknown name {name_opt} for noRothConversions.")
-    this_year = asof.today().year
+    this_year = date.today().year
     year = plan.solverOptions.get("startRothConversions", this_year)
     plan.solverOptions["startRothConversions"] = max(year, this_year)
     plan.yOBBBA = max(plan.yOBBBA, this_year)

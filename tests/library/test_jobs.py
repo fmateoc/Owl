@@ -48,7 +48,7 @@ def manager(library, monkeypatch):
 
 def make_running_job(results_dir, *, pid, heartbeat=None, pid_started=None):
     job = R.JobRecord.create(results_dir, run_id="r", run_name="bill", preset="quick",
-                             options={}, as_of="2026-01-01")
+                             options={}, plan_year=2026)
     job.update(state=R.RUNNING, pid=pid, pid_started=pid_started, heartbeat=heartbeat or R.now_iso())
     return job
 
@@ -81,11 +81,11 @@ class TestQueueOnDisk:
         assert [j.id for j in dispatched] == [job.id]
         assert restarted.jobs()[0].state == R.WAITING
 
-    def test_enqueue_records_the_preset_and_the_as_of(self, manager, run):
+    def test_enqueue_records_the_preset_and_the_plan_year(self, manager, run):
         job = manager.enqueue(run, preset="quick")
         assert job.doc["preset"] == "quick"
         assert job.doc["options"] == {"withSSAges": "fixed", "breakpointMethod": "loop"}
-        assert job.doc["as_of"] == "2026-01-01" and job.doc["run"] == "bill"
+        assert job.doc["plan_year"] == 2026 and job.doc["run"] == "bill"
 
     def test_the_queue_is_on_disk_not_in_memory(self, library, manager, run):
         queued = manager.enqueue(run)
@@ -93,10 +93,11 @@ class TestQueueOnDisk:
 
     def test_enqueue_refuses_a_run_outside_its_plan_year(self, manager, run):
         scenario = json.loads((run.path / "inputs" / "scenario.json").read_text(encoding="utf-8"))
-        scenario["as_of"] = "2027-03-01"
+        scenario["plan_year"] = 2025  # last year's run, solved in 2026 (the suite's date)
         (run.path / "inputs" / "scenario.json").write_text(json.dumps(scenario), encoding="utf-8")
-        with pytest.raises(ScenarioError):
+        with pytest.raises(ScenarioError, match="plan year is 2025 but this is 2026"):
             manager.enqueue(run)
+        assert manager.jobs() == []  # nothing queued
 
     def test_two_enqueues_at_once_get_their_own_folder(self, manager, run, monkeypatch):
         """G1: two sessions clicking Solve in the same second never share a results folder.
@@ -193,10 +194,10 @@ class TestClockChanges:
     def test_the_queue_order_is_the_instants_not_the_text(self, manager, run):
         # 01:50 EDT comes before 01:10 EST (the clocks fell back between them); as text it sorts after.
         first = R.JobRecord.create(run.path / "results" / "z-first", run_id=run.id, run_name="bill",
-                                   preset="quick", options={}, as_of="2026-01-01",
+                                   preset="quick", options={}, plan_year=2026,
                                    queued="2026-11-01T01:50:00-04:00")
         second = R.JobRecord.create(run.path / "results" / "a-second", run_id=run.id, run_name="bill",
-                                    preset="quick", options={}, as_of="2026-01-01",
+                                    preset="quick", options={}, plan_year=2026,
                                     queued="2026-11-01T01:10:00-05:00")
         assert [j.id for j in manager.jobs()] == [first.id, second.id]
 
@@ -217,7 +218,7 @@ class TestTicker:
         manager._spawn = lambda job: job.take_for_dispatch() and (spawned.append(job.id) or True)
         # Queued before a restart: nothing has ticked it in this process.
         job = R.JobRecord.create(run.path / "results" / "queued-earlier", run_id=run.id, run_name="bill",
-                                 preset="quick", options={}, as_of="2026-01-01")
+                                 preset="quick", options={}, plan_year=2026)
         assert manager.start_ticker(interval=0.05)
         try:
             assert not JobManager(library).start_ticker(interval=0.05)  # one ticker per folder
@@ -302,7 +303,7 @@ class TestCancel:
             dummy.wait(timeout=30)
             record = R.read_record(job.results_dir)
             assert record["status"] == "interrupted" and record["error"].startswith("killed")
-            assert record["run_id"] == "r" and record["as_of"] == "2026-01-01"
+            assert record["run_id"] == "r" and record["plan_year"] == 2026
             assert not staging.exists()
             doc = fresh(job).doc
             assert doc["state"] == R.INTERRUPTED and doc["error"].startswith("killed")

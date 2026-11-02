@@ -4,9 +4,9 @@ TOML load/save with unknown key preservation.
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
-from owlplanner import asof
 import copy
 import os
+from datetime import date
 from io import BytesIO, StringIO
 from typing import Union
 
@@ -66,7 +66,7 @@ def sanitize_config(diconf: dict, *, mylog=None) -> None:
     # Clamp startRothConversions to this year if in the past
     start_roth = so.get("startRothConversions")
     if start_roth is not None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
         year_val = int(start_roth)
         if year_val < thisyear:
             so["startRothConversions"] = thisyear

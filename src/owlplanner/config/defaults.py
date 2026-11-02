@@ -7,8 +7,8 @@ scratch (e.g. in the UI) so they align with TOML-loaded cases.
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
-from owlplanner import asof
 import copy
+from datetime import date
 
 from owlplanner.rates import get_fixed_rate_values
 
@@ -45,7 +45,7 @@ def default_config(ni: int = 1) -> dict:
     if ni not in (1, 2):
         raise ValueError(f"ni must be 1 or 2, got {ni}")
 
-    this_year = asof.today().year
+    this_year = date.today().year
 
     diconf = {
         "case_name": "",

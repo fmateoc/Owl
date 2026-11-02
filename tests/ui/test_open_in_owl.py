@@ -27,7 +27,7 @@ def cached_results(tmp_path_factory):
     library = Library.open(tmp_path_factory.mktemp("library"))
     run = library.save_run(name="bill", scenario=import_case(BILL)).run
     job = R.JobRecord.create(run.path / "results" / "j1", run_id=run.id, run_name=run.name,
-                             preset="quick", options={"withSSAges": "fixed"}, as_of="2026-01-01")
+                             preset="quick", options={"withSSAges": "fixed"}, plan_year=2026)
     assert run_job(job.results_dir, job.token) == R.DONE
     return job.results_dir
 

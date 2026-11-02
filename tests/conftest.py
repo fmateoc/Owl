@@ -37,17 +37,8 @@ import datetime  # noqa: E402
 import pytest  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
-from owlplanner import asof  # noqa: E402
-
 _REAL_DATE = datetime.date
 _FROZEN_DATE = _REAL_DATE(2026, 1, 1)
-
-# Freeze Owl's "today" through its first-class input (owlplanner.asof, run-library step 2):
-# every calendar read in owlplanner goes through asof.today(), pinned here at import time so
-# no test can outrun it. The monkeypatch below stays for test modules' own `date.today()`
-# (and as a safety net); it only reaches modules imported before the session starts, which
-# is the hole the `as_of` input closes (S7).
-asof.set_as_of(_FROZEN_DATE)
 
 
 class _FixedDate(_REAL_DATE):

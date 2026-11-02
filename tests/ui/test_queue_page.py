@@ -29,7 +29,7 @@ def library(tmp_path, monkeypatch):
 def _running_job(lib, name, *, cancel=False):
     run = lib.runs()[0]
     job = R.JobRecord.create(run.path / "results" / name, run_id=run.id, run_name=run.name,
-                             preset="quick", options={}, as_of="2026-01-01")
+                             preset="quick", options={}, plan_year=2026)
     # A live, fresh, "ours" worker: this process, with no start token recorded.
     job.update(state=R.RUNNING, pid=os.getpid(), heartbeat=R.now_iso(), cancel=cancel)
     return job
@@ -61,3 +61,20 @@ def test_a_running_job_offers_cancel_then_kill(library):
 def test_the_caption_says_when_elapsed_starts(library):
     at = _page()
     assert any("from the start of the solve" in c.value for c in at.caption)
+
+
+def test_a_run_from_another_year_is_refused_with_a_message(library):
+    """R1: the Solve button says why instead of raising."""
+    import json
+
+    run = library.runs()[0]
+    path = run.path / "inputs" / "scenario.json"
+    scenario = json.loads(path.read_text(encoding="utf-8"))
+    scenario["plan_year"] = 2025
+    path.write_text(json.dumps(scenario), encoding="utf-8")
+    at = _page()
+    solve = [b for b in at.button if b.label == "Solve"]
+    assert solve, _labels(at)
+    solve[0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any("plan year is 2025" in e.value for e in at.error)

@@ -5055,3 +5055,51 @@ Also: the ticker thread exits if its library folder is deleted.
 kill, re-queue and heartbeat tests). Each fix was reverted in turn and its tests failed.
 Full suite **3782 passed / 1 skipped** (9:24). flake8 clean, ruff only upstream's four B905s.
 `check_library_jobs.py` 4/4, with 127 page keys: `gap` is absent without a MIP.
+
+**The `as_of` input dropped (2026-11-02, same session; the user's call).** The question was what
+the frozen date buys. A grep of every `asof.today()` call that reads more than `.year` found
+three:
+- two in the interface's own `ui_bridge`;
+- `Plan._setStartingDate` for `start_date = "today"` (the day sets the first-year fraction);
+- `Plan._ssaCurrentAgeMonths`: the earliest claiming month `withSSAges` may still pick, and the
+  refusal of an entered age already past.
+
+The last one is real-world truth (SSA does not pay for a month already gone), so freezing it to
+the balances' date would let a later re-solve pick a claim that is no longer possible. Across
+years, R1's refusal already covers it. What the freeze bought was only re-solving an old run at
+its old date, against 78 call sites in 16 upstream modules, CLI options and an upstream issue.
+User: drop it.
+
+Done:
+- **Back to upstream.** `src/owlplanner/asof.py` is deleted and `owlcli --as-of` removed. Every
+  backend file, the CLI files, `tests/conftest.py` and the four test files that moved the date
+  through `asof` are restored to `main`'s (= upstream's) versions; their diffs had been
+  `as_of`-only, checked file by file.
+- **Library.**
+  - The scenario keeps `plan_year` (the start date's year, else the year of capture) and drops
+    `as_of`.
+  - `start_date = "today"` is stored as the capture day: this part was kept, so the solve day
+    cannot move the first-year fraction.
+  - `casefiles.check_plan_year` refuses a run outside its plan year, both at queue time and in
+    the worker. The worker writes a "refused" record (status "refused", the reason in `error`).
+  - `status.json` and `record.json` carry `plan_year` instead of `as_of`.
+  - The Queue page shows the refusal as a message.
+- **Tests.**
+  - `tests/library/test_asof.py` is replaced by `test_plan_year.py`: the plan year and its
+    refusal, the New Year refusal, `"today"` stored as the capture day (fails without that fix),
+    and the claiming window following the month.
+  - The worker tests: identical results on two days of the plan year; refused outside it
+    (fails without the worker's check); claiming-age candidates read the same date as the
+    main thread.
+  - A Queue-page test for the refusal message.
+- **Synthetic check.** `check_library_jobs.py` now has 5 checks (the 5th is the refusal): 5/5.
+- **Docs.** Design §8.3 rewritten (D4 revised again: (a) record and flag, (b) refuse outside the
+  plan year, (c) no frozen date, with the reasons), and §5, §11 and §12 updated.
+  `issue-as-of-date.md` is marked withdrawn, with the fixes it would have needed. The review-3
+  dispositions note H1/H2 as superseded. CLAUDE.md's date gotcha is back to upstream's freeze:
+  it rebinds `datetime.date` too, so function-local imports are frozen as well, checked by a
+  probe test.
+
+Checks: full suite **3773 passed / 1 skipped** (10:41; 3782 before, with 18 `as_of` tests removed
+and 9 plan-year tests added). flake8 clean, ruff only upstream's four B905s.
+`check_library_jobs.py` 5/5.

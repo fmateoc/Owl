@@ -11,7 +11,10 @@
    the page keys from the run's cached `plan.pkl` (the Graphs page render itself is
    `tests/ui/test_open_in_owl.py`);
 4. "two solves on different days give identical results" -- the same run solved under two
-   different pretend wall-clock days at its own frozen "as of" date.
+   pretend wall-clock days of its plan year (design section 8.3, revised 2026-11-02: no frozen
+   "as of" date; a run is solved only in its plan year);
+5. a run is refused outside its plan year (R1) -- solved on a pretend January 1 of the next
+   year, it fails with a "refused" record and writes no results.
 
 Run after `make_cases.py`, from anywhere:
 
@@ -35,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "ui"))
 
-from owlplanner.library import JobManager, JobRecord, Library, import_case  # noqa: E402
+from owlplanner.library import JobManager, Library, import_case  # noqa: E402
 from owlplanner.library import results as R  # noqa: E402
 from owlplanner.library.procs import pid_alive  # noqa: E402
 from owlplanner.library.worker import run_job  # noqa: E402
@@ -82,7 +85,7 @@ def _job_for(run, name):
     scenario = json.loads((run.path / "inputs" / "scenario.json").read_text(encoding="utf-8"))
     return R.JobRecord.create(run.path / "results" / name, run_id=run.id, run_name=run.name,
                               preset="quick", options={"withSSAges": "fixed"},
-                              as_of=scenario["as_of"])
+                              plan_year=scenario["plan_year"])
 
 
 def main() -> int:
@@ -115,7 +118,7 @@ def main() -> int:
         failures += 0 if ok else 1
         print(f"{'ok  ' if ok else 'FAIL'} background solve: {job.state}"
               f" ({record.get('wall_time_seconds')}s, {record.get('preset')},"
-              f" as of {record.get('as_of')}, gap {record.get('gap')},"
+              f" plan year {record.get('plan_year')}, gap {record.get('gap')},"
               f" {len(record.get('warnings', []))} warning(s))",
               file=_real_out)
 
@@ -179,7 +182,8 @@ def main() -> int:
         # 4. two solves on different days give identical results -------------------
         checks += 1
         outputs = []
-        for day, name in (("2026-01-10", "d1"), ("2027-02-01", "d2")):
+        year = scenario["plan_year"]
+        for day, name in ((f"{year}-01-10", "d1"), (f"{year}-11-20", "d2")):
             with pretend_real_today(day), _quiet:
                 one = _job_for(run, f"s4-{name}")
                 state = run_job(one.results_dir, one.token)
@@ -193,7 +197,19 @@ def main() -> int:
         same = outputs[0] == outputs[1] and outputs[0][0] is not None
         failures += 0 if same else 1
         print(f"{'ok  ' if same else 'FAIL'} determinism: identical summary and plan"
-              " solved on two different days", file=_real_out)
+              f" solved on two different days of {year}", file=_real_out)
+
+        # 5. refused outside the plan year (R1) -------------------------------------
+        checks += 1
+        with pretend_real_today(f"{year + 1}-01-01"), _quiet:
+            late = _job_for(run, "s5-new-year")
+            state = run_job(late.results_dir, late.token)
+        record = R.read_record(late.results_dir) or {}
+        refused = (state == R.FAILED and record.get("status") == "refused"
+                   and not (late.results_dir / R.SUMMARY_JSON).exists())
+        failures += 0 if refused else 1
+        print(f"{'ok  ' if refused else 'FAIL'} plan year: solved on {year + 1}-01-01, {state},"
+              f" record {record.get('status')!r}", file=_real_out)
 
     print(f"{checks - failures}/{checks} step-2 checks pass", file=_real_out)
     return 1 if failures else 0

@@ -1,8 +1,8 @@
 """Shared fixtures for the run-library tests.
 
-`pretend_today` moves the wall clock everywhere a module reads `date.today()` directly
-(the `as_of` input must dominate it: two solves on different days give identical results,
-step 2's check). The session's date pin itself is the `as_of` input (tests/conftest.py).
+`pretend_today` moves the wall clock everywhere a module reads `date.today()` (the session's
+own freeze, tests/conftest.py's `freeze_year`, pins 2026-01-01 the same way): two solves on
+different days of the plan year give identical results, and a run is refused outside it.
 """
 
 import datetime
@@ -55,21 +55,3 @@ def pretend_real_today(iso: str):
 def pretend_today():
     """`with pretend_today("2026-01-10"):` pretends the wall clock reads that day."""
     return pretend_real_today
-
-
-@pytest.fixture
-def no_session_pin():
-    """Clear the suite's process-wide `as_of` pin (tests/conftest.py) for one test.
-
-    Review H2: `asof.today()` returns the pin before it ever reads the clock, so with the pin
-    in place no `pretend_today` day can reach the code, and a determinism test passes with
-    the freeze it tests switched off. A worker process has no pin: test it that way.
-    """
-    from owlplanner import asof
-
-    saved = asof.get_as_of()
-    asof.set_as_of(None)
-    try:
-        yield
-    finally:
-        asof.set_as_of(saved)

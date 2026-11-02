@@ -15,7 +15,6 @@ import pytest
 from owlplanner.config.plan_bridge import config_to_plan
 from owlplanner.config.toml_io import load_toml
 from owlplanner.config.ui_bridge import config_to_ui
-from owlplanner import asof
 from owlplanner.library import (
     Library,
     ScenarioError,
@@ -307,27 +306,13 @@ class TestSaveOnABase:
         case_file.write_text(buf.getvalue(), encoding="utf-8")
         base = import_case(case_file)
         assert base["plan_year"] == 2025
-        assert base["as_of"] == "2025-01-01"
 
-        # Opened in the run's own plan year (the library UI freezes the date to the run's
-        # as_of), an unedited save reproduces the base exactly.
-        with asof.as_of(base["as_of"]):
-            _, plan, uidic = _pages(case_file)
-            scenario = scenario_from_ui(uidic, plan, base=base)
-        assert scenario["plan_year"] == 2025
-        assert scenario["case"]["basic_info"]["start_date"] == "2025-01-01"
-        assert scenario["as_of"] == "2025-01-01"
-        assert scenario_hash(scenario) == scenario_hash(base)
-
-        # Cross-year (T3): the pages show the capture year and the base's plan year is kept.
-        # The tables legitimately differ then (hfp_io conditions to the capture year, V5), so
-        # only the date fields are checked here.
         _, plan, uidic = _pages(case_file)
         assert uidic["startDate"].year == date.today().year  # the pages show the current year
-        moved = scenario_from_ui(uidic, plan, base=base)
-        assert moved["plan_year"] == 2025
-        assert moved["case"]["basic_info"]["start_date"] == "2025-01-01"
-        assert moved["as_of"] == "2025-01-01"
+        scenario = scenario_from_ui(uidic, plan, base=base)
+        assert scenario["plan_year"] == 2025
+        assert scenario["case"]["basic_info"]["start_date"] == "2025-01-01"
+        assert scenario_hash(scenario) == scenario_hash(base)
 
         _, plan, uidic = _pages(case_file, edit={"startDate": date(date.today().year, 3, 15)})
         moved = scenario_from_ui(uidic, plan, base=base)

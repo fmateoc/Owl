@@ -1,10 +1,10 @@
 """The run library: storage and scenario handling for named runs.
 
 Design: `fork-notes/run-library-design.md` (sections 4-8). Schema version 1 holds hand rows
-only: Owl's case dictionary and the HFP workbook tables as JSON, plus the run's own dates
-(`plan_year`, `as_of`). Build step 2 adds the jobs: `JobManager` queues solves in detached
-workers (`worker.py`), each in its own results folder (`results.py`), at the run's frozen
-"as of" date (`owlplanner.asof`).
+only: Owl's case dictionary and the HFP workbook tables as JSON, plus the run's plan year (the
+year its balances and year rows were entered for, R1). Build step 2 adds the jobs: `JobManager`
+queues solves in detached workers (`worker.py`), each in its own results folder (`results.py`);
+a run is solved only in its plan year (`check_plan_year`).
 """
 
 from .scenario import (  # noqa: F401
@@ -18,13 +18,12 @@ from .scenario import (  # noqa: F401
     validate,
 )
 from .casefiles import (  # noqa: F401
-    as_of_from_case,
     canonical_case,
     canonicalize,
+    check_plan_year,
     df_to_table,
     export_case,
     import_case,
-    resolve_as_of,
     scenario_from_case,
     scenario_from_ui,
     table_to_df,

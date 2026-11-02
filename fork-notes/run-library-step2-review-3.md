@@ -93,3 +93,15 @@ Checks after the N fixes:
 - flake8 is clean apart from upstream's two `test_spending_*` files; ruff reports only upstream's four B905s.
 - `check_library_jobs.py`: 4/4.
 - The full suite result is in PROGRESS.md.
+
+## Superseded (2026-11-02, later): the `as_of` input dropped
+
+After the fixes above, the user dropped the frozen "as of" date altogether. A run is refused
+outside its plan year, and nothing else is frozen (design §8.3, revised). So:
+- **H1:** `asof.process_as_of` is gone with `asof`. Every thread reads the same real date, and
+  `test_the_claiming_age_candidates_read_the_same_day_as_the_plan` checks it.
+- **H2:** the `no_session_pin` fixture is gone. The two determinism tests are replaced by
+  "identical within the plan year" and "refused outside it", in `test_worker.py` and
+  `test_plan_year.py`.
+
+H3-H6 and N1-N5 stand.

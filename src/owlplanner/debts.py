@@ -21,8 +21,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ######################################################################
-from owlplanner import asof
 import numpy as np
+from datetime import date
 
 from . import utils as u
 
@@ -71,7 +71,7 @@ def resolve_payoff_years(debts_df, fixed_assets_df, N_n, thisyear=None):
     from . import fixedassets as fxasst
 
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
     if u.is_dataframe_empty(debts_df) or "property" not in debts_df.columns:
         return {}
 
@@ -281,7 +281,7 @@ def get_debt_payments_array(debts_df, N_n, thisyear=None, payoffs=None):
     N_n : int
         Number of years in the plan (length of output array)
     thisyear : int, optional
-        Starting year of the plan (defaults to asof.today().year).
+        Starting year of the plan (defaults to date.today().year).
         Array index 0 corresponds to thisyear, index 1 to thisyear+1, etc.
 
     Returns:
@@ -292,7 +292,7 @@ def get_debt_payments_array(debts_df, N_n, thisyear=None, payoffs=None):
         payments_n[1] = payments for thisyear+1, etc.
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     if u.is_dataframe_empty(debts_df):
         return np.zeros(N_n)
@@ -322,7 +322,7 @@ def get_debt_balances_array(debts_df, N_n, thisyear=None, payoffs=None):
     N_n : int
         Number of years in the plan (length of output array)
     thisyear : int, optional
-        Starting year of the plan (defaults to asof.today().year).
+        Starting year of the plan (defaults to date.today().year).
         Array index 0 corresponds to thisyear, index 1 to thisyear+1, etc.
 
     Returns:
@@ -333,7 +333,7 @@ def get_debt_balances_array(debts_df, N_n, thisyear=None, payoffs=None):
         balances_n[1] = balance at the start of thisyear+1, etc.
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     if u.is_dataframe_empty(debts_df):
         return np.zeros(N_n)
@@ -364,7 +364,7 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None, payoffs=None):
     N_n : int
         Number of years in the plan
     thisyear : int, optional
-        Starting year of the plan (defaults to asof.today().year)
+        Starting year of the plan (defaults to date.today().year)
 
     Returns:
     --------
@@ -373,7 +373,7 @@ def get_remaining_debt_balance(debts_df, N_n, thisyear=None, payoffs=None):
         Returns 0.0 if all loans are paid off or if no loans are active.
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     if u.is_dataframe_empty(debts_df):
         return 0.0
@@ -444,7 +444,7 @@ def get_mortgage_interest_array(debts_df, N_n, thisyear=None, payoffs=None, fixe
     (interest_n, balance_cn) : np.ndarray of shapes (N_n,) and (3, N_n)
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     interest_n = np.zeros(N_n)
     balance_cn = np.zeros((len(MORTGAGE_CATEGORIES), N_n))

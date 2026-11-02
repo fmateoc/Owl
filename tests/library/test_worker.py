@@ -2,8 +2,8 @@
 
 Step 2's checks: a run solves in the background and writes the whole folder (record.json,
 summary.json, plan.json, Results.xlsx, solve.log, plan.pkl); a cancelled job stops before
-writing; a failed solve keeps its record (S3); and two solves on different days give
-identical results (the frozen "as of" date, section 8.3 b).
+writing; a failed solve keeps its record (S3); two solves on different days of the plan year
+give identical results; and a run is not solved outside its plan year (R1, section 8.3).
 """
 
 import json
@@ -35,27 +35,12 @@ def run(library, scenario):
     return library.save_run(name="bill", scenario=scenario).run
 
 
-JUNE = "2026-06-15"  # a run date that is not the suite's pin (H2)
-
-
-@pytest.fixture(scope="module")
-def scenario_june():
-    from owlplanner.library import import_case
-
-    return import_case(BILL, as_of=JUNE)
-
-
-@pytest.fixture
-def run_june(library, scenario_june):
-    return library.save_run(name="bill-june", scenario=scenario_june).run
-
-
 def make_job(run, name="2026-01-01T00-00-00_quick", **kw):
     kw.setdefault("run_id", run.id)
     kw.setdefault("run_name", run.name)
     kw.setdefault("preset", "quick")
     kw.setdefault("options", {"withSSAges": "fixed"})
-    kw.setdefault("as_of", "2026-01-01")
+    kw.setdefault("plan_year", 2026)
     return R.JobRecord.create(run.path / "results" / name, **kw)
 
 
@@ -78,7 +63,7 @@ class TestOneSolve:
         run_job(job.results_dir, job.token)
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
         assert record["status"] == "solved" and record["converged"] is True
-        assert record["as_of"] == "2026-01-01" and record["preset"] == "quick"
+        assert record["plan_year"] == 2026 and record["preset"] == "quick"
         assert record["method"]["objective"] == "maxSpending"
         assert record["method"]["options"]["withSSAges"] == "fixed"
         assert record["engine"]["version"] == __version__ and record["engine"]["commit"]
@@ -118,17 +103,13 @@ class TestOneSolve:
 
 
 class TestTwoSolvesOnDifferentDays:
-    def test_identical_results_whatever_the_wall_clock_says(self, run_june, pretend_today, no_session_pin):
-        """Step 2's check: the run's "as of" date, not the day of the solve, decides.
-
-        The two pretend days straddle a New Year: a freeze that leaked any year or month
-        read would move the plan (S1). The suite's pin is cleared and the run's date is not
-        the pin's (H2): with the pin, the test passed with the worker's freeze removed.
-        """
+    def test_identical_results_within_the_plan_year(self, run, pretend_today):
+        """Step 2's check, as revised (section 8.3): within its plan year a run with fixed
+        claiming ages solves the same on any day."""
         outputs = []
-        for day, name in (("2026-01-10", "a"), ("2027-02-01", "b")):
+        for day, name in (("2026-01-10", "a"), ("2026-11-20", "b")):
             with pretend_today(day):
-                job = make_job(run_june, name=f"2026-01-01T00-00-0{name}_quick", as_of=JUNE)
+                job = make_job(run, name=f"2026-01-01T00-00-0{name}_quick")
                 assert run_job(job.results_dir, job.token) == R.DONE
             summary = json.loads((job.results_dir / R.SUMMARY_JSON).read_text(encoding="utf-8"))
             plan_doc = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))
@@ -138,34 +119,43 @@ class TestTwoSolvesOnDifferentDays:
         (sum_a, plan_a, rec_a), (sum_b, plan_b, rec_b) = outputs
         assert sum_a == sum_b
         assert plan_a == plan_b
-        for key in ("status", "converged", "gap", "iterations", "as_of", "convergence"):
+        for key in ("status", "converged", "gap", "iterations", "plan_year", "convergence"):
             assert rec_a[key] == rec_b[key]
-        assert rec_a["as_of"] == JUNE
+        assert rec_a["plan_year"] == 2026
 
-    def test_the_freeze_reaches_the_claiming_age_candidates(self, run_june, pretend_today,
-                                                            no_session_pin, monkeypatch):
-        """H1: `withSSAges` solves its candidates on a thread pool. Under the thread-local
-        freeze they read the real date (probe on jack+jill: 378 candidate calls in the wrong
-        year, other ages, another objective); every one must read the run's date."""
+    def test_a_run_is_not_solved_outside_its_plan_year(self, run, pretend_today):
+        """Queued on December 31, started after midnight: refused, and the record says why."""
+        job = make_job(run, name="2026-12-31T23-59-59_quick")
+        with pretend_today("2027-01-01"):
+            assert run_job(job.results_dir, job.token) == R.FAILED
+        record = R.read_record(job.results_dir)
+        assert record["status"] == "refused" and record["plan_year"] == 2026
+        assert "plan year is 2026 but this is 2027" in record["error"]
+        assert R.JobRecord.read(job.results_dir).doc["error"] == record["error"]
+        assert not (job.results_dir / R.SUMMARY_JSON).exists()
+
+    def test_the_claiming_age_candidates_read_the_same_day_as_the_plan(self, run, pretend_today, monkeypatch):
+        """`withSSAges` solves its candidates on a thread pool: every candidate must read the
+        same date as the main thread (the date Owl reads is the process's own, not a
+        thread-local setting)."""
         import threading
+        from datetime import date
 
-        from owlplanner import asof
         from owlplanner import plan as plan_mod
 
         seen = []
         real = plan_mod.Plan.setSocialSecurity
 
         def spy(self, *args, **kw):
-            seen.append((threading.current_thread().name.split("_")[0], asof.today().isoformat()))
+            seen.append((threading.current_thread().name.split("_")[0], plan_mod.date.today().isoformat()))
             return real(self, *args, **kw)
 
         monkeypatch.setattr(plan_mod.Plan, "setSocialSecurity", spy)
-        job = make_job(run_june, preset="custom", options={"withSSAges": "optimize"}, as_of=JUNE)
-        with pretend_today("2027-02-01"):
+        job = make_job(run, preset="custom", options={"withSSAges": "optimize"})
+        with pretend_today("2026-06-15"):
             assert run_job(job.results_dir, job.token) == R.DONE
-        threads = {name for name, _ in seen}
-        assert "ssages" in threads, seen  # the search did run candidates on its pool
-        assert {day for _, day in seen} == {JUNE}, seen
+        assert "ssages" in {name for name, _ in seen}, seen  # the search ran candidates on its pool
+        assert {day for _, day in seen} == {date(2026, 6, 15).isoformat()}, seen
 
 
 class TestPresetsInTheWorker:

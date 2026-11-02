@@ -7,6 +7,23 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 2: the `as_of` input dropped (2026-11-02)
+
+The user dropped the frozen "as of" date. The fork reads the date as upstream does again:
+- `owlplanner.asof` and `owlcli --as-of` are removed, and the 78 call sites in 16 modules are
+  back to upstream's `date.today()`;
+- `tests/conftest.py` and four test files are upstream's again.
+
+The library now:
+- records each run's `plan_year`: the start date's year, else the year of capture, with
+  `start_date = "today"` stored as the capture day;
+- refuses to queue or solve a run outside its plan year (`casefiles.check_plan_year`; the worker
+  writes a "refused" record, and the Queue page shows the message);
+- keeps `plan_year` in `status.json` and `record.json` in place of `as_of`.
+
+Within the plan year a fixed-age run solves the same on any day. The `withSSAges` claiming
+window follows the real month on purpose. The upstream issue draft is withdrawn.
+
 ### Run library, build step 2: third review's minors fixed (2026-11-02)
 
 `fork-notes/run-library-step2-review-3.md`, N1-N5.

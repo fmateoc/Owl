@@ -6,7 +6,7 @@ Layout of a run's results folder (`fork-notes/run-library-design.md`, section 5)
         2026-11-03T14-02-11_quick/       <queued>_<preset>, one folder per solve
             status.json                  the job record (S2): on disk from the moment the job
                                          is queued -- state, PID, heartbeat, token, last log
-            record.json                  what solved how, when, at which "as of" date: method
+            record.json                  what solved how, when, for which plan year: method
                                          preset and options, Owl version and commit, solver,
                                          status, gap, iterations, converged, wall time,
                                          warnings, rate method and seed, Python and packages
@@ -229,7 +229,7 @@ class JobRecord:
 
     @classmethod
     def create(cls, results_dir, *, run_id: str, run_name: str, preset: str, options: dict,
-               as_of: str, queued: Optional[str] = None) -> "JobRecord":
+               plan_year: int, queued: Optional[str] = None) -> "JobRecord":
         results_dir = Path(results_dir)
         results_dir.mkdir(parents=True, exist_ok=True)
         doc = {
@@ -239,7 +239,7 @@ class JobRecord:
             "run": run_name,
             "preset": preset,
             "options": dict(options),
-            "as_of": as_of,
+            "plan_year": int(plan_year),
             "state": WAITING,
             "token": secrets.token_hex(16),
             "cancel": False,
@@ -383,8 +383,9 @@ class JobRecord:
         return str(self.doc.get("token") or "")
 
     @property
-    def as_of(self) -> str:
-        return str(self.doc.get("as_of"))
+    def plan_year(self) -> Optional[int]:
+        value = self.doc.get("plan_year")
+        return int(value) if value is not None else None
 
     # -- worker side ---------------------------------------------------
 
@@ -525,7 +526,7 @@ def drop_staging(results_dir) -> None:
 # -- record.json -------------------------------------------------------
 
 
-def build_record(*, run_id: str, results_id: str, as_of: str, preset: str, options: dict,
+def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], preset: str, options: dict,
                  plan_doc: Optional[dict], status: str, started: Optional[str],
                  finished: Optional[str], wall_time_seconds: Optional[float],
                  warnings: list, iterations: Optional[int], inputs_hash: Optional[str] = None,
@@ -557,7 +558,9 @@ def build_record(*, run_id: str, results_id: str, as_of: str, preset: str, optio
         "run_id": run_id,
         "results_id": results_id,
         "inputs_hash": inputs_hash,
-        "as_of": as_of,
+        # The year the run's inputs were entered for, the solve year (R1; no frozen date: the
+        # solve date below is the date Owl read, design section 8.3).
+        "plan_year": plan_year,
         "solve_date": {"started": started, "finished": finished},
         "preset": preset,
         "method": {

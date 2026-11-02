@@ -100,7 +100,7 @@ otherFiles/library/                      # gitignored (otherFiles/ is ignored up
       results/                           # one folder per solve
         2026-11-03T14-02_local-search/
           record.json                    # solve date, method preset and options, Owl version and
-                                         # commit, the frozen "as of" date (S1), solver, status,
+                                         # commit, the run's plan year (§8.3), solver, status,
                                          # gap, iterations, converged or not, wall time, warnings,
                                          # rate method and seed, Python and package versions (S6)
           summary.json                   # plan_metrics (export.plan_metrics)
@@ -148,9 +148,9 @@ Rules:
 - **Several results per run.** The same inputs solved on two days, or with local search and with
   the exact LP, are two results of one run. Comparisons pick results, not runs.
 - **Backup** is copying the folder. No database and no git: the user can open any file with
-  Excel or a text editor, and `owlcli run --as-of <the run's "as of" date>
-  runs/<run>/inputs/Case.toml` reproduces a run outside the interface (the date input of §8.3 (b),
-  S7).
+  Excel or a text editor, and `owlcli run runs/<run>/inputs/Case.toml` reproduces a run outside
+  the interface, run in the run's plan year (§8.3; a claiming-age search also needs the same
+  month, since past months close).
 
 ## 6. Scenario and builder
 
@@ -222,12 +222,12 @@ once, and the user can turn rows into events later, or keep them as they are.
 What import stores are Owl's own conditioned tables (review V5): `hfp_io.read` fills every year
 to the horizon with zeros, drops rows outside `today-5 .. today+horizon`, and clamps a past
 purchase year to today, so "every row is a row the user entered" holds up to that conditioning and
-the same files imported in different years give different tables and different inputs hashes. The
-conditioning year is pinned to the run's plan year with the `as_of` input (§8.3 b) in build step
-2. `save_toml` writes floats with 8 significant figures (review V10); the scenario stores the
+the same files imported in different years give different tables and different inputs hashes. A
+run is captured in its plan year and solved only in it (§8.3), so its conditioning year is its
+plan year. `save_toml` writes floats with 8 significant figures (review V10); the scenario stores the
 values as the frozen `Case.toml` holds them (T1). `load_toml` also clamps a past
 `startRothConversions` to this year (`sanitize_config`), another date dependence of import,
-pinned with V5's.
+through the year only, like V5's.
 
 ## 7. Saving, naming and versioning
 
@@ -317,7 +317,7 @@ branch-and-bound MIP (`phase0-scenarios.md`, section 4), so "quick" would not be
   threads of their own, and `work_sweep.py` runs its own process pool.
 - A time estimate comes from past solves of the same preset in the library.
 
-### 8.3 The "as of" date
+### 8.3 The solve date and the plan year
 
 Owl's plan starts in the calendar year of the solve, whatever the case file says: `start_date`'s
 year is ignored (`Plan._setStartingDate`: "Year is ignored"; every `thisyear` in `plan.py` is
@@ -333,24 +333,28 @@ year is ignored (`Plan._setStartingDate`: "Year is ignored"; every `thisyear` in
   solved in 2027, are read as January 2027 balances. The 2026 row of the workbook falls before
   the plan, and the purchase year is one year closer. Nothing warns.
 
-So (D4, revised):
+So (D4, revised again 2026-11-02, the user's call):
 
 - (a) Record the solve date. Flag comparisons across dates ("solved 3 days apart: run both again
   today?"), with a "run the whole collection again today" button.
-- (b) Freeze the "as of" date (D4 b; required, in step 2), **deterministically (S1)**: the
-  worker's date is frozen to the run's own "as of" date — the balances' date of §6.1, validated to
-  fall in the run's plan year — and recorded in `record.json`. "A date in the plan year" would not
-  do: the month within the year sets the claiming ages open to `withSSAges` (and, for
-  `start_date = "today"`, the day sets `yearFracLeft`), so two freezes at different dates can be
-  different plans, and step 2's check ("two solves on different days give identical results")
-  could not hold (T6 corrected S1's mechanism; its conclusion stands). **The freeze is a first-class input, not only a monkeypatch (S7):** a small generic
-  backend change — an `as_of` date honoured where `Plan` reads today, settable by
-  `owlcli --as-of` and by the worker — so `owlcli run` reproduces a run (§5) and step 5b's check
-  is testable; it goes upstream as an issue like the rate table (§12). Until it exists, the
-  `tests/conftest.py` monkeypatch can stand in **only if applied before importing
-  `owlplanner`**: it patches just the already-imported modules, and a lazy import during the solve
-  would see the real date. Not yet checked outside pytest; if the freeze cannot be made reliable,
-  the library refuses to solve a run outside its plan year.
+- (b) **Refuse a run outside its plan year** (R1's fallback, now the rule). The scenario records
+  its `plan_year` (the start date's year, else the year of capture); the library refuses to queue
+  it and the worker refuses to solve it in any other year (`casefiles.check_plan_year`; the record
+  says "refused" and why). Within the plan year nothing else needs freezing:
+  - the day matters only for `start_date = "today"`, which the library stores as the day of
+    capture, so a run's first-year fraction does not move with the solve day;
+  - the month matters only for the claiming ages `withSSAges` may still choose, and there the
+    real date is the right input: a month already past cannot be claimed (SSA does not pay for
+    it). A run solved again later in its year can legitimately pick a later age; the solve date
+    in `record.json` and (a)'s flag show it. A fixed-age preset (quick, decision) solves the same
+    on any day of the plan year (step 2's check).
+- (c) **No frozen "as of" date.** Build step 2 first froze each solve to the run's own "as of"
+  date with a first-class `as_of` input (`owlplanner.asof`, `owlcli --as-of`, S1/S7), reviewed
+  three times. Dropped on 2026-11-02 (user): it touched 78 call sites in 16 upstream modules;
+  across years (b) refuses anyway; within the year it froze the claiming window, which should
+  stay live; and the reproduction it bought (an old run re-solved at its old date) is not worth a
+  fork diff that far from upstream. The upstream issue draft (`fork-notes/issue-as-of-date.md`)
+  is withdrawn.
 - A run for a new year is made by the yearly check-in (I4): new balances, a new plan year, the
   old run as its parent.
 
@@ -426,7 +430,7 @@ So (D4, revised):
 | Step | Content | Check |
 |---|---|---|
 | 1 | Library core (`run.json`, folders, inputs hash, save-as, lineage); scenario schema v1 (hand rows, R8); import of an existing TOML + HFP; saving from the existing pages through `config.ui_to_config` and `owlbridge.saveContributions`, not `getCaseString`, which is empty before the first run (R6) | unit tests; the synthetic cases import and export with the same case dictionary and HFP tables; an edited, never-solved case saves |
-| 2 | Jobs: detached worker processes with PID and heartbeat, the singleton manager, queue page, results folder, `record.json`, plan cache; the frozen "as of" date (D4 b, R1, S1: the run's own "as of" date, as an `owlcli --as-of` and worker input, S7) | a synthetic run solves in the background; a closed tab, a server restart and a still-waiting queue do not lose a job (S2); "Open in Owl" restores Graphs without a solve (`owlbridge.genDic` builds the page keys from a Plan, unverified); two solves on different days give identical results |
+| 2 | Jobs: detached worker processes with PID and heartbeat, the singleton manager, queue page, results folder, `record.json`, plan cache; a run is solved only in its plan year (D4 as revised 2026-11-02, R1; built first with a frozen "as of" date, dropped) | a synthetic run solves in the background; a closed tab, a server restart and a still-waiting queue do not lose a job (S2); "Open in Owl" restores Graphs without a solve (`owlbridge.genDic` builds the page keys from a Plan, unverified); two solves on different days of the plan year give identical results; a run is refused outside its plan year |
 | 3 | Library page, run page, comparison of two results with the noise rule | the synthetic baseline against a variant |
 | 4 | Scenario model and builder from `make_cases.py`; scenario editor pages with provenance (markers first; §6.3's overrides are a later increment of this step, S11) | the builder reproduces `make_cases.py`'s 39 workbooks cell for cell |
 | 5 | Budget editor; the missing fork widgets (`withItemized`, `withSTAR`, all moves) | |
@@ -447,8 +451,8 @@ rows.
 - The builder and scenario format would stay fork-only until the maintainer shows interest. His
   answer on #175 put budgeting in a separate project ("Owl-budget"), and the scenario's spending
   section overlaps it.
-- The `as_of` date input (§8.3 b, S7) is generic backend like the rate table (D11); both go
-  upstream as issues.
+- The rate table (D11) is generic backend and goes upstream as an issue. (The `as_of` date input
+  was dropped on 2026-11-02, §8.3 (c); its issue draft is withdrawn.)
 
 ## 13. Further ideas
 
@@ -590,7 +594,7 @@ The user's answers of 2026-11-01: "D1-D9 in principle", then "D11 yes, D10 no". 
 | D1 | Inside the existing Streamlit app (new section, opt-in) or a separate app? | Inside: the case pages, results pages and multi-case session are reused; "Open in Owl" needs the same session. | accepted in principle |
 | D2 | Source of truth: the scenario (events) or Owl's own TOML + HFP? | The scenario, with TOML + HFP generated and saved beside it; imports become scenarios with hand rows. | accepted in principle |
 | D3 | May a solved run's inputs be overwritten? | No: save-as only. Drafts may be overwritten. | accepted in principle |
-| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). S1/S7 fix the frozen date (the run's own "as of" date, not any date in the plan year) and the mechanism (an `as_of` input, `owlcli --as-of`; §8.3). | accepted in principle; revision R1 confirmed 2026-11-01 |
+| D4 | "As of" date: record and flag (a), or also freeze (b)? | Both, in step 2 (revised after R1: a run solved outside its plan year has wrong inputs, so (b), or a refusal, is required). S1/S7 fix the frozen date (the run's own "as of" date, not any date in the plan year) and the mechanism (an `as_of` input, `owlcli --as-of`; §8.3). **Revised again 2026-11-02 (user): no frozen date; (a) plus the refusal outside the plan year (§8.3 b, c).** | accepted in principle; revision R1 confirmed 2026-11-01; frozen date dropped 2026-11-02 |
 | D5 | Where does the library live? | `otherFiles/library/`, configurable. | accepted in principle |
 | D6 | First events to build | Work (with PIA per pattern), claiming, rent, condo purchase (three places, cash/mortgage/ARM stand-ins), care. Moves without a purchase, sale and re-buy later. | accepted in principle |
 | D7 | Charts on the run page: from `plan.json` (durable) or Owl's own plots from the cached plan? | `plan.json` for the library and comparisons; Owl's plots through "Open in Owl". | accepted in principle |

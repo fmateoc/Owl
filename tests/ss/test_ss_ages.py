@@ -233,12 +233,18 @@ class TestClaimingAgeTaxes:
 
 
 @pytest.fixture
-def october_2026():
-    """Run on the date issue #195 was reported, past the January date the suite pins."""
-    from owlplanner import asof
+def october_2026(monkeypatch):
+    """Run on the date issue #195 was reported, past the January date the suite freezes."""
+    import datetime
 
-    with asof.as_of("2026-10-17"):
-        yield
+    import owlplanner.plan as plan_module
+
+    class _October(datetime.date):
+        @classmethod
+        def today(cls):
+            return datetime.date(2026, 10, 17)
+
+    monkeypatch.setattr(plan_module, "date", _October)
 
 
 def _issue195_plan():

@@ -19,7 +19,7 @@ def make_job(tmp_path, **kw):
     kw.setdefault("run_name", "bill")
     kw.setdefault("preset", "quick")
     kw.setdefault("options", {"withSSAges": "fixed"})
-    kw.setdefault("as_of", "2026-01-01")
+    kw.setdefault("plan_year", 2026)
     return R.JobRecord.create(tmp_path / "results" / "2026-01-01T00-00-00_quick", **kw)
 
 
@@ -28,7 +28,7 @@ class TestJobRecord:
         job = make_job(tmp_path)
         doc = json.loads((job.results_dir / R.STATUS_JSON).read_text(encoding="utf-8"))
         assert doc["state"] == R.WAITING and doc["token"] and doc["cancel"] is False
-        assert doc["as_of"] == "2026-01-01" and doc["preset"] == "quick"
+        assert doc["plan_year"] == 2026 and doc["preset"] == "quick"
         assert doc["queued"] and doc["attempts"] == 1
 
     def test_update_merges_onto_disk_and_keeps_a_cancel(self, tmp_path):
@@ -152,7 +152,7 @@ class TestRecord:
             "convergence": {"convergence": "monotonic", "breakpoint_method": "loop", "unsettled": {}},
         }
         doc = R.build_record(
-            run_id="run-id", results_id="results-id", as_of="2026-01-01", preset="quick",
+            run_id="run-id", results_id="results-id", plan_year=2026, preset="quick",
             options={"withSSAges": "fixed"}, plan_doc=plan_doc, status="solved",
             started="2026-11-03T14:02:11", finished="2026-11-03T14:02:12",
             wall_time_seconds=0.3, warnings=["something odd"], iterations=2,
@@ -160,7 +160,7 @@ class TestRecord:
             rates={"method": "historical", "seed": None},
         )
         assert doc["record_format"] == R.RECORD_FORMAT
-        assert doc["as_of"] == "2026-01-01" and doc["inputs_hash"] == "feed"
+        assert doc["plan_year"] == 2026 and doc["inputs_hash"] == "feed"
         assert doc["solve_date"] == {"started": "2026-11-03T14:02:11", "finished": "2026-11-03T14:02:12"}
         assert doc["preset"] == "quick" and doc["method"]["options"] == {"withSSAges": "fixed"}
         assert doc["engine"]["version"] == __version__ and doc["solver"] == "HiGHS"
@@ -172,7 +172,7 @@ class TestRecord:
 
     def test_an_unsolved_record_is_not_converged(self):
         doc = R.build_record(
-            run_id="r", results_id="x", as_of="2026-01-01", preset="custom", options={},
+            run_id="r", results_id="x", plan_year=2026, preset="custom", options={},
             plan_doc=None, status="exception", started=None, finished=None,
             wall_time_seconds=None, warnings=[], iterations=None, error="boom",
         )
@@ -224,7 +224,7 @@ class TestPlanCache:
 
     def test_the_record_carries_the_code_stamp(self):
         doc = R.build_record(
-            run_id="r", results_id="x", as_of="2026-01-01", preset="quick", options={},
+            run_id="r", results_id="x", plan_year=2026, preset="quick", options={},
             plan_doc=None, status="solved", started=None, finished=None, wall_time_seconds=None,
             warnings=[], iterations=None, plan_pkl_sha256="ab" * 32,
         )

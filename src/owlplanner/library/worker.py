@@ -2,11 +2,11 @@
 
 Run as ``python -m owlplanner.library.worker RESULTS_DIR TOKEN``. The interface writes
 `status.json` (state=waiting) in the results folder before dispatch (S2); this program
-claims it under its token (state=running, PID and the process start token, S9), freezes
-Owl's "today" to the run's own "as of" date (`owlplanner.asof`, section 8.3 b), builds the
-plan from the run's frozen files (`inputs/Case.toml` + `HFP.xlsx`, the `owlcli run` route),
-solves it with the job's preset options, and writes the results folder's artifacts and
-`record.json`.
+claims it under its token (state=running, PID and the process start token, S9), checks that
+this is the run's plan year (R1: a run is solved only in the year its inputs were entered
+for; design section 8.3), builds the plan from the run's frozen files (`inputs/Case.toml` +
+`HFP.xlsx`, the `owlcli run` route), solves it with the job's preset options, and writes the
+results folder's artifacts and `record.json`.
 
 Cancellation (S8, S9): every step, every heartbeat (30 s) and (throttled) every log line,
 the worker re-reads its own `status.json`. It stops when the record carries a cancel flag,
@@ -28,10 +28,9 @@ import time
 import traceback
 from pathlib import Path
 
-from owlplanner import asof
-
 from . import results as R
-from .casefiles import resolve_as_of
+from .casefiles import check_plan_year
+from .scenario import ScenarioError
 from .presets import resolve_options
 from .procs import process_start_token
 
@@ -170,59 +169,62 @@ class Worker:
         self.job.touch(self.token, step="reading the run's files")
         self.check()
         scenario = json.loads((self.run_dir / "inputs" / "scenario.json").read_text(encoding="utf-8"))
-        as_of_date = resolve_as_of(scenario)  # validated: inside the run's plan year (R1)
+        try:
+            # Solved only in its plan year (R1): a job queued on December 31 and started after
+            # midnight is refused here, with its record saying why.
+            plan_year = check_plan_year(scenario)
+        except ScenarioError as exc:
+            self.job.update(self.token, error=str(exc))
+            self._write_record(status="refused", plan_year=scenario.get("plan_year"), error=str(exc))
+            return R.FAILED
 
-        # Process-wide (H1): the claiming-age search runs its candidates on a thread pool,
-        # and a thread-local freeze would leave them reading the real date. A worker solves
-        # one job per process, so nothing else shares the freeze.
-        with asof.process_as_of(as_of_date):
-            started = R.now_iso()
-            t0 = time.time()
-            self.job.touch(self.token, step="building the plan")
-            self.check()
-            diconf, dirname, _ = load_toml(str(self.run_dir / "inputs" / "Case.toml"))
-            plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
+        started = R.now_iso()
+        t0 = time.time()
+        self.job.touch(self.token, step="building the plan")
+        self.check()
+        diconf, dirname, _ = load_toml(str(self.run_dir / "inputs" / "Case.toml"))
+        plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
 
-            self.job.touch(self.token, step="solving")
-            self.check()
-            options = resolve_options(self.job.doc.get("preset", "custom"), plan.solverOptions,
-                                      self.job.doc.get("options"))
-            options = parse_solver_options(options)
-            plan.solve(plan.objective, options)
-            wall = time.time() - t0
+        self.job.touch(self.token, step="solving")
+        self.check()
+        options = resolve_options(self.job.doc.get("preset", "custom"), plan.solverOptions,
+                                  self.job.doc.get("options"))
+        options = parse_solver_options(options)
+        plan.solve(plan.objective, options)
+        wall = time.time() - t0
 
-            self.check()
-            status = plan.caseStatus
-            plan_doc = None
-            plan_sha = None
-            if status == "solved":
-                self.job.touch(self.token, step="writing the results")
-                plan_doc = plan_to_dict(plan)
-                summary = plan_metrics(plan)
-                plan_sha = self._publish_results(summary, plan_doc, plan)
-            else:
-                self.job.update(self.token, error=plan.solverMessage or status)
+        self.check()
+        status = plan.caseStatus
+        plan_doc = None
+        plan_sha = None
+        if status == "solved":
+            self.job.touch(self.token, step="writing the results")
+            plan_doc = plan_to_dict(plan)
+            summary = plan_metrics(plan)
+            plan_sha = self._publish_results(summary, plan_doc, plan)
+        else:
+            self.job.update(self.token, error=plan.solverMessage or status)
 
-            self._write_record(
-                status=status,
-                as_of=as_of_date.isoformat(),
-                started=started,
-                finished=R.now_iso(),
-                wall_time_seconds=round(wall, 3),
-                plan_doc=plan_doc,
-                options=options,
-                solver="MOSEK" if getattr(plan, "_use_mosek", False) else "HiGHS",
-                gap=float(getattr(plan, "solverGap", -1.0)),
-                iterations=(self.tee.iteration + 1) if self.tee.iteration is not None else None,
-                rates={
-                    "method": getattr(plan, "rateMethod", None),
-                    "from": getattr(plan, "rateFrm", None),
-                    "to": getattr(plan, "rateTo", None),
-                    "seed": getattr(plan, "rateSeed", None),
-                    "reproducible": getattr(plan, "reproducibleRates", False),
-                },
-                plan_pkl_sha256=plan_sha,
-            )
+        self._write_record(
+            status=status,
+            plan_year=plan_year,
+            started=started,
+            finished=R.now_iso(),
+            wall_time_seconds=round(wall, 3),
+            plan_doc=plan_doc,
+            options=options,
+            solver="MOSEK" if getattr(plan, "_use_mosek", False) else "HiGHS",
+            gap=float(getattr(plan, "solverGap", -1.0)),
+            iterations=(self.tee.iteration + 1) if self.tee.iteration is not None else None,
+            rates={
+                "method": getattr(plan, "rateMethod", None),
+                "from": getattr(plan, "rateFrm", None),
+                "to": getattr(plan, "rateTo", None),
+                "seed": getattr(plan, "rateSeed", None),
+                "reproducible": getattr(plan, "reproducibleRates", False),
+            },
+            plan_pkl_sha256=plan_sha,
+        )
         return R.DONE if status == "solved" else R.FAILED
 
     # -- helpers -------------------------------------------------------
@@ -259,13 +261,13 @@ class Worker:
         text = json.dumps(doc, cls=_NumpyEncoder, indent=1, sort_keys=True) + "\n"
         Path(folder, name).write_text(text, encoding="utf-8", newline="\n")
 
-    def _write_record(self, *, status, as_of=None, plan_doc=None, options=None, started=None,
+    def _write_record(self, *, status, plan_year=None, plan_doc=None, options=None, started=None,
                       finished=None, wall_time_seconds=None, solver=None, gap=None,
                       iterations=None, rates=None, plan_pkl_sha256=None, error=None):
         doc = R.build_record(
             run_id=str(self.job.doc.get("run_id") or ""),
             results_id=self.job.id,
-            as_of=as_of or self.job.as_of,
+            plan_year=plan_year if plan_year is not None else self.job.plan_year,
             preset=str(self.job.doc.get("preset") or ""),
             options=options if options is not None else self.job.doc.get("options") or {},
             plan_doc=plan_doc,

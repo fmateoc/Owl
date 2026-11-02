@@ -20,7 +20,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from owlplanner import asof
+from datetime import date
 import re
 import numpy as np
 import pandas as pd
@@ -327,7 +327,7 @@ def _conditionTimetables(dfDict, inames, horizons, mylog):
     """
     timeLists = {}
     absentCols = {}
-    thisyear = asof.today().year
+    thisyear = date.today().year
     for i, iname in enumerate(inames):
         endyear = thisyear + horizons[i]
 
@@ -662,7 +662,7 @@ def conditionDebtsAndFixedAssetsDF(df, tableType, mylog=None):
 
     # For Fixed Assets, validate and reset "year" column if in the past
     if tableType == "Fixed Assets" and "year" in df.columns and len(df) > 0:
-        thisyear = asof.today().year
+        thisyear = date.today().year
         mask = df["year"] < thisyear
         if mask.any():
             df.loc[mask, "year"] = thisyear
@@ -712,7 +712,7 @@ def build_hfp_dataframes(plan):
     # Rows 0..4 are the 5 lead-in years before thisyear; row 5+n = plan year n.
     # This mirrors the layout produced by read() and consumed by Plan.setContributions().
     lead_in = 5
-    thisyear = asof.today().year
+    thisyear = date.today().year
     timeLists = {}
     for i, iname in enumerate(plan.inames):
         h = int(plan.horizons[i])
@@ -821,7 +821,7 @@ def time_lists_agree(a, b):
     ]
     mergedCols = [("Roth 401k ctrb", "Roth IRA ctrb")]
     allCols = plainCols + planOnlyCols + [col for pair in mergedCols for col in pair] + ["year"]
-    thisyear = asof.today().year
+    thisyear = date.today().year
     for iname in a:
         dfa, dfb = a[iname], b[iname]
         if any(col not in df.columns for df in (dfa, dfb) for col in allCols):

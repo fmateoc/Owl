@@ -21,7 +21,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ######################################################################
-from owlplanner import asof
 from datetime import date
 
 import numpy as np
@@ -267,7 +266,7 @@ def parse_swap_roth_converters(swap_roth, inames) -> tuple[bool, int, str]:
     """
     swap_roth = int(swap_roth or 0)
     enabled = swap_roth != 0
-    year = abs(swap_roth) if enabled else asof.today().year
+    year = abs(swap_roth) if enabled else date.today().year
     if swap_roth < 0 and len(inames) > 1:
         first_name = inames[1]
     else:

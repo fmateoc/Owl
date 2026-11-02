@@ -13,7 +13,6 @@ Rates representation:
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
-from owlplanner import asof
 import pandas as pd
 from datetime import date, datetime
 from typing import Any
@@ -153,11 +152,11 @@ def _start_date_to_ui(start_date: str) -> date:
     """Convert config start_date string to UI date object."""
     tdate = start_date.replace("/", "-").split("-")
     if len(tdate) == 2:
-        mystart = str(asof.today().year) + "-" + start_date
+        mystart = str(date.today().year) + "-" + start_date
     elif len(tdate) == 3:
-        mystart = str(asof.today().year) + "-" + tdate[-2] + "-" + tdate[-1]
+        mystart = str(date.today().year) + "-" + tdate[-2] + "-" + tdate[-1]
     else:
-        mystart = str(asof.today())  # "today"
+        mystart = str(date.today())  # "today"
     return datetime.strptime(mystart, "%Y-%m-%d").date()
 
 
@@ -196,14 +195,14 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
 
     start_date_str = bi.get("start_date", "today")
     if start_date_str == "today":
-        start_date_str = str(asof.today())
+        start_date_str = str(date.today())
     dic["startDate"] = _start_date_to_ui(start_date_str)
     dic["state"] = bi.get("state", "")
     dic["locality"] = bi.get("locality", "")
     dic["schoolDistrict"] = _ui_district(bi.get("state", ""), bi.get("school_district", ""))  # fork: NY STAR
     moves = bi.get("moves") or []
     dic["stateMoveEnabled"] = bool(moves)
-    dic["stateMoveYear"] = int(moves[0]["year"]) if moves else asof.today().year + 5
+    dic["stateMoveYear"] = int(moves[0]["year"]) if moves else date.today().year + 5
     dic["stateMoveState"] = moves[0].get("state", "") if moves else ""
     dic["stateMoveLocality"] = moves[0].get("locality", "") if moves else ""
     dic["stateMoveSchoolDistrict"] = (
@@ -307,7 +306,7 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     for k, ind in enumerate(spia_inds):
         row = {
             "Annuitant": names[ind] if ind < len(names) else (names[0] if names else ""),
-            "Buy year": int(spia_years[k]) if k < len(spia_years) else asof.today().year,
+            "Buy year": int(spia_years[k]) if k < len(spia_years) else date.today().year,
             "Premium ($k)": float(spia_prems[k]) / 1000.0 if k < len(spia_prems) else 0.0,
             "Monthly ($)": int(spia_incomes[k]) if k < len(spia_incomes) else 0,
             "CPI-linked": bool(spia_idx[k]) if k < len(spia_idx) else False,
@@ -436,10 +435,10 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
 
     if rate_method in HISTORICAL_RANGE_METHODS:
         dic["yfrm"] = rs.get("from", 1969)
-        dic["yto"] = rs.get("to", asof.today().year - 1)
+        dic["yto"] = rs.get("to", date.today().year - 1)
     else:
         dic["yfrm"] = FROM
-        dic["yto"] = asof.today().year - 1
+        dic["yto"] = date.today().year - 1
 
     if rate_method == "historical_bootstrap":
         dic["bootstrapType"] = rs.get("bootstrap_type", "iid")
@@ -688,10 +687,10 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
 
     if uidic.get("stopRothConversionsEnabled", False):
         diconf["solver_options"]["stopRothConversions"] = _get_ui(
-            uidic, "stopRothConversions", asof.today().year, int
+            uidic, "stopRothConversions", date.today().year, int
         )
 
-    swap_year = _get_ui(uidic, "swapRothConvertersYear", asof.today().year, int)
+    swap_year = _get_ui(uidic, "swapRothConvertersYear", date.today().year, int)
     swap_first = uidic.get("swapRothConvertersFirst")
     diconf["solver_options"]["swapRothConverters"] = derive_swap_roth_converters(
         names, uidic.get("swapRothConvertersEnabled", False), swap_first, swap_year
@@ -725,7 +724,7 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
 
     if uidic.get("stateMoveEnabled"):
         first = {
-            "year": _get_ui(uidic, "stateMoveYear", asof.today().year + 5, int),
+            "year": _get_ui(uidic, "stateMoveYear", date.today().year + 5, int),
             "state": uidic.get("stateMoveState") or "",
         }
         if uidic.get("stateMoveLocality"):
@@ -759,7 +758,7 @@ def _ui_rates_to_config(diconf: dict, uidic: dict, ni: int) -> None:
 
     if method in HISTORICAL_RANGE_METHODS:
         rs["from"] = _get_ui(uidic, "yfrm", 1969, int)
-        rs["to"] = _get_ui(uidic, "yto", asof.today().year - 1, int)
+        rs["to"] = _get_ui(uidic, "yto", date.today().year - 1, int)
     elif method in METHODS_WITH_VALUES:
         # UI and config use percent; Plan converts to decimal at boundary.
         rs["values"] = [_get_ui(uidic, f"fxRate{k}", 0, float) for k in range(4)]
@@ -784,4 +783,4 @@ def _ui_rates_to_config(diconf: dict, uidic: dict, ni: int) -> None:
 
     if method not in HISTORICAL_RANGE_METHODS:
         rs["from"] = FROM
-        rs["to"] = asof.today().year - 1
+        rs["to"] = date.today().year - 1

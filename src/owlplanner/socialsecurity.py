@@ -76,9 +76,9 @@ __all__ = [
     "EarningsTestResult",
 ]
 
-from owlplanner import asof
 import math
 import numpy as np
+from datetime import date
 from typing import Callable, NamedTuple, Optional, Sequence
 
 from . import utils as u
@@ -604,7 +604,7 @@ def compute_survivor_stream(
         period (single individual, or both horizons ending together).
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     pias = np.asarray(pias, dtype=np.int32)
     ages = np.asarray(ages, dtype=np.float64)
@@ -727,7 +727,7 @@ def compute_social_security_benefits(
     trim_year : int or None
         Calendar year when trim begins (required if trim_pct > 0)
     thisyear : int or None
-        Current calendar year (default: asof.today().year)
+        Current calendar year (default: date.today().year)
     survivor_claim_age : str or float
         When the surviving spouse claims the survivor benefit: ``"immediate"`` (default,
         as soon as eligible), ``"FRA"`` (at the survivor FRA), or an explicit age in
@@ -743,7 +743,7 @@ def compute_social_security_benefits(
         Claiming ages, possibly adjusted for eligibility
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
 
     pias = np.asarray(pias, dtype=np.int32)
     ages = np.asarray(ages, dtype=np.float64).copy()
@@ -1281,7 +1281,7 @@ def earnings_test(
     EarningsTestResult
     """
     if thisyear is None:
-        thisyear = asof.today().year
+        thisyear = date.today().year
     if exempt_for_year is None:
         exempt_for_year = get_exempt_amounts
 

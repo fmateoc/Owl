@@ -32,11 +32,15 @@ Known limits of this step (from `fork-notes/run-library-step1-review.md`):
 
 - The tables are `hfp_io.read`'s **conditioned** tables (V5): every year to the horizon is
   filled with zeros, rows outside `today-5 .. today+horizon` are dropped, and a past Fixed Assets
-  year is clamped to today. Import is therefore date-dependent; since build step 2 it is pinned
-  to the run's balances' date: both entry paths capture under `asof.as_of(...)` and record the
-  date as the scenario's `as_of` (design section 8.3 b).
+  year is clamped to today. Import is therefore date-dependent, but only through the year:
+  a run is captured in its plan year and solved only in it (`check_plan_year`, R1; design
+  section 8.3, revised 2026-11-02: no frozen "as of" date), so its tables are conditioned to
+  the year they are solved in.
 - `load_toml` (import) applies `sanitize_config`, which clamps a past `startRothConversions` to
-  this year: another date dependence of import, pinned with V5's.
+  this year: another date dependence of import, through the year only, like V5's.
+- `start_date = "today"` is stored as the capture date (an absolute date), so a run's first-year
+  fraction does not move with the day it is solved on, and re-importing its own files gives the
+  same hash.
 - `save_toml`'s encoder writes floats with 8 significant figures (V10); the scenario stores the
   truncated values (T1), so it matches its frozen `Case.toml`.
 - For a case with no workbook both entry paths record the plan's zero-filled tables and export
@@ -51,6 +55,7 @@ from __future__ import annotations
 import copy
 import io
 import tempfile
+from datetime import date
 from pathlib import Path
 
 from .scenario import SCHEMA_VERSION, ScenarioError, canonical_json, normalize, validate
@@ -115,75 +120,12 @@ def _plan_year_of(case: dict):
     return None
 
 
-def as_of_from_case(case: dict, plan_year=None):
-    """The run's "as of" date: the balances' date of `basic_info.start_date`, as a date.
-
-    The Account Balances page's "Account balance date" is the date the balances are known at
-    (`Plan._setStartingDate`); it is what every solve of the run freezes Owl's "today" to
-    (design section 8.3 b, S1). `'YYYY-MM-DD'` is taken as is, `'MM-DD'` takes its year from
-    `plan_year` (else the current year), and `'today'` is the moment of capture. Both are
-    then stored as an absolute date (see `canonicalize`), so a run reproduces.
-    """
-    from datetime import date
-
-    from owlplanner import asof
-
-    start = str((case.get("basic_info") or {}).get("start_date") or "today").strip()
-    if start.lower() == "today":
-        return asof.today()
-    parts = start.replace("/", "-").split("-")
-    try:
-        if len(parts) == 3 and parts[0].isdigit():
-            return date(int(parts[0]), int(parts[1]), int(parts[2]))
-        if len(parts) == 2:
-            year = plan_year if plan_year is not None else asof.today().year
-            return date(year, int(parts[0]), int(parts[1]))
-    except ValueError as exc:
-        raise ScenarioError(f"cannot read the balances' date from start_date {start!r}: {exc}") from exc
-    raise ScenarioError(f"cannot read the balances' date from start_date {start!r}")
-
-
-def resolve_as_of(scenario: dict):
-    """The date a scenario is solved at, validated to fall in the run's plan year.
-
-    The worker freezes Owl's "today" to this date and records it in `record.json` (section
-    8.3 b). A run whose balances' date lies outside its plan year is refused: its inputs are
-    not the ones the plan year is about (R1).
-    """
-    from datetime import date
-
-    value = scenario.get("as_of")
-    if value is None:
-        value = as_of_from_case(scenario.get("case") or {}, scenario.get("plan_year")).isoformat()
-    try:
-        as_of_date = date(int(value[:4]), int(value[5:7]), int(value[8:10]))
-    except (TypeError, ValueError) as exc:
-        raise ScenarioError(f"as_of {value!r} is not an ISO date ('YYYY-MM-DD')") from exc
-    plan_year = scenario.get("plan_year")
-    if plan_year is not None and as_of_date.year != plan_year:
-        raise ScenarioError(
-            f"the run's 'as of' date {as_of_date.isoformat()} falls outside its plan year "
-            f"{plan_year}: the library refuses to solve a run outside its plan year (R1)"
-        )
-    return as_of_date
-
-
-def _as_iso(value) -> str:
-    """A date, datetime or 'YYYY-MM-DD' string as an ISO date string."""
-    if isinstance(value, str):
-        return value.strip()[:10]
-    return f"{value.year:04d}-{value.month:02d}-{value.day:02d}"
-
-
-def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=None, as_of=None,
-                       budget_file=None) -> dict:
+def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=None, budget_file=None) -> dict:
     """A schema-v1 scenario from a case dictionary and the HFP tables (hand rows).
 
     `time_lists` maps a person's name to their year table (DataFrame or {columns, rows});
     `house_lists` holds "Debts", "Fixed Assets" and "Budget". `budget_file` is
     {"ref": <the case dict's name>, "text": <the JSON file's text>} for a budget_file case.
-    `as_of` is the balances' date (a date or 'YYYY-MM-DD'); when omitted it is read from the
-    case's `start_date` (`as_of_from_case`), so both entry paths record it the same way.
     """
     hfp = {}
     for name, table in (time_lists or {}).items():
@@ -194,7 +136,6 @@ def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=Non
     scenario = {
         "schema_version": SCHEMA_VERSION,
         "plan_year": plan_year if plan_year is not None else _plan_year_of(case),
-        "as_of": _as_iso(as_of) if as_of is not None else None,
         "case": _json_safe(case),
         "hfp": hfp,
     }
@@ -219,21 +160,41 @@ def canonicalize(scenario: dict) -> dict:
     )
     if sidecar is not None:
         scenario["budget_file"] = sidecar
-    if scenario.get("plan_year") is None:
-        scenario["plan_year"] = _plan_year_of(scenario["case"])
-    if scenario.get("as_of") is None:
-        scenario["as_of"] = as_of_from_case(scenario["case"], scenario.get("plan_year")).isoformat()
-    else:
-        scenario["as_of"] = _as_iso(scenario["as_of"])
-    if scenario.get("plan_year") is None:
-        scenario["plan_year"] = int(scenario["as_of"][:4])
-    # 'today' as the balances' date means the moment of capture: stored as an absolute date,
-    # like the run's as_of, so that re-importing a run's own files gives the same hash.
+    # 'today' as the balances' date means the day of capture: stored as an absolute date, so
+    # the plan's first-year fraction (`Plan._setStartingDate`) does not move with the day a run
+    # is solved on, and re-importing a run's own files gives the same hash.
     info = scenario["case"].get("basic_info")
     if isinstance(info, dict) and str(info.get("start_date", "")).strip().lower() == "today":
-        info["start_date"] = scenario["as_of"]
+        info["start_date"] = date.today().isoformat()
+    if scenario.get("plan_year") is None:
+        # The year the balances and year rows were entered for (R1): the start date's year,
+        # else the year of capture.
+        scenario["plan_year"] = _plan_year_of(scenario["case"]) or date.today().year
     validate(scenario)
     return scenario
+
+
+def check_plan_year(scenario: dict) -> int:
+    """The run's plan year, refused unless it is the current year (R1; design section 8.3).
+
+    Owl's plan starts in the calendar year of the solve whatever the case says, so a run's
+    balances and year rows are valid only in the year they were entered for: solved a year
+    later, January's balances would be read as the new January's. Within the plan year a run
+    solves the same on any day (with fixed claiming ages); the claiming-age search reads the
+    current month on purpose, since a month already past cannot be claimed. A run for a new
+    year is made by the yearly check-in (I4): new balances, a new plan year.
+    """
+    plan_year = scenario.get("plan_year")
+    this_year = date.today().year
+    if plan_year is None:
+        raise ScenarioError("the run has no plan year: the library cannot tell when its inputs are valid")
+    if int(plan_year) != this_year:
+        raise ScenarioError(
+            f"the run's plan year is {plan_year} but this is {this_year}: its balances and year rows "
+            f"were entered for {plan_year}, and Owl would read them as {this_year}'s. Make a run for "
+            f"{this_year} with this year's balances (save it as a new run from the pages)."
+        )
+    return int(plan_year)
 
 
 def _canonical_cell(value):
@@ -346,26 +307,19 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
     if year is not None:
         info = case.setdefault("basic_info", {})
         info["start_date"] = _with_year(info.get("start_date"), year)
-    # Pin the date-dependent capture (hfp_io.read's conditioning, saveContributions' tables)
-    # to the run's own balances' date (design section 8.3 b; V5).
-    as_of_date = as_of_from_case(case, year)
-    from owlplanner import asof
-
-    with asof.as_of(as_of_date):
-        with tempfile.TemporaryDirectory() as tmp:
-            time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
-        ref = _budget_reference(case)
-        base_sidecar = base.get("budget_file") if base is not None else None
-        if ref and base_sidecar and budget_path is None and ref == base_sidecar["ref"]:
-            budget_file = dict(base_sidecar)
-        else:
-            budget_file = _read_budget_text(
-                ref,
-                base=Path(case_dir) if case_dir is not None else None,
-                explicit=budget_path,
-            )
-        return scenario_from_case(case, time_lists, house_lists, plan_year=year, as_of=as_of_date,
-                                  budget_file=budget_file)
+    with tempfile.TemporaryDirectory() as tmp:
+        time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
+    ref = _budget_reference(case)
+    base_sidecar = base.get("budget_file") if base is not None else None
+    if ref and base_sidecar and budget_path is None and ref == base_sidecar["ref"]:
+        budget_file = dict(base_sidecar)
+    else:
+        budget_file = _read_budget_text(
+            ref,
+            base=Path(case_dir) if case_dir is not None else None,
+            explicit=budget_path,
+        )
+    return scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file)
 
 
 def _tables_from_plan(plan, tmpdir: Path):
@@ -425,67 +379,40 @@ def _read_budget_text(ref: str, *, base=None, explicit=None):
     return {"ref": ref, "text": path.read_text(encoding="utf-8")}
 
 
-def _peek_as_of(case_path):
-    """The balances' date from the raw TOML, before Owl's own loader (which reads the
-    calendar): None when the file does not parse here -- `load_toml` then reports why."""
-    import toml
-
-    try:
-        raw = toml.loads(Path(case_path).read_text(encoding="utf-8"))
-        return as_of_from_case(raw)
-    except Exception:
-        return None
-
-
-def import_case(case_path, hfp_path=None, budget_path=None, as_of=None) -> dict:
+def import_case(case_path, hfp_path=None, budget_path=None) -> dict:
     """Read a case file and its HFP workbook into a scenario (section 6.4: hand rows only).
 
     Without a workbook the scenario holds the plan's zero-filled tables (the same route
     `scenario_from_ui` takes), so both entry paths agree (V9).
-
-    The import is pinned to the run's balances' date (`as_of`, else read from the file's
-    `start_date` before any date-dependent step): `hfp_io.read`'s conditioning and
-    `load_toml`'s `sanitize_config` both read the calendar (V5), so the same files must
-    always import to the same tables and the same inputs hash.
     """
-    from owlplanner import asof
     from owlplanner import hfp_io
     from owlplanner.config.plan_bridge import config_to_plan
     from owlplanner.config.toml_io import load_toml
 
     case_path = Path(case_path)
-    if as_of is not None:
-        as_of = _as_iso(as_of)
+    case, dirname, _ = load_toml(str(case_path))
+    # The plan supplies inames and horizons (life expectancy), the two inputs hfp_io.read
+    # needs to condition the tables; nothing is solved.
+    plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=False)
+
+    ref = _hfp_reference(case)
+    workbook = Path(hfp_path) if hfp_path is not None else None
+    if workbook is None and ref is not None:
+        workbook = _resolve_ref(ref, base=case_path.parent)
+        if workbook is None:
+            raise ScenarioError(f"HFP workbook {ref!r} not found for {case_path}")
+    if workbook is not None:
+        if not workbook.exists():
+            raise ScenarioError(f"{workbook} not found")
+        _, time_lists, house_lists, _, _ = hfp_io.read(
+            str(workbook), plan.inames, plan.horizons, plan.mylog
+        )
     else:
-        peeked = _peek_as_of(case_path)
-        as_of = peeked.isoformat() if peeked is not None else _as_iso(asof.today())
-    with asof.as_of(as_of):
-        case, dirname, _ = load_toml(str(case_path))
-        # The freeze date is the run's "as of" date: the caller's `as_of`, else the file's
-        # balances' date. The record carries the date the tables were conditioned at (F10e).
-        as_of_date = asof.today()
-        # The plan supplies inames and horizons (life expectancy), the two inputs hfp_io.read
-        # needs to condition the tables; nothing is solved.
-        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
 
-        ref = _hfp_reference(case)
-        workbook = Path(hfp_path) if hfp_path is not None else None
-        if workbook is None and ref is not None:
-            workbook = _resolve_ref(ref, base=case_path.parent)
-            if workbook is None:
-                raise ScenarioError(f"HFP workbook {ref!r} not found for {case_path}")
-        if workbook is not None:
-            if not workbook.exists():
-                raise ScenarioError(f"{workbook} not found")
-            _, time_lists, house_lists, _, _ = hfp_io.read(
-                str(workbook), plan.inames, plan.horizons, plan.mylog
-            )
-        else:
-            with tempfile.TemporaryDirectory() as tmp:
-                time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
-
-        budget_file = _read_budget_text(_budget_reference(case), base=case_path.parent, explicit=budget_path)
-        return scenario_from_case(case, time_lists, house_lists, as_of=as_of_date, budget_file=budget_file)
+    budget_file = _read_budget_text(_budget_reference(case), base=case_path.parent, explicit=budget_path)
+    return scenario_from_case(case, time_lists, house_lists, budget_file=budget_file)
 
 
 def _sidecar_target(ref: str):

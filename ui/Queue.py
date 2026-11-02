@@ -22,7 +22,7 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import PRESETS
+from owlplanner.library import PRESETS, ScenarioError
 from owlplanner.library import results as R
 
 st.markdown("# :material/schedule: Queue")
@@ -61,9 +61,13 @@ with st.expander("Solve a run", expanded=not manager.jobs()):
                                      "(no MIP, no local search), claiming ages held at the "
                                      "scenario's values. custom: the case's own options.")
         if col3.button("Solve", type="primary", use_container_width=True):
-            job = manager.enqueue(labels[choice], preset=preset)
-            st.toast(f"Queued {job.id}")
-            st.rerun()
+            try:
+                job = manager.enqueue(labels[choice], preset=preset)
+            except ScenarioError as exc:  # a run from another plan year (R1)
+                st.error(str(exc), icon=":material/event_busy:")
+            else:
+                st.toast(f"Queued {job.id}")
+                st.rerun()
 
 
 @st.fragment(run_every=2.0)

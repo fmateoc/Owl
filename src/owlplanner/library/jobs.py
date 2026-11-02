@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import List
 
 from . import results as R
-from .casefiles import resolve_as_of
+from .casefiles import check_plan_year
 from .presets import PRESETS, preset_options
 from .procs import kill_process, pid_alive, process_start_token
 from .store import Library, RunInfo
@@ -92,14 +92,14 @@ class JobManager:
     def enqueue(self, run: "RunInfo | str", *, preset: str = "quick", options=None) -> R.JobRecord:
         """Queue one solve of a run: the job record lands on disk before any dispatch (S2).
 
-        The run's "as of" date is validated here (inside the run's plan year, R1): the
-        library refuses to queue a run outside its plan year. Returns the waiting record.
+        The run's plan year is checked here (R1): the library refuses to queue a run outside
+        its plan year (the worker checks again when it starts). Returns the waiting record.
         """
         if preset not in PRESETS:
             raise JobsError(f"unknown preset {preset!r}: this build runs {PRESETS}")
         info = run if isinstance(run, RunInfo) else self.library.get(run)
         scenario = self.library.scenario(info)
-        as_of = resolve_as_of(scenario)  # raises ScenarioError outside the plan year
+        plan_year = check_plan_year(scenario)  # raises ScenarioError outside the plan year (R1)
         overrides = preset_options(preset, options)
 
         results_root = info.path / RESULTS_DIR
@@ -125,7 +125,7 @@ class JobManager:
             run_name=info.name,
             preset=preset,
             options=overrides,
-            as_of=as_of.isoformat(),
+            plan_year=plan_year,
         )
         self.tick()
         return job
@@ -248,7 +248,7 @@ class JobManager:
         if R.read_record(job.results_dir) is None:
             doc = job.doc
             job.publish_record(token, R.build_record(
-                run_id=str(doc.get("run_id") or ""), results_id=job.id, as_of=job.as_of,
+                run_id=str(doc.get("run_id") or ""), results_id=job.id, plan_year=job.plan_year,
                 preset=str(doc.get("preset") or ""), options=doc.get("options") or {},
                 plan_doc=None, status="interrupted", started=doc.get("started"), finished=finished,
                 wall_time_seconds=None, warnings=[], iterations=None,

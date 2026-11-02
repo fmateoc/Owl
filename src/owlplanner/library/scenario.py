@@ -2,12 +2,9 @@
 
 A scenario is the source of truth of a run (`fork-notes/run-library-design.md`, section 6).
 Schema version 1 holds Owl's case dictionary (`case`) and the HFP workbook tables (`hfp`)
-as JSON and nothing else: every row is a row the user entered or imported ("hand rows"),
-plus the run's own dates: `plan_year` (the calendar year the balances and year rows were
-entered for, R1) and `as_of` (the balances' date -- `basic_info.start_date`, the Account
-Balances page's "Account balance date" -- which every solve of the run freezes Owl's "today"
-to, section 8.3 b).  Events and the builder arrive in a later schema version (section 6.3a);
-each format change ships a migration (`migrate`).
+as JSON and nothing else: every row is a row the user entered or imported ("hand rows").
+Events and the builder arrive in a later schema version (section 6.3a); each format change
+ships a migration (`migrate`).
 
 Canonical form (the inputs hash, section 5, S10): keys sorted, compact separators, and every
 number kept as entered: an int stays an int and a float stays a float (V3), because the generated
@@ -22,12 +19,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 from typing import Any
 
 SCHEMA_VERSION = 1
-
-ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Version of the generation code that turns a scenario into Case.toml / HFP.xlsx
 # (library.casefiles). Part of the inputs hash: a change here makes old runs "built with
@@ -126,15 +120,6 @@ def validate(scenario: Any) -> dict:
     plan_year = scenario.get("plan_year")
     if plan_year is not None and not isinstance(plan_year, int):
         raise ScenarioError(f"plan_year must be an int, got {plan_year!r}")
-    as_of = scenario.get("as_of")
-    if as_of is not None:
-        if not isinstance(as_of, str) or not ISO_DATE_RE.match(as_of):
-            raise ScenarioError(f"as_of must be an ISO date string ('YYYY-MM-DD'), got {as_of!r}")
-        if plan_year is not None and int(as_of[:4]) != plan_year:
-            raise ScenarioError(
-                f"as_of {as_of} does not fall in the run's plan year {plan_year}: a run is "
-                "solved at its own balances' date (design section 8.3 b)"
-            )
     return scenario
 
 

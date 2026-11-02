@@ -1,5 +1,16 @@
 # Issue draft: an "as of" date input (`--as-of`), so a case reproduces on any day
 
+**Withdrawn 2026-11-02 (user): not to be filed.** The fork dropped the `as_of` input itself. A
+run is refused outside its plan year instead (`run-library-design.md` §8.3), and within the plan
+year the only month-dependent read, the `withSSAges` claiming window, should follow the real
+date. The draft is kept as a record. If it is ever revived, it needs the fixes listed in the
+conversation of 2026-11-02:
+- a process-wide freeze, because `withSSAges` and the stress tests run thread pools;
+- a repro on stock `dev`;
+- correct dates in the evidence (the mocked days were 2026-01-10 and 2027-02-01);
+- the lazy-import claim marked as inferred;
+- upstream's own `tests/conftest.py` freeze given as the main motivation.
+
 Status: **draft for the user to file** (fork-only; 2026-11-02, run-library step 2). Design issue
 rather than a bug report: the change is generic backend, like the rate table (D11). The fork
 ships the mechanism for its run library (`run-library-design.md` §8.3 b) and would port the patch

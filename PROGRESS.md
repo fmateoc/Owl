@@ -5529,3 +5529,16 @@ and docs, **not merged here**), real runs from a worktree with its own `src`, on
 
 Prior threads read for the text: #27 and #45 (bodies by `gh api search/issues`; the
 maintainer's comments by WebFetch, a summary with quotes). Nothing in `src/` or `ui/` changed.
+
+Reviewed independently the same day (a reviewer agent; 14 findings, the two stock repros
+re-run). Every finding was checked and taken; the main one was checked directly: upstream
+**#132** (Docker user lost their cases on closing the browser; the maintainer: "The server is
+stateless between sessions", "No data stays there for privacy reasons"), which the first
+draft's searches missed. The posted text now opens by answering it, and question 1 asks
+whether a server on the user's own computer may keep files there. Other fixes: a run's source
+of truth is `scenario.json` (not "exactly" Owl's files), `owlcli run` reproduces a run only with
+the recorded options in its plan year, the list of existing-code changes completed (`ui/main.py`,
+`openCaseFromPlan`, `sskeys`, `version.py`; the error bar is in `plan_convergence`, so MCP output
+changes), the 1% band's basis is the loop (local search: \$15-74/yr shortfalls), the simplified
+model no longer called exact, the claiming-age map dropped as fork-only. Findings and dispositions
+are in the draft's "Review" section.

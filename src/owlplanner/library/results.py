@@ -552,6 +552,7 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
             "breakpoint_method": plan_doc.get("breakpoint_method", "loop"),
             "fixed_point_residual_today_dollars": plan_doc.get("fixed_point_residual_today_dollars", {}),
             "unsettled": plan_doc.get("unsettled", {}),
+            "objective_error_bar_today_dollars": plan_doc.get("objective_error_bar_today_dollars", 0.0),
         }
     return {
         "record_format": RECORD_FORMAT,

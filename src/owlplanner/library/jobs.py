@@ -25,7 +25,7 @@ from typing import List
 
 from . import results as R
 from .casefiles import check_plan_year
-from .presets import PRESETS, preset_options
+from .presets import SOLVE_PRESETS, preset_options
 from .procs import kill_process, pid_alive, process_start_token
 from .store import Library, RunInfo
 
@@ -95,8 +95,8 @@ class JobManager:
         The run's plan year is checked here (R1): the library refuses to queue a run outside
         its plan year (the worker checks again when it starts). Returns the waiting record.
         """
-        if preset not in PRESETS:
-            raise JobsError(f"unknown preset {preset!r}: this build runs {PRESETS}")
+        if preset not in SOLVE_PRESETS:
+            raise JobsError(f"unknown preset {preset!r}: this build runs {SOLVE_PRESETS}")
         info = run if isinstance(run, RunInfo) else self.library.get(run)
         scenario = self.library.scenario(info)
         plan_year = check_plan_year(scenario)  # raises ScenarioError outside the plan year (R1)

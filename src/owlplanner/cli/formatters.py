@@ -11,7 +11,7 @@ Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 import json
 import numpy as np
 
-from owlplanner.export import plan_metrics, balance_sheet_arrays
+from owlplanner.export import plan_metrics, balance_sheet_arrays, fixedIncomeStreams
 from owlplanner.version import engine_provenance
 
 
@@ -128,6 +128,12 @@ def plan_convergence(plan) -> dict:
         # Families left above the loop's tolerance (residualTol per year), each with the option
         # whose exact model settles it; empty when the plan settled.
         "unsettled": unsettled,
+        # Half the objective's oscillation band on an unsettled loop (as the Summary's
+        # "Objective error bar" row; 0 when the loop settled): differences smaller than it
+        # are not meaningful (run_library's comparison reads it).
+        "objective_error_bar_today_dollars": _round_opt(
+            float(getattr(plan, "oscillationAbs", 0.0) or 0.0) / 2.0, 2
+        ),
         # Last solve's wall-clock and CPU seconds (machine- and load-dependent), as in the Summary.
         "solve_time_seconds": {
             "wall": _round_opt(getattr(plan, "lastSolveWallTime", None)),
@@ -164,6 +170,10 @@ def plan_to_dict(plan) -> dict:
     ss_income = plan.zetaBar_in[:, :N]
     portfolio_total = np.sum(plan.b_ijn[:, :, :N], axis=(0, 1))
     gamma = plan.gamma_n[:N]
+    # Income sources and the cash drawn from the savings accounts (the mix is in today's
+    # dollars; back to nominal, like every other by_year amount).
+    streams = fixedIncomeStreams(plan, N)
+    withdrawals = np.asarray(plan.annual_cashflow_mix()["income"]["portfolio"], dtype=float)[:N] * gamma
 
     # Balance-sheet series (savings + fixed assets - debts, plus liquid net worth)
     bs = balance_sheet_arrays(plan, N)
@@ -185,6 +195,10 @@ def plan_to_dict(plan) -> dict:
                 "aca_premiums": _round(aca[n]),
                 "roth_conversions": _round(roth_conv[n]),
                 "ss_income": [_round(ss_income[i, n]) for i in range(plan.N_i)],
+                "wages": _round(streams["wages"][n]),
+                "pension_income": _round(streams["pension"][n]),
+                "spia_income": _round(streams["spia"][n]),
+                "portfolio_withdrawals": _round(withdrawals[n]),
                 "portfolio_total": _round(portfolio_total[n]),  # savings accounts only
                 "fixed_assets": _round(bs["fixed_assets"][n]),
                 "debt": _round(bs["debt"][n]),
@@ -228,6 +242,9 @@ def plan_to_dict(plan) -> dict:
         "case_name": plan._name,
         "objective": plan.objective,
         "individuals": list(plan.inames),
+        # SS claiming ages in years (66y2m = 66.1667), aligned with `individuals`; what the
+        # solve used, so two results can be compared without the cached plan (run library 9.1).
+        "claiming_ages": [round(float(a), 4) for a in plan.ssecAges],
         "state": state,
         **({"locality": plan.locality} if plan.locality else {}),
         "state_moves": state_moves,

@@ -18,11 +18,14 @@ only for the fast metadata work (V6): `generate` runs before it, into the stagin
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
+import subprocess
 import time
 import uuid
+import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -60,6 +63,39 @@ def default_library_root():
     if env:
         return Path(env)
     return Path(__file__).resolve().parents[3] / "otherFiles" / "library"
+
+
+def _git_ignored(root: Path) -> Optional[bool]:
+    """True when git ignores `root`, False when it does not, None when git cannot tell.
+
+    Section 10: the interface refuses a library folder inside a repository that git does not
+    ignore -- a household's runs must never land in a public tree. `git check-ignore` exits
+    0 for an ignored path, 1 for a path in the work tree that is not ignored, and 128 when
+    the folder is not in a repository at all (the rule is about repositories only). It
+    classifies by pattern whether the path exists or not, so a library folder that is about
+    to be created is checked too; `git -C` needs an existing folder, hence the walk up.
+    """
+    probe = Path(root)
+    while not probe.exists():
+        parent = probe.parent
+        if parent == probe:
+            return None
+        probe = parent
+    try:
+        # Forward slashes and a trailing "/" so a directory-only pattern (`.gitignore`'s
+        # "library/") matches a folder that does not exist yet.
+        target = str(Path(root)).replace(os.sep, "/").rstrip("/") + "/"
+        proc = subprocess.run(
+            ["git", "-C", str(probe), "check-ignore", "-q", "--", target],
+            capture_output=True,
+        )
+    except OSError:  # no git installed: cannot tell, and likely no repository either
+        return None
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    return None
 
 
 def _newest_mtime(path: Path) -> Optional[float]:
@@ -167,6 +203,15 @@ class Library:
     @classmethod
     def open(cls, root, *, create: bool = True) -> "Library":
         lib = cls(root)
+        # Section 10 (M2): a library holds household data. Inside a git repository it must be
+        # ignored (`git check-ignore`), or a commit could publish the runs.
+        if _git_ignored(lib.root) is False:
+            raise LibraryError(
+                f"{lib.root} is inside a git repository that does not ignore it: a library holds "
+                "household data and must not be committable (section 10). Point OWL_LIBRARY_DIR "
+                "at a gitignored folder (for example otherFiles/library) or at one outside the "
+                "repository."
+            )
         marker = lib.root / LIBRARY_JSON
         if not marker.exists():
             if not create:
@@ -454,3 +499,27 @@ class Library:
             doc["pins"] = [rid for rid in doc["pins"] if rid != info.id]
             self._write_json(self.root / LIBRARY_JSON, doc)
         return target
+
+
+def run_zip(run: "RunInfo | Path") -> bytes:
+    """The run folder as a zip ("Download everything", design section 9.1).
+
+    Everything a run holds -- its inputs, its results and their records -- except the OS
+    lock files (`library.lock`, `status.lock`) and any staging folder a killed attempt left
+    (`results/.attempt-*`). `plan.pkl` travels too: it is only ever loaded against the hash
+    and code stamp in its own record.json (section 10), so a copy opened elsewhere is simply
+    read without it.
+    """
+    root = run.path if isinstance(run, RunInfo) else Path(run)
+    if not root.is_dir():
+        raise LibraryError(f"{root} is not a run folder")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root)
+            if any(part.startswith(".attempt-") for part in rel.parts) or path.name.endswith(".lock"):
+                continue
+            zf.write(path, arcname=str(Path(root.name) / rel))
+    return buf.getvalue()

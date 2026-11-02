@@ -996,7 +996,13 @@ def plan_metrics(plan, N=None) -> dict:
     }
     # Only with essential budget lines (every value here is a number).
     if getattr(plan, "discretionary_scale", None) is not None:
-        m["discretionary_scale"] = float(plan.discretionary_scale)
+        k = float(plan.discretionary_scale)
+        m["discretionary_scale"] = k
+        # The comparable score of two essential-line plans (run_suite._score_plan): net
+        # spending is essential lines at their amounts plus k x discretionary lines, so the
+        # comparable figure is the first year's discretionary spending, k x D_0.
+        m["discretionary_year1"] = k * float(plan.budget.discretionary_n[0])
+        m["essential_year1"] = float(plan.budget.essential_n[0])
     return m
 
 

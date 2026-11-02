@@ -1,15 +1,18 @@
 """Library storage: run folders, the inputs hash dedupe, save-as, lineage, the lock."""
 
+import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
+import zipfile
 
 import pytest
 
-from owlplanner.library import Library, LibraryError, LibraryLocked
+from owlplanner.library import Library, LibraryError, LibraryLocked, run_zip
 from owlplanner.library.store import STAGING_STALE_SECONDS
 
 
@@ -289,3 +292,60 @@ class TestLock:
         other.lock_wait = 0.0
         with other._lock():
             pass
+
+
+class TestSection10Privacy:
+    """A library holds household data: it must never be committable (section 10; review M2)."""
+
+    @staticmethod
+    def _repo(tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+        return repo
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    def test_a_library_inside_a_repository_that_does_not_ignore_it_is_refused(self, tmp_path):
+        repo = self._repo(tmp_path)
+        with pytest.raises(LibraryError, match="does not ignore"):
+            Library.open(repo / "library")
+        assert not (repo / "library").exists()  # refused before anything is created
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    def test_a_gitignored_folder_inside_the_repository_is_allowed(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".gitignore").write_text("library/\n", encoding="utf-8")
+        lib = Library.open(repo / "library")
+        assert lib.runs() == []
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    def test_outside_a_repository_the_check_does_not_apply(self, tmp_path):
+        assert Library.open(tmp_path / "library").runs() == []
+
+
+class TestRunZip:
+    """'Download everything' (design 9.1): the run folder as a zip."""
+
+    def test_the_zip_holds_the_run_without_locks_or_staging(self, lib):
+        run = lib.save_run(name="x", scenario=_scenario(), generate=_generate).run
+        results = run.path / "results"
+        solved = results / "2026-11-02T10-00-00_quick"
+        solved.mkdir(parents=True)
+        (solved / "plan.pkl").write_bytes(b"cache")
+        (solved / "status.lock").write_bytes(b"")
+        staging = results / ".attempt-abc12345"
+        staging.mkdir()
+        (staging / "plan.json").write_text("{}", encoding="utf-8")
+
+        names = zipfile.ZipFile(io.BytesIO(run_zip(run))).namelist()
+        assert f"{run.folder_name}/run.json" in names
+        assert f"{run.folder_name}/inputs/scenario.json" in names
+        assert f"{run.folder_name}/inputs/Case.toml" in names
+        # The pickle travels: only a library that wrote it ever loads it (section 10).
+        assert f"{run.folder_name}/results/2026-11-02T10-00-00_quick/plan.pkl" in names
+        assert not any(n.endswith(".lock") for n in names)
+        assert not any(".attempt-" in n for n in names)
+
+    def test_a_missing_run_folder_is_refused(self, tmp_path):
+        with pytest.raises(LibraryError):
+            run_zip(tmp_path / "nope")

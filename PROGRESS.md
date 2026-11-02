@@ -5502,3 +5502,6 @@ test (`main.py` is the entry script; read and compiled). Checks: `check_library_
 **9/9** (figures unchanged, check 7 now also checks the bands); full suite **3907 passed,
 1 skipped** (9:33, Linux; 3896 + 11); flake8/ruff clean but upstream's known items. No
 review item of step 3 is open.
+
+`main` fast-forwarded to `claude/run-library-step3` (2026-11-02, the user's call): run-library
+step 3 (both increments) with every finding of its three reviews fixed.

@@ -12,13 +12,16 @@ Cancellation (S8, S9): every step, every heartbeat (30 s) and (throttled) every 
 the worker re-reads its own `status.json`. It stops when the record carries a cancel flag,
 a state other than running, or a different token -- so a worker that wakes after the machine
 slept stops instead of racing a "run again". A stopped job writes no artifacts and keeps its
-record folder for the retry. Only the run's own results folder is written.
+record folder for the retry: the artifacts are staged and published under the job's lock with
+the token still owning the job (`JobRecord.publish`, G2), and every record write is
+token-guarded (F2). Only the run's own results folder is written.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 import threading
 import time
@@ -189,11 +192,7 @@ class Worker:
                 self.job.touch(self.token, step="writing the results")
                 plan_doc = plan_to_dict(plan)
                 summary = plan_metrics(plan)
-                self._write_json(R.SUMMARY_JSON, summary)
-                self._write_json(R.PLAN_JSON, plan_doc)
-                plan.saveWorkbook(basename=str(self.results_dir / R.RESULTS_XLSX), overwrite=True,
-                                  with_config="first")
-                plan_sha = R.save_plan(plan, self.results_dir)
+                plan_sha = self._publish_results(summary, plan_doc, plan)
             else:
                 self.job.update(self.token, error=plan.solverMessage or status)
 
@@ -221,11 +220,37 @@ class Worker:
 
     # -- helpers -------------------------------------------------------
 
-    def _write_json(self, name, doc):
+    def _publish_results(self, summary, plan_doc, plan) -> str:
+        """Write the artifacts and publish them atomically with respect to "run again" (G2).
+
+        The files are staged in a private folder beside the record and renamed into place
+        under the job's lock, the token still owning the job (`JobRecord.publish`): a worker
+        that wakes after "run again" publishes nothing, so one results folder never holds two
+        attempts' artifacts (the F2 guard covered `status.json` and `record.json` only).
+        Returns the plan cache's sha256 for record.json.
+        """
+        staging = self.results_dir / f".attempt-{self.token[:8]}"
+        staging.mkdir(exist_ok=True)
+        try:
+            self._write_json(staging, R.SUMMARY_JSON, summary)
+            self._write_json(staging, R.PLAN_JSON, plan_doc)
+            plan.saveWorkbook(basename=str(staging / R.RESULTS_XLSX), overwrite=True,
+                              with_config="first")
+            plan_sha = R.save_plan(plan, staging)
+            try:
+                self.job.publish(self.token, staging,
+                                 (R.SUMMARY_JSON, R.PLAN_JSON, R.RESULTS_XLSX, R.PLAN_PKL))
+            except R.TokenChanged as exc:
+                raise JobCancelled(str(exc)) from exc
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        return plan_sha
+
+    def _write_json(self, folder, name, doc):
         from owlplanner.cli.formatters import _NumpyEncoder
 
         text = json.dumps(doc, cls=_NumpyEncoder, indent=1, sort_keys=True) + "\n"
-        R.atomic_write(self.results_dir / name, text)
+        Path(folder, name).write_text(text, encoding="utf-8", newline="\n")
 
     def _write_record(self, *, status, as_of=None, plan_doc=None, options=None, started=None,
                       finished=None, wall_time_seconds=None, solver=None, gap=None,

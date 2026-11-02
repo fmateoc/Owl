@@ -97,6 +97,44 @@ class TestQueueOnDisk:
         with pytest.raises(ScenarioError):
             manager.enqueue(run)
 
+    def test_two_enqueues_at_once_get_their_own_folder(self, manager, run, monkeypatch):
+        """G1: two sessions clicking Solve in the same second never share a results folder.
+
+        The clock is frozen, so both threads pick the same candidate name, and both are held
+        inside the record write, so both get past any exists() check -- only an atomic folder
+        claim (the mkdir itself) gives each its own folder. Before the fix: one folder, one
+        clobbered job record (probe: 2 enqueues, 1 job listed).
+        """
+        import threading
+
+        from owlplanner.library import jobs as jobs_mod
+
+        class Frozen(datetime):
+            @classmethod
+            def now(cls):
+                return cls(2026, 11, 3, 14, 2, 11)
+
+        monkeypatch.setattr(jobs_mod, "datetime", Frozen)
+        real_create = R.JobRecord.create
+        both_in = threading.Barrier(2, timeout=60)
+
+        def slow_create(results_dir, **kw):
+            both_in.wait()
+            return real_create(results_dir, **kw)
+
+        monkeypatch.setattr(R.JobRecord, "create", slow_create)
+        queued = []
+        threads = [threading.Thread(target=lambda: queued.append(manager.enqueue(run))) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+        assert len(queued) == 2
+        assert len({j.results_dir for j in queued}) == 2  # one folder each
+        assert len(manager.jobs()) == 2                   # neither record lost
+        for job in queued:
+            assert R.JobRecord.read(job.results_dir).token == job.token
+
 
 class TestAdoption:
     def test_a_live_worker_keeps_its_job(self, manager, run):

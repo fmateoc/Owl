@@ -69,6 +69,10 @@ class ResultsError(RuntimeError):
     """A results folder or its job record is missing or malformed."""
 
 
+class TokenChanged(ResultsError):
+    """The job no longer runs under the writer's token (re-queued under a new one, S8)."""
+
+
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -257,6 +261,26 @@ class JobRecord:
         self.refresh()
         return self.token == token
 
+    def publish(self, token: str, staging, names) -> None:
+        """Rename one attempt's staged artifacts into the results folder (G2).
+
+        The artifact writes are token-guarded like the record writes (F2 covered `status.json`
+        and `record.json` only; a stale worker that woke after "run again" used to re-create
+        the artifacts `requeue` had just cleaned, mixing two attempts in one folder). The
+        rename runs **under the job's lock** and only while the job still runs under `token`:
+        `requeue` cleans the folder under the same lock, so a publish and a "run again" cannot
+        interleave -- one comes before the other, and a publish that comes first is deleted by
+        the clean-up. Raises `TokenChanged` when the job is no longer this worker's (nothing
+        is published; the attempt's staging folder is the caller's to drop). A lock timeout
+        stays a plain `ResultsError`: it is this attempt's failure, not a cancel.
+        """
+        with _status_lock(self.results_dir):
+            doc = type(self).read(self.results_dir).doc
+            if doc.get("token") != token:
+                raise TokenChanged(f"job {self.id} is no longer this worker's (re-queued under a new token)")
+            for name in names:
+                _replace(Path(staging) / name, self.results_dir / name)
+
     def take_for_dispatch(self) -> bool:
         """Mark a waiting job running *before* its worker starts (only one dispatcher wins).
 
@@ -301,7 +325,7 @@ class JobRecord:
         with _status_lock(self.results_dir):
             doc = type(self).read(self.results_dir).doc
             if doc.get("token") != token:
-                raise ResultsError(f"job {self.id} runs under another token")
+                raise TokenChanged(f"job {self.id} runs under another token")
             if doc.get("state") not in (WAITING, RUNNING):
                 raise ResultsError(f"job {self.id} is {doc.get('state')!r}, not waiting")
             doc.update(state=RUNNING, pid=pid, pid_started=pid_started, started=now_iso(),

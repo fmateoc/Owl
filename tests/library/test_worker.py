@@ -126,6 +126,51 @@ class TestTwoSolvesOnDifferentDays:
             assert rec_a[key] == rec_b[key]
 
 
+class TestAStaleWorkerWritesNothing:
+    def test_run_again_leaves_no_artifacts_of_the_old_attempt(self, run, library, monkeypatch):
+        """G2: the artifact publish is token-guarded too (F2 covered the record only).
+
+        The worker is held inside the results write while the job is re-queued ("run again"
+        after a machine-sleep wake, S8's own scenario); released, it must leave the folder
+        exactly as the re-queue left it -- the old attempt's summary/plan/workbook/pkl may
+        not come back (probe: they did, mixed into the new attempt's clean folder).
+        """
+        import threading
+
+        from owlplanner import plan as plan_mod
+
+        job = make_job(run)
+        old_token = job.token
+        writing, resume = threading.Event(), threading.Event()
+        real_save = plan_mod.Plan.saveWorkbook
+
+        def held_save(self, *args, **kw):
+            writing.set()
+            assert resume.wait(timeout=120)
+            return real_save(self, *args, **kw)
+
+        monkeypatch.setattr(plan_mod.Plan, "saveWorkbook", held_save)
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(state=run_job(job.results_dir, old_token)))
+        thread.start()
+        try:
+            assert writing.wait(timeout=120), "the worker never reached the artifact block"
+            job.finish(R.INTERRUPTED, error="stopped")  # the manager found it silent (S8)
+            manager = JobManager(library)
+            manager._spawn = lambda j: False  # the new attempt is not started in this test
+            manager.run_again(job)
+            stale = (R.SUMMARY_JSON, R.PLAN_JSON, R.RESULTS_XLSX, R.PLAN_PKL, R.RECORD_JSON)
+            assert not any((job.results_dir / n).exists() for n in stale)  # the clean-up (F6)
+        finally:
+            resume.set()
+            thread.join(timeout=180)
+        # The stale worker stopped and published nothing over the cleaned folder.
+        assert result.get("state") == R.INTERRUPTED
+        assert artifacts(job.results_dir) == ["solve.log", "status.json", "status.lock"]
+        doc = R.JobRecord.read(job.results_dir).doc
+        assert doc["state"] == R.WAITING and doc["token"] != old_token
+
+
 class TestInTheBackground:
     def test_a_run_solves_in_a_detached_worker(self, run, library):
         """The check of section 11: a run solves in the background, artifacts and all."""

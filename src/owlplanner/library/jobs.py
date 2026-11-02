@@ -94,9 +94,17 @@ class JobManager:
         stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         folder = results_root / f"{stamp}_{preset}"
         n = 1
-        while folder.exists():
-            n += 1
-            folder = results_root / f"{stamp}_{preset}-{n}"
+        while True:
+            try:
+                # The claim is the mkdir itself (G1): two sessions clicking Solve in the same
+                # second pick the same candidate name, and only one can create it. A check
+                # before the create (the old `folder.exists()`) left a window where both took
+                # one folder and one job record was clobbered.
+                folder.mkdir()
+                break
+            except FileExistsError:
+                n += 1
+                folder = results_root / f"{stamp}_{preset}-{n}"
 
         job = R.JobRecord.create(
             folder,

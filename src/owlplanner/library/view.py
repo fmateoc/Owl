@@ -330,12 +330,21 @@ def record_is_exact_lp(record: dict) -> bool:
 
 
 def objective_value(result: Result) -> Optional[float]:
-    """The value the solver proved bounds on: `Plan._objectiveValue`, today's $.
+    """The value the solver's reported gap is relative to (R2's "gap x objective"), today's $.
 
-    maxSpending maximizes the first year's spending (`g_n[0]`, `spending_year1`); maxBequest
-    maximizes the bequest. This is what "reported gap x objective" (R2) multiplies -- not the
-    *score*, which under essential lines is only the discretionary part of the objective
-    (step-3 review P9: essential 400k + discretionary 50k would understate the tolerance 9x).
+    maxSpending: the LP maximizes the (discounted) real spending of every year, which scales
+    with the first year's (`g_n[0]`, `spending_year1`; exactly so without essential lines,
+    approximately with them), so a relative gap bounds `spending_year1` by the same fraction.
+    maxBequest: the LP maximizes the accounts left at the end after the heirs' tax
+    (`Plan._build_objective_vector`: taxable and Roth at 1, tax-deferred and HSA at 1 - nu),
+    which is `final_bequest_savings_today` -- not the final bequest, which adds the home and
+    subtracts any loan, neither of which the solve moves (step-3 review 2, Q8: the docstring
+    said `Plan._objectiveValue`, whose maxBequest value is `max(0, accounts - debt)`, and the
+    code used the final bequest).
+
+    Not the *score*: under essential lines the score is only the discretionary part of the
+    objective (step-3 review P9: essential 400k + discretionary 50k would understate the
+    tolerance 9x).
     """
     if not result.solved:
         return None
@@ -343,7 +352,7 @@ def objective_value(result: Result) -> Optional[float]:
     if (result.plan.get("objective") or (result.record.get("method") or {}).get("objective")) == "maxSpending":
         value = m.get("spending_year1")
     else:
-        value = m.get("final_bequest_today")
+        value = m.get("final_bequest_savings_today", m.get("final_bequest_today"))
     return None if value is None else float(value)
 
 

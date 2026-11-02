@@ -416,7 +416,9 @@ So (D4, revised again 2026-11-02, the user's call):
 - **Localhost only (R11).** A running app cannot rebind its own server. So library mode ships a
   launcher that passes `--server.address=localhost`, and the app refuses library mode unless
   `st.get_option("server.address")` is `localhost` or `127.0.0.1`. No usage statistics. The AI
-  pages stay off.
+  pages stay off: in library mode the Assistant chat is not offered even with `OWL_ASSISTANT=1`
+  (it sends the case to an outside model); "Connect your AI" stays, since it only writes the
+  configuration of an MCP server the user runs.
 - "Load a Case Example" reads `examples/` from the local checkout (`ui/tomlexamples.loadCaseExample`),
   although its caption says GitHub.
 - **Pickles (R10).** Loading a pickle can run code, so the library loads only `plan.pkl` files it

@@ -18,8 +18,10 @@ The judgment of one difference follows section 9.2 and CLAUDE.md's "Loop noise":
   difference read "within noise" and R3 call a trade-off a lead (step-3 review 3, W2).
 
 A variant **leads** only when it is at least as good on both numbers -- the score and the
-home at the end, never added together (R3) -- and better on one beyond the noise rule;
-otherwise the verdict is "trade-off" (or "no difference").
+home at the end, never added together (R3); under maxBequest, whose score already holds the
+home, the savings left and the home -- and better on one beyond the noise rule; otherwise
+the verdict is "trade-off" (or "no difference"). Two results with different objectives are
+not comparable.
 
 When each run also has an exact-model companion (`view.is_exact_lp`), the pair gets the
 agreement check (run_suite.agreement): the exact model is a *different model* (Medicare off,
@@ -135,6 +137,10 @@ def flags(a: Result, b: Result) -> tuple:
             f"solved on different days ({day_a} vs {day_b}): plans start today, so the "
             "difference includes the day -- run both again before deciding"
         )
+    objectives = [objective_of(a), objective_of(b)]
+    if objectives[0] != objectives[1]:
+        out.append(f"solved with different objectives ({objectives[0]} vs {objectives[1]}): "
+                   "the scores are not the same quantity")
     presets = [str(rec.get("preset") or "?") for rec in recs]
     if presets[0] != presets[1]:
         out.append(f"solved with different presets ({presets[0]} vs {presets[1]})")
@@ -154,23 +160,40 @@ def _lead_one(judgment: Judgment) -> str:
     return "even"
 
 
-def lead_verdict(rows) -> dict:
-    """R3: a variant leads only when it is at least as good on both and better on one."""
+def objective_of(result: Result) -> str:
+    """The result's objective ("maxSpending" / "maxBequest"), from plan.json or the record."""
+    return str(result.plan.get("objective")
+               or (result.record.get("method") or {}).get("objective") or "")
+
+
+def lead_verdict(rows, objective: str = "maxSpending") -> dict:
+    """R3: a variant leads only when it is at least as good on both and better on one.
+
+    The two numbers are the score and the home at the end under maxSpending. Under
+    maxBequest the score *is* the final bequest, which already holds the home, so judging it
+    beside the home counted the home twice: more home and less savings read as a lead on
+    both (step-3 review 3, W5). There the two numbers are the savings left and the home.
+    """
     by_label = {r.label: r for r in rows}
-    pair = (by_label.get("score"), by_label.get("home at the end"))
+    spending = objective == "maxSpending"
+    first = "score" if spending else "savings left at the end"
+    pair = (by_label.get(first), by_label.get("home at the end"))
     if any(r is None or r.delta is None for r in pair):
         return {"verdict": "not comparable", "note": "one of the two results has no numbers"}
     stances = [_lead_one(r) for r in pair]
+    both = ("the score and the home at the end" if spending
+            else "the savings left and the home at the end")
     if stances == ["even", "even"]:
         return {"verdict": "no difference beyond the noise rule", "note": ""}
     if "b better" in stances and "a better" not in stances:
-        return {"verdict": "the second result leads", "note": "at least as good on both numbers, better on one"}
+        return {"verdict": "the second result leads", "note": f"at least as good on {both}, better on one"}
     if "a better" in stances and "b better" not in stances:
-        return {"verdict": "the first result leads", "note": "at least as good on both numbers, better on one"}
+        return {"verdict": "the first result leads", "note": f"at least as good on {both}, better on one"}
     return {
         "verdict": "trade-off",
-        "note": "one buys more spending, the other keeps more home at the end; the two numbers "
-                "are never added (R3)",
+        "note": (("one buys more spending, the other keeps more home at the end" if spending
+                  else "one leaves more savings, the other more home at the end")
+                 + "; the two numbers are never added (R3)"),
     }
 
 
@@ -234,50 +257,54 @@ WHAT_MOVED = (
 
 
 def _by_year_sums(result: Result) -> dict:
-    """{item: [per-year nominal totals]} for the WHAT_MOVED items."""
-    out = {key: [] for key, _ in WHAT_MOVED}
+    """{year: {item: nominal total}} for the WHAT_MOVED items."""
+    out = {}
     for row in result.plan.get("by_year") or []:
-        taxes = sum(int(row.get(k) or 0) for k in
-                    ("federal_income_tax", "ltcg_tax", "niit", "payroll_tax", "state_tax"))
-        out["taxes"].append(taxes)
-        out["medicare_premiums"].append(int(row.get("medicare_premiums") or 0))
-        out["aca_premiums"].append(int(row.get("aca_premiums") or 0))
-        out["roth_conversions"].append(int(row.get("roth_conversions") or 0))
-        out["portfolio_withdrawals"].append(int(row.get("portfolio_withdrawals") or 0))
-        out["ss_income"].append(sum(int(v or 0) for v in (row.get("ss_income") or [])))
-        out["spending"].append(int(row.get("spending") or 0))
+        try:
+            year = int(row.get("year"))
+        except (TypeError, ValueError):
+            continue
+        out[year] = {
+            "taxes": sum(int(row.get(k) or 0) for k in
+                         ("federal_income_tax", "ltcg_tax", "niit", "payroll_tax", "state_tax")),
+            "medicare_premiums": int(row.get("medicare_premiums") or 0),
+            "aca_premiums": int(row.get("aca_premiums") or 0),
+            "roth_conversions": int(row.get("roth_conversions") or 0),
+            "portfolio_withdrawals": int(row.get("portfolio_withdrawals") or 0),
+            "ss_income": sum(int(v or 0) for v in (row.get("ss_income") or [])),
+            "spending": int(row.get("spending") or 0),
+        }
     return out
 
 
 def what_moved(a: Result, b: Result) -> tuple:
     """Year-by-year differences (b - a), nominal $: the rows the comparison shows.
 
-    A row is included when any item moved by more than a dollar in any year; the items with
-    no movement anywhere are left out of the table's columns.
+    The two plans are matched by calendar year, not by position (step-3 review 3, W6: two
+    results of different plan years compared A's 2027 with B's 2028 under the label 2027); a
+    year only one plan has counts the other's items as 0. A row is included when any item
+    moved by more than a dollar in any year; the items with no movement anywhere are left out
+    of the table's columns.
     """
-    years = [int(row.get("year") or 0) for row in b.plan.get("by_year") or a.plan.get("by_year") or []]
     sa, sb = _by_year_sums(a), _by_year_sums(b)
+    years = sorted(set(sa) | set(sb))
 
-    def _delta(key, i):
-        return _at(sb[key], i) - _at(sa[key], i)
+    def _delta(key, year):
+        return (sb.get(year) or {}).get(key, 0) - (sa.get(year) or {}).get(key, 0)
 
     moving = [key for key, _ in WHAT_MOVED
-              if any(abs(_delta(key, i)) > 1 for i in range(len(years)))]
+              if any(abs(_delta(key, year)) > 1 for year in years)]
     rows = []
-    for i, year in enumerate(years):
-        changes = {key: _delta(key, i) for key in moving}
+    for year in years:
+        changes = {key: _delta(key, year) for key in moving}
         if any(changes.values()):
             rows.append({"year": year, "changes": changes})
     totals = tuple(
-        (label, sum(_delta(key, i) for i in range(len(years))))
+        (label, sum(_delta(key, year) for year in years))
         for key, label in WHAT_MOVED if key in moving
     )
     columns = tuple((key, label) for key, label in WHAT_MOVED if key in moving)
     return tuple(rows), totals, columns
-
-
-def _at(values, i):
-    return values[i] if i < len(values) else 0
 
 
 # -- the whole screen --------------------------------------------------
@@ -293,6 +320,13 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
         difference("savings left at the end", savings_left(a), savings_left(b), ta=a, tb=b),
         difference("total taxes (lifetime)", total_taxes_today(a), total_taxes_today(b), ta=a, tb=b),
     )
+    objectives = (objective_of(a), objective_of(b))
+    if objectives[0] != objectives[1]:
+        lead = {"verdict": "not comparable",
+                "note": f"different objectives ({objectives[0]} vs {objectives[1]}): the two "
+                        "scores measure different things"}
+    else:
+        lead = lead_verdict(rows, objectives[0])
     moved_rows, moved_totals, _columns = what_moved(a, b)
     agree = None
     if a_exact is not None and b_exact is not None and a_exact.solved and b_exact.solved:
@@ -304,7 +338,7 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     return Comparison(
         rows=rows,
         flags=flags(a, b),
-        lead=lead_verdict(rows),
+        lead=lead,
         agreement=agree,
         what_moved=moved_rows,
         what_moved_totals=moved_totals,

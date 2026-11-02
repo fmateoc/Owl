@@ -4857,7 +4857,7 @@ override, no behaviour change. Settable by `owlcli run|compare|frontier|explain 
 worker. `tests/conftest.py` pins the suite with it (the old `date` monkeypatch stays for test
 modules' own reads); the two tests that moved the date by patching `plan.date` (`midyear`,
 `october_2026`) now move the input. The scenario (schema v1) records it as **the balances' date**
--- `basic_info.start_date`, the Account Balances page's "Account balance date", exactly �6.1's
+-- `basic_info.start_date`, the Account Balances page's "Account balance date", exactly §6.1's
 "as of" -- validated to fall in the run's plan year (`validate` refuses, and so does the worker:
 "the library refuses to solve a run outside its plan year", R1). Both entry paths capture *at* it
 (`asof.as_of(...)` around `hfp_io.read`'s conditioning and `saveContributions`), so V5's import
@@ -4868,7 +4868,7 @@ the worker freezes to.
 **Jobs (section 8.2).** `results.py`: one results folder per solve (`results/<queued>_<preset>/`)
 with `status.json` (the job record, on disk from the moment the job is queued, S2: state, PID,
 process start token, heartbeat, per-job cancel token, step, last log line, loop iteration),
-`record.json` (�5's fields: preset and options, Owl version and commit via `version.engine_provenance`,
+`record.json` (§5's fields: preset and options, Owl version and commit via `version.engine_provenance`,
 the frozen date, solver, status, gap, iterations, converged, wall time, warnings, rate method and
 seed, Python and package versions), `summary.json`, `plan.json`, `Results.xlsx`, `solve.log`, and
 the `plan.pkl` cache (loaded only against the sha256 in `record.json` and the same environment,
@@ -5158,7 +5158,8 @@ companion (`decision_exact`). **Deviation from the design's wording (8.1/9.2):**
 LP" is built as `run_suite.py`'s EXACT_GROUP -- the loop with Medicare off, SS taxability
 0.85 **and `withLTCG="optimize"`** -- because that is the model the suite's agreement rule
 and its condo-exact group compare against (with a large brokerage account the pure LP's LTCG
-loop did not settle in 138 of 153 runs there, its comment); the design's �8.1 Decision row
+loop did not settle in 138 of 153 unsettled rates-exact runs there, its comment -- the
+qualifier restored after review 2 Q5); the design's §8.1 Decision row
 says so now. The two Ages presets stay with step 6.
 
 **The pages.** `ui/Library.py`: the runs with their lineage (name, folder, plan year, "from
@@ -5359,8 +5360,10 @@ map" section after the solve expander (run folder, else a file picker).
 thresholds block's schema on the reloaded result; sources = uses in all 28 years of the
 synthetic baseline and the Sankey year 2027 balances at 974,971 both sides; the map over the
 real `work_sweep_chris+pat_bb_2026-10-26.json`): **9/9**. Tests: 19 new in
-`tests/plan/test_thresholds.py` (stub plans pinning every boundary, side, distance and cost
-against the model's own constants and cost functions; the identity on solved plans; the
+`tests/plan/test_thresholds.py` (stub plans pinning every boundary, side and distance, and
+the cost of the IRMAA, gains, NIIT and STAR kinds against the model's own constants and
+cost functions -- corrected after review 2 Q5: the recapture cost is unpinned and the
+marketplace cost is only checked positive; the identity on solved plans; the
 budget-lines split; the `plan.json` blocks), 10 in `tests/library/test_agemap.py`, 3 in
 `tests/library/test_view.py`, 4 in `tests/ui/test_library_pages.py`. Full suite: **3881
 passed, 2 skipped, 9 deselected** (26:07 on this machine; the `deep` marker's 9 are out of
@@ -5466,3 +5469,36 @@ there marked "Fixed" with how:
 4 (`TestMessagesSurviveTheRerun`). Checks: `check_library_compare.py` **9/9** (every other
 figure unchanged); full suite **3896 passed, 1 skipped** (9:26, Linux; 3885 + 11);
 flake8/ruff clean but upstream's known items. Open: W5-W9 and review 2's Q2, Q4-Q9.
+
+## Run-library step 3: every open review item fixed (2026-11-02, on `claude/run-library-step3`)
+
+The open items of reviews 2 and 3 (Q2, Q4-Q9, W5-W9), all fixed. How each was fixed is in
+the review docs: `run-library-step3-review-2.md` "Disposition after review 3" and
+`run-library-step3-review-3.md` "Disposition of W5-W9". In short:
+
+- **Q9** the "edited from run X" mark is stored in the case's own dictionary
+  (`sskeys.setRunBase` / `runBase`) instead of a session key cleared route by route.
+- **W5** under maxBequest the lead reads savings and home (the score already holds the
+  home); different objectives are "not comparable" and flagged.
+- **Q7** IRMAA crossings are priced outside the \$1 slack (the top tier and sub-dollar gaps
+  had read \$0), and every priced kind drops a \$0 crossing.
+- **Q2/W7** the NIIT gate reads `I_n + Q_n`, the note describes the kink, and the threshold
+  comes from `tx.niitThreshold`.
+- **W8** the run zip leaves `plan.pkl` out (section 10).
+- **Q4** the quality caption no longer repeats the first note.
+- **Q5** entries carry `boundary_today_dollars`, and check 7 verifies each is inside its
+  band; two PROGRESS claims corrected in place; three garbled "§" restored.
+- **W9** library mode never offers the Assistant chat (`ui/main.py`; design section 10
+  reworded).
+- **W6** "what moved" matches years by calendar year.
+- **Q6** a known limit stated in `_aca_entries`.
+- **Q8** `view.objective_value` under maxBequest is `final_bequest_savings_today`, the LP's
+  objective. This changes the value, beyond the "docstring only" first proposed.
+
+11 new tests: Q9 3, W5 3, Q7 2, Q2 1, Q5 1, W6 1. The four new threshold tests (Q2, Q5,
+two for Q7) were also run against the committed `thresholds.py`: the Q2 and both Q7 tests
+fail there; the Q5 test needs the new field, so it cannot run there. W9 has no automated
+test (`main.py` is the entry script; read and compiled). Checks: `check_library_compare.py`
+**9/9** (figures unchanged, check 7 now also checks the bands); full suite **3907 passed,
+1 skipped** (9:33, Linux; 3896 + 11); flake8/ruff clean but upstream's known items. No
+review item of step 3 is open.

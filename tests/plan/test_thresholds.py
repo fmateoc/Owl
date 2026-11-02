@@ -130,6 +130,25 @@ class TestIRMAA:
         p.MAGI_n[:] = 50_000.0  # below every tier edge, outside the band
         assert _by_kind(threshold_proximity(p), "irmaa") == []
 
+    def test_the_top_tier_and_sub_slack_gaps_are_priced_at_the_full_step(self):
+        """Review 2, Q7: priced *at* the edge, the top tier (which includes its edge) and a
+        gap within the $1 slack read the whole surcharge as $0."""
+        p = FakePlan()
+        m, n_prem = 2, 4
+        edges = tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n, n_prem, THISYEAR)
+        top = len(edges)
+        # The fee tables hold each tier's step over the one below (mediCosts indexes them).
+        step_top = float(tx.partB_irmaa_fees[top] + tx.partD_irmaa_fees[top])
+        p.MAGI_n[m] = float(edges[-1]) + 2_000.0
+        (e,) = _by_kind(threshold_proximity(p), "irmaa")
+        assert e["label"] == f"IRMAA tier {top}" and e["side"] == "over"
+        assert e["cost_today_dollars"] == pytest.approx(2 * step_top, rel=0.01)
+        step1 = float(tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1])
+        for gap in (0.5, -0.5):  # half a dollar over, half a dollar under tier 1
+            p.MAGI_n[m] = float(edges[0]) + gap
+            (e,) = _by_kind(threshold_proximity(p), "irmaa")
+            assert e["cost_today_dollars"] == pytest.approx(2 * step1, rel=0.01)
+
     def test_a_premium_year_with_nobody_on_medicare_is_skipped(self):
         p = FakePlan(yobs=[1975, 1977], horizons=[N_YEARS, N_YEARS])
         m, n_prem = 2, 4
@@ -230,6 +249,30 @@ class TestTheOtherKinds:
         assert e["amount_today_dollars"] == pytest.approx(2_000.0 / p.gamma_n[n], abs=0.01)
         assert e["cost_today_dollars"] == pytest.approx(0.038 * 2_000.0 / p.gamma_n[n], rel=0.01)
 
+    def test_the_niit_line_counts_gains_only_investment_income(self):
+        """Review 2, Q2: the gate read I_n only, so a year whose investment income is all
+        gains or qualified dividends (a condo-purchase year) was never listed; W7: the tax is
+        3.8% of the smaller of that income and the excess MAGI, a kink, not a cliff."""
+        p = FakePlan()
+        p.MAGI_n[3] = 260_000.0
+        p.Q_n[3] = 50_000.0  # I_n stays 0
+        (e,) = _by_kind(threshold_proximity(p), "niit")
+        assert e["side"] == "over"
+        assert e["cost_today_dollars"] == pytest.approx(0.038 * 10_000.0 / p.gamma_n[3], abs=0.01)
+        assert "smaller of" in e["note"] and "all net investment income" not in e["note"]
+
+    def test_a_crossing_that_costs_nothing_is_not_listed(self):
+        """Review 2, Q7: every priced kind drops a $0 crossing, not only the marketplace and
+        NIIT ones. Here the enhanced STAR credit equals the basic one, so crossing the
+        enhanced limit costs nothing (it used to be listed at $0)."""
+        N = N_YEARS
+        sched = StarSchedule(np.full(N, 600.0), np.full(N, 600.0), np.full(N, 110_750.0),
+                             500_000.0, 2)
+        income = np.zeros(N)
+        income[3] = 110_750.0 + 2_000.0
+        p = FakePlan(_star_on=True, _star=sched, _star_income=income)
+        assert _by_kind(threshold_proximity(p), "star") == []
+
     def test_the_state_recapture_start(self):
         N = N_YEARS
         p = FakePlan(
@@ -278,6 +321,21 @@ class TestTheOtherKinds:
         report = threshold_proximity(FakePlan())
         assert report["near_band_fraction"] == NEAR_BAND == 0.05
         assert report["entries"] == []
+
+    def test_every_entry_carries_its_boundary_and_sits_inside_its_band(self):
+        """Review 2, Q5: the acceptance check claimed "every entry inside its band" with no
+        boundary to check against. Each entry now carries it (same deflator as the amount)."""
+        p = FakePlan()
+        edge = float(tx.irmaaThresholds(tx.irmaaStatus(p.horizons, 4), p.gamma_n, 4, THISYEAR)[0])
+        p.MAGI_n[2] = edge + 2_000.0
+        p.MAGI_n[3] = 260_000.0
+        p.Q_n[3] = 50_000.0
+        entries = threshold_proximity(p)["entries"]
+        assert {e["kind"] for e in entries} >= {"irmaa", "niit"}
+        for e in entries:
+            assert e["amount_today_dollars"] <= NEAR_BAND * e["boundary_today_dollars"] + 0.01, e
+        (irmaa,) = [e for e in entries if e["kind"] == "irmaa"]
+        assert irmaa["boundary_today_dollars"] == pytest.approx(edge / p.gamma_n[2], abs=0.01)
 
 
 # ---------------------------------------------------------------------------

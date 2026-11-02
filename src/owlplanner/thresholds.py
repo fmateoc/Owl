@@ -12,8 +12,10 @@ model prices the crossing, what crossing it costs. An invented example from the 
 "Just below or just over" is a band of `NEAR_BAND` (5%) of the boundary amount (the user's
 call, 2026-11-02). Amounts are reported in today's dollars. The cost of a boundary is the
 model's own charge evaluated at the boundary plus the gap, less the charge at the boundary
-(`cost` below): the price of closing that gap, one year, wherever the model lands it. Where
-the boundary is a ramp rather than a cliff (the SS taxability bands) no cost is reported.
+(`cost` below): the price of closing that gap, one year, wherever the model lands it (IRMAA
+is priced just outside the premium functions' $1 slack on each side). A priced crossing that
+costs nothing here is not listed. Where the boundary is a ramp rather than a cliff (the SS
+taxability bands) no cost is reported.
 
 Everything here reads the solved arrays of a `Plan`; `cli.formatters.plan_to_dict` writes the
 report into `plan.json`, so the run library shows it from the durable files alone (D7). No
@@ -36,15 +38,22 @@ NEAR_BAND = 0.05
 # The kinds the report knows, in the order the run page explains them.
 KINDS = ("irmaa", "gains_0", "ss_taxability", "aca", "state_recapture", "star", "niit")
 
+# The slack the premium functions read a MAGI parked on an edge with (`tx.irmaaTier`): within
+# it, a MAGI counts on the lower side of a lower edge and on the upper side of the top edge.
+_SLACK = 1.0
 
-def _entry(year, kind, label, side, distance, cost, affects, note):
-    """One report row. `distance` and `cost` are in today's dollars; `cost` may be None."""
+
+def _entry(year, kind, label, side, distance, cost, affects, note, *, boundary):
+    """One report row. `distance`, `boundary` and `cost` are in today's dollars (same deflator
+    for the distance and the boundary); `cost` may be None. The boundary lets a reader check
+    the entry is inside its band (`NEAR_BAND x boundary`, review 2 Q5)."""
     return {
         "year": int(year),
         "kind": kind,
         "label": label,
         "side": side,
         "amount_today_dollars": round(float(distance), 2),
+        "boundary_today_dollars": round(float(boundary), 2),
         "cost_today_dollars": None if cost is None else round(float(cost), 2),
         "affects": None if affects is None else int(affects),
         "note": note,
@@ -61,7 +70,12 @@ def _irmaa_entries(p):
     The tier edge is the premium year's own threshold amount, compared against the tax year's
     MAGI as `tax_federal.mediCosts` compares them. The cost of crossing an edge is one year of
     the added Part B + Part D surcharge for each month of Medicare coverage in the premium year,
-    priced by `mediCosts` itself at the edge and across it.
+    priced by `mediCosts` itself on each side of the edge.
+
+    Both sides are priced outside the slack (`_SLACK`): just below the edge, and at the edge
+    plus the gap (at least twice the slack). Priced *at* the edge, the top tier -- which
+    includes its edge -- and any gap within the slack read the full surcharge as $0 (step-3
+    review 2, Q7: "2,000 over tier 5" and "0.50 over tier 1" both costed $0.00).
     """
     entries = []
     N = p.N_n
@@ -75,7 +89,7 @@ def _irmaa_entries(p):
         return tx.mediCosts(
             p.yobs, p.horizons, magi, p.prevMAGI, np.asarray(p.gamma_n[:N], dtype=float), N,
             include_part_d=include_part_d, part_d_base_annual_per_person=part_d_base,
-            medical_n=medical_n, mobs=p.mobs, tobs=p.tobs, slack=1.0,
+            medical_n=medical_n, mobs=p.mobs, tobs=p.tobs, slack=_SLACK,
         )
 
     for m in range(N):
@@ -90,17 +104,18 @@ def _irmaa_entries(p):
             distance = magi - edge
             if not _near(distance, edge):
                 continue
-            at_edge = np.array(p.MAGI_n[:N], dtype=float)
-            at_edge[m] = edge
-            across = at_edge.copy()
-            across[m] = edge + abs(distance)
-            cost = float(premiums(across)[n_prem] - premiums(at_edge)[n_prem])
+            below = np.array(p.MAGI_n[:N], dtype=float)
+            below[m] = edge - 2 * _SLACK
+            across = below.copy()
+            across[m] = edge + max(abs(distance), 2 * _SLACK)
+            cost = float(premiums(across)[n_prem] - premiums(below)[n_prem])
             entries.append(_entry(
                 p.year_n[m], "irmaa", f"IRMAA tier {k}",
                 "over" if distance > 0 else "under", abs(distance) / float(p.gamma_n[m]),
                 cost / float(p.gamma_n[n_prem]), p.year_n[n_prem],
                 f"the MAGI of {int(p.year_n[m])} sets the Medicare premiums of "
                 f"{int(p.year_n[n_prem])}",
+                boundary=edge / float(p.gamma_n[m]),
             ))
     return entries
 
@@ -151,6 +166,7 @@ def _gains_entries(p):
             "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
             cost / float(gamma[n]), None,
             "gains above the edge are taxed at 15%",
+            boundary=edge / float(gamma[n]),
         ))
     return entries
 
@@ -182,6 +198,7 @@ def _ss_entries(p):
                 "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
                 None, None,
                 "a ramp: the taxable share of SS rises through the band, no cliff",
+                boundary=edge / float(gamma[n]),
             ))
     return entries
 
@@ -192,6 +209,10 @@ def _aca_entries(p):
     The cost of a boundary is `tax_federal.acaCosts` priced at the boundary and across it: the
     top edge (400% FPL from 2026) is the subsidy cliff, the Medicaid line hands the household
     over to Medicaid at no premium, and the middle ones are contribution steps.
+
+    Known limit (step-3 review 2, Q6): in a state without the Medicaid expansion
+    (`medicaid_n < 1`) the premium tax credit starts at 100% FPL, and that line is not
+    reported. NY expanded (138% FPL), so a NY plan is unaffected.
     """
     entries = []
     if float(getattr(p, "slcsp_annual", 0.0) or 0.0) <= 0:
@@ -235,13 +256,12 @@ def _aca_entries(p):
             across = at_edge.copy()
             across[n] = edge + abs(distance)
             cost = abs(float(aca_cost(across)[n] - aca_cost(at_edge)[n]))
-            if cost <= 0.005 and float(p.aca_costs_n[n]) <= 0:
-                continue  # a boundary that costs nothing here (not a marketplace year)
             entries.append(_entry(
                 p.year_n[n], "aca", label,
                 "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
                 cost / float(gamma[n]), None,
                 "the premium is a share of MAGI (or the SLCSP, whichever is less)",
+                boundary=edge / float(gamma[n]),
             ))
     return entries
 
@@ -276,6 +296,7 @@ def _recapture_entries(p):
             "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
             cost / float(gamma[n]), None,
             "the benefit of the state's lower brackets is taken back in tiers above the start",
+            boundary=edge / float(gamma[n]),
         ))
     return entries
 
@@ -315,18 +336,26 @@ def _star_entries(p):
             "over" if distance > 0 else "under", abs(distance) / float(gamma[m]),
             cost / float(gamma[b]), p.year_n[b],
             f"the {int(p.year_n[m])} income sets the STAR credit of {int(p.year_n[b])}",
+            boundary=edge / float(gamma[m]),
         ))
     return entries
 
 
 def _niit_entries(p):
-    """The NIIT line: 3.8% of net investment income above the MAGI threshold (not indexed)."""
+    """The NIIT line: the MAGI threshold (not indexed) above which the 3.8% tax starts.
+
+    `tax_federal.computeNIIT` charges 3.8% of the smaller of the net investment income
+    (`I_n + Q_n`: interest, dividends and gains) and the MAGI above the threshold -- a kink,
+    not a cliff (step-3 review 3, W7). The exposure gate reads the same income: a year whose
+    investment income is gains or qualified dividends alone (a condo-purchase year that sells
+    stock) is exposed too (review 2, Q2: the gate read `I_n` only).
+    """
     entries = []
     N = p.N_n
     gamma = np.asarray(p.gamma_n[:N], dtype=float)
     status_n = tx.filingStatusIndex_n(p.N_i, p.n_d, N)
     magi = np.asarray(p.MAGI_n[:N], dtype=float)
-    nii = np.asarray(p.I_n[:N], dtype=float)
+    nii = np.asarray(p.I_n[:N], dtype=float) + np.asarray(p.Q_n[:N], dtype=float)
 
     def niit(magi_n):
         return tx.computeNIIT(p.N_i, magi_n, p.I_n, p.Q_n, p.n_d, N)
@@ -334,7 +363,7 @@ def _niit_entries(p):
     for n in range(N):
         if nii[n] <= 0:
             continue
-        edge = 250_000.0 if status_n[n] == 1 else 200_000.0
+        edge = float(tx.niitThreshold[status_n[n]])
         distance = float(magi[n]) - edge
         if not _near(distance, edge):
             continue
@@ -343,13 +372,12 @@ def _niit_entries(p):
         across = at_edge.copy()
         across[n] = edge + abs(distance)
         cost = abs(float(niit(across)[n] - niit(at_edge)[n]))
-        if cost <= 0.005:
-            continue
         entries.append(_entry(
             p.year_n[n], "niit", "NIIT threshold",
             "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
             cost / float(gamma[n]), None,
-            "3.8% of all net investment income, once MAGI crosses the line",
+            "3.8% of the smaller of the investment income and the MAGI above the line",
+            boundary=edge / float(gamma[n]),
         ))
     return entries
 
@@ -367,5 +395,9 @@ def threshold_proximity(plan) -> dict:
     for build in (_irmaa_entries, _gains_entries, _ss_entries, _aca_entries,
                   _recapture_entries, _star_entries, _niit_entries):
         entries.extend(build(plan))
+    # A priced crossing that costs nothing here is not a thing to look at (review 2, Q7: only
+    # the marketplace and NIIT kinds filtered them). Ramps (cost None) stay.
+    entries = [e for e in entries
+               if e["cost_today_dollars"] is None or e["cost_today_dollars"] > 0.005]
     entries.sort(key=lambda e: (e["year"], e["kind"], e["label"]))
     return {"near_band_fraction": NEAR_BAND, "entries": entries}

@@ -87,7 +87,11 @@ pages = {
 
 # The AI assistant chat is opt-in (OWL_ASSISTANT=1) and intended for self-hosted
 # or Docker deployments; the hosted app never sets the variable.
-if assistant_core.assistant_enabled():
+# Fork: library mode (OWL_LIBRARY_DIR) keeps it off whatever OWL_ASSISTANT says. The chat
+# sends the case to an outside model, and the library holds household data (run-library
+# design section 10: "The AI pages stay off"; step-3 review 3, W9). "Connect your AI" stays:
+# it only writes configuration for an MCP server the user runs.
+if assistant_core.assistant_enabled() and not os.environ.get("OWL_LIBRARY_DIR"):
     pages["Tools"].insert(0, st.Page("Assistant.py", icon=":material/forum:"))
 
 # The run library is opt-in too (design section 3): OWL_LIBRARY_DIR names its folder.

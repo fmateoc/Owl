@@ -22,7 +22,8 @@ rules, PROGRESS.md's two step-3 entries and CLAUDE.md's bullets.
 Findings are numbered **Q1-Q9** (Q1-Q6 from the independent pass, Q7-Q8 from the own pass,
 Q9 from both). Both passes converged on Q1 and Q2 independently. Every finding carries a
 probe or a file:line reference. **Q1 and Q3 were folded in on 2026-11-02 after this review**
-(their entries say how); the rest are open.
+(their entries say how); **Q2 and Q4-Q9 on 2026-11-02 too, with review 3's W5-W9**
+("Disposition after review 3" at the end).
 
 ## How I checked
 
@@ -228,3 +229,37 @@ sharpened citation names it accurately. P13's residual routes are Q9.
   before the fixes (matching PROGRESS's claim exactly) and **3884 passed, 2 skipped in 823 s**
   after them -- the three new regression tests. The two skips are the environmental ones:
   the unlicensed MOSEK and the POSIX-only tzset test.
+
+## Disposition after review 3 (2026-11-02)
+
+The open items, fixed on `claude/run-library-step3` together with review 3's W5-W9
+(`run-library-step3-review-3.md`). Every code change has a regression test; the threshold
+tests were also run against the code as committed before the fix and fail there.
+
+- **Q2** `thresholds._niit_entries` gates on `I_n + Q_n`, the income `computeNIIT` charges;
+  its threshold comes from `tx.niitThreshold`, and the note now reads "3.8% of the smaller of
+  the investment income and the MAGI above the line" (review 3, W7). Test:
+  `test_the_niit_line_counts_gains_only_investment_income` (MAGI 260k, gains 50k, no
+  interest: listed, cost 3.8% x 10k).
+- **Q4** the Run page's caption reads "Quality: settled" or "Quality: N problem(s), below";
+  each note is shown once, as a warning. `test_the_quality_line_warns...` counts it.
+- **Q5** (a) every entry now carries `boundary_today_dollars` (same deflator as its
+  amount), and check 7 verifies amount <= band x boundary
+  (`test_every_entry_carries_its_boundary_and_sits_inside_its_band`); (b) and (c) PROGRESS
+  corrected in place (the costs pinned are IRMAA, gains, NIIT and STAR; "138 of 153
+  unsettled rates-exact runs", the quote of `run_suite.py:98`). Three garbled "§" signs in
+  PROGRESS restored on the way.
+- **Q6** declared as a known limit in `_aca_entries`' docstring (NY expanded Medicaid: no
+  effect here).
+- **Q7** IRMAA crossings are priced outside the \$1 slack (`edge - 2` against
+  `edge + max(gap, 2)`), so the top tier and sub-slack gaps cost the full step
+  (`test_the_top_tier_and_sub_slack_gaps_are_priced_at_the_full_step`); every priced kind
+  now drops a \$0 crossing (`test_a_crossing_that_costs_nothing_is_not_listed`: an enhanced
+  STAR credit equal to the basic one).
+- **Q8** `view.objective_value` under maxBequest is `final_bequest_savings_today`, which
+  is the LP objective (`Plan._build_objective_vector`: the accounts after the heirs' tax),
+  not the final bequest with the home; the docstring says what each objective's value is.
+  This goes beyond the "docstring only" first proposed: the value itself was wrong.
+- **Q9** the "edited from run X" mark lives in the case's own dictionary
+  (`sskeys.setRunBase` / `runBase`), so it follows that case through every switch, copy and
+  delete; the route-by-route clearing is gone. Tests: `TestTheRunBaseFollowsItsCase`.

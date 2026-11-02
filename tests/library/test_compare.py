@@ -151,6 +151,30 @@ class TestLead:
         assert home.verdict == "resolved"
 
 
+class TestLeadUnderMaxBequest:
+    """Review 3, W5: under maxBequest the score is the final bequest, which already holds the
+    home; judging it beside the home counted the home twice."""
+
+    def test_more_home_and_less_savings_is_a_trade_off(self):
+        a = make_result(objective="maxBequest", home=1_000_000.0, savings=300_000.0)
+        b = make_result(objective="maxBequest", home=1_150_000.0, savings=200_000.0)
+        c = compare(a, b)
+        assert c.lead["verdict"] == "trade-off"
+        assert "more savings" in c.lead["note"]
+
+    def test_more_savings_with_the_same_home_leads(self):
+        a = make_result(objective="maxBequest", home=1_000_000.0, savings=300_000.0)
+        b = make_result(objective="maxBequest", home=1_000_000.0, savings=320_000.0)
+        assert compare(a, b).lead["verdict"] == "the second result leads"
+
+    def test_different_objectives_are_not_comparable_and_flagged(self):
+        a = make_result(objective="maxSpending")
+        b = make_result(objective="maxBequest")
+        c = compare(a, b)
+        assert c.lead["verdict"] == "not comparable" and "different objectives" in c.lead["note"]
+        assert any("different objectives" in f for f in c.flags)
+
+
 class TestAgreement:
     def test_the_same_ordering_is_resolved(self):
         a, b = make_result(score_value=100_000.0), make_result(score_value=103_000.0)
@@ -252,3 +276,14 @@ class TestWhatMoved:
         a = make_result(by_year=self.YEARS_A)
         rows, totals, columns = what_moved(a, a)
         assert rows == () and totals == () and columns == ()
+
+
+def test_what_moved_matches_the_plans_by_calendar_year():
+    """Review 3, W6: two plans of different plan years were matched by position (A's 2027
+    against B's 2028 under the label 2027). Same spending in the same calendar year is no
+    movement; a year only one plan has is shown against zero."""
+    a = make_result(by_year=[{"year": y, "spending": 1000 * (y - 2025)} for y in (2026, 2027, 2028)])
+    b = make_result(id="b", by_year=[{"year": y, "spending": 1000 * (y - 2025)} for y in (2027, 2028, 2029)])
+    rows, totals, _columns = what_moved(a, b)
+    assert [(r["year"], r["changes"]["spending"]) for r in rows] == [(2026, -1000), (2029, 4000)]
+    assert dict(totals) == {"Spending": 3000}

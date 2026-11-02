@@ -357,8 +357,9 @@ class TestRunZip:
         assert f"{run.folder_name}/run.json" in names
         assert f"{run.folder_name}/inputs/scenario.json" in names
         assert f"{run.folder_name}/inputs/Case.toml" in names
-        # The pickle travels: only a library that wrote it ever loads it (section 10).
-        assert f"{run.folder_name}/results/2026-11-02T10-00-00_quick/plan.pkl" in names
+        # Section 10 (R10): a run from a zip comes without its pickles (review 3, W8: the
+        # hash that guards one travels beside it, so it would vouch for itself).
+        assert not any(n.endswith("plan.pkl") for n in names)
         assert not any(n.endswith(".lock") for n in names)
         assert not any(".attempt-" in n for n in names)
 

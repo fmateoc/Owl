@@ -216,6 +216,44 @@ class TestMessagesSurviveTheRerun:
         assert any("Not queued" in e.value and "plan year is 2025" in e.value for e in at.error)
 
 
+class _Session(dict):
+    """A stand-in for st.session_state: item and attribute access to one dict."""
+
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+
+
+class TestTheRunBaseFollowsItsCase:
+    """Review 2, Q9: the "edited from run X" mark was session-wide and cleared route by route;
+    `switchToCaseName` (Run All Cases), `copyCase` and `deleteCurrentCase` left it in place,
+    so the next save claimed the wrong parent and base. It now lives in the case's dict."""
+
+    @pytest.fixture
+    def kz(self, monkeypatch):
+        import sskeys
+
+        session = _Session(cases={"edited": {}, "other": {}}, currentCase="edited")
+        monkeypatch.setattr(sskeys, "ss", session)
+        return sskeys
+
+    def test_switching_by_name_does_not_carry_the_mark(self, kz):
+        kz.setRunBase("run-1")
+        assert kz.runBase() == "run-1"
+        kz.switchToCaseName("other")  # what owlbridge.runAllCases does, case by case
+        assert kz.runBase() is None
+        kz.switchToCaseName("edited")
+        assert kz.runBase() == "run-1"  # back on the edited case: still its base
+
+    def test_deleting_the_edited_case_drops_the_mark(self, kz):
+        kz.setRunBase("run-1")
+        kz.deleteCurrentCase()
+        assert kz.currentCaseName() == "other" and kz.runBase() is None
+
+    def test_no_current_case_has_no_base(self, kz):
+        kz.ss.currentCase = None
+        assert kz.runBase() is None
+
+
 class TestRunPage:
     def test_the_headline_numbers_come_from_the_result(self, library):
         at = _page("Run.py")
@@ -246,6 +284,9 @@ class TestRunPage:
         at = _page("Run.py")
         assert any("did not settle" in w.value for w in at.warning)
         assert any("under 1%" in w.value for w in at.warning)
+        # Shown once, as a warning; the caption points at it (review 2, Q4).
+        assert _text(at).count("did not settle") == 1
+        assert any(c.value == "Quality: 1 problem(s), below" for c in at.caption)
 
     def test_edit_as_new_run_opens_the_frozen_files(self, library):
         at = _page("Run.py")
@@ -253,7 +294,8 @@ class TestRunPage:
         button.click().run()
         assert not at.exception, [e.value for e in at.exception]
         # The case pages hold the run's inputs, and saving will make a child of *this* run.
-        assert at.session_state["library_base_run_id"] == library.runs()[-1].id
+        case = at.session_state["cases"][at.session_state["currentCase"]]
+        assert case["library_base_run_id"] == library.runs()[-1].id
 
     def test_open_switches_runs_after_the_first_render(self, library):
         """Review P2: the selector's widget state used to override "Open" after run one."""

@@ -154,14 +154,25 @@ def has_current_case() -> bool:
     return ss.currentCase is not None and ss.currentCase in ss.cases
 
 
-def _clear_run_base():
-    """The run library's "Edit as new run" marks the run the case came from (session's
-    `library_base_run_id`); the Library page saves against it (base and parent).
+# The run library's "Edit as new run" marks the run a case came from; the Library page saves
+# that case against it (its base: plan year, budget sidecar; and its parent). The mark lives in
+# the case's own dictionary, so it follows that case through every switch, rename and copy and
+# no other case can inherit it (step-3 review P13, then review 2 Q9: a session-wide mark
+# cleared route by route missed `switchToCaseName` -- Run All Cases switches through every
+# case with it -- `copyCase` and `deleteCurrentCase`).
+RUN_BASE_KEY = "library_base_run_id"
 
-    Any other way a case enters the session or becomes current clears the mark: the next
-    save must not claim the wrong parent (step-3 review P13).
-    """
-    ss.pop("library_base_run_id", None)
+
+def setRunBase(run_id):
+    """Mark the current case as edited from library run `run_id` ("Edit as new run")."""
+    currentCaseDic()[RUN_BASE_KEY] = run_id
+
+
+def runBase():
+    """The library run the current case was opened from, or None."""
+    if not has_current_case():
+        return None
+    return currentCaseDic().get(RUN_BASE_KEY)
 
 
 def switchToCase(key):
@@ -172,10 +183,8 @@ def switchToCase(key):
     # Only set currentCase if the case exists (guards against reconnect/stale widget state).
     if name in ss.cases:
         ss.currentCase = name
-        _clear_run_base()
     elif ss.currentCase is not None and ss.currentCase not in ss.cases:
         ss.currentCase = list(ss.cases)[0] if ss.cases else None
-        _clear_run_base()
 
 
 def switchToCaseName(casename):
@@ -324,7 +333,6 @@ def createCaseFromFile(strio):
 
     ss.cases[name] = dic
     setCurrentCase(name)
-    _clear_run_base()
     return True
 
 
@@ -342,7 +350,6 @@ def openCaseFromPlan(plan, name=None):
         return None
     ss.cases[casename] = dic
     setCurrentCase(casename)
-    _clear_run_base()
     return casename
 
 
@@ -379,7 +386,6 @@ def createNewCase(case):
     base.setdefault("casetoml", "")
     ss.cases[casename] = base
     setCurrentCase(casename)
-    _clear_run_base()
 
 
 def renameCase(key):

@@ -93,7 +93,7 @@ def _save_uploaded_run(name, notes, tags, uploaded):
 def _save_current_case(name, notes, tags):
     dic = kz.currentCaseDic()
     plan = dic.get("plan")
-    base_run_id = st.session_state.get("library_base_run_id")
+    base_run_id = kz.runBase()
     base = None
     if base_run_id:
         try:
@@ -139,7 +139,7 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                 '"Edit as new run" on a run\'s page) and come back here.'
             )
         else:
-            base_run_id = st.session_state.get("library_base_run_id")
+            base_run_id = kz.runBase()
             base_name = _run_name(base_run_id) if base_run_id else None
             base_note = f" against *{base_name}*" if base_name else ""
             st.caption(f"The case **{kz.currentCaseName()}** will be saved as a new run{base_note}.")

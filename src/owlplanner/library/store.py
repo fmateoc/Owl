@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Sequence
 
+from .results import PLAN_PKL
 from .scenario import diff_summaries, normalize, pretty_json, scenario_hash, validate
 
 LIBRARY_JSON = "library.json"
@@ -519,10 +520,13 @@ def run_zip(run: "RunInfo | Path") -> bytes:
     """The run folder as a zip ("Download everything", design section 9.1).
 
     Everything a run holds -- its inputs, its results and their records -- except the OS
-    lock files (`library.lock`, `status.lock`) and the transient folders of live machinery
-    (`results/.attempt-*` staging, `results/.requeue-*` trash). `plan.pkl` travels too: it
-    is only ever loaded against the hash and code stamp in its own record.json
-    (section 10), so a copy opened elsewhere is simply read without it.
+    lock files (`library.lock`, `status.lock`), the transient folders of live machinery
+    (`results/.attempt-*` staging, `results/.requeue-*` trash) and the `plan.pkl` caches.
+    Section 10 (R10): "A run brought in from a zip comes without its pickles." The hash that
+    guards a pickle is in the `record.json` beside it, so for a folder unzipped and copied
+    into a library the check would compare the pickle with a hash it brought along (step-3
+    review 3, W8). Nothing is lost: the durable files carry every number, and "Open in Owl"
+    on a result without its cache says "solve the run again".
 
     A file that vanishes between the listing and the write (a "run again" cleaning the
     folder, step-3 review P5) is not silently dropped from "everything": the zip says which
@@ -538,7 +542,7 @@ def run_zip(run: "RunInfo | Path") -> bytes:
                 continue
             rel = path.relative_to(root)
             if any(part.startswith((".attempt-", ".requeue-")) for part in rel.parts) \
-                    or path.name.endswith(".lock"):
+                    or path.name.endswith(".lock") or path.name == PLAN_PKL:
                 continue
             try:
                 zf.write(path, arcname=str(Path(root.name) / rel))

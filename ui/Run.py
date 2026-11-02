@@ -293,8 +293,12 @@ if entries:
                  + (f" ({record.get('error')})" if record.get("error") else ""),
                  icon=":material/error:")
     else:
-        st.caption(f"Quality: {view.quality_line(result)}")  # design 9.1's plain-language line
-        for note in view.quality_notes(result):
+        # Design 9.1's plain-language line. With problems, the caption only points at them:
+        # echoing the first note there showed it twice (review 2, Q4).
+        notes = view.quality_notes(result)
+        st.caption("Quality: settled" if not notes
+                   else f"Quality: {len(notes)} problem(s), below")
+        for note in notes:
             st.warning(note, icon=":material/warning:")
 
     # -- headline numbers (design 9.1; run_suite.py's score rule) -------
@@ -406,7 +410,7 @@ if entries:
                     import owlbridge as owb
 
                     owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx")
-                st.session_state["library_base_run_id"] = run.id
+                kz.setRunBase(run.id)  # saved on the Library page as its child
                 st.toast("The run's inputs are open in the case pages (Create Case). "
                          "Save them as a new run on the Library page.")
 

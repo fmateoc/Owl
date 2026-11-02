@@ -5,7 +5,8 @@ Q1/Q3), reviewed in a Linux cloud container. The two earlier passes ran on Windo
 pass read the code fresh, re-ran the checks on Linux and probed what the earlier reviews did
 not cover. Findings **W1-W9**. Q2 and Q4-Q9 of review 2 are still open and are not repeated
 here. Each claim below says whether it was executed or read. **W1-W4 were fixed on
-2026-11-02 on `claude/run-library-step3`** (their entries say how); W5-W9 are open.
+2026-11-02 on `claude/run-library-step3`** (their entries say how); **W5-W9 the same
+day**, with review 2's Q2 and Q4-Q9 ("Disposition of W5-W9" at the end).
 
 ## Checks run here
 
@@ -147,3 +148,18 @@ low-risk; either enforce it or reword section 10.
   report uses `ta + tb`, which is stricter, so the map can shade apart two cells that
   work_sweep calls unresolved. That is a difference between the two views, not an error.
 - The localhost guard and the launchers' defaults.
+
+## Disposition of W5-W9 (2026-11-02)
+
+- **W5** `compare.lead_verdict(rows, objective)`: under maxBequest the two numbers are the
+  savings left and the home ("one leaves more savings, the other more home"); two results
+  with different objectives are "not comparable" and flagged. Tests: `TestLeadUnderMaxBequest`.
+- **W6** `compare.what_moved` matches the two plans by calendar year; a year only one has
+  is shown against zero (`test_what_moved_matches_the_plans_by_calendar_year`). The
+  "lifetime" row stays a sum of nominal dollars (its caption says so).
+- **W7** with Q2 (review 2's disposition).
+- **W8** `store.run_zip` leaves `plan.pkl` out, as section 10 says; the zip test asserts it.
+- **W9** library mode does not offer the Assistant chat even with `OWL_ASSISTANT=1`
+  (`ui/main.py`); "Connect your AI" stays (it only writes an MCP configuration). Section 10
+  of the design says so now. Not covered by an automated test: `main.py` is the app's
+  entry script; checked by reading and by compiling it.

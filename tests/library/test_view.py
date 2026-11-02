@@ -190,7 +190,7 @@ class TestMethodAndTolerance:
         assert method_kind(make_result(record={"status": "failed"})) == "no solve"
 
     def test_a_proved_plan_s_tolerance_is_gap_times_the_objective(self):
-        """R2's "reported gap x objective": `Plan._objectiveValue`'s value, not the score.
+        """R2's "reported gap x objective": the LP objective's value, not the score.
 
         Step-3 review P9: under essential lines the score is only the discretionary part of
         the objective (82,000 here), so gap x score would understate the tolerance.
@@ -202,8 +202,10 @@ class TestMethodAndTolerance:
         bequest = make_result(plan={"objective": "maxBequest"},
                               record={"method": {"breakpoint_method": "branch-and-bound"},
                                       "gap": 1e-4})
-        assert objective_value(bequest) == 500_000.0  # the bequest under maxBequest
-        assert tolerance(bequest) == 1e-4 * 500_000.0
+        # Under maxBequest the LP maximizes the savings after the heirs' tax: not the final
+        # bequest (500,000 here), which adds the home the solve does not move (review 2, Q8).
+        assert objective_value(bequest) == 350_000.0
+        assert tolerance(bequest) == 1e-4 * 350_000.0
 
     def test_a_loop_or_local_search_solve_reports_no_gap(self):
         assert tolerance(make_result()) == 0.0

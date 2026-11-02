@@ -8,6 +8,7 @@ from owlplanner.library.view import (
     Result,
     age_text,
     cash_flow,
+    cash_flow_year,
     claiming_ages,
     claiming_ages_text,
     error_bar,
@@ -258,3 +259,24 @@ class TestTheRunPageBlocks:
     def test_the_cash_flow_block_is_passed_through(self):
         cf = {"sources": {"Wages": [100, 0]}, "uses": {"Net spending": [100, 0]}}
         assert cash_flow(make_result(plan=dict(BASE_PLAN, cash_flow=cf))) == cf
+
+    def test_a_negative_flow_is_drawn_on_the_other_side(self):
+        """Review 3, W1: STAR makes the state tax negative (a refund), a negative `other inc`
+        is money out; dropping them broke the drawn balance. Both move sides and the two
+        sides stay equal; flows of fifty cents or less are left out."""
+        cf = {
+            "sources": {"Wages": [50_000, 10_000], "Other income": [0, -1_000],
+                        "Taxable-account withdrawals": [40_000, 71_000]},
+            "uses": {"Net spending": [91_000, 80_000], "State and local tax": [-1_708, 0],
+                     "Federal income tax": [708, 0], "Savings (surplus)": [0.4, 0]},
+        }
+        result = make_result(plan=dict(BASE_PLAN, cash_flow=cf))
+        sources, uses = cash_flow_year(result, 0)
+        assert sources == {"Wages": 50_000.0, "Taxable-account withdrawals": 40_000.0,
+                           "State and local tax, net refund": 1_708.0}
+        assert "State and local tax" not in uses and "Savings (surplus)" not in uses
+        assert sum(sources.values()) == sum(uses.values()) == 91_708.0
+        sources, uses = cash_flow_year(result, 1)
+        assert uses["Other income, net outflow"] == 1_000.0
+        assert sum(sources.values()) == sum(uses.values()) == 81_000.0
+        assert cash_flow_year(result, 5) == ({}, {})  # a year past the rows: nothing

@@ -25,8 +25,9 @@ def _write_result(run, name, *, preset="decision", score=82_000.0, home=150_000.
                   tax_shift=0):
     """One results folder with its record.json, summary.json and plan.json."""
     folder = run.path / "results" / name
-    R.JobRecord.create(folder, run_id=run.id, run_name=run.name, preset=preset, options={},
-                       plan_year=run.plan_year)
+    job = R.JobRecord.create(folder, run_id=run.id, run_name=run.name, preset=preset, options={},
+                             plan_year=run.plan_year)
+    job.finish(R.DONE)  # as the worker leaves it: a solved result is no longer a live job
     options = ({"breakpointMethod": "loop", "withMedicare": "none",
                 "withSSTaxability": 0.85, "withLTCG": "optimize"} if exact
                else {"breakpointMethod": "local-search", "withSSAges": "fixed"})
@@ -163,6 +164,58 @@ class TestLibraryPage:
         assert len(zips) == len(library.runs())
 
 
+class TestMessagesSurviveTheRerun:
+    """Review 3, W3: a message written just before `st.rerun()` was cleared by the rerun; the
+    pages now queue it (`libraryjobs.flash`) and draw it on the next render. W4: Delete is
+    refused while the run has a live solve."""
+
+    def test_a_failed_save_of_the_current_case_is_shown(self, library):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=90)
+        at.session_state["cases"] = {"draft": {"name": "draft"}}  # no plan: cannot be saved
+        at.session_state["currentCase"] = "draft"
+        at.run()
+        next(b for b in at.button if b.label == "Save as a new run").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(e.value.startswith("Cannot save this case yet") for e in at.error)
+        at.run()  # shown once, not on every render after
+        assert not any(e.value.startswith("Cannot save this case yet") for e in at.error)
+
+    def test_delete_is_refused_while_a_solve_waits(self, library, monkeypatch):
+        from owlplanner.library import JobManager
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)  # stays waiting
+        run = library.runs()[0]
+        JobManager(library).enqueue(run)
+        at = _page("Library.py")
+        at.button(key=f"delb_{run.id}").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("Not deleted" in e.value and "Cancel it on the Queue page" in e.value
+                   for e in at.error)
+        assert run.path.is_dir() and run.id in [r.id for r in library.runs()]
+
+    def test_delete_without_a_live_solve_moves_the_run_to_the_trash(self, library):
+        run = library.runs()[0]
+        at = _page("Library.py")
+        at.button(key=f"delb_{run.id}").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert not at.error, [e.value for e in at.error]
+        assert not run.path.exists()
+
+    def test_a_refused_solve_says_why(self, library, monkeypatch):
+        from owlplanner.library import ScenarioError
+
+        def refuse(scenario):
+            raise ScenarioError("the run's plan year is 2025 but this is 2026")
+
+        monkeypatch.setattr("owlplanner.library.jobs.check_plan_year", refuse)
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Solve").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("Not queued" in e.value and "plan year is 2025" in e.value for e in at.error)
+
+
 class TestRunPage:
     def test_the_headline_numbers_come_from_the_result(self, library):
         at = _page("Run.py")
@@ -247,7 +300,10 @@ class TestRunPageDetails:
         assert not at.exception, [e.value for e in at.exception]
         assert at.selectbox(key="run_page_cash_flow_year"), "the year picker did not render"
         text = _text(at)
-        assert "in, the same" in text and "Roth conversion is a move between accounts" in text
+        # Both sides as drawn (review 3, W1): the fixture's 2027 is 90,000 in and out.
+        assert "90,000 in" in text and "90,000 out" in text
+        assert "Roth conversion is a move between accounts" in text
+        assert "drawn as a source" in text  # a negative tax (STAR refund) is money in
 
     def test_the_claiming_age_map_reads_scores_json_from_the_run_folder(self, library):
         run = library.runs()[-1]  # the page's default run

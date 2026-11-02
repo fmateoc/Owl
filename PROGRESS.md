@@ -5442,3 +5442,27 @@ Minor: W5 under maxBequest the score already holds the home (R3's two numbers ov
 second-increment entry too); W8 `run_zip` ships `plan.pkl`, against section 10 (R10);
 W9 library mode does not turn the AI pages off. Review 2's Q2 and Q4-Q9 are still open.
 Nothing fixed in this pass: review only.
+
+## Run-library step 3: review 3's W1-W4 fixed (2026-11-02, on `claude/run-library-step3`)
+
+The four should-fix findings of `fork-notes/run-library-step3-review-3.md`, each entry
+there marked "Fixed" with how:
+
+- **W1** `view.cash_flow_year`: a negative row is drawn on the other side ("..., net
+  refund" / "..., net outflow"), and the Sankey, its default year and its caption (both
+  totals, as drawn) read it. Check 8 also balances the drawn sides: worst 2.00 over the 28
+  years, 23 of them with a row moved across (3,492 before).
+- **W2** `compare.difference(from_inputs=True)`: the home at the end is judged by the
+  fifty-cent rule alone (it is set from the inputs before any solve). The probe's +3%
+  spending with -\$6,000 home now reads "trade-off".
+- **W3** `libraryjobs.flash` / `show_flashes`: a message queued before `st.rerun()` is drawn
+  once after it (import and save errors, the "identical" notice, the Delete and Solve
+  refusals; the Solve refusal also catches `JobsError`).
+- **W4** `JobManager.delete_run` refuses while a solve is waiting or running (check and move
+  under the tick lock), and the Library page's Delete goes through it. The page tests'
+  fixture now leaves its hand-written results `done`, not `waiting`.
+
+11 new tests: test_compare 2, test_view 1, test_jobs 4 (`TestDeleteRun`), test_library_pages
+4 (`TestMessagesSurviveTheRerun`). Checks: `check_library_compare.py` **9/9** (every other
+figure unchanged); full suite **3896 passed, 1 skipped** (9:26, Linux; 3885 + 11);
+flake8/ruff clean but upstream's known items. Open: W5-W9 and review 2's Q2, Q4-Q9.

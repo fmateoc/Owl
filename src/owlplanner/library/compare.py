@@ -10,7 +10,12 @@ The judgment of one difference follows section 9.2 and CLAUDE.md's "Loop noise":
   make it, with either sign -- and at or above 1% it counts (local search decides; the exact
   model is only an agreement check, never a tolerance);
 - a difference of fifty cents or less is no difference at all (TIE_DOLLARS, run_suite.py's
-  `|delta| > 0.5` guard on the "~" marker).
+  `|delta| > 0.5` guard on the "~" marker);
+- a number no solve can move -- the home at the end, `fixed_assets_bequest_value` less the
+  loan left, both set from the Debts and Fixed Assets tables before any solve
+  (`Plan.processDebtsAndFixedAssets`) -- is judged by the fifty-cent rule alone: the loop
+  noise and the MIP gap are properties of a solve, and applying them there let a real home
+  difference read "within noise" and R3 call a trade-off a lead (step-3 review 3, W2).
 
 A variant **leads** only when it is at least as good on both numbers -- the score and the
 home at the end, never added together (R3) -- and better on one beyond the noise rule;
@@ -86,17 +91,22 @@ def _pair_tolerance(a: Result, b: Result, reference: float) -> tuple:
     return tol, " and ".join(reasons)
 
 
-def difference(label: str, a: Optional[float], b: Optional[float], *, ta: Result, tb: Result) -> Judgment:
+def difference(label: str, a: Optional[float], b: Optional[float], *, ta: Result, tb: Result,
+               from_inputs: bool = False) -> Judgment:
     """Judge b - a for one number, against the pair's noise tolerance.
 
     `reference` is a's value (the first result is the reference, as `run_suite.group_table`
-    reads "vs base").
+    reads "vs base"). `from_inputs` marks a number the inputs fix before any solve (the home
+    at the end): no solve noise applies to it, only the fifty-cent rule (review 3, W2).
     """
     if a is None or b is None:
         return Judgment(label, a, b, None, "-")
     delta = b - a
     if abs(delta) <= TIE_DOLLARS:
         return Judgment(label, a, b, delta, "no difference")
+    if from_inputs:
+        return Judgment(label, a, b, delta, "resolved",
+                        "set by the inputs (no solve moves it): no noise band applies")
     tol, why = _pair_tolerance(ta, tb, a)
     if abs(delta) <= tol:
         kind = "within noise"
@@ -278,7 +288,8 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     """The comparison screen's content for two results (design 9.2)."""
     rows = (
         difference("score", score(a), score(b), ta=a, tb=b),
-        difference("home at the end", home_at_end(a), home_at_end(b), ta=a, tb=b),
+        difference("home at the end", home_at_end(a), home_at_end(b), ta=a, tb=b,
+                   from_inputs=True),
         difference("savings left at the end", savings_left(a), savings_left(b), ta=a, tb=b),
         difference("total taxes (lifetime)", total_taxes_today(a), total_taxes_today(b), ta=a, tb=b),
     )

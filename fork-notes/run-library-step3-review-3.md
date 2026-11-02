@@ -4,7 +4,8 @@ Scope: branch `claude/run-library-step3` at `01d0846` (both increments, the P1-P
 Q1/Q3), reviewed in a Linux cloud container. The two earlier passes ran on Windows. This
 pass read the code fresh, re-ran the checks on Linux and probed what the earlier reviews did
 not cover. Findings **W1-W9**. Q2 and Q4-Q9 of review 2 are still open and are not repeated
-here. Each claim below says whether it was executed or read.
+here. Each claim below says whether it was executed or read. **W1-W4 were fixed on
+2026-11-02 on `claude/run-library-step3`** (their entries say how); W5-W9 are open.
 
 ## Checks run here
 
@@ -29,6 +30,14 @@ or any other signed row. Check 8 passes because it sums the raw arrays and its S
 example "State tax refund (STAR credit)") and a negative source as a use, then filter. Make
 check 8 apply the page's own filter in every year.
 
+**Fixed.** `view.cash_flow_year(result, n)` returns the year's drawn sides: a negative use
+becomes a source named "..., net refund", and a negative source becomes a use named
+"..., net outflow". Flows of fifty cents or less are left out of both sides. The Sankey,
+its default year and its caption read it; the caption now gives both totals, as drawn, and
+says a negative tax is drawn as a source. Check 8 also balances the drawn sides in every
+year: worst 2.00, with 23 years that have a row moved across (the old filter gave 3,492).
+Test: `test_a_negative_flow_is_drawn_on_the_other_side` (test_view.py).
+
 **W2. "Home at the end" is judged against the 1% loop-noise band, but no solve can move it,
 so R3's verdict can be wrong (executed on stubs; the source read).** `home_at_end` =
 `final_bequest_today - final_bequest_savings_today` =
@@ -41,6 +50,13 @@ which is false, and the verdict is **"the second result leads"**, though R3 call
 trade-off (more spending, less home). A small remaining loan balance or a price or commission
 difference is that size. Fix: judge the home only against `TIE_DOLLARS` (no loop band and no
 gap: it is not a solve output).
+
+**Fixed.** `compare.difference(..., from_inputs=True)` judges the home only against
+`TIE_DOLLARS`, with the note "set by the inputs (no solve moves it): no noise band
+applies". The probe's pair now reads "trade-off". Tests:
+`test_the_home_is_an_input_so_no_noise_band_hides_a_home_difference` and
+`test_a_proved_pair_judges_the_home_without_its_gap`. `test_within_noise_everywhere...`
+had a +300 home difference that the band used to swallow; it now uses +0.4.
 
 **W3. Messages shown just before `st.rerun()` never reach the user (the mechanism executed;
 the pages read).** `st.rerun()` ends the script run, and the next run clears every element it
@@ -56,6 +72,14 @@ The user clicks and nothing appears to happen. The pages themselves were not dri
 (AppTest has no file_uploader). Fix: keep the message in `st.session_state` and show it on
 the next run, or skip `st.rerun()` on failure.
 
+**Fixed.** `libraryjobs.flash(kind, text)` queues a message in the session, and
+`libraryjobs.show_flashes()` draws it once, under the title of the Library and Run pages.
+The import and save errors, the "identical" notice and its "Not applied" caption, the
+Delete refusal (W4) and the Solve refusal (now also catching `JobsError`) all go through
+it; toasts stay toasts. AppTest tests (`TestMessagesSurviveTheRerun`): a failed save of the
+current case is shown after the rerun and not on the render after that, and a refused
+Solve says why.
+
 **W4. Delete is allowed while the run has a waiting or running solve (executed on Linux).**
 `ui/Library.py:199` calls `lib.delete_run`, and `store.delete_run` moves the folder with no
 check on jobs. The probe queued "decision" on the synthetic baseline, waited for `running`,
@@ -66,6 +90,14 @@ uncounted by `max_parallel`. It later exited without writing a log or record, an
 raises instead and shows a page exception (not tested). Fix: refuse Delete, or disable the
 button, while any job of the run is waiting or running, and say "cancel it on the Queue page
 first".
+
+**Fixed.** `JobManager.delete_run(run)` refuses with `JobsError` ("... has a solve still
+waiting/running ... Cancel it on the Queue page first") and checks and moves under the
+manager's tick lock, so the ticker cannot dispatch in between. The page's Delete goes
+through it and shows the refusal (W3). Tests: `TestDeleteRun` (test_jobs.py: waiting,
+running, cancelled-then-deleted, no solve) and two AppTest tests (refused with a waiting
+job, deleted without one). The page tests' fixture left its hand-written solved results
+at `waiting`, which a real worker never does; they are now `done`.
 
 ## Minor
 

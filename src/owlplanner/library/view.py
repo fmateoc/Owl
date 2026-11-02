@@ -183,6 +183,45 @@ def cash_flow(result: Result) -> dict:
     return result.plan.get("cash_flow") or {}
 
 
+# A flow under this many dollars is not drawn (each row is rounded to whole dollars).
+FLOW_DOLLARS = 0.5
+
+
+def cash_flow_year(result: Result, n: int) -> tuple:
+    """Year n's sources and uses as the Sankey draws them: ({name: $}, {name: $}), all positive.
+
+    `cash_flow` holds signed rows: a negative use is money coming in (NY's refundable STAR
+    credit makes "State and local tax" negative once it exceeds the tax, `st_T_n`), and a
+    negative source is money going out (a negative `other inc`, #225). Dropping them broke
+    the balance the chart claims -- in 23 of the synthetic baseline's 28 years the drawn uses
+    exceeded the sources by up to $3,492 (step-3 review 3, W1). Each one moves to the other
+    side under its own name ("..., net refund" / "..., net outflow"), so the two sides stay
+    equal to the dollar of rounding; flows of fifty cents or less are left out on both sides.
+    """
+    cf = cash_flow(result)
+    sources, uses = {}, {}
+
+    def _value(values):
+        try:
+            return float(values[n]) if n < len(values) else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    for name, values in (cf.get("sources") or {}).items():
+        v = _value(values)
+        if v > FLOW_DOLLARS:
+            sources[name] = v
+        elif v < -FLOW_DOLLARS:
+            uses[f"{name}, net outflow"] = -v
+    for name, values in (cf.get("uses") or {}).items():
+        v = _value(values)
+        if v > FLOW_DOLLARS:
+            uses[name] = v
+        elif v < -FLOW_DOLLARS:
+            sources[f"{name}, net refund"] = -v
+    return sources, uses
+
+
 # -- how good is this result (design 9.1's quality line, run_suite.run_checks) ------
 
 

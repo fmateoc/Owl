@@ -35,6 +35,7 @@ from owlplanner.library import import_case, scenario_from_ui
 
 st.markdown("# :material/database: Library")
 kz.divider("orange")
+libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
 manager = libraryjobs.get_manager()
 lib = manager.library
@@ -49,18 +50,23 @@ def _run_name(rid):
 
 
 def _report_saved(result):
-    """Say what save_run did, including "identical to an existing run" (V8)."""
+    """Say what save_run did, including "identical to an existing run" (V8).
+
+    The callers rerun the page right after, so everything but the toast goes through
+    `libraryjobs.flash` (review 3, W3).
+    """
     if result.created:
         st.toast(f"Saved as **{result.run.name}** ({result.run.folder_name})")
     else:
         other = result.identical_to
-        st.info(
+        libraryjobs.flash(
+            "info",
             f"Identical to *{other.name}* ({other.folder_name}): not saved again. "
             "The run keeps its own inputs; the requested name, notes and tags were not applied."
-            if other else "Not saved: identical inputs already in the library."
+            if other else "Not saved: identical inputs already in the library.",
         )
         if result.dropped:
-            st.caption(f"Not applied: {result.dropped}")
+            libraryjobs.flash("caption", f"Not applied: {result.dropped}")
 
 
 def _save_uploaded_run(name, notes, tags, uploaded):
@@ -79,7 +85,7 @@ def _save_uploaded_run(name, notes, tags, uploaded):
             result = lib.save_run(name=name or Path(paths["case"]).stem, scenario=scenario,
                                   notes=notes, tags=tuple(t for t in tags if t.strip()))
         except Exception as exc:  # noqa: BLE001 - shown to the user, not raised
-            st.error(f"Cannot import this case: {exc}", icon=":material/error:")
+            libraryjobs.flash("error", f"Cannot import this case: {exc}")
             return
         _report_saved(result)
 
@@ -100,7 +106,7 @@ def _save_current_case(name, notes, tags):
                               parent=base_run_id, notes=notes,
                               tags=tuple(t for t in tags if t.strip()))
     except Exception as exc:  # noqa: BLE001 - an incomplete case is shown, not raised
-        st.error(f"Cannot save this case yet: {exc}", icon=":material/error:")
+        libraryjobs.flash("error", f"Cannot save this case yet: {exc}")
         return
     _report_saved(result)
 
@@ -196,7 +202,12 @@ for run in runs:
         st.caption("Moves the run to `library/trash/` (emptied by hand). Children keep "
                    "their parent id and show it as deleted.")
         if st.button("Delete", type="primary", key=f"delb_{run.id}"):
-            lib.delete_run(run)
+            # Through the manager: a run with a waiting or running solve is refused (review
+            # 3, W4: the folder used to move to trash/ under a live worker, untracked).
+            try:
+                manager.delete_run(run)
+            except Exception as exc:  # noqa: BLE001 - shown after the rerun, not raised
+                libraryjobs.flash("error", f"Not deleted: {exc}")
             st.rerun()
     st.divider()
 

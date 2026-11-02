@@ -271,6 +271,26 @@ class JobManager:
         self.tick()
         return job
 
+    def delete_run(self, run: "RunInfo | str") -> Path:
+        """Move a run to trash/ (`Library.delete_run`), refused while one of its solves is live.
+
+        A waiting or running job lives in the run's own folder: moving it took the job out of
+        the queue (the manager scans `runs/` only) while its worker kept solving, uncounted by
+        `max_parallel` and with nothing left on the Queue page to cancel; the trashed record
+        then said "running" forever (step-3 review 3, W4). The check and the move happen under
+        the tick lock, so the ticker cannot dispatch a waiting job in between.
+        """
+        info = run if isinstance(run, RunInfo) else self.library.get(run)
+        with self._tick_lock:
+            live = [job for job in self.jobs(info) if job.state in (R.WAITING, R.RUNNING)]
+            if live:
+                names = ", ".join(f"{job.id} ({job.state})" for job in live)
+                raise JobsError(
+                    f"{info.name} has a solve still {live[0].state}: {names}. Cancel it on the "
+                    "Queue page first, then delete the run."
+                )
+            return self.library.delete_run(info)
+
     def stop_all(self) -> None:
         """Every waiting and running job is cancelled; running ones are killed (S9)."""
         for job in self.jobs():

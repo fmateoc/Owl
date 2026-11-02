@@ -33,6 +33,27 @@ def library_address_ok() -> bool:
     return str(st.get_option("server.address")).strip().lower() in ("localhost", "127.0.0.1")
 
 
+# Messages a page shows across its own `st.rerun()` (step-3 review 3, W3). A rerun ends the
+# script run, and the next run clears every element it does not draw again (toasts excepted),
+# so an error or notice written just before `st.rerun()` was never seen: the user clicked
+# "Import" and nothing appeared to happen. A page queues them here and draws them first.
+_FLASH_KEY = "library_flash"
+_FLASH_KINDS = ("error", "warning", "info", "success", "caption")
+
+
+def flash(kind: str, text: str) -> None:
+    """Queue one message for the next render of the page (`show_flashes`)."""
+    if kind not in _FLASH_KINDS:
+        raise ValueError(f"unknown message kind {kind!r}")
+    st.session_state.setdefault(_FLASH_KEY, []).append((kind, str(text)))
+
+
+def show_flashes() -> None:
+    """Draw (once) the messages queued before the last rerun."""
+    for kind, text in st.session_state.pop(_FLASH_KEY, None) or []:
+        getattr(st, kind)(text)
+
+
 @st.cache_data(show_spinner=False)
 def _run_zip_cached(path: str, fingerprint: tuple) -> bytes:
     return run_zip(Path(path))

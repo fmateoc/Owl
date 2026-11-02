@@ -36,12 +36,13 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import PRESETS, ScenarioError, agemap, load_plan, preset_solves
+from owlplanner.library import JobsError, PRESETS, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
 from owlplanner.library import view
 
 st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
+libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
 _PRESET_HELP = (
     "quick: the self-consistent loop for every tax family (no MIP, no local search), "
@@ -85,32 +86,26 @@ def _things_to_look_at(result):
 def _cash_flow_sankey(result, by_year):
     """I6: one year's sources and uses as a Sankey (plan.json's `cash_flow`, nominal $)."""
     cf = view.cash_flow(result)
-    sources_all = cf.get("sources") or {}
-    uses_all = cf.get("uses") or {}
-    if not sources_all or not by_year:
+    if not (cf.get("sources") and cf.get("uses")) or not by_year:
         st.caption("This solve's files carry no cash-flow detail (solved before this build).")
         return
     years = [row["year"] for row in by_year]
 
-    def _at(rows, n):
-        return {name: float(values[n]) for name, values in rows.items()
-                if n < len(values) and values[n] > 0.5}
-
     # Default to the purchase year, then the first Medicare year (the design's two uses).
     default = 0
     for n in range(len(years)):
-        if _at(uses_all, n).get("Big-ticket purchases", 0) > 0:
+        if view.cash_flow_year(result, n)[1].get("Big-ticket purchases", 0) > 0:
             default = n
             break
     else:
         for n in range(len(years)):
-            if _at(uses_all, n).get("Medicare premiums", 0) > 0:
+            if view.cash_flow_year(result, n)[1].get("Medicare premiums", 0) > 0:
                 default = n
                 break
     n = st.selectbox("Year", list(range(len(years))), index=default,
                      format_func=lambda i: str(years[i]), key="run_page_cash_flow_year")
-    sources = _at(sources_all, n)
-    uses = _at(uses_all, n)
+    # Signed rows land on the side they flow to (a STAR refund is money in, review 3 W1).
+    sources, uses = view.cash_flow_year(result, n)
     if not sources or not uses:
         st.caption(f"{years[n]}: nothing to show.")
         return
@@ -133,8 +128,10 @@ def _cash_flow_sankey(result, by_year):
     fig.update_layout(height=430, font=dict(size=11))
     st.plotly_chart(fig, width="stretch")
     st.caption(
-        f"{years[n]}: ${total:,.0f} in, the same ${total:,.0f} out (nominal dollars of that "
-        "year). A Roth conversion is a move between accounts: it appears on both sides. "
+        f"{years[n]}: \\${total:,.0f} in, \\${sum(uses.values()):,.0f} out (nominal dollars of "
+        "that year; the two differ only by rounding). A Roth conversion is a move between "
+        "accounts: it appears on both sides. A tax that comes out negative (a refundable "
+        "credit larger than the tax, such as STAR) is money in: it is drawn as a source. "
         "Spending is split along the budget's lines when the case has a budget sheet."
     )
 
@@ -421,8 +418,9 @@ with st.expander("Solve this run"):
         for solve in preset_solves(preset):
             try:
                 job = manager.enqueue(run, preset=solve)
-            except ScenarioError as exc:  # a run from another plan year (R1)
-                st.error(str(exc), icon=":material/event_busy:")
+            except (ScenarioError, JobsError) as exc:  # a run from another plan year (R1)
+                # Shown after the rerun below (review 3, W3: an st.error here vanished).
+                libraryjobs.flash("error", f"Not queued: {exc}")
                 break
             st.toast(f"Queued {job.id} ({solve})")
         st.rerun()

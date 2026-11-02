@@ -125,8 +125,30 @@ class TestLead:
         assert c.lead["verdict"] == "trade-off"
 
     def test_within_noise_everywhere_is_no_difference(self):
-        c = self._rows(a={}, b={"score_value": 82_400.0, "home": 150_300.0, "savings": 350_000.0})
+        c = self._rows(a={}, b={"score_value": 82_400.0, "home": 150_000.4, "savings": 350_000.0})
         assert c.lead["verdict"] == "no difference beyond the noise rule"
+
+    def test_the_home_is_an_input_so_no_noise_band_hides_a_home_difference(self):
+        """Review 3, W2: the home at the end is set from the Debts and Fixed Assets tables
+        before any solve, so the 1% loop band (here 1,500) must not swallow a 1,000 home
+        difference -- more spending with less home is a trade-off, not a lead."""
+        c = self._rows(a={}, b={"score_value": 84_500.0, "home": 149_000.0, "savings": 350_000.0})
+        home = next(r for r in c.rows if r.label == "home at the end")
+        assert home.verdict == "resolved" and "set by the inputs" in home.note
+        assert c.lead["verdict"] == "trade-off"
+        # The score keeps its noise band: under 1% of 82,000 is still unresolved.
+        c = self._rows(a={}, b={"score_value": 82_400.0, "home": 151_000.0, "savings": 350_000.0})
+        score_row = next(r for r in c.rows if r.label == "score")
+        assert score_row.verdict == "within noise"
+        assert c.lead["verdict"] == "the second result leads"
+
+    def test_a_proved_pair_judges_the_home_without_its_gap(self):
+        """A proved plan's tolerance (gap x objective) is a property of the solve: the home
+        difference is resolved even when it is smaller than that tolerance."""
+        a = make_result(kind="proved", gap=1e-2, score_value=82_000.0)
+        b = make_result(kind="proved", gap=1e-2, score_value=82_000.0, home=149_900.0)
+        home = next(r for r in compare(a, b).rows if r.label == "home at the end")
+        assert home.verdict == "resolved"
 
 
 class TestAgreement:

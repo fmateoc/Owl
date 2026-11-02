@@ -362,3 +362,32 @@ class TestStopAll:
         # Cooperative for a process that is not ours to kill (the token stops its worker).
         doc = fresh(running).doc
         assert doc["state"] == R.RUNNING and doc["cancel"] is True
+
+
+class TestDeleteRun:
+    """Review 3, W4: deleting a run under a live solve used to move the folder to trash/ while
+    its worker kept solving, untracked by the queue."""
+
+    def test_a_run_with_a_waiting_solve_is_not_deleted(self, library, manager, run):
+        manager.enqueue(run)
+        with pytest.raises(JobsError, match="still waiting"):
+            manager.delete_run(run)
+        assert run.path.is_dir() and [r.id for r in library.runs()] == [run.id]
+
+    def test_a_run_with_a_running_solve_is_not_deleted(self, library, manager, run):
+        make_running_job(run.path / "results" / "d", pid=os.getpid(),
+                         pid_started=process_start_token(os.getpid()))
+        with pytest.raises(JobsError, match="Cancel it on the Queue page first"):
+            manager.delete_run(run)
+        assert run.path.is_dir()
+
+    def test_once_cancelled_the_run_goes_to_the_trash(self, library, manager, run):
+        job = manager.enqueue(run)
+        manager.cancel(job)
+        target = manager.delete_run(run)
+        assert target.parent.name == "trash" and not run.path.exists()
+        assert library.runs() == []
+
+    def test_a_run_with_no_solve_is_deleted(self, library, manager, run):
+        target = manager.delete_run(run.id)
+        assert target.is_dir() and library.runs() == []

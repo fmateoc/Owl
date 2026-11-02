@@ -23,9 +23,11 @@ And, for the step-3 second increment (design 14.1: I3/I6/I7):
 
 7. plan.json carries "Things to look at" (I3): the thresholds block, every entry inside its
    band and with the fields the run page shows;
-8. plan.json carries the one-year cash flow (I6): sources equal to uses in every year, and
-   the run page's Sankey year (the first with a purchase, else the first Medicare year) has
-   both sides non-empty;
+8. plan.json carries the one-year cash flow (I6): sources equal to uses in every year, both
+   in the signed rows and as the Sankey draws them (`view.cash_flow_year`: a negative row,
+   such as the state tax in a STAR-refund year, drawn on the other side -- review 3, W1),
+   and the run page's Sankey year (the first with a purchase, else the first Medicare
+   year) has both sides non-empty;
 9. the claiming-age map (I7) reads a real work_sweep scores file and shades ties together.
 
 Prints one line per check and a summary; exits 1 if any check fails.
@@ -187,23 +189,32 @@ def main() -> int:
         cf = a2.plan.get("cash_flow") or {}
         years = [row["year"] for row in a2.plan.get("by_year") or []]
         worst = 0.0
+        drawn_worst = 0.0
+        moved = 0  # years with a signed row drawn on the other side
         for n in range(len(years)):
             s = sum(v[n] for v in (cf.get("sources") or {}).values())
             u = sum(v[n] for v in (cf.get("uses") or {}).values())
             worst = max(worst, abs(s - u))
+            drawn_in, drawn_out = view.cash_flow_year(a2, n)
+            drawn_worst = max(drawn_worst, abs(sum(drawn_in.values()) - sum(drawn_out.values())))
+            moved += any(k.endswith((", net refund", ", net outflow"))
+                         for k in (*drawn_in, *drawn_out))
         sankey_year = 0
         for n in range(len(years)):
-            if (cf.get("uses") or {}).get("Big-ticket purchases", [0] * len(years))[n] > 0:
+            if view.cash_flow_year(a2, n)[1].get("Big-ticket purchases", 0) > 0:
                 sankey_year = n
                 break
-        flows_in = sum(v[sankey_year] for v in (cf.get("sources") or {}).values())
-        flows_out = sum(v[sankey_year] for v in (cf.get("uses") or {}).values())
-        # Each row is rounded to whole dollars in plan.json: at most half a dollar each.
+        drawn_in, drawn_out = view.cash_flow_year(a2, sankey_year)
+        flows_in, flows_out = sum(drawn_in.values()), sum(drawn_out.values())
+        # Each row is rounded to whole dollars in plan.json: at most half a dollar each, and
+        # the drawn sides also leave out the flows of fifty cents or less.
         rounding = 0.5 * (len(cf.get("sources") or {}) + len(cf.get("uses") or {}))
-        ok = bool(cf) and worst <= rounding and flows_in > 0 and flows_out > 0
+        ok = (bool(cf) and worst <= rounding and drawn_worst <= 2 * rounding
+              and flows_in > 0 and flows_out > 0)
         failures += 0 if ok else 1
         print(f"{'ok  ' if ok else 'FAIL'} cash flow: sources = uses in {len(years)} year(s) "
-              f"(worst rounding {worst:,.2f}); {years[sankey_year] if years else '-'}: "
+              f"(worst rounding {worst:,.2f}; as drawn {drawn_worst:,.2f}, {moved} year(s) with a "
+              f"signed row moved across); {years[sankey_year] if years else '-'}: "
               f"{flows_in:,.0f} in, {flows_out:,.0f} out", file=_real_out)
 
         # 9. the claiming-age map over a real work_sweep file (I7) -----------------

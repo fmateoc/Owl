@@ -5103,3 +5103,6 @@ Done:
 Checks: full suite **3773 passed / 1 skipped** (10:41; 3782 before, with 18 `as_of` tests removed
 and 9 plan-year tests added). flake8 clean, ruff only upstream's four B905s.
 `check_library_jobs.py` 5/5.
+
+`main` fast-forwarded to `claude/fervent-cerf-s86b65` at `11ecefab` (2026-11-02, the user's call):
+run-library step 2, the fixes from all three reviews, and the `as_of` input dropped.

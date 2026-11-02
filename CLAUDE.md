@@ -26,6 +26,7 @@ Read these first, in this order:
   - `requeue` is all-or-nothing and keeps `solve.prev.log`;
   - `update` raises on an unreadable record;
   - `quick` puts every `"optimize"` family on the loop (`presets.resolve_options`).
+  `main` fast-forwarded to `claude/fervent-cerf-s86b65` (`11ecefab`: step 2, the three reviews' fixes, the `as_of` input dropped) on 2026-11-02.
 - Fork work beyond upstream:
   - typed state params (`StateTaxParams`; `st_taxParams` and `st_schedule` return it, where upstream returns a tuple and a dict; flag fields use upstream's dict keys `conv_n` (a string per year since #203), `tax_ss_n`, `pension_eligible_n`, `fed_sd_n`, `senior_bonus_n`);
   - SC-loop registry `_SC_PARAMS`;

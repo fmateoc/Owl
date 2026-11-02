@@ -4840,3 +4840,132 @@ for `start_date = "today"`). `tests/library` 84 passed.
 
 Full suite on the T1-T4 commit: 3693 passed / 1 skipped (9:32). `main` fast-forwarded to
 `claude/run-library-step1` on 2026-11-02 (user).
+
+## Run-library step 2: jobs and the `as_of` date (2026-11-02, on `claude/run-library-step2`)
+
+Build step 2 of `fork-notes/run-library-design.md` (section 11): "Jobs: detached worker processes
+with PID and heartbeat, the singleton manager, queue page, results folder, `record.json`, plan
+cache; the frozen 'as of' date (D4 b, R1, S1: the run's own 'as of' date, as an `owlcli --as-of`
+and worker input, S7)". Code in `src/owlplanner/library/`, `src/owlplanner/asof.py`, `ui/Queue.py`
+and the "Open in Owl" glue; 55 new tests.
+
+**The `as_of` date (S1, S7) is a first-class backend input, not a monkeypatch.** `owlplanner.asof`
+(`today()`, `set_as_of`, `as_of(...)` context) is honoured by every calendar read in the backend:
+every `date.today()` in `src/owlplanner` (78 call sites in 15 modules) now goes through it. No
+override, no behaviour change. Settable by `owlcli run|compare|frontier|explain --as-of YYYY-MM-DD`
+(a parse-time callback, so `load_toml`'s clamp and `hfp_io`'s conditioning see it too) and by the
+worker. `tests/conftest.py` pins the suite with it (the old `date` monkeypatch stays for test
+modules' own reads); the two tests that moved the date by patching `plan.date` (`midyear`,
+`october_2026`) now move the input. The scenario (schema v1) records it as **the balances' date**
+-- `basic_info.start_date`, the Account Balances page's "Account balance date", exactly �6.1's
+"as of" -- validated to fall in the run's plan year (`validate` refuses, and so does the worker:
+"the library refuses to solve a run outside its plan year", R1). Both entry paths capture *at* it
+(`asof.as_of(...)` around `hfp_io.read`'s conditioning and `saveContributions`), so V5's import
+date dependence is pinned to the run's plan year; a `start_date = "today"` case is stored with its
+capture date, so re-importing a run's own files still gives the same hash. `resolve_as_of` is what
+the worker freezes to.
+
+**Jobs (section 8.2).** `results.py`: one results folder per solve (`results/<queued>_<preset>/`)
+with `status.json` (the job record, on disk from the moment the job is queued, S2: state, PID,
+process start token, heartbeat, per-job cancel token, step, last log line, loop iteration),
+`record.json` (�5's fields: preset and options, Owl version and commit via `version.engine_provenance`,
+the frozen date, solver, status, gap, iterations, converged, wall time, warnings, rate method and
+seed, Python and package versions), `summary.json`, `plan.json`, `Results.xlsx`, `solve.log`, and
+the `plan.pkl` cache (loaded only against the sha256 in `record.json` and the same environment,
+dropped when stale: S6, R10). `worker.py`: `python -m owlplanner.library.worker` claims the job
+under its token, freezes the date, builds the plan from the run's frozen files (the `owlcli run`
+route) and solves with the preset's options; cancellation is checked before every step, on every
+heartbeat (30 s, S8's self-check on wake) and throttled on every log line. `jobs.py`: `JobManager`
+(one per server, `st.cache_resource`; the queue lives on disk), enqueue -> `tick()` dispatch up to
+`max_parallel` (default 1), adoption at start-up (a live PID with a fresh heartbeat keeps its job,
+a dead or silent one is interrupted with "run again"), `cancel` (token first, verified kill second,
+S9: `procs.kill_process` only against the recorded process start token), `run_again` (fresh token:
+never two workers on one run, S8), `stop_all`. Presets (`presets.py`): `quick` (default loop,
+claiming ages held) and `custom`; `decision` and the two Ages presets come with steps 3 and 6.
+`ui/Queue.py` (a "Run Library" nav section): the jobs list with elapsed time, heartbeat age, the
+last log line and the loop iteration, self-refreshing (`st.fragment(run_every=2)`), cancel /
+run again / stop all, and a small "Solve a run" expander so the page is useful before step 3's run
+page exists.
+
+**"Open in Owl" (R10's open item: "to be tried") was tried and was broken.** `owlbridge.genDic`
+was dead code (nothing called it) and raised `IndexError` on every HSA case: its account keys
+listed three accounts of four (`accName = ["txbl", "txDef", "txFree"]`, `for j1 in range(plan.N_j)`
+with N_j=4). Fixed; `owlbridge.openCaseFromPlan` + `sskeys.openCaseFromPlan` build the case from a
+solved Plan and set the keys `runPlan` writes after a solve (`caseStatus` from the plan, `summaryDf`,
+`metricsDict`), so the Graphs page renders from the cached `plan.pkl` with no solve. Verified with
+Streamlit's AppTest (`tests/ui/test_open_in_owl.py`): the page renders and `runPlan` is never
+called.
+
+**Checks (section 11's Check column), all green:** `fork-notes/synthetic/check_library_jobs.py`
+on the synthetic baseline (`Case_ari+noa.toml` + its workbook) -- a run solves in the background
+(real detached worker, 11.4 s, record with gap 0.0007 and 1 warning), a closed tab / a server
+restart / a still-waiting queue lose nothing (a waiting job dispatched by a fresh manager, a live
+worker's job adopted, a dead one interrupted), "Open in Owl" builds 128 page keys from the cached
+plan with `caseStatus` "solved", and two solves on different days give identical summary and plan.
+55 new tests: `tests/library/` 137 (the as_of input and its CLI reproducibility; the job record's
+merge semantics -- a heartbeat never loses a cancel; adoption; cancel and the verified kill; the
+worker's results folder, failure record, cancel-before-write, and the two-days determinism with
+the wall clock mocked), `tests/ui/test_open_in_owl.py` 2.
+
+**Found and fixed while building:** (a) `genDic`'s account keys, above -- the step-2 check earning
+its keep; (b) `Logger` streams do not pickle, so `plan.pkl` could not exist: `Logger.__getstate__`
+now drops non-picklable streams and rebuilds the default pair (mirroring its `__deepcopy__`
+policy; `HistoricalRateModel` and `_interpolator` came along once the logger pickled); (c) the
+suite's `freeze_year` fixture rebinds `datetime.date` itself, so `asof._parse` duck-types dates
+instead of isinstance-checking them; (d) `plan_to_dict` flattens `plan_convergence` ("convergence"
+is the type string there), so `build_record` normalizes both shapes.
+
+**Known limits of this step:** `record.json`'s "iterations" is the self-consistent loop's count
+from the solve log (the plan keeps none; a branch-and-bound preset will record nodes too); the
+determinism guarantee covers deterministic and explicitly seeded rates -- a stochastic rate
+method reseeds per call unless the case pins `rateSeed`; a cancelled job mid-solve stops at the
+next log line or step boundary (the verified kill covers "stop now"); the preset is chosen at
+queue time (it joins the scenario and the inputs hash with step 4's run method); §8.2's time
+estimate and the `max_parallel` setting are not exposed yet (the manager takes it, default 1);
+two managers over one library are out of scope (one per server, R5); §10's library-mode launcher
+and localhost refusal come with the library pages (step 3); the `worker_argv` substitution is for
+tests only.
+
+**Step 2 independent review and fixes (2026-11-02, same session).** An independent reviewer
+agent went over the step-2 code against the design (`F1-F10`; it ran the tests and wrote race
+probes in `%TEMP%\opencode`). Freeze completeness, R1's refusal, the as_of derivations and
+hashing, `record.json`'s fields, the plan cache, the kill path and the "Open in Owl" check were
+confirmed sound; the job record's concurrency was not. All findings fixed the same day:
+
+- **F1 (double dispatch):** two Queue fragments tick one manager concurrently, and `_spawn`
+  marked the job running only after `Popen`, so one waiting job could be spawned twice (one
+  probe reproduced it: 2 spawns, one token). Dispatch is now a compare-and-swap under the job's
+  lock (`JobRecord.take_for_dispatch`: only one dispatcher takes a waiting job) and `tick()` runs
+  under a manager lock.
+- **F2 (the wake that kills "run again"):** a stale worker's `finish()` wrote over the re-queued
+  attempt's record, and the new worker then stopped on it. Every worker write is token-guarded
+  now (`JobRecord.update(token=...)` refuses once the job runs under a new token; a stale worker
+  writes neither `status.json` nor `record.json`).
+- **F3 (Windows, lost updates):** `status.json` read-modify-write was unserialized, and
+  `os.replace` raises while any reader holds the file open (the Queue page reads every two
+  seconds): heartbeats died silently and a cancel could fail. All record writes go through a
+  per-job OS lock (`status.lock`, the S5 lesson applied to the job record) and the rename retries
+  (falling back to an in-place write after 2 s; `JobRecord.read` retries torn reads). Probe A:
+  0/300 lost cancels under a hammering heartbeat; probe D: ok with a reader holding the file.
+- **F4 (tests without teeth):** the two-days determinism tests solved `Case_bill` under two
+  pretend days in one year -- byte-identical even with a broken freeze. The pretend days now
+  straddle a New Year, and `TestTheDateReachesTheSolve` pins S1's month sensitivity directly
+  (`Plan._ssaOpenAges` follows the `as_of` date and ignores the wall clock).
+- **F5 (thread leak):** `asof` was a process global, so one session's `as_of(...)` capture dated
+  another session's solve (Streamlit sessions are threads; the probe showed 2000/2000 leaks).
+  The context manager is thread-local now; `set_as_of` stays process-wide (probe: 0/2000).
+- **F6 (S3's record):** an interrupted solve now leaves its `record.json` (status "interrupted"),
+  and `run_again` starts clean -- the partial artifacts go, the old record is kept as
+  `record.prev.json`.
+- **F7 (adoption):** a live PID whose process start token is not the recorded one is not adopted
+  (a reused PID is not ours, S9); the heartbeat thread survives a transient write failure instead
+  of dying silent (a live worker would have been marked interrupted).
+- **F8-F10 (honesty and shape):** `iterations` and the determinism claim are qualified above;
+  `load_plan`'s docstring no longer overstates R10 (a zip-import must drop pickles; later steps);
+  the env var is the design's `OWL_LIBRARY_DIR` and it switches the "Run Library" nav section on
+  (like `OWL_ASSISTANT=1`); `import_case(as_of=...)` records the date it conditioned at;
+  `openCaseFromPlan` re-attaches the case's log stream to the restored plan.
+
+Next: step 3 (the library page, the run page, the comparison of two results with the noise rule),
+then step 4 (the scenario model and builder). The `as_of` input goes upstream as a design issue
+(`fork-notes/issue-as-of-date.md`, for the user to file).

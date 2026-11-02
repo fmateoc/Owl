@@ -7,6 +7,37 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 2: jobs and the `as_of` date (2026-11-02)
+
+`src/owlplanner/library/` + `owlplanner.asof`: the "as of" date is a first-class input (design
+section 8.3 b, S1, S7) -- `asof.set_as_of()` / `asof.today()`, honoured by every calendar read in
+the backend (every `date.today()` in `src/owlplanner` now goes through it), settable by
+`owlcli run|compare|frontier|explain --as-of YYYY-MM-DD` and by the worker, recorded in
+`record.json`; `tests/conftest.py` pins the suite with it. The scenario (schema v1) records it as
+the balances' date (`basic_info.start_date`), validated to fall in the run's plan year, and both
+entry paths capture at it (V5's import conditioning pinned). Background jobs (section 8.2):
+detached worker processes (`worker.py`) with a PID, a process start token and a 30 s heartbeat, a
+per-server `JobManager` over a queue that lives on disk (`status.json` in the results folder from
+the moment a job is queued, S2), adoption/interrupt on restart (S8), cancel by token and by
+verified kill (S9), "run again"; each solve writes its results folder: `record.json` (preset and
+options, Owl version and commit, the frozen date, solver, status, gap, iterations, converged, wall
+time, warnings, rate method and seed, Python and package versions), `summary.json`, `plan.json`,
+`Results.xlsx`, `solve.log` and the `plan.pkl` cache (hash- and environment-checked, dropped when
+stale; R10, S6). UI: a Queue page (`ui/Queue.py`) and "Open in Owl" (`owlbridge.openCaseFromPlan`
++ `sskeys.openCaseFromPlan`) restoring a cached plan into the pages with no solve. Found and fixed
+by the check: `owlbridge.genDic` named three accounts of four (every HSA case broke) and was never
+called before. Presets `quick` and `custom` (`presets.py`; the two Ages presets come with step 6).
+Checks: `fork-notes/synthetic/check_library_jobs.py` 4/4 on the synthetic baseline (background
+solve in 11 s, restart survival, 128 page keys from the cached plan, two solves on different days
+identical); 55 new tests (`tests/library/` 137, `tests/ui/test_open_in_owl.py` 2). An independent
+review of the step's code (F1-F10, race probes included) was folded in the same day: job dispatch
+is a compare-and-swap under a per-job OS lock (`status.lock`, serialized read-modify-write with a
+retrying rename -- heartbeats, cancels and two managers no longer lose updates on Windows), every
+worker write is token-guarded (a worker that wakes after "run again" cannot clobber the new
+attempt), an interrupted solve keeps its record and a retry starts clean, the determinism tests
+straddle a New Year and pin the claiming-ages month sensitivity, and `asof`'s context freeze is
+thread-local (one session's capture cannot date another session's solve).
+
 ### Run library, build step 1: second review fixed (2026-11-02)
 
 `fork-notes/run-library-step1-review-2.md`, T1-T4. The stored case dictionary is canonical (the

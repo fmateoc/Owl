@@ -5417,3 +5417,28 @@ P13's clearing of `library_base_run_id` misses `switchToCaseName`/`copyCase`/
 Checks after the fixes: `check_library_compare.py` **9/9** (every figure unchanged);
 54 passed over the three touched test files; flake8 and ruff clean on the six touched files.
 Full suite: **3884 passed, 2 skipped** (13:43; 3881 + the three new tests, no flakes).
+
+## Run-library step 3, third review (2026-11-02, on `claude/compassionate-gates-8q0fmn`, from `claude/run-library-step3` `01d0846`)
+
+A third pass over step 3, on Linux (the first two ran on Windows):
+`fork-notes/run-library-step3-review-3.md`, findings W1-W9. Re-run here: full suite **3885
+passed, 1 skipped** (11:01; the POSIX-only tzset test runs here), `check_library_compare.py`
+**9/9** with every figure unchanged, flake8/ruff clean but upstream's known items.
+
+Should-fix, all reproduced: **W1** the one-year Sankey drops negative flows (`ui/Run.py:97`).
+STAR makes "State and local tax" negative in 23 of the synthetic baseline's 28 years: drawn
+in vs out differ by up to \$3,492, while the caption says they are equal. Check 8 misses it
+(raw sums, year 2027). **W2** "home at the end" is judged with the 1% loop-noise band, though
+it is computed from inputs before any solve (`processDebtsAndFixedAssets`). Probe: +3%
+spending and -\$6,000 home reads "the second result leads", where R3 says trade-off. **W3**
+`st.error`/`st.info` followed by `st.rerun()` vanish: the Library page's import and save
+errors, V8's "identical to an existing run" notice, and the Run page's plan-year refusal.
+**W4** Delete during a running solve. The run went to `trash/`, the manager listed no job,
+and the worker kept solving untracked for at least 60 s, then exited writing nothing; the
+trashed `status.json` stays "running".
+
+Minor: W5 under maxBequest the score already holds the home (R3's two numbers overlap); W6
+"what moved" aligns years by position; W7 the NIIT note calls a kink a cliff (PROGRESS's
+second-increment entry too); W8 `run_zip` ships `plan.pkl`, against section 10 (R10);
+W9 library mode does not turn the AI pages off. Review 2's Q2 and Q4-Q9 are still open.
+Nothing fixed in this pass: review only.

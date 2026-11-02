@@ -577,7 +577,12 @@ Corrections to the first pass (2026-11-01):
 ### 14.3 Where they fit in the build steps
 
 - **I1, I2 and I12** come with step 4 (builder) and step 6 (collections).
-- **I3, I6 and I7** come with step 3 (run page).
+- **I3, I6 and I7** come with step 3 (run page). *(Built 2026-11-02 as step 3's second
+  increment: I3 and I6 are computed at solve time into `plan.json` (`thresholds`, `cash_flow`
+  -- D7, the pages read the durable files) and shown on the run page; I7 reads a
+  `work_sweep.py --json` file, from the run folder's `scores.json` or a file picker, since
+  the Ages presets wait for step 6. The scored pairs shade into tie groups at the larger of
+  the two cells' tolerances (R2's rule per cell).)*
 - **I4** comes after step 6.
 - **I8 and I9** come with step 6.
 - **I11** is build step 5b (D11), then the variant dimension with step 6.

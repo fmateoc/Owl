@@ -19,6 +19,15 @@ comparison page do (`owlplanner.library.view` / `compare`, from the durable file
 6. the exact model (decision_exact) on both runs agrees with the pair's ordering (R2's
    agreement check).
 
+And, for the step-3 second increment (design 14.1: I3/I6/I7):
+
+7. plan.json carries "Things to look at" (I3): the thresholds block, every entry inside its
+   band and with the fields the run page shows;
+8. plan.json carries the one-year cash flow (I6): sources equal to uses in every year, and
+   the run page's Sankey year (the first with a purchase, else the first Medicare year) has
+   both sides non-empty;
+9. the claiming-age map (I7) reads a real work_sweep scores file and shades ties together.
+
 Prints one line per check and a summary; exits 1 if any check fails.
 """
 
@@ -34,6 +43,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from owlplanner.library import (  # noqa: E402
     Library,
+    agemap,
     compare as C,
     import_case,
     view,
@@ -159,6 +169,53 @@ def main() -> int:
         print(f"{'ok  ' if ok else 'FAIL'} agreement: d_pair {d_pair}, d_exact {d_ex}: "
               f"{agree['verdict'] if agree else 'no agreement check'}",
               file=_real_out)
+
+        # 7. "Things to look at" (I3) ----------------------------------------------
+        checks += 1
+        report = a2.plan.get("thresholds") or {}
+        entries = report.get("entries") or []
+        fields = {"year", "kind", "label", "side", "amount_today_dollars", "cost_today_dollars"}
+        ok = (report.get("near_band_fraction") == 0.05
+              and all(fields <= set(e) and e["side"] in ("over", "under") for e in entries))
+        failures += 0 if ok else 1
+        kinds = sorted({e["kind"] for e in entries})
+        print(f"{'ok  ' if ok else 'FAIL'} thresholds: {len(entries)} near a threshold "
+              f"({', '.join(kinds) or 'none this close'})", file=_real_out)
+
+        # 8. the one-year cash flow (I6) ------------------------------------------
+        checks += 1
+        cf = a2.plan.get("cash_flow") or {}
+        years = [row["year"] for row in a2.plan.get("by_year") or []]
+        worst = 0.0
+        for n in range(len(years)):
+            s = sum(v[n] for v in (cf.get("sources") or {}).values())
+            u = sum(v[n] for v in (cf.get("uses") or {}).values())
+            worst = max(worst, abs(s - u))
+        sankey_year = 0
+        for n in range(len(years)):
+            if (cf.get("uses") or {}).get("Big-ticket purchases", [0] * len(years))[n] > 0:
+                sankey_year = n
+                break
+        flows_in = sum(v[sankey_year] for v in (cf.get("sources") or {}).values())
+        flows_out = sum(v[sankey_year] for v in (cf.get("uses") or {}).values())
+        # Each row is rounded to whole dollars in plan.json: at most half a dollar each.
+        rounding = 0.5 * (len(cf.get("sources") or {}) + len(cf.get("uses") or {}))
+        ok = bool(cf) and worst <= rounding and flows_in > 0 and flows_out > 0
+        failures += 0 if ok else 1
+        print(f"{'ok  ' if ok else 'FAIL'} cash flow: sources = uses in {len(years)} year(s) "
+              f"(worst rounding {worst:,.2f}); {years[sankey_year] if years else '-'}: "
+              f"{flows_in:,.0f} in, {flows_out:,.0f} out", file=_real_out)
+
+        # 9. the claiming-age map over a real work_sweep file (I7) -----------------
+        checks += 1
+        scores = ROOT / "fork-notes" / "phase5" / "work_sweep_chris+pat_bb_2026-10-26.json"
+        maps = agemap.load_scores(scores)
+        shaded = [m for m in maps if m.cells and len(m.tie_groups()) >= 1]
+        ok = len(maps) >= 2 and len(shaded) == len(maps) and all(m.decided for m in maps)
+        failures += 0 if ok else 1
+        print(f"{'ok  ' if ok else 'FAIL'} claiming-age map: {len(maps)} work variant(s), "
+              + "; ".join(f"{m.name}: {len(m.cells)} cells, {len(m.tie_groups())} shade(s)"
+                          for m in maps), file=_real_out)
 
     print(f"{checks - failures}/{checks} step-3 checks pass", file=_real_out)
     return 1 if failures else 0

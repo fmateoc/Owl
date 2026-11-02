@@ -5302,3 +5302,77 @@ but the renamed key); `tests/library` + `tests/ui` green in parallel runs; flake
 ruff only upstream's four B905s. Full suite: **3845 passed, 2 skipped** (12:36 on this
 machine; the two skips are environmental: "MOSEK is installed but not licensed here" and
 the POSIX-only tzset test).
+
+## Run-library step 3, second increment: "Things to look at", the one-year Sankey, the claiming-age map (2026-11-02, on `claude/run-library-step3`)
+
+I3, I6 and I7 of `fork-notes/run-library-design.md` (section 14.1, placed by 14.3), the
+step-3 run-page increment the scope note deferred ("I3/I6/I7 come as the second increment
+of this step"). The comparison still covers exactly two results. Two scope calls (the user,
+2026-11-02): I3's "just below or just over" is a **band of 5% of the boundary** (not a fixed
+$ band, not an unfiltered list); I7's scores file is read from the **run folder**
+(`scores.json`), with a file picker as the fallback (not a separate page).
+
+**I3 threshold proximity -- `src/owlplanner/thresholds.py`, in `plan.json` `thresholds`.**
+`threshold_proximity(plan)` reads the solved arrays after a solve (no model change) and lists
+the years whose income sits within `NEAR_BAND` (5%) of a boundary the model knows. Kinds,
+each gated on the household actually being exposed that year: IRMAA tiers (the tax year's
+MAGI against the *premium year's* thresholds, exactly as `mediCosts` compares them; the entry
+names the premium year it affects), the 0% capital-gains bracket (taxable income `G_n + Q_n`
+against the 0%->15% edge), the SS taxability bands (provisional income
+`MAGI_aca_n - 0.5*SS`; ramps, so no cost is reported), the marketplace subsidy limits (the
+year's table breakpoints x FPL, including the 400% cliff and the state's Medicaid line),
+the NY benefit recapture start (state AGI), the Enhanced STAR limit (the income year's
+tested income, with the benefit year it affects), and **the NIIT line** (added beyond the
+design's six: `owlcli explain` reports it, and the crossing is a cliff on all net investment
+income). Each entry: year, kind, label, side, the distance in today's $, the **cost of
+closing the gap** -- the model's own charge evaluated at the boundary plus the gap, less the
+charge at the boundary (`mediCosts`, `capitalGainTax`, `acaCosts`, `computeNIIT`,
+`tax_state.state_recapture`, `star.implied_credit`), so a crossing that costs nothing here is
+not listed -- the year the crossing bites, and a note. Sorted by year.
+
+**I6 the one-year cash-flow Sankey -- `export.cash_flow_split`, in `plan.json` `cash_flow`.**
+Sources and uses per year, nominal $, mirroring `Plan._check_cashflow_balance`'s identity
+exactly (sources minus uses is its residual): wages, SS, pensions, SPIAs, other income, net
+investment income, fixed-asset income and the fixed-asset sale (the condo), each account's
+withdrawals (taxable / tax-deferred / Roth / HSA), big-ticket inflows; spending split along
+the **budget's lines** (one "Net spending" use without a budget), each tax, the Medicare and
+ACA premiums, debt payments, big-ticket purchases, the surplus deposit, and Roth conversions.
+A conversion is a transfer inside the accounts: it appears as its own source ("from the
+tax-deferred accounts") and its own use, so both sides stay equal while the flow is visible.
+The run page's fifth chart tab picks a year (default: the first with a purchase, else the
+first Medicare year -- the design's two uses) and draws the Sankey.
+
+**I7 the claiming-age map -- `library/agemap.py`, on the run page.** Reads
+`fork-notes/phase5/work_sweep.py --json` output (one row per work variant): the free
+persons' ages and the objective of every scored plan (`results`; failed solves dropped), the
+decided ages, and a tie shade per cell -- greedy groups by descending value at the larger of
+the two cells' tolerances (R2's rule per cell: a proved cell's `gap x value`, else the 1%
+loop-noise band). Heat map for two free persons (the decided pair marked), a line and a
+table for one. Only the scored cells are drawn: work_sweep's sweeps score a cross around the
+decided pair, so a full grid would come from step 6's Ages presets.
+
+**Pages (`ui/Run.py`).** "Things to look at" as a table after the headline numbers (with the
+band's rule and the cost's meaning in its caption), the fifth chart tab, and a "Claiming-age
+map" section after the solve expander (run folder, else a file picker).
+
+**Checks.** `fork-notes/synthetic/check_library_compare.py` extended with checks 7-9 (the
+thresholds block's schema on the reloaded result; sources = uses in all 28 years of the
+synthetic baseline and the Sankey year 2027 balances at 974,971 both sides; the map over the
+real `work_sweep_chris+pat_bb_2026-10-26.json`): **9/9**. Tests: 19 new in
+`tests/plan/test_thresholds.py` (stub plans pinning every boundary, side, distance and cost
+against the model's own constants and cost functions; the identity on solved plans; the
+budget-lines split; the `plan.json` blocks), 10 in `tests/library/test_agemap.py`, 3 in
+`tests/library/test_view.py`, 4 in `tests/ui/test_library_pages.py`. Full suite: **3881
+passed, 2 skipped, 9 deselected** (26:07 on this machine; the `deep` marker's 9 are out of
+the default run, the two skips are environmental, as before; 3845 + the 36 new tests).
+
+Deviations from the design, for the review: NIIT added to I3's six kinds; the Sankey links
+through one empty hub node (any pairwise source-to-use allocation would be invented); "each
+account" is the four account kinds of `w_ijn`; the map shades only the scored cells (above).
+Found on the way, not a bug: `Plan.setAccountBalances` is in thousands (`units="k"`), so a
+bare-API fixture with dollar-sized balances is infeasible (the test fixtures look large but
+are not).
+
+Next: step 4 (the scenario model and builder from `make_cases.py`). D8 (steps 1-3 upstream
+as a design issue, "after the increment") is unblocked: the issue draft next, the user's
+call on when.

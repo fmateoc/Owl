@@ -7,6 +7,21 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 2: third review's minors fixed (2026-11-02)
+
+`fork-notes/run-library-step2-review-3.md`, N1-N5.
+- **Two-stage cancel.** Cancel is cooperative, and the row then offers Kill. A verified kill
+  writes the attempt's "interrupted" record and drops its staging folders. The heartbeat
+  continues while a cancel is pending.
+- **Caption.** The Queue page's elapsed-time caption is corrected.
+- **No stale write.** `JobRecord.update` no longer writes its in-memory copy over a record it
+  cannot read.
+- **All-or-nothing re-queue.** `requeue` renames everything aside first and puts it back if a
+  file is in use. The old log is kept as `solve.prev.log`.
+- **`quick` is the loop.** `quick` puts every `"optimize"` family on the loop, with no MIP and
+  no local search (`presets.resolve_options`). The synthetic baseline's quick solve went from
+  17.6 s to 1.1 s.
+
 ### Run library, build step 2: third review fixed (2026-11-02)
 
 `fork-notes/run-library-step2-review-3.md`, H1-H6.

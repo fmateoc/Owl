@@ -272,7 +272,7 @@ Open a run ──edit──▶ unsaved changes (banner: "3 changes since wp-2029
 
 | Preset | What it runs | Use |
 |---|---|---|
-| Quick look | the default loop, claiming ages held at the scenario's values (no age search) | while entering data |
+| Quick look | the default loop, claiming ages held at the scenario's values (no age search); every family the case sets to `"optimize"` runs on the loop, so no MIP and no local search (step 2 review 3, N5) | while entering data |
 | Decision | local search, ages held fixed; the exact LP as a second result, read as an agreement check (does it order the variants the same way?), not as a tolerance (R2) | comparing variants |
 | Ages | `run_suite.py`'s two-stage search: the exact LP searches, then the pick and its ±1-year neighbours are scored at fixed ages under the case's own model | when "let Owl choose" is set for claiming ages |
 | Ages, thorough | `work_sweep.py`: every whole-year pair scored by branch-and-bound at gap 1e-5 (29-51 min per variant on the chris+pat dry run) | the final claiming decision |

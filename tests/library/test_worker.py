@@ -168,6 +168,63 @@ class TestTwoSolvesOnDifferentDays:
         assert {day for _, day in seen} == {JUNE}, seen
 
 
+class TestPresetsInTheWorker:
+    def test_quick_solves_every_family_on_the_loop(self, run):
+        """N5: an "optimize" family in the case (here the job's own option, as the template's
+        withMedicare is) is put on the loop by quick; the record says what was solved."""
+        job = make_job(run, options={"withSSAges": "fixed", "withMedicare": "optimize",
+                                     "breakpointMethod": "branch-and-bound"})
+        assert run_job(job.results_dir, job.token) == R.DONE
+        record = R.read_record(job.results_dir)
+        assert record["method"]["options"]["withMedicare"] == "loop"
+        assert record["method"]["options"]["breakpointMethod"] == "loop"
+        assert record["method"]["breakpoint_method"] == "loop"
+
+
+class TestCancelPending:
+    def test_the_heartbeat_goes_on_while_a_cancel_is_pending(self, run):
+        """N1: the worker stops at its next check, which a long MIP can delay; meanwhile it
+        is alive and must look alive (before, the beat stopped and adoption marked the still
+        running worker interrupted two minutes later)."""
+        import threading
+
+        from owlplanner.library.worker import Worker
+
+        job = make_job(run)
+        job.update(state=R.RUNNING, heartbeat="2026-01-01T00:00:00+00:00")
+        job.request_cancel()
+        worker = Worker(job.results_dir, job.token, heartbeat_seconds=0.05)
+        thread = threading.Thread(target=worker._beat, daemon=True)
+        thread.start()
+        try:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                if R.JobRecord.read(job.results_dir).doc["heartbeat"] != "2026-01-01T00:00:00+00:00":
+                    break
+                time.sleep(0.05)
+            doc = R.JobRecord.read(job.results_dir).doc
+            assert doc["cancel"] is True and doc["heartbeat"] != "2026-01-01T00:00:00+00:00"
+            assert thread.is_alive()
+        finally:
+            worker._beat_stop.set()
+            thread.join(timeout=10)
+
+    def test_the_heartbeat_stops_once_the_job_is_re_queued(self, run):
+        import threading
+
+        from owlplanner.library.worker import Worker
+
+        job = make_job(run)
+        job.finish(R.INTERRUPTED, error="stopped")
+        worker = Worker(job.results_dir, job.token, heartbeat_seconds=0.05)
+        job.requeue()  # a new token: the old worker's beat no longer writes, and ends
+        thread = threading.Thread(target=worker._beat, daemon=True)
+        thread.start()
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+        assert R.JobRecord.read(job.results_dir).doc["heartbeat"] is None
+
+
 class TestAStaleWorkerWritesNothing:
     def test_run_again_leaves_no_artifacts_of_the_old_attempt(self, run, library, monkeypatch):
         """G2: the artifact publish is token-guarded too (F2 covered the record only).
@@ -208,7 +265,8 @@ class TestAStaleWorkerWritesNothing:
             thread.join(timeout=180)
         # The stale worker stopped and published nothing over the cleaned folder.
         assert result.get("state") == R.INTERRUPTED
-        assert artifacts(job.results_dir) == ["solve.log", "status.json", "status.lock"]
+        # The old attempt's log is kept beside its record, as solve.prev.log (M1).
+        assert artifacts(job.results_dir) == ["solve.prev.log", "status.json", "status.lock"]
         doc = R.JobRecord.read(job.results_dir).doc
         assert doc["state"] == R.WAITING and doc["token"] != old_token
 

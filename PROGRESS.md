@@ -5036,3 +5036,22 @@ the review's dispositions.
 14 new tests. Each fix was reverted in turn, and its tests failed (H1, H2, H3, H4, H6; H5's
 tests need the new method). Full suite **3766 passed / 1 skipped** (10:05). flake8 clean, ruff
 only upstream's four B905s. `check_library_jobs.py` 4/4. N1-N5 are still open.
+
+**Step 2 third review's minors fixed (2026-11-02, same session; the user's call: fix N1-N5).**
+Details in the review's minors dispositions.
+- **N1:** two-stage cancel. The Queue's Cancel is cooperative, and Kill appears while the
+  cancel is pending. A verified kill writes the attempt's "interrupted" record and drops its
+  staging. The heartbeat continues while a cancel is pending.
+- **N2:** the elapsed caption is corrected.
+- **N3:** `update` raises instead of writing a stale copy over an unreadable record.
+- **N4:** `requeue` is all-or-nothing (renames first, put back on failure), and it keeps
+  `solve.prev.log` (M1).
+- **N5:** `quick` puts every `"optimize"` family on the loop (`presets.resolve_options`). The
+  synthetic baseline's quick solve went from 17.6 s with a MIP to 1.1 s with none.
+
+Also: the ticker thread exits if its library folder is deleted.
+
+16 new tests (`test_presets.py`, `tests/ui/test_queue_page.py` with AppTest, and the cancel,
+kill, re-queue and heartbeat tests). Each fix was reverted in turn and its tests failed.
+Full suite **3782 passed / 1 skipped** (9:24). flake8 clean, ruff only upstream's four B905s.
+`check_library_jobs.py` 4/4, with 127 page keys: `gap` is absent without a MIP.

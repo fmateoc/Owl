@@ -30,7 +30,7 @@ from .casefiles import (  # noqa: F401
     table_to_df,
 )
 from .jobs import JobManager, JobsError  # noqa: F401
-from .presets import PRESETS, preset_options  # noqa: F401
+from .presets import PRESETS, preset_options, resolve_options  # noqa: F401
 from .results import (  # noqa: F401
     JobRecord,
     ResultsError,

@@ -95,6 +95,53 @@ class TestJobRecord:
         assert (job.results_dir / "record.prev.json").exists()
         assert not (job.results_dir / R.RECORD_JSON).exists()
 
+    def test_requeue_keeps_the_old_log_beside_the_old_record(self, tmp_path):
+        """M1: the kept record's log is kept too (the new attempt writes a fresh solve.log)."""
+        job = make_job(tmp_path)
+        (job.results_dir / R.RECORD_JSON).write_text("{}", encoding="utf-8")
+        (job.results_dir / R.SOLVE_LOG).write_text("attempt 1\n", encoding="utf-8")
+        job.finish(R.FAILED, error="boom")
+        job.requeue()
+        assert (job.results_dir / R.PREV_SOLVE_LOG).read_text(encoding="utf-8") == "attempt 1\n"
+        assert not (job.results_dir / R.SOLVE_LOG).exists()
+
+    def test_requeue_is_all_or_nothing(self, tmp_path, monkeypatch):
+        """N4: a file that cannot be moved (Results.xlsx open in Excel, on Windows) leaves the
+        folder and the job record exactly as they were, and the error names the file."""
+        job = make_job(tmp_path)
+        files = {R.RECORD_JSON: "{}", R.SUMMARY_JSON: "{}", R.PLAN_JSON: "{}", R.SOLVE_LOG: "log\n"}
+        for name, text in files.items():
+            (job.results_dir / name).write_text(text, encoding="utf-8")
+        (job.results_dir / R.RESULTS_XLSX).write_bytes(b"xlsx")
+        job.finish(R.FAILED, error="boom")
+        before = R.JobRecord.read(job.results_dir).doc
+        real_replace = R.os.replace
+
+        def in_use(src, dst):
+            if str(src).endswith(R.RESULTS_XLSX):
+                raise PermissionError(13, "The process cannot access the file", str(src))
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(R.os, "replace", in_use)
+        with pytest.raises(R.ResultsError, match="Results.xlsx is in use"):
+            job.requeue()
+        monkeypatch.setattr(R.os, "replace", real_replace)
+        for name, text in files.items():
+            assert (job.results_dir / name).read_text(encoding="utf-8") == text
+        assert (job.results_dir / R.RESULTS_XLSX).read_bytes() == b"xlsx"
+        assert not (job.results_dir / R.PREV_RECORD_JSON).exists()
+        assert not list(job.results_dir.glob(".requeue-*"))
+        assert R.JobRecord.read(job.results_dir).doc == before  # same state, same token
+
+    def test_an_unreadable_record_is_not_overwritten(self, tmp_path):
+        """N3: update() used to write its in-memory copy back over a record it could not read,
+        which could revert a cancel or a re-queue's new token."""
+        job = make_job(tmp_path)
+        (job.results_dir / R.STATUS_JSON).write_text("{ torn", encoding="utf-8")
+        with pytest.raises(R.ResultsError):
+            job.update(job.token, heartbeat=R.now_iso())
+        assert (job.results_dir / R.STATUS_JSON).read_text(encoding="utf-8") == "{ torn"
+
 
 class TestRecord:
     def test_the_documented_fields(self, tmp_path):

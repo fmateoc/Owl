@@ -31,6 +31,7 @@ import os
 import pickle
 import platform
 import secrets
+import shutil
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -47,6 +48,8 @@ PLAN_JSON = "plan.json"
 RESULTS_XLSX = "Results.xlsx"
 SOLVE_LOG = "solve.log"
 PLAN_PKL = "plan.pkl"
+PREV_RECORD_JSON = "record.prev.json"  # the previous attempt's record, kept by "run again"
+PREV_SOLVE_LOG = "solve.prev.log"      # and its log (M1)
 
 JOB_FORMAT = 1
 RECORD_FORMAT = 1
@@ -298,12 +301,13 @@ class JobRecord:
         `token=` the write only happens while the job still runs under that token (S8: a
         worker that woke after "run again" must not clobber the new attempt). Returns
         whether it wrote.
+
+        An on-disk record that cannot be read raises `ResultsError` and writes nothing (N3):
+        writing the in-memory copy back instead could revert a cancel flag or a re-queue's
+        new token, and its token check would run against that stale copy.
         """
         with _status_lock(self.results_dir):
-            try:
-                doc = type(self).read(self.results_dir).doc
-            except ResultsError:
-                doc = self.doc
+            doc = type(self).read(self.results_dir).doc
             if token is not None and doc.get("token") != token:
                 return False
             doc.update(fields)
@@ -401,8 +405,10 @@ class JobRecord:
             self.doc = doc
             atomic_write(self.results_dir / STATUS_JSON, pretty_json(doc))
 
-    def touch(self, token: Optional[str] = None, *, step=None, last_log=None, iteration=None) -> None:
-        """One heartbeat (every 30 s): state, step, the last log line, the loop iteration."""
+    def touch(self, token: Optional[str] = None, *, step=None, last_log=None, iteration=None) -> bool:
+        """One heartbeat (every 30 s): state, step, the last log line, the loop iteration.
+
+        Returns whether it wrote (False once the job runs under another token)."""
         fields = {"heartbeat": now_iso()}
         if step is not None:
             fields["step"] = step
@@ -410,7 +416,7 @@ class JobRecord:
             fields["last_log"] = last_log
         if iteration is not None:
             fields["iteration"] = iteration
-        self.update(token, **fields)
+        return self.update(token, **fields)
 
     def stop_reason(self, token: str) -> Optional[str]:
         """Why this worker must stop now (S8, S9), or None to carry on."""
@@ -439,16 +445,45 @@ class JobRecord:
         """'Run again' on an interrupted or failed job: a fresh token, still one worker (S8).
 
         The folder starts clean for the new attempt: the partial artifacts of the old one go
-        (they would sit beside the new record), and its `record.json` is kept as
-        `record.prev.json` (a failed or interrupted solve leaves its record, S3).
+        (they would sit beside the new record), its `record.json` is kept as
+        `record.prev.json` (a failed or interrupted solve leaves its record, S3) and its
+        `solve.log` as `solve.prev.log` (M1: the kept record's log).
+
+        All or nothing (N4): every file is first moved aside by rename, and only then are the
+        moved artifacts deleted. On Windows a file open in another program (`Results.xlsx` in
+        Excel) can be neither renamed nor deleted; the renames done so far are then put back
+        and `ResultsError` names the file, so the folder and the job record are unchanged and
+        "run again" can be retried once the file is closed.
         """
         with _status_lock(self.results_dir):
-            for name in (SUMMARY_JSON, PLAN_JSON, RESULTS_XLSX, PLAN_PKL):
-                (self.results_dir / name).unlink(missing_ok=True)
-            record = self.results_dir / RECORD_JSON
-            if record.exists():
-                os.replace(record, self.results_dir / "record.prev.json")
             doc = type(self).read(self.results_dir).doc
+            trash = self.results_dir / f".requeue-{secrets.token_hex(4)}"
+            moves = [(self.results_dir / name, trash / name)
+                     for name in (SUMMARY_JSON, PLAN_JSON, RESULTS_XLSX, PLAN_PKL)]
+            moves += [(self.results_dir / RECORD_JSON, self.results_dir / PREV_RECORD_JSON),
+                      (self.results_dir / SOLVE_LOG, self.results_dir / PREV_SOLVE_LOG)]
+            moves = [(src, dst) for src, dst in moves if src.exists()]
+            trash.mkdir()
+            done = []
+            try:
+                for src, dst in moves:
+                    os.replace(src, dst)
+                    done.append((src, dst))
+            except OSError as exc:
+                for src, dst in reversed(done):
+                    try:
+                        os.replace(dst, src)
+                    except OSError:
+                        pass
+                shutil.rmtree(trash, ignore_errors=True)
+                name = Path(exc.filename).name if exc.filename else str(exc)
+                why = ("the previous attempt's worker may still be running; cancel or kill it first"
+                       if name == SOLVE_LOG else "close it (the workbook in Excel, for example)")
+                raise ResultsError(f"cannot run {self.id} again: {name} is in use: {why}, "
+                                   "then try again") from exc
+            # Staging folders (`.attempt-*`) stay: the old attempt's worker may still be alive
+            # and writing into its own (S8); it drops it itself, and a kill drops it (N1).
+            shutil.rmtree(trash, ignore_errors=True)
             doc.update({
                 "state": WAITING,
                 "token": secrets.token_hex(16),
@@ -473,6 +508,18 @@ class JobRecord:
         if then is None:
             return None
         return (now if now is not None else time.time()) - then
+
+
+def drop_staging(results_dir) -> None:
+    """Remove the staged artifacts a killed attempt left (`.attempt-<token8>`; N1).
+
+    A worker stages its artifacts before publishing them (G2) and drops the staging folder
+    itself, except when it is killed. Nothing reads these folders; this keeps the results
+    folder to what the design lists.
+    """
+    for folder in Path(results_dir).glob(".attempt-*"):
+        if folder.is_dir():
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 # -- record.json -------------------------------------------------------

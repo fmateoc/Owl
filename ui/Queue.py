@@ -57,7 +57,8 @@ with st.expander("Solve a run", expanded=not manager.jobs()):
         col1, col2, col3 = st.columns([4, 2, 2], vertical_alignment="bottom")
         choice = col1.selectbox("Run", list(labels), key="queue_run")
         preset = col2.selectbox("Preset", list(PRESETS), key="queue_preset",
-                                help="quick: the default loop, claiming ages held at the "
+                                help="quick: the self-consistent loop for every tax family "
+                                     "(no MIP, no local search), claiming ages held at the "
                                      "scenario's values. custom: the case's own options.")
         if col3.button("Solve", type="primary", use_container_width=True):
             job = manager.enqueue(labels[choice], preset=preset)
@@ -95,10 +96,20 @@ def queue_fragment():
             logline = f"{doc['error']}  \n{logline}"
         row[3].markdown(logline[-300:] if logline else "-")
         with row[4]:
-            if doc.get("state") in (R.WAITING, R.RUNNING):
-                if st.button("Cancel", key=f"cancel_{job.id}", help="Cancels the job: the worker "
-                             "stops at its next step, or is killed when it is the recorded process."):
+            if doc.get("state") == R.RUNNING and doc.get("cancel"):
+                # Two stages (N1): the cooperative cancel is pending; the worker stops at its
+                # next step or log line and writes its own record. A long solve can delay it.
+                st.caption("cancel pending")
+                if st.button("Kill", key=f"kill_{job.id}",
+                             help="Stops the worker now (only the recorded process). Its record "
+                                  "says it was killed; the partial results are dropped."):
                     manager.cancel(job, force=True)
+                    st.rerun()
+            elif doc.get("state") in (R.WAITING, R.RUNNING):
+                if st.button("Cancel", key=f"cancel_{job.id}",
+                             help="A waiting job stops at once. A running worker stops at its next "
+                                  "step or log line and keeps its record; Kill appears meanwhile."):
+                    manager.cancel(job)
                     st.rerun()
             elif doc.get("state") in (R.INTERRUPTED, R.FAILED):
                 if st.button("Run again", key=f"again_{job.id}",
@@ -116,5 +127,6 @@ if any(j.state in (R.WAITING, R.RUNNING) for j in manager.jobs()):
 
 st.caption(
     "Jobs are detached processes: closing this tab or stopping the server does not stop them. "
-    "Elapsed is measured from queue time; the state and the log line refresh every two seconds."
+    "Elapsed runs from the start of the solve (from queue time while a job waits); the state and "
+    "the log line refresh every two seconds."
 )

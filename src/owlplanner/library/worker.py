@@ -32,7 +32,7 @@ from owlplanner import asof
 
 from . import results as R
 from .casefiles import resolve_as_of
-from .presets import preset_options
+from .presets import resolve_options
 from .procs import process_start_token
 
 HEARTBEAT_SECONDS = 30.0
@@ -112,14 +112,18 @@ class Worker:
             raise JobCancelled(reason)
 
     def _beat(self):
+        """Beat while this process lives and the job is still ours.
+
+        A pending cancel does not stop the heartbeat (N1): the worker stops at its next step or
+        log line, which a long MIP can delay, and until then the Queue shows it alive with the
+        cancel pending and offers a verified kill. Before, the beat stopped at the cancel, and
+        two minutes later adoption marked the still-running worker interrupted.
+        """
         while not self._beat_stop.wait(self.heartbeat_seconds):
             try:
-                reason = self.job.stop_reason(self.token)
-                if reason is not None:
-                    self.job.touch(self.token, last_log=self.tee.last_line if self.tee else None)
-                    return
-                self.job.touch(self.token, last_log=self.tee.last_line if self.tee else None,
-                               iteration=self.tee.iteration if self.tee else None)
+                if not self.job.touch(self.token, last_log=self.tee.last_line if self.tee else None,
+                                      iteration=self.tee.iteration if self.tee else None):
+                    return  # re-queued under a new token: the job is no longer ours (S8)
             except Exception:
                 # A transient write failure (a reader mid-rename) must not kill the heartbeat:
                 # the manager would mark a live worker silent (S8). Gone folder: stop.
@@ -181,8 +185,8 @@ class Worker:
 
             self.job.touch(self.token, step="solving")
             self.check()
-            options = dict(plan.solverOptions)
-            options.update(preset_options(self.job.doc.get("preset", "custom"), self.job.doc.get("options")))
+            options = resolve_options(self.job.doc.get("preset", "custom"), plan.solverOptions,
+                                      self.job.doc.get("options"))
             options = parse_solver_options(options)
             plan.solve(plan.objective, options)
             wall = time.time() - t0

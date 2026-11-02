@@ -213,6 +213,8 @@ class JobManager:
 
     def _tick_forever(self, stop: threading.Event, interval: float) -> None:
         while not stop.wait(interval):
+            if not Path(self.library.root).exists():
+                return  # the library folder is gone (a test's temporary library): nothing to tick
             try:
                 self.tick()
             except Exception:  # a damaged folder or a lock timeout must not stop the queue
@@ -220,19 +222,41 @@ class JobManager:
 
     # -- cancelling ----------------------------------------------------
 
-    def cancel(self, job: "R.JobRecord | str", *, force: bool = False) -> None:
-        """Cancel a job: cooperative token first, verified kill when forced (S9)."""
+    def cancel(self, job: "R.JobRecord | str", *, force: bool = False) -> bool:
+        """Cancel a job: cooperative token first, verified kill when forced (S9).
+
+        The cooperative cancel lets the worker stop at its next step or log line and write
+        its own "interrupted" record (S3, F6). A forced cancel kills the recorded process
+        (only against its start token) and then writes that record itself, with what the
+        job record knows, and drops the staged artifacts the worker could not clean up (N1).
+        Returns whether the job was stopped now (a waiting job, or a verified kill).
+        """
         job = job if isinstance(job, R.JobRecord) else self.get(job)
+        job.refresh()  # act on the record as it is now, not as a page last read it
         if job.state == R.WAITING:
             job.finish(R.INTERRUPTED, error="cancelled")
-            return
+            return True
         if job.state != R.RUNNING:
-            return
+            return False
         job.request_cancel()
-        if force:
-            if not kill_process(job.doc.get("pid"), job.doc.get("pid_started")):
-                return  # not ours to kill (PID reused or unknown): the token stops it
-            job.finish(R.INTERRUPTED, error="cancelled")
+        if not force:
+            return False
+        if not kill_process(job.doc.get("pid"), job.doc.get("pid_started")):
+            return False  # not ours to kill (PID reused or unknown): the token stops it
+        token = job.token
+        finished = R.now_iso()
+        if R.read_record(job.results_dir) is None:
+            doc = job.doc
+            job.publish_record(token, R.build_record(
+                run_id=str(doc.get("run_id") or ""), results_id=job.id, as_of=job.as_of,
+                preset=str(doc.get("preset") or ""), options=doc.get("options") or {},
+                plan_doc=None, status="interrupted", started=doc.get("started"), finished=finished,
+                wall_time_seconds=None, warnings=[], iterations=None,
+                error="killed: cancelled from the queue",
+            ))
+        R.drop_staging(job.results_dir)
+        job.finish(R.INTERRUPTED, error="killed: cancelled from the queue", token=token)
+        return True
 
     def run_again(self, job: "R.JobRecord | str") -> R.JobRecord:
         """Re-run an interrupted or failed job in the same results folder (S8).

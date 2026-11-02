@@ -83,7 +83,8 @@ class TestQueueOnDisk:
 
     def test_enqueue_records_the_preset_and_the_as_of(self, manager, run):
         job = manager.enqueue(run, preset="quick")
-        assert job.doc["preset"] == "quick" and job.doc["options"] == {"withSSAges": "fixed"}
+        assert job.doc["preset"] == "quick"
+        assert job.doc["options"] == {"withSSAges": "fixed", "breakpointMethod": "loop"}
         assert job.doc["as_of"] == "2026-01-01" and job.doc["run"] == "bill"
 
     def test_the_queue_is_on_disk_not_in_memory(self, library, manager, run):
@@ -269,6 +270,55 @@ class TestCancel:
             manager.cancel(job, force=True)
             assert job.state == R.INTERRUPTED
             dummy.wait(timeout=30)  # killed: it was the recorded process (S9)
+        finally:
+            if dummy.poll() is None:
+                dummy.kill()
+                dummy.wait(timeout=30)
+
+    def test_a_plain_cancel_never_kills(self, manager, run):
+        """N1: the Queue's Cancel is cooperative; only Kill (force) stops the process."""
+        dummy = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            job = make_running_job(run.path / "results" / "coop", pid=dummy.pid,
+                                   pid_started=process_start_token(dummy.pid))
+            assert manager.cancel(job) is False
+            doc = fresh(job).doc
+            assert doc["cancel"] is True and doc["state"] == R.RUNNING
+            assert dummy.poll() is None  # the worker stops itself at its next check
+        finally:
+            dummy.kill()
+            dummy.wait(timeout=30)
+
+    def test_a_kill_leaves_a_record_and_no_staging(self, manager, run):
+        """N1: a killed worker cannot write its own record (S3, F6), nor drop its staging."""
+        dummy = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            job = make_running_job(run.path / "results" / "killed", pid=dummy.pid,
+                                   pid_started=process_start_token(dummy.pid))
+            staging = job.results_dir / ".attempt-0123abcd"
+            staging.mkdir()
+            (staging / R.RESULTS_XLSX).write_bytes(b"half")
+            assert manager.cancel(job, force=True) is True
+            dummy.wait(timeout=30)
+            record = R.read_record(job.results_dir)
+            assert record["status"] == "interrupted" and record["error"].startswith("killed")
+            assert record["run_id"] == "r" and record["as_of"] == "2026-01-01"
+            assert not staging.exists()
+            doc = fresh(job).doc
+            assert doc["state"] == R.INTERRUPTED and doc["error"].startswith("killed")
+        finally:
+            if dummy.poll() is None:
+                dummy.kill()
+                dummy.wait(timeout=30)
+
+    def test_a_kill_keeps_a_record_the_worker_already_wrote(self, manager, run):
+        dummy = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            job = make_running_job(run.path / "results" / "late", pid=dummy.pid,
+                                   pid_started=process_start_token(dummy.pid))
+            (job.results_dir / R.RECORD_JSON).write_text('{"status": "solved"}', encoding="utf-8")
+            assert manager.cancel(job, force=True) is True
+            assert R.read_record(job.results_dir) == {"status": "solved"}
         finally:
             if dummy.poll() is None:
                 dummy.kill()

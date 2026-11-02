@@ -8,9 +8,9 @@ time horizon, account balances, income streams, and solver options.
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
+from owlplanner import asof
 import json
 import sys
-import datetime
 
 import click
 from pathlib import Path
@@ -18,7 +18,7 @@ from pathlib import Path
 from owlplanner import tax_federal as tx
 from owlplanner.config import load_toml, config_to_plan
 
-from .cmd_run import validate_toml
+from .cmd_run import as_of_option, validate_toml
 from .formatters import _NumpyEncoder
 from .set_override import apply_overrides
 
@@ -89,7 +89,7 @@ def _health_care(plan) -> dict:
 
 
 def _plan_to_explain(plan, filename, set_overrides) -> dict:
-    current_year = datetime.date.today().year
+    current_year = asof.today().year
     N_i = plan.N_i
 
     individuals = []
@@ -271,6 +271,7 @@ def _plan_to_explain(plan, filename, set_overrides) -> dict:
     metavar="KEY.PATH=VALUE",
     help=("Override any TOML parameter before describing. Same syntax as 'owlcli run --set'."),
 )
+@as_of_option
 def cmd_explain(filename, set_overrides):
     """Describe a case configuration without solving it.
 

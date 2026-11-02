@@ -315,6 +315,23 @@ def createCaseFromFile(strio):
     return True
 
 
+def openCaseFromPlan(plan, name=None):
+    """Open a solved Plan in the pages with no solve ("Open in Owl", run-library design 9.1).
+
+    The run library's step-2 check: a cached plan restores the Graphs page without a
+    re-solve. Returns the case name it opened as.
+    """
+    import owlbridge as owb
+
+    casename, dic = owb.openCaseFromPlan(plan, name=name)
+    if casename in ss.cases:
+        st.error(f"Case name '{casename}' already exists.", icon=":material/error:")
+        return None
+    ss.cases[casename] = dic
+    setCurrentCase(casename)
+    return casename
+
+
 def createNewCase(case):
     if case != "newcase":
         st.error(f"Expected 'newcase' but got '{case}'.", icon=":material/error:")

@@ -21,8 +21,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from owlplanner import asof
 import numpy as np
-from datetime import date
 
 
 def compute_pension_benefits(amounts, ages, yobs, mobs, horizons, N_i, N_n, thisyear=None):
@@ -49,7 +49,7 @@ def compute_pension_benefits(amounts, ages, yobs, mobs, horizons, N_i, N_n, this
     N_n : int
         Plan horizon (number of years)
     thisyear : int or None
-        Current calendar year (default: date.today().year)
+        Current calendar year (default: asof.today().year)
 
     Returns
     -------
@@ -57,7 +57,7 @@ def compute_pension_benefits(amounts, ages, yobs, mobs, horizons, N_i, N_n, this
         Shape (N_i, N_n), annual pension benefits per individual per year
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     amounts = np.asarray(amounts, dtype=np.float64)
     ages = np.asarray(ages, dtype=np.float64)

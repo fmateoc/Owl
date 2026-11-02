@@ -22,9 +22,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ######################################################################
+from owlplanner import asof
 import numpy as np
 import pandas as pd
-from datetime import date
 
 from . import utils as u
 
@@ -125,7 +125,7 @@ def get_fixed_assets_arrays(fixed_assets_df, N_n, gamma_n, thisyear=None, filing
         precious metals) where `rate` is real (above-inflation) growth.
         Pass None only when the dataset contains no real-rate asset types.
     thisyear : int, optional
-        Starting year of the plan (defaults to date.today().year).
+        Starting year of the plan (defaults to asof.today().year).
         Array index 0 corresponds to thisyear, index 1 to thisyear+1, etc.
     filing_status : str, optional
         Filing status: "single" or "married" (defaults to "single").
@@ -144,7 +144,7 @@ def get_fixed_assets_arrays(fixed_assets_df, N_n, gamma_n, thisyear=None, filing
         - capital_gains_n: Capital gains from asset sales
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     if u.is_dataframe_empty(fixed_assets_df):
         return np.zeros(N_n), np.zeros(N_n), np.zeros(N_n)
@@ -260,7 +260,7 @@ def get_fixed_assets_bequest_value(fixed_assets_df, N_n, gamma_n, thisyear=None)
         precious metals) where `rate` is real (above-inflation) growth.
         Pass None only when the dataset contains no real-rate asset types.
     thisyear : int, optional
-        Starting year of the plan (defaults to date.today().year)
+        Starting year of the plan (defaults to asof.today().year)
 
     Returns:
     --------
@@ -270,7 +270,7 @@ def get_fixed_assets_bequest_value(fixed_assets_df, N_n, gamma_n, thisyear=None)
         as assets are assumed to pass to heirs with step-up in basis.
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     if u.is_dataframe_empty(fixed_assets_df):
         return 0.0
@@ -353,7 +353,7 @@ def bequest_value_is_inflation_path_dependent(fixed_assets_df, N_n, thisyear=Non
     N_n : int
         Number of years in the plan.
     thisyear : int, optional
-        Starting year of the plan (defaults to date.today().year).
+        Starting year of the plan (defaults to asof.today().year).
 
     Returns:
     --------
@@ -361,7 +361,7 @@ def bequest_value_is_inflation_path_dependent(fixed_assets_df, N_n, thisyear=Non
         True when the today's-dollar bequest value moves with the inflation path.
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     if u.is_dataframe_empty(fixed_assets_df):
         return False
@@ -425,7 +425,7 @@ def get_fixed_assets_disposition_costs_array(
     capgains_rate : float
         Assumed capital-gains tax rate (decimal, e.g. 0.15) applied to gains.
     thisyear : int, optional
-        Starting year of the plan (defaults to date.today().year).
+        Starting year of the plan (defaults to asof.today().year).
         Array index 0 corresponds to thisyear, index 1 to thisyear+1, etc.
     filing_status : str, optional
         Filing status: "single" or "married" (defaults to "single").
@@ -443,7 +443,7 @@ def get_fixed_assets_disposition_costs_array(
         each year.
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     if u.is_dataframe_empty(fixed_assets_df):
         return np.zeros(N_n)
@@ -538,7 +538,7 @@ def get_fixed_assets_current_values_array(fixed_assets_df, N_n, gamma_n, thisyea
         precious metals) where `rate` is real (above-inflation) growth.
         Pass None only when the dataset contains no real-rate asset types.
     thisyear : int, optional
-        Starting year of the plan (defaults to date.today().year).
+        Starting year of the plan (defaults to asof.today().year).
         Array index 0 corresponds to thisyear, index 1 to thisyear+1, etc.
 
     Returns:
@@ -550,7 +550,7 @@ def get_fixed_assets_current_values_array(fixed_assets_df, N_n, gamma_n, thisyea
         thisyear+1, etc.
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
     if u.is_dataframe_empty(fixed_assets_df):
         return np.zeros(N_n)

@@ -20,6 +20,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import os
+
 import streamlit as st
 
 import sskeys as kz
@@ -87,6 +89,12 @@ pages = {
 # or Docker deployments; the hosted app never sets the variable.
 if assistant_core.assistant_enabled():
     pages["Tools"].insert(0, st.Page("Assistant.py", icon=":material/forum:"))
+
+# The run library is opt-in too (design section 3): OWL_LIBRARY_DIR names its folder.
+if os.environ.get("OWL_LIBRARY_DIR"):
+    pages["Run Library"] = [
+        st.Page("Queue.py", icon=":material/schedule:"),
+    ]
 
 pg = st.navigation(pages, position=kz.getGlobalKey("menuLocation"))
 

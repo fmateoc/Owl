@@ -24,6 +24,7 @@ import sys
 import copy
 import inspect
 import os
+import pickle
 import threading
 from contextlib import contextmanager
 
@@ -171,6 +172,28 @@ class Logger(object):
         new_logger._verboseStack = copy.deepcopy(self._verboseStack, memo)
 
         return new_logger
+
+    def __getstate__(self):
+        """
+        Pickle support (the run library caches solved Plans, run-library-design.md section 5).
+
+        File descriptors do not pickle (sys.stdout, an open solve.log), so streams are dropped
+        and rebuilt as the default pair in __setstate__ -- the same policy __deepcopy__ uses to
+        avoid copying file descriptors. A picklable custom stream is kept as is.
+        """
+        state = self.__dict__.copy()
+        streams = state.get("_logstreams")
+        if streams is not None:
+            try:
+                pickle.dumps(streams)
+            except Exception:
+                state["_logstreams"] = "default"
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._logstreams == "default":
+            self._logstreams = [sys.stdout, sys.stderr]
 
     # ------------------------------------------------------------
     # Printing methods

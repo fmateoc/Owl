@@ -24,8 +24,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from owlplanner import asof
 import numpy as np
-from datetime import date
 
 from owlplanner import utils as u
 
@@ -437,7 +437,7 @@ def medicareMonths(yobs, horizons, N_n, mobs=None, tobs=None, thisyear=None, age
     Medicare; coverage then starts in the month of that birthday.
     """
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
     yobs = np.asarray(yobs, dtype=int)
     Ni = len(yobs)
     mobs = np.ones(Ni, dtype=int) if mobs is None else np.asarray(mobs, dtype=int)
@@ -486,7 +486,7 @@ def mediVals(yobs, horizons, gamma_n, Nn, Nq, *, include_part_d=True, part_d_bas
     """
     if medical_n is None:
         medical_n = gamma_n
-    thisyear = date.today().year
+    thisyear = asof.today().year
     assert Nq == len(partB_irmaa_costs), f"Inconsistent value of Nq: {Nq}."
     assert Nq == len(irmaaBrackets[0]), "Inconsistent IRMAA brackets array."
     # Combined per-person cumulative costs: Part B + Part D IRMAA when enabled
@@ -614,7 +614,7 @@ def mediCosts(yobs, horizons, magi, prevmagi, gamma_n, Nn, *, include_part_d=Tru
     """
     if medical_n is None:
         medical_n = gamma_n
-    thisyear = date.today().year
+    thisyear = asof.today().year
     Ni = len(yobs)
     fees_b = partB_irmaa_fees
     fees_d = partD_irmaa_fees if include_part_d else np.zeros_like(partB_irmaa_fees)
@@ -776,7 +776,7 @@ def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, 
     N_n : int
         Number of plan years.
     thisyear : int, optional
-        Plan start year. Defaults to date.today().year. Used for testing.
+        Plan start year. Defaults to asof.today().year. Used for testing.
     n_aca_start : int, optional
         Plan year index when ACA coverage begins (default 0 = plan start).
         Years before this index are set to zero regardless of eligibility.
@@ -805,7 +805,7 @@ def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, 
         medical_n = gamma_n
 
     if thisyear is None:
-        thisyear = date.today().year
+        thisyear = asof.today().year
     costs = np.zeros(N_n)
 
     family_n, parts_n = _aca_coverage(yobs, horizons, N_n, mobs, tobs, thisyear)
@@ -1020,7 +1020,7 @@ def acaVals(yobs, horizons, gamma_n, slcsp_annual, Nn, n_aca_start=0, medical_n=
     if medical_n is None:
         medical_n = gamma_n
 
-    thisyear = date.today().year
+    thisyear = asof.today().year
 
     # n_aca = the year after the last one with anybody enrolled.
     family_n, parts_n = _aca_coverage(yobs, horizons, Nn, mobs, tobs, thisyear)
@@ -1101,7 +1101,7 @@ def taxParams(yobs, i_d, n_d, N_n, gamma_n, MAGI_n, yOBBBA=_YEAR_FAR_FUTURE):
 
     filingStatus = len(yobs) - 1
     souls = list(range(len(yobs)))
-    thisyear = date.today().year
+    thisyear = asof.today().year
 
     for n in range(N_n):
         # First check if shortest-lived individual is still with us.
@@ -1151,7 +1151,7 @@ def seniorBonusSchedule(yobs, i_d, n_d, N_n):
     threshold_n = np.zeros(N_n)
     filingStatus = len(yobs) - 1
     souls = list(range(len(yobs)))
-    thisyear = date.today().year
+    thisyear = asof.today().year
     for n in range(N_n):
         if n == n_d:
             souls.remove(i_d)
@@ -1246,7 +1246,7 @@ def taxBrackets(N_i, n_d, N_n, yOBBBA=_YEAR_FAR_FUTURE):
     status_n = filingStatusIndex_n(N_i, n_d, N_n)
 
     # Number of years left in OBBBA from this year.
-    thisyear = date.today().year
+    thisyear = asof.today().year
     if yOBBBA < thisyear:
         raise ValueError(f"OBBBA expiration year {yOBBBA} cannot be in the past.")
 
@@ -1305,7 +1305,7 @@ def payrollTax(N_i, earnings_in, gamma_n, n_d, N_n, year0=None):
     """
     earnings_in = np.maximum(np.asarray(earnings_in, dtype=float)[:, :N_n], 0.0)
     if year0 is None:
-        year0 = date.today().year
+        year0 = asof.today().year
     base_n = u.nominal_by_year(payrollWageBase, year0, gamma_n, N_n)
     payroll_n = np.sum(payrollSSRate * np.minimum(earnings_in, base_n) + payrollMedicareRate * earnings_in, axis=0)
     status_n = filingStatusIndex_n(N_i, n_d, N_n)
@@ -1346,7 +1346,7 @@ def rho_in(yobs, longevity, N_n):
         raise RuntimeError("RMD: Unsupported life expectancy over 120 years.")
 
     rho = np.zeros((N_i, N_n))
-    thisyear = date.today().year
+    thisyear = asof.today().year
     for i in range(N_i):
         agenow = thisyear - yobs[i]
         # Account for increase of RMD age between 2023 and 2032.
@@ -1419,7 +1419,7 @@ def contributionLimits(birth_year, tax_year=None):
     health plan enrollment).
     """
     if tax_year is None:
-        tax_year = date.today().year
+        tax_year = asof.today().year
 
     age_eoy = tax_year - birth_year
 

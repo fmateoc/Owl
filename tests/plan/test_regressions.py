@@ -653,16 +653,20 @@ class _MidYearDate(date):
 
 
 @pytest.fixture
-def midyear(monkeypatch):
+def midyear():
     """
-    Defeat the session-wide freeze_year fixture for one test.
+    Defeat the session-wide date pin for one test: run mid-year.
 
-    freeze_year pins today to 2026-01-01, which is byte-identical to the start_date every
-    example case carries. A start date silently reset to "today" is therefore a no-op under
-    the normal fixture, which is exactly why this class of bug went unnoticed.
+    The session pins Owl's "today" to 2026-01-01 (tests/conftest.py), which is byte-identical
+    to the start_date every example case carries. A start date silently reset to "today" is
+    therefore a no-op under the normal pin, which is exactly why this class of bug went
+    unnoticed. The pin is the `as_of` input (owlplanner.asof, run-library step 2), so moving
+    it here moves every module's today, not only one module's `date`.
     """
-    monkeypatch.setattr(owl.plan, "date", _MidYearDate)
-    return _MidYearDate.today()
+    from owlplanner import asof
+
+    with asof.as_of(_MidYearDate.today()):
+        yield _MidYearDate.today()
 
 
 @pytest.mark.toml

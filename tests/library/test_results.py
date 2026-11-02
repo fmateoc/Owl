@@ -1,0 +1,160 @@
+"""The results folder: status.json (the job record), record.json, the plan cache.
+
+Build step 2 of `fork-notes/run-library-design.md`: the job record is on disk from the
+moment the job is queued (S2), cancellation rides on a per-job token (S9), and plan.pkl is
+loaded only when its hash and environment still match record.json (R10, S6).
+"""
+
+import hashlib
+import json
+
+import pytest
+
+from owlplanner import __version__
+from owlplanner.library import results as R
+
+
+def make_job(tmp_path, **kw):
+    kw.setdefault("run_id", "run-id")
+    kw.setdefault("run_name", "bill")
+    kw.setdefault("preset", "quick")
+    kw.setdefault("options", {"withSSAges": "fixed"})
+    kw.setdefault("as_of", "2026-01-01")
+    return R.JobRecord.create(tmp_path / "results" / "2026-01-01T00-00-00_quick", **kw)
+
+
+class TestJobRecord:
+    def test_it_is_on_disk_the_moment_it_is_queued(self, tmp_path):
+        job = make_job(tmp_path)
+        doc = json.loads((job.results_dir / R.STATUS_JSON).read_text(encoding="utf-8"))
+        assert doc["state"] == R.WAITING and doc["token"] and doc["cancel"] is False
+        assert doc["as_of"] == "2026-01-01" and doc["preset"] == "quick"
+        assert doc["queued"] and doc["attempts"] == 1
+
+    def test_update_merges_onto_disk_and_keeps_a_cancel(self, tmp_path):
+        job = make_job(tmp_path)
+        stale = R.JobRecord.read(job.results_dir)  # a second tab's view
+        job.update(cancel=True)                     # the interface cancels meanwhile
+        stale.touch(last_log="Iter: 03")            # the worker's heartbeat, unaware
+        fresh = R.JobRecord.read(job.results_dir)
+        assert fresh.doc["cancel"] is True and fresh.doc["last_log"] == "Iter: 03"
+
+    def test_claim_checks_the_token_and_stamps_the_process(self, tmp_path):
+        job = make_job(tmp_path)
+        with pytest.raises(R.ResultsError):
+            job.claim("other-token", pid=1, pid_started=1)
+        job.claim(job.token, pid=123, pid_started=456)
+        doc = R.JobRecord.read(job.results_dir).doc
+        assert doc["state"] == R.RUNNING and doc["pid"] == 123 and doc["pid_started"] == 456
+        assert doc["started"] and doc["heartbeat"]
+
+    def test_stop_reason_reads_the_record(self, tmp_path):
+        job = make_job(tmp_path)
+        job.claim(job.token, pid=1, pid_started=1)
+        assert job.stop_reason(job.token) is None
+        assert "token" in job.stop_reason("stolen")
+        job.request_cancel()
+        assert job.stop_reason(job.token) == "cancelled"
+
+    def test_requeue_gives_a_fresh_token(self, tmp_path):
+        job = make_job(tmp_path)
+        first = job.token
+        job.finish(R.INTERRUPTED, error="cancelled")
+        job.requeue()
+        doc = R.JobRecord.read(job.results_dir).doc
+        assert doc["state"] == R.WAITING and doc["token"] != first and doc["attempts"] == 2
+        assert doc["error"] is None and doc["pid"] is None
+
+    def test_only_one_dispatcher_takes_a_waiting_job(self, tmp_path):
+        """F1: two Queue fragments tick at once; the compare-and-swap lets one win."""
+        job = make_job(tmp_path)
+        assert job.take_for_dispatch() is True
+        assert job.take_for_dispatch() is False  # the second dispatcher finds it taken
+        assert R.JobRecord.read(job.results_dir).doc["state"] == R.RUNNING
+
+    def test_a_stale_worker_never_writes_over_the_new_attempt(self, tmp_path):
+        """F2: after "run again" the old token writes nothing (its wake must not clobber)."""
+        job = make_job(tmp_path)
+        stale_token = job.token
+        job.finish(R.INTERRUPTED, error="stopped")
+        job.requeue()
+        assert job.update(stale_token, state=R.INTERRUPTED, error="stopped: woke up") is False
+        doc = R.JobRecord.read(job.results_dir).doc
+        assert doc["state"] == R.WAITING and doc["error"] is None
+
+    def test_requeue_cleans_the_attempt_and_keeps_its_record(self, tmp_path):
+        """F6: a fresh attempt starts clean; the old record is kept as record.prev.json (S3)."""
+        job = make_job(tmp_path)
+        (job.results_dir / R.RECORD_JSON).write_text("{}", encoding="utf-8")
+        (job.results_dir / R.SUMMARY_JSON).write_text("{}", encoding="utf-8")
+        (job.results_dir / R.PLAN_PKL).write_bytes(b"stale")
+        job.finish(R.FAILED, error="boom")
+        job.requeue()
+        assert not (job.results_dir / R.SUMMARY_JSON).exists()
+        assert not (job.results_dir / R.PLAN_PKL).exists()
+        assert (job.results_dir / "record.prev.json").exists()
+        assert not (job.results_dir / R.RECORD_JSON).exists()
+
+
+class TestRecord:
+    def test_the_documented_fields(self, tmp_path):
+        plan_doc = {
+            "objective": "maxSpending",
+            "breakpoint_method": "loop",
+            "engine": {"version": __version__, "commit": "abc123"},
+            "convergence": {"convergence": "monotonic", "breakpoint_method": "loop", "unsettled": {}},
+        }
+        doc = R.build_record(
+            run_id="run-id", results_id="results-id", as_of="2026-01-01", preset="quick",
+            options={"withSSAges": "fixed"}, plan_doc=plan_doc, status="solved",
+            started="2026-11-03T14:02:11", finished="2026-11-03T14:02:12",
+            wall_time_seconds=0.3, warnings=["something odd"], iterations=2,
+            inputs_hash="feed", solver="HiGHS", gap=-1.0,
+            rates={"method": "historical", "seed": None},
+        )
+        assert doc["record_format"] == R.RECORD_FORMAT
+        assert doc["as_of"] == "2026-01-01" and doc["inputs_hash"] == "feed"
+        assert doc["solve_date"] == {"started": "2026-11-03T14:02:11", "finished": "2026-11-03T14:02:12"}
+        assert doc["preset"] == "quick" and doc["method"]["options"] == {"withSSAges": "fixed"}
+        assert doc["engine"]["version"] == __version__ and doc["solver"] == "HiGHS"
+        assert doc["status"] == "solved" and doc["gap"] == -1.0 and doc["iterations"] == 2
+        assert doc["converged"] is True and doc["convergence"]["convergence"] == "monotonic"
+        assert doc["wall_time_seconds"] == 0.3 and doc["warnings"] == ["something odd"]
+        assert doc["rates"] == {"method": "historical", "seed": None}
+        assert doc["environment"]["python"] and "numpy" in doc["environment"]["packages"]
+
+    def test_an_unsolved_record_is_not_converged(self):
+        doc = R.build_record(
+            run_id="r", results_id="x", as_of="2026-01-01", preset="custom", options={},
+            plan_doc=None, status="exception", started=None, finished=None,
+            wall_time_seconds=None, warnings=[], iterations=None, error="boom",
+        )
+        assert doc["converged"] is False and doc["status"] == "exception" and doc["error"] == "boom"
+
+
+class TestPlanCache:
+    def test_it_round_trips(self, tmp_path):
+        obj = {"solved": [1, 2, 3]}
+        sha = R.save_plan(obj, tmp_path)
+        assert sha == hashlib.sha256((tmp_path / R.PLAN_PKL).read_bytes()).hexdigest()
+        record = {"plan_pkl_sha256": sha, "environment": R.environment()}
+        assert R.load_plan(tmp_path, record) == obj
+
+    def test_a_wrong_hash_is_never_loaded(self, tmp_path):
+        R.save_plan([1], tmp_path)
+        (tmp_path / R.PLAN_PKL).write_bytes(b"not ours")
+        assert R.load_plan(tmp_path, {"plan_pkl_sha256": "0" * 64, "environment": R.environment()}) is None
+        assert not (tmp_path / R.PLAN_PKL).exists()  # dropped: a run from a zip keeps no pickles
+
+    def test_a_stale_environment_is_dropped_soft(self, tmp_path):
+        sha = R.save_plan([2], tmp_path)
+        stale = {"plan_pkl_sha256": sha, "environment": {"python": "0.0.0", "packages": {}}}
+        assert R.load_plan(tmp_path, stale) is None
+        assert not (tmp_path / R.PLAN_PKL).exists()
+
+    def test_no_record_no_cache(self, tmp_path):
+        R.save_plan([3], tmp_path)
+        assert R.load_plan(tmp_path, {"plan_pkl_sha256": None, "environment": R.environment()}) is None
+
+    def test_missing_cache_is_none(self, tmp_path):
+        assert R.load_plan(tmp_path) is None

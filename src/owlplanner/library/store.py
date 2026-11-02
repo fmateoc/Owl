@@ -46,6 +46,22 @@ RUN_FORMAT = 1
 STAGING_STALE_SECONDS = 3600.0
 
 
+def default_library_root():
+    """The library folder: $OWL_LIBRARY_DIR, else <checkout>/otherFiles/library (section 3, 10).
+
+    The env var both names the folder and switches the UI's Library section on (the way
+    `OWL_ASSISTANT=1` does the assistant). `otherFiles/` is gitignored by upstream itself, so
+    a household's runs never land in a public tree. The checkout assumption is the codebase's
+    own (`ui/tomlexamples.py` reads `examples/` the same way).
+    """
+    import os
+
+    env = os.environ.get("OWL_LIBRARY_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[3] / "otherFiles" / "library"
+
+
 def _newest_mtime(path: Path) -> Optional[float]:
     """The newest mtime in a tree, or None if it vanished meanwhile (published or removed)."""
     try:

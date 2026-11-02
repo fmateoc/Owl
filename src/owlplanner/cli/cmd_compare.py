@@ -17,7 +17,7 @@ from owlplanner.config import load_toml, config_to_plan
 from owlplanner.config.schema import CLI_SOLVER_OVERRIDE_MAP, parse_solver_options
 from owlplanner.export import plan_metrics
 
-from .cmd_run import validate_toml, _parse_solver_opts
+from .cmd_run import validate_toml, _parse_solver_opts, as_of_option
 from .formatters import _NumpyEncoder, _diff, _pct, KEY_METRICS
 from .params_help import print_solver_options_help
 from .set_override import apply_overrides
@@ -96,6 +96,7 @@ def _solve_case(diconf, dirname, solver, max_time, gap, verbose, solver_opts, se
     callback=lambda ctx, param, value: (print_solver_options_help(), ctx.exit(0)) if value else None,
     help="Show all solver options and exit.",
 )
+@as_of_option
 def cmd_compare(filename, set_overrides, solver, max_time, gap, verbose, solver_opts, seed):
     """Compare a base case against a variant defined by --set overrides.
 

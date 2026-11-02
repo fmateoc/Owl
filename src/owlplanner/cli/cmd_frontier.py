@@ -35,7 +35,7 @@ from owlplanner.stresstests import (
     summarize_spending_bequest_frontier,
 )
 
-from .cmd_run import _parse_solver_opts, validate_toml
+from .cmd_run import _parse_solver_opts, as_of_option, validate_toml
 from .set_override import apply_overrides
 
 
@@ -145,6 +145,7 @@ def _parse_float_list(value, what):
     default=False,
     help="Route plan logs through loguru instead of the default stream handler.",
 )
+@as_of_option
 def cmd_frontier(
     filename: Path,
     bequest_grid,

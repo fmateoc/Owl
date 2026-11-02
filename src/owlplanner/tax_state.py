@@ -26,9 +26,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
+from owlplanner import asof
 import toml
 from dataclasses import dataclass, fields
-from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -269,7 +269,7 @@ def _filers_alive(N_i: int, n_d: int, i_d, n: int) -> list:
 
 
 def _year_end_age(yob: int, mob: int, n: int) -> float:
-    return date.today().year + n - yob + (12 - mob) / 12
+    return asof.today().year + n - yob + (12 - mob) / 12
 
 
 def st_credits(
@@ -407,7 +407,7 @@ def st_taxParams(
     item_m = _read_itemized(entry_mfj, state, N_n)
     itemized = StateItemizedParams.empty(N_n)
 
-    thisyear = date.today().year
+    thisyear = asof.today().year
     filing_status_n = tax_federal.filingStatusIndex_n(N_i, n_d, N_n)
 
     for n in range(N_n):

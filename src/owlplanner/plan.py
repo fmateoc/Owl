@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ###########################################################################
+from owlplanner import asof
 import copy
 import numpy as np
 import pandas as pd
@@ -540,7 +541,7 @@ class Plan:
         self.mortality_table = "SSA2025"  # default; overridden by setMortalityTable()
 
         # Reference time is starting date in the current year and all passings are assumed at the end.
-        thisyear = date.today().year
+        thisyear = asof.today().year
         self.horizons = self.yobs + self.expectancy - thisyear + 1
         self.N_n = np.max(self.horizons)
         if self.N_n <= 1:
@@ -873,13 +874,13 @@ class Plan:
         """
         import calendar
 
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
         if isinstance(mydate, date):
             mydate = mydate.strftime("%Y-%m-%d")
 
         if mydate is None or mydate == "today":
-            refdate = date.today()
+            refdate = asof.today()
             self.startDate = refdate.strftime("%Y-%m-%d")
         else:
             mydatelist = mydate.replace("/", "-").split("-")
@@ -1347,7 +1348,7 @@ class Plan:
         # the UI's years+months input and avoid MILP-amplified precision drift.
         ages = np.round(np.asarray(ages, dtype=float) * 12.0) / 12.0
 
-        thisyear = date.today().year
+        thisyear = asof.today().year
         self.pi_in = pension.compute_pension_benefits(
             amounts, ages, self.yobs, self.mobs, self.horizons, self.N_i, self.N_n, thisyear=thisyear
         )
@@ -1449,7 +1450,7 @@ class Plan:
         self.mylog.vprint("SS monthly PIAs set to", [u.d(pias[i]) for i in range(self.N_i)])
         self.mylog.vprint("SS FRAs(s)", [fras[i] for i in range(self.N_i)])
 
-        thisyear = date.today().year
+        thisyear = asof.today().year
         # _ss_streams reads the settings from the plan: set them, and put the previous ones
         # back if the streams cannot be built, so that a rejected call changes nothing.
         saved = (self.ssecAmounts, self.ssecAges, self.ssecTrimPct, self.ssecTrimYear, self.ssecSurvivorClaimAge)
@@ -1521,7 +1522,7 @@ class Plan:
         the test can reach (``ss_earnings_reachable``, which gates the Summary rows).
         Nothing is stored if the build raises.
         """
-        thisyear = date.today().year
+        thisyear = asof.today().year
         if gamma_n is None:
             gamma_n = getattr(self, "gamma_n", None)
         gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
@@ -1561,7 +1562,7 @@ class Plan:
         compare row by row (a household without such earnings gets no rows).
         """
         earnings, _ = self._earnings_test_inputs()
-        thisyear = date.today().year
+        thisyear = asof.today().year
         fra_abs_i = self._ssFRAStartAbs()
         for i in range(self.N_i):
             if int(self.ssecAmounts[i]) <= 0:
@@ -1698,7 +1699,7 @@ class Plan:
                     "or optimization_parameters.budget_file." + hint
                 )
             return
-        thisyear = date.today().year
+        thisyear = asof.today().year
         year_n = np.asarray(self.year_n, dtype=float)
         ages_in = year_n[np.newaxis, :] - np.asarray(self.yobs, dtype=float)[:, np.newaxis]
         who = {"ages_in": ages_in, "inames": self.inames, "i_d": self.i_d}
@@ -2125,7 +2126,7 @@ class Plan:
             if sy < 2000:
                 raise ValueError(
                     f"setACA: start_year={sy} looks like an offset rather than a calendar year. "
-                    f"Use a 4-digit calendar year (e.g. {date.today().year + sy})."
+                    f"Use a 4-digit calendar year (e.g. {asof.today().year + sy})."
                 )
             self.aca_start_year = sy
             self.mylog.vprint(f"ACA coverage starts in calendar year {self.aca_start_year}.")
@@ -2489,7 +2490,7 @@ class Plan:
         if gamma_n is None:
             gamma_n = getattr(self, "gamma_n", None)
         gamma = np.ones(self.N_n) if gamma_n is None else np.asarray(gamma_n[: self.N_n], dtype=float)
-        thisyear = date.today().year
+        thisyear = asof.today().year
         earnings, months = self._earnings_test_inputs()
         # The years before the plan stay nominal, like the exempt amounts read for them.
         past_earnings, past_months = self._earnings_test_inputs(past=True)
@@ -2646,7 +2647,7 @@ class Plan:
         qcd_in = self.qcd_in if qcd_in is None else np.atleast_2d(qcd_in)
         inames = self.inames if inames is None else inames
 
-        thisyear = date.today().year
+        thisyear = asof.today().year
         last_published = max(tx.qcdLimit)
         for i, iname in enumerate(inames):
             for n in range(min(self.horizons[i], qcd_in.shape[1])):
@@ -2680,7 +2681,7 @@ class Plan:
         Process debts and fixed assets from houseLists and populate arrays.
         Should be called after setContributions() and before solve().
         """
-        thisyear = date.today().year
+        thisyear = asof.today().year
 
         # Process debts
         if "Debts" in self.houseLists and not u.is_dataframe_empty(self.houseLists["Debts"]):
@@ -4610,7 +4611,7 @@ class Plan:
 
         if "startRothConversions" in options:
             rhsopt = int(u.get_numeric_option(options, "startRothConversions", 0))
-            thisyear = date.today().year
+            thisyear = asof.today().year
             yearn = max(rhsopt - thisyear, 0)
             for i in range(self.N_i):
                 if i == i_xcluded:
@@ -4621,7 +4622,7 @@ class Plan:
 
         if "stopRothConversions" in options:
             rhsopt = int(u.get_numeric_option(options, "stopRothConversions", 0))
-            thisyear = date.today().year
+            thisyear = asof.today().year
             yearn = max(rhsopt - thisyear, 0)
             for i in range(self.N_i):
                 if i == i_xcluded:
@@ -4633,7 +4634,7 @@ class Plan:
         if "swapRothConverters" in options and i_xcluded == -1:
             rhsopt = int(u.get_numeric_option(options, "swapRothConverters", 0))
             if self.N_i == 2 and rhsopt != 0:
-                thisyear = date.today().year
+                thisyear = asof.today().year
                 absrhsopt = abs(rhsopt)
                 yearn = max(absrhsopt - thisyear, 0)
                 i_x = 0 if rhsopt > 0 else 1
@@ -5422,7 +5423,7 @@ class Plan:
         This is the earliest claiming age still open: a claiming month already behind us
         cannot be chosen, as SSA does not pay retroactively for it.
         """
-        today = date.today()
+        today = asof.today()
         return 12 * (today.year - int(self.yobs[i])) + today.month - int(self.mobs[i])
 
     def _ssaAgeIsFixed(self, i):

@@ -1974,7 +1974,7 @@ def genDic(plan):
     From Plan to UI.
     """
 
-    accName = ["txbl", "txDef", "txFree"]
+    accName = ["txbl", "txDef", "txFree", "hsa"]  # the Account_Balances page's per-account keys
     dic = {}
     dic["plan"] = plan
     dic["name"] = plan._name
@@ -2208,6 +2208,29 @@ def genDic(plan):
     dic["roll_sequence"] = getattr(plan, "rateRoll", 0)
 
     return plan._name, dic
+
+
+def openCaseFromPlan(plan, name=None):
+    """Build the pages' case keys from a solved Plan, with no solve ("Open in Owl").
+
+    `genDic` makes the page keys from the Plan; the keys a solve writes afterwards
+    (caseStatus, summaryDf, metricsDict, ...) come from the solved plan itself, so the
+    Graphs page renders from a cached plan instead of re-running it (run-library design
+    section 9.1). Unverified in step 1 (R10); the path broke on every HSA case until
+    genDic's account keys were fixed here (it named three accounts of four).
+    """
+    casename, dic = genDic(plan)
+    dic["caseStatus"] = plan.caseStatus
+    dic["solverMessage"] = getattr(plan, "solverMessage", "")
+    dic["summaryDf"] = plan.summaryDf() if plan.caseStatus == "solved" else None
+    dic["metricsDict"] = plan.metricsDict() if plan.caseStatus == "solved" else None
+    dic["logs"] = StringIO()
+    dic["_ui_logger"] = None
+    plan.setLogstreams(True, [dic["logs"], dic["logs"]])  # the restored case logs like a new one
+    if name:
+        casename = name
+        dic["name"] = name
+    return casename, dic
 
 
 @_checkPlan

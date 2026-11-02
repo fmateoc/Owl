@@ -43,12 +43,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import datetime
 import io
-import sys
 
 import numpy as np
 import pytest
 
 import owlplanner as owl
+from owlplanner import asof
 from owlplanner import socialsecurity as ss
 
 THISYEAR = 2026  # tests/conftest.py freezes the date at 2026-01-01
@@ -253,28 +253,17 @@ def test_an_ira_contribution_counts_only_in_a_year_with_pay(wages, deferral, exp
 # --------------------------------------------------------------------------------------
 
 
-def _start_in(monkeypatch, year):
-    """Make every owlplanner module see January 1 of `year` as today (as tests/conftest.py
-    does for 2026)."""
-
-    class _Day(datetime.date):
-        @classmethod
-        def today(cls):
-            return datetime.date(year, 1, 1)
-
-    for name, mod in list(sys.modules.items()):
-        if name.startswith("owlplanner") and mod is not None:
-            d = getattr(mod, "date", None)
-            if isinstance(d, type) and issubclass(d, datetime.date):
-                monkeypatch.setattr(mod, "date", _Day)
+def _start_in(year):
+    """Freeze Owl's "today" to January 1 of `year`: the `as_of` input (run-library step 2;
+    `tests/conftest.py` pins the suite at 2026-01-01 the same way)."""
+    return asof.as_of(datetime.date(year, 1, 1))
 
 
-def _nominal_withheld_for_2027(monkeypatch, start, inflation, earnings_2027):
+def _nominal_withheld_for_2027(start, inflation, earnings_2027):
     """Nominal amount withheld for work in calendar 2027 by a plan starting in `start`.
     The worker (born 1963-08-15, PIA 2,000, claim at 62y1m) is entitled before either plan,
     so the initial grace year (2025) is outside both and only 2027 has earnings."""
-    with monkeypatch.context() as mp:
-        _start_in(mp, start)
+    with _start_in(start):
         p = owl.Plan(["W"], ["1963-08-15"], [89], "props", verbose=False, logstreams=[io.StringIO()])
         p.setSocialSecurity([2000], [62 + 1 / 12])
         n = 2027 - start
@@ -301,7 +290,7 @@ def test_withholding_in_a_tabled_year_does_not_depend_on_the_start_year(monkeypa
     table = dict(ss._EXEMPT_TABLE)
     table[2027] = (25_560.0, 67_920.0)
     monkeypatch.setattr(ss, "_EXEMPT_TABLE", table)
-    early = _nominal_withheld_for_2027(monkeypatch, 2026, inflation, 40_000)
-    late = _nominal_withheld_for_2027(monkeypatch, 2027, inflation, 40_000)
+    early = _nominal_withheld_for_2027(2026, inflation, 40_000)
+    late = _nominal_withheld_for_2027(2027, inflation, 40_000)
     assert early > 0
     assert early == pytest.approx(late, abs=1.0)

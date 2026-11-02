@@ -25,6 +25,7 @@ import sys
 import click
 from pathlib import Path
 
+from owlplanner import asof
 from owlplanner.config import load_toml, config_to_plan
 from owlplanner.config.schema import CLI_SOLVER_OVERRIDE_MAP, parse_solver_options
 
@@ -70,6 +71,27 @@ def _parse_solver_opts(value):
             raise click.BadParameter("Option key cannot be empty")
         result.append((key, val.strip()))
     return result
+
+
+def _set_as_of(ctx, param, value):
+    """Freeze Owl's 'today' (--as-of): the date the case's inputs are valid at (S1, S7)."""
+    if value is None:
+        return None
+    try:
+        return asof.set_as_of(value)
+    except (TypeError, ValueError) as e:
+        raise click.BadParameter(str(e)) from e
+
+
+as_of_option = click.option(
+    "--as-of",
+    "as_of_date",
+    metavar="YYYY-MM-DD",
+    callback=_set_as_of,
+    expose_value=False,
+    help="Freeze Owl's 'today' to this date: the date the case's balances and year rows are "
+    "as of. Reproduces a run at its own 'as of' date (run-library design, section 8.3).",
+)
 
 
 @click.command(
@@ -162,6 +184,7 @@ def _parse_solver_opts(value):
     default=False,
     help="Route plan logs through loguru instead of the default stream handler.",
 )
+@as_of_option
 def cmd_run(
     filename: Path,
     with_config: str,

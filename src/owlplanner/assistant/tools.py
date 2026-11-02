@@ -33,6 +33,7 @@ pollutes the MCP stdio transport.
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
+from owlplanner import asof
 import asyncio
 import datetime
 import functools
@@ -1118,7 +1119,7 @@ def _build_plan_from_params(
         assumed.append({"parameter": parameter, "assumed": value, "note": note})
 
     N_i = len(names)
-    thisyear = datetime.date.today().year
+    thisyear = asof.today().year
 
     if not state:
         state = "TX"
@@ -1638,7 +1639,7 @@ def _run_from_params_blocking(
     if (
         assumed is not None
         and previous_magis is None
-        and any(datetime.date.today().year - int(str(d)[:4]) >= 63 for d in birth_dates)
+        and any(asof.today().year - int(str(d)[:4]) >= 63 for d in birth_dates)
     ):
         assumed.append(
             {

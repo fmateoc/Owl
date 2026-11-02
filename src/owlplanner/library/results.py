@@ -183,16 +183,24 @@ def environment() -> dict:
 
 
 def _package_diff_sha256() -> Optional[str]:
-    """sha256 of the uncommitted changes to the package's tracked files, or None."""
+    """sha256 of the uncommitted changes to the package's tracked files, or None.
+
+    Retried: `git` can fail transiently when several processes ask it at once (a server, its
+    workers and the test suite's parallel runs all stamp the code), and a hash missing once
+    versus present later drops a perfectly good plan cache as "stale" (H6's flake).
+    """
     import subprocess
+    import time
 
     here = Path(__file__).resolve().parents[1]  # src/owlplanner
-    try:
-        out = subprocess.run(["git", "-C", str(here), "diff", "HEAD", "--binary", "--", "."],
-                             capture_output=True, timeout=10, check=True).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return hashlib.sha256(out).hexdigest()
+    for attempt in range(3):
+        try:
+            out = subprocess.run(["git", "-C", str(here), "diff", "HEAD", "--binary", "--", "."],
+                                 capture_output=True, timeout=30, check=True).stdout
+            return hashlib.sha256(out).hexdigest()
+        except (OSError, subprocess.SubprocessError):
+            time.sleep(0.2 * (attempt + 1))
+    return None
 
 
 def code_stamp(engine: Optional[dict] = None) -> dict:

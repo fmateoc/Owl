@@ -18,6 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import subprocess
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -35,9 +36,19 @@ def engine_commit():
     here = Path(__file__).resolve().parent
 
     def git(*args):
-        return subprocess.run(
-            ["git", "-C", str(here), *args], capture_output=True, text=True, timeout=5, check=True
-        ).stdout.strip()
+        # Retried (fork): several processes can ask git at once (the run library stamps the
+        # code on every plan.pkl write and load), and one transient failure here flipped
+        # "-dirty" off and dropped good plan caches under the parallel test suite.
+        for attempt in range(3):
+            try:
+                return subprocess.run(
+                    ["git", "-C", str(here), *args], capture_output=True, text=True,
+                    timeout=15, check=True
+                ).stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                if attempt == 2:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
 
     try:
         git("ls-files", "--error-unmatch", Path(__file__).name)

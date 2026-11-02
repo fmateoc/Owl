@@ -238,3 +238,36 @@ class TestPlanCache:
 
     def test_missing_cache_is_none(self, tmp_path):
         assert R.load_plan(tmp_path) is None
+
+
+class TestTheCodeStampSurvivesAGitHiccup:
+    """H6's flake, found under the parallel suite (2026-11-02): `git` failing transiently
+    made one code stamp carry no diff hash and the next one carry it, so a perfectly good
+    plan.pkl was dropped as stale (the plan-cache and test_open_in_owl tests flaked). Several
+    processes stamp the code at once -- a server, its workers, the test suite's workers -- and
+    git can time out under the load; a retry gets the answer."""
+
+    def test_a_transient_git_failure_is_retried(self, monkeypatch):
+        import subprocess
+
+        calls = []
+        real = subprocess.run
+
+        def flaky(*args, **kw):
+            calls.append(1)
+            if len(calls) == 1:
+                raise subprocess.SubprocessError("git timed out")
+            return real(*args, **kw)
+
+        monkeypatch.setattr(subprocess, "run", flaky)
+        assert R._package_diff_sha256() is not None
+        assert len(calls) == 2
+
+    def test_a_persistent_git_failure_fails_soft(self, monkeypatch):
+        import subprocess
+
+        def dead(*args, **kw):
+            raise subprocess.SubprocessError("no git")
+
+        monkeypatch.setattr(subprocess, "run", dead)
+        assert R._package_diff_sha256() is None

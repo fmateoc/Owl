@@ -5505,3 +5505,27 @@ review item of step 3 is open.
 
 `main` fast-forwarded to `claude/run-library-step3` (2026-11-02, the user's call): run-library
 step 3 (both increments) with every finding of its three reviews fixed.
+
+## D8: the run-library design issue drafted (2026-11-02, on `claude/eager-turing-4bs36n`)
+
+`fork-notes/issue-run-library.md`: the upstream design issue for run-library steps 1-3 (D8),
+concept level, for the user to post; not posted. The proposal: an opt-in (`OWL_LIBRARY_DIR`,
+like `OWL_ASSISTANT`) for local installs, in three layers (run folders in Owl's own
+`Case.toml` + `HFP.xlsx`, background solves with a record, a comparison judged against the
+noise rule), what building it taught (plan year, pickling, `genDic`, the races, privacy), the
+small core changes it needs, and five questions (in Owl or a separate project; pages behind an
+env var; Docker; the 1% band; a core warning when `start_date` names another year).
+
+Verified on stock upstream `dev` `73dc8815` (fetched today; 5 commits past `1cf1925`, Docker
+and docs, **not merged here**), real runs from a worktree with its own `src`, on
+`Case_jack+jill.toml`:
+
+- a solved Plan does not pickle: `TypeError: cannot pickle '_io.TextIOWrapper' object`;
+- `owlbridge.genDic` raises `IndexError` at `ui/owlbridge.py:2039` on this case. `N_j` is 4
+  unconditionally (`plan.py:459`), so it is every case, not "every HSA case" as the step-2
+  entry above says. Nothing on `dev` calls it.
+- `docker/runentrypoint.sh` binds `0.0.0.0` and the compose file has no volume: the fork's
+  localhost guard would switch library mode off in upstream's container (question 3).
+
+Prior threads read for the text: #27 and #45 (bodies by `gh api search/issues`; the
+maintainer's comments by WebFetch, a summary with quotes). Nothing in `src/` or `ui/` changed.

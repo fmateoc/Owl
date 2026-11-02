@@ -5106,3 +5106,117 @@ and 9 plan-year tests added). flake8 clean, ruff only upstream's four B905s.
 
 `main` fast-forwarded to `claude/fervent-cerf-s86b65` at `11ecefab` (2026-11-02, the user's call):
 run-library step 2, the fixes from all three reviews, and the `as_of` input dropped.
+
+## Run-library step 3: the library page, the run page, the comparison (2026-11-02, on `claude/run-library-step3`)
+
+Build step 3 of `fork-notes/run-library-design.md` (section 11): "Library page, run page,
+comparison of two results with the noise rule"; check: "the synthetic baseline against a
+variant". Scope (the user's call, before the build): the core first -- I3 (threshold
+proximity), I6 (the one-year cash-flow Sankey) and I7 (the claiming-age map, design 14.3)
+come as the second increment of this step -- and the comparison covers exactly two results
+(section 9.2's "two or more" waits for step 6's collections). Code in
+`src/owlplanner/library/view.py` and `compare.py`, `presets.py`, `store.py` and `results.py`;
+the pages `ui/Library.py`, `ui/Run.py`, `ui/Compare.py` and `ui/main.py`'s nav; the
+library-mode launchers `owlplanner-library.cmd/.sh`; small extensions to
+`export.plan_metrics`, `cli/formatters.plan_to_dict` / `plan_convergence` and
+`library/results.build_record`.
+
+**Reading one result (`view.py`, design 9.1).** Everything the run page shows derives from
+`record.json` / `summary.json` / `plan.json` alone (D7), so a result whose `plan.pkl` cache
+is gone reads the same. The score is `run_suite.py`'s rule (its docstring): with essential
+budget lines under maxSpending the first year's discretionary spending (k x D_0, the new
+`discretionary_year1` metric), without them the spending basis, under maxBequest the final
+bequest. Beside it the two end-of-plan numbers, never added (R3): the home at the end
+(`final_bequest_today` less `final_bequest_savings_today`, run_suite's `home_at_end_today`)
+and the savings left after the heirs' tax. Plus total taxes (income, gains, NIIT, payroll,
+state), SS withheld by the earnings test, the claiming ages (`plan.json`'s new
+`claiming_ages`), the quality line ("settled", or "the loop did not settle; differences under
+1% are not meaningful", run_suite's `run_checks`), the method's noise tolerance (a proved
+plan: reported gap x objective, read from the reported gap, CLAUDE.md "Branch-and-bound gap";
+"local search -> loop" is not proved) and `is_exact_lp` for the agreement check.
+
+**Judging a pair (`compare.py`, design 9.2, R2/R3/S13).** A difference of a dollar or less is
+no difference; a proved pair is judged by both results' gap x objective; any unproved solve
+brings the 1% loop-noise band (grey, "~", "the loop can make it, with either sign"), at or
+above it the difference counts (local search decides). Flags when the two were solved on
+different days ("plans start today ... run both again"), with different presets or under
+different Owl commits. R3's verdict over the score and the home at the end: a result leads
+when it is at least as good on both and better on one beyond the noise rule, otherwise
+"trade-off" (the run page and the comparison never add the two numbers). When each run also
+has an exact-model companion, the agreement check (run_suite's `agreement`): same sign and
+beyond the spread plus the four error bars = resolved; in ACA years an unresolved
+disagreement "goes to the local-search result, not to a tie" (the note is shown). "What
+moved": the year-by-year differences in taxes, Medicare (IRMAA), ACA, Roth conversions,
+withdrawals, SS income and spending, only the years and items that moved.
+
+**Presets (`presets.py`).** `PRESETS` (what the interface offers: quick, decision, custom) vs
+`SOLVE_PRESETS` (what one results folder records). "Decision" is one choice and two solves
+(`preset_solves`): local search with the ages held (`decision`) plus its exact-model
+companion (`decision_exact`). **Deviation from the design's wording (8.1/9.2):** the "exact
+LP" is built as `run_suite.py`'s EXACT_GROUP -- the loop with Medicare off, SS taxability
+0.85 **and `withLTCG="optimize"`** -- because that is the model the suite's agreement rule
+and its condo-exact group compare against (with a large brokerage account the pure LP's LTCG
+loop did not settle in 138 of 153 runs there, its comment); the design's §8.1 Decision row
+says so now. The two Ages presets stay with step 6.
+
+**The pages.** `ui/Library.py`: the runs with their lineage (name, folder, plan year, "from
+*parent*: changes", notes, tags, solves), "Import a case" (TOML + optional workbook +
+budget file, through `import_case`) and "Save the current case as a new run"
+(`scenario_from_ui`, against the run the case was opened from when there is one, T1/T3), a
+zip download per run (`store.run_zip`: everything but lock files and `.attempt-*` staging),
+rename (run.json's name only, S4) and delete (to `trash/`). `ui/Run.py`: the run and result
+selectors, the header (solve date, method and commit, quality line), the six headline
+numbers, four charts from `plan.json` (spending, balances, taxes by kind, income sources --
+the new per-year wages/pension/SPIA/withdrawals), the Results workbook's sheets, and "Open in
+Owl" (the cached plan, no solve), "Download everything", "Edit as new run" (the frozen
+files into the case pages; saving on the Library page makes a child run), plus a solve
+expander (any preset; "decision" queues both its solves). `ui/Compare.py`: the two result
+selectors (defaulting to two main solves of two different runs, not to exact companions),
+the inputs' difference in words (`diff_summaries`), the judged table, the leads verdict, the
+flags, the agreement check and "what moved".
+
+**Section 10 ships with the pages.** The library-mode launchers pass
+`--server.address=localhost` and default `OWL_LIBRARY_DIR` to `otherFiles/library`; the app
+refuses library mode on any other bind address (`libraryjobs.library_address_ok`, R11), and
+`Library.open` refuses a library folder inside a git repository that does not ignore it
+(`git check-ignore`, review M2: "Queue.py will create a library anywhere `OWL_LIBRARY_DIR`
+points, a public repo included"). A trailing "/" on the probe makes `.gitignore`'s
+directory-only patterns match a folder that does not exist yet (found by the test).
+
+**Extended artifacts (small, additive).** `plan_metrics` gains `discretionary_year1` and
+`essential_year1` beside `discretionary_scale` (the score rule needed them in the durable
+files); `plan_to_dict` gains `claiming_ages` and per-year `wages` / `pension_income` /
+`spia_income` / `portfolio_withdrawals` (the charts and "what moved"); `plan_convergence`
+gains `objective_error_bar_today_dollars` (half the oscillation band, as the Summary's
+"Objective error bar" row), which `build_record` carries into `record.json`'s convergence
+block. `tests/plan/test_plan_metrics.py`'s key checks are subsets, so nothing pinned moved.
+
+**Found and fixed while building: a step-2 regression on Windows (N4).** `requeue` ("run
+again") renames `solve.log` to `solve.prev.log`, and a rename needs FILE_SHARE_DELETE on
+every open handle -- `open()` does not request it (WinError 32), so "run again" refused with
+"the previous attempt's worker may still be running" exactly in the machine-sleep wake (S8)
+the G2 tests hold the worker in: `TestAStaleWorkerWritesNothing` failed on this machine at
+`main` (`11ecefab` too). The solve log now opens with all three sharing flags
+(`worker._open_log`, ctypes CreateFileW + `msvcrt.open_osfhandle`); after the rename the old
+worker's remaining lines follow the file into `solve.prev.log`, which is where they belong.
+Reproduced before and after with the two G2 tests (3.8 s green); N4's all-or-nothing refusal
+stays for genuinely locked files (the workbook open in Excel).
+
+**Checks.** `fork-notes/synthetic/check_library_compare.py` (the design's step-3 check, the
+synthetic baseline against a variant -- `Case_ari+noa.toml` + its workbook, and the same
+scenario with \\$400k less in the taxable account): **6/6** -- the baseline solves and its
+numbers derive (score 108,959 first-year discretionary spending, home 760,861, savings 0,
+taxes 310,107, Ari 67y0m + Noa 67y0m, "settled"); the variant moves the score -13.34%,
+beyond the 1% band; the numbers survive without `plan.pkl`; the comparison reads "resolved",
+"the first result leads", no flags, 2 input changes in words and 28 years moved; the same
+inputs re-solved compare as "no difference" (all four numbers +0); the exact-model
+companions agree on the ordering (d_quick -14,530, d_exact -15,672: resolved). 67 new
+`tests/library` tests (the score rule, the quality line, the tolerances, the flags, R3's
+verdicts, the agreement check, "what moved", presets, the check-ignore refusal and the zip)
+and 13 `tests/ui` tests (`test_library_pages.py`, the three pages with Streamlit's AppTest
+and the localhost guard).
+
+Next: the second increment of step 3 (I3 threshold proximity, I6 the cash-flow Sankey, I7
+the claiming-age map), then step 4 (the scenario model and builder). D8: steps 1-3 go
+upstream as a design issue after they work in the fork -- after the increment (the user's
+call).

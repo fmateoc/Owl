@@ -5,12 +5,12 @@ The judgment of one difference follows section 9.2 and CLAUDE.md's "Loop noise":
 
 - a **proved** plan (branch-and-bound) reports a MIP gap, and is proven only to gap x
   objective: a difference counts when it is larger than *both* results' tolerances;
-- a loop or local-search solve reports no gap: under 1% of the reference's score the
+- a loop or local-search solve reports no gap: under 1% of the reference's value the
   difference is *unresolved* (grey, "~") -- the loop settling on a different fixed point can
   make it, with either sign -- and at or above 1% it counts (local search decides; the exact
   model is only an agreement check, never a tolerance);
-- a difference of a dollar or less is no difference at all (run_suite.py's `|delta| > 0.5`
-  guard on the "~" marker).
+- a difference of fifty cents or less is no difference at all (TIE_DOLLARS, run_suite.py's
+  `|delta| > 0.5` guard on the "~" marker).
 
 A variant **leads** only when it is at least as good on both numbers -- the score and the
 home at the end, never added together (R3) -- and better on one beyond the noise rule;
@@ -172,28 +172,34 @@ def _has_aca_years(result: Result) -> bool:
 
 
 def agreement(a: Result, b: Result, a_exact: Result, b_exact: Result) -> dict:
-    """The same pair under local search and under the exact model: does it order them the same?
+    """The pair as selected and under the exact model: does it order them the same?
 
     A difference counts when both models give it the same sign and it is larger than their
     spread plus the four runs' error bars (a loop that did not settle).
     """
-    d_ls = (score(b) or 0.0) - (score(a) or 0.0)
+    d_pair = (score(b) or 0.0) - (score(a) or 0.0)
     d_ex = (score(b_exact) or 0.0) - (score(a_exact) or 0.0)
-    spread = abs(d_ls - d_ex)
+    spread = abs(d_pair - d_ex)
     bars = error_bar(a) + error_bar(b) + error_bar(a_exact) + error_bar(b_exact)
     aca = _has_aca_years(a) or _has_aca_years(b)
-    if (d_ls > 0) != (d_ex > 0):
+    if (d_pair > 0) != (d_ex > 0):
         verdict = "unresolved: the two models disagree on the sign"
-    elif min(abs(d_ls), abs(d_ex)) <= spread + bars:
+    elif min(abs(d_pair), abs(d_ex)) <= spread + bars:
         verdict = "unresolved: smaller than the spread" + (" and error bars" if bars > 0.5 else "")
     else:
-        verdict = "resolved: the second result is " + ("ahead of" if d_ls > 0 else "behind") + " the first"
+        verdict = "resolved: the second result is " + ("ahead of" if d_pair > 0 else "behind") + " the first"
     note = ""
     if aca and not verdict.startswith("resolved"):
-        note = ("plan years with marketplace coverage: the exact model mis-prices the ACA trade, "
-                "so this disagreement goes to the local-search result, not to a tie")
+        # Design 9.2: "a disagreement there goes to the local-search result, not to a tie".
+        # So the reading defers to the pair's own numbers (the table above) instead of
+        # leaving "unresolved" on the screen next to a note that denies the tie (review P7).
+        verdict = ("not settled by the exact model: the pair's own difference decides "
+                   f"({d_pair:+,.0f} today's $)")
+        note = ("Plan years with marketplace coverage: the exact model mis-prices the ACA "
+                "trade, so a disagreement goes to the local-search result, not to a tie "
+                "(design 9.2).")
     return {
-        "delta_local_search": d_ls,
+        "delta_pair": d_pair,
         "delta_exact": d_ex,
         "spread": spread,
         "error_bars": bars,
@@ -279,7 +285,10 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     moved_rows, moved_totals, _columns = what_moved(a, b)
     agree = None
     if a_exact is not None and b_exact is not None and a_exact.solved and b_exact.solved:
-        if a_exact.results_id != a.results_id and b_exact.results_id != b.results_id:
+        # Four distinct results (review P4): a result is never its own companion, and one
+        # exact solve cannot stand in for both runs (the exact difference would be zero and
+        # read as a sign disagreement).
+        if len({a.results_id, b.results_id, a_exact.results_id, b_exact.results_id}) == 4:
             agree = agreement(a, b, a_exact, b_exact)
     return Comparison(
         rows=rows,
@@ -291,15 +300,21 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     )
 
 
-def exact_companion(results, exclude=()) -> Optional[Result]:
+def exact_companion(results, exclude=(), near=None) -> Optional[Result]:
     """The exact-model result among a run's results, if any (`view.is_exact_lp`).
 
-    `exclude` holds results ids already selected on the comparison screen: the companion of
-    a run is one of its *other* solves.
+    `exclude` holds the results already selected on the comparison screen: the companion of
+    a pair is one of its *other* solves, and never the pair's own other side either
+    (step-3 review P4). Of the candidates the newest solve wins (the results folder's stamp
+    names its time), preferring one solved on the same day as `near` (the pair's own solve):
+    a companion from another day confounds the check (S13).
     """
-    for result in results:
-        if result.results_id in exclude:
-            continue
-        if result.solved and is_exact_lp(result):
-            return result
-    return None
+
+    def _day(result):
+        return str((result.record.get("solve_date") or {}).get("finished") or "")[:10]
+
+    cands = [r for r in results if r.results_id not in exclude and r.solved and is_exact_lp(r)]
+    cands.sort(key=lambda r: r.results_id, reverse=True)
+    if near is not None:
+        cands.sort(key=lambda r: 0 if _day(r) == _day(near) else 1)  # stable: newest first
+    return cands[0] if cands else None

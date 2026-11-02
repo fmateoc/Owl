@@ -73,7 +73,16 @@ def _git_ignored(root: Path) -> Optional[bool]:
     0 for an ignored path, 1 for a path in the work tree that is not ignored, and 128 when
     the folder is not in a repository at all (the rule is about repositories only). It
     classifies by pattern whether the path exists or not, so a library folder that is about
-    to be created is checked too; `git -C` needs an existing folder, hence the walk up.
+    to be created is checked too.
+
+    The probe is a sentinel *file* inside the folder, not the folder itself (step-3 review
+    P1): a trailing-slash path is matched against directory-only patterns, and on this git
+    (2.52, Windows) with a CRLF `.gitignore` containing a blank line, the blank pattern
+    matches every not-yet-existing trailing-slash path -- `check-ignore` then says "ignored"
+    for a library dropped anywhere in the repository. A sentinel file path is classified
+    correctly (the blank pattern matches nothing), and a directory pattern such as
+    `otherFiles/` still matches paths inside it. If the sentinel name itself were ignored
+    the answer is "ignored": refusing is the safe direction.
     """
     probe = Path(root)
     while not probe.exists():
@@ -82,9 +91,7 @@ def _git_ignored(root: Path) -> Optional[bool]:
             return None
         probe = parent
     try:
-        # Forward slashes and a trailing "/" so a directory-only pattern (`.gitignore`'s
-        # "library/") matches a folder that does not exist yet.
-        target = str(Path(root)).replace(os.sep, "/").rstrip("/") + "/"
+        target = str(Path(root) / ".owl-library-probe").replace(os.sep, "/")
         proc = subprocess.run(
             ["git", "-C", str(probe), "check-ignore", "-q", "--", target],
             capture_output=True,
@@ -339,9 +346,16 @@ class Library:
         return good, damaged
 
     def runs(self) -> list:
-        """Every run, oldest first (damaged folders are skipped, see damaged())."""
+        """Every run, oldest first (damaged folders are skipped, see damaged()).
+
+        The order is `library.json`'s `order` -- the save order, "the order shown" (section
+        5), which resolves the same-second ties a uuid4 id cannot (step-3 review P11). A run
+        missing from the list (a folder copied in by hand) sorts by (created, id) behind
+        them.
+        """
         good, _ = self._scan()
-        return sorted(good, key=lambda r: (r.created, r.id))
+        rank = {rid: i for i, rid in enumerate(self._library_doc().get("order", []))}
+        return sorted(good, key=lambda r: (rank.get(r.id, len(rank)), r.created, r.id))
 
     def damaged(self) -> list:
         """Run folders whose run.json cannot be read (V7). Their files may still be useful."""
@@ -505,10 +519,14 @@ def run_zip(run: "RunInfo | Path") -> bytes:
     """The run folder as a zip ("Download everything", design section 9.1).
 
     Everything a run holds -- its inputs, its results and their records -- except the OS
-    lock files (`library.lock`, `status.lock`) and any staging folder a killed attempt left
-    (`results/.attempt-*`). `plan.pkl` travels too: it is only ever loaded against the hash
-    and code stamp in its own record.json (section 10), so a copy opened elsewhere is simply
-    read without it.
+    lock files (`library.lock`, `status.lock`) and the transient folders of live machinery
+    (`results/.attempt-*` staging, `results/.requeue-*` trash). `plan.pkl` travels too: it
+    is only ever loaded against the hash and code stamp in its own record.json
+    (section 10), so a copy opened elsewhere is simply read without it.
+
+    A file that vanishes between the listing and the write (a "run again" cleaning the
+    folder, step-3 review P5) is not silently dropped from "everything": the zip says which
+    one and the caller retries.
     """
     root = run.path if isinstance(run, RunInfo) else Path(run)
     if not root.is_dir():
@@ -519,7 +537,14 @@ def run_zip(run: "RunInfo | Path") -> bytes:
             if not path.is_file():
                 continue
             rel = path.relative_to(root)
-            if any(part.startswith(".attempt-") for part in rel.parts) or path.name.endswith(".lock"):
+            if any(part.startswith((".attempt-", ".requeue-")) for part in rel.parts) \
+                    or path.name.endswith(".lock"):
                 continue
-            zf.write(path, arcname=str(Path(root.name) / rel))
+            try:
+                zf.write(path, arcname=str(Path(root.name) / rel))
+            except OSError as exc:
+                raise LibraryError(
+                    f"{rel} disappeared while {root.name} was being zipped (a solve being "
+                    "re-queued?): try again"
+                ) from exc
     return buf.getvalue()

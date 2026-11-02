@@ -15,6 +15,7 @@ from owlplanner.library.view import (
     load_result,
     method_kind,
     method_text,
+    objective_value,
     quality_line,
     quality_notes,
     savings_left,
@@ -27,6 +28,7 @@ from owlplanner.library.view import (
 
 BASE_SUMMARY = {
     "spending_basis": 100_000.0,
+    "spending_year1": 100_000.0,
     "discretionary_year1": 82_000.0,
     "essential_year1": 18_000.0,
     "final_bequest_today": 500_000.0,
@@ -80,10 +82,20 @@ class TestLoadResult:
         assert result.summary == {"spending_basis": 1.0}
         assert result.plan == {} and not result.solved  # no plan.json: nothing to show
 
-    def test_a_solved_result_needs_record_and_plan(self, tmp_path):
+    def test_a_solved_result_needs_record_plan_and_summary(self, tmp_path):
         (tmp_path / R.RECORD_JSON).write_text('{"status": "solved"}', encoding="utf-8")
         (tmp_path / R.PLAN_JSON).write_text('{"objective": "maxSpending"}', encoding="utf-8")
+        assert not load_result(tmp_path).solved  # summary.json missing: no numbers (P3)
+        (tmp_path / R.SUMMARY_JSON).write_text('{"spending_basis": 1.0}', encoding="utf-8")
         assert load_result(tmp_path).solved
+
+    def test_a_missing_summary_reads_as_no_numbers_not_zeros(self):
+        """P3: a record beside an empty summary is not $0 of everything judged 'resolved'."""
+        result = make_result(summary={})
+        assert not result.solved
+        assert score(result) is None and home_at_end(result) is None
+        assert total_taxes_today(result) is None and savings_left(result) is None
+        assert "summary.json missing" in quality_notes(result)[0]
 
 
 class TestTheScore:
@@ -174,9 +186,20 @@ class TestMethodAndTolerance:
         assert method_kind(make_result(record={"status": "failed"})) == "no solve"
 
     def test_a_proved_plan_s_tolerance_is_gap_times_the_objective(self):
+        """R2's "reported gap x objective": `Plan._objectiveValue`'s value, not the score.
+
+        Step-3 review P9: under essential lines the score is only the discretionary part of
+        the objective (82,000 here), so gap x score would understate the tolerance.
+        """
         proved = make_result(record={"method": {"breakpoint_method": "branch-and-bound"},
                                      "gap": 1e-4})
-        assert tolerance(proved) == 1e-4 * 82_000.0
+        assert objective_value(proved) == 100_000.0  # first-year spending under maxSpending
+        assert tolerance(proved) == 1e-4 * 100_000.0
+        bequest = make_result(plan={"objective": "maxBequest"},
+                              record={"method": {"breakpoint_method": "branch-and-bound"},
+                                      "gap": 1e-4})
+        assert objective_value(bequest) == 500_000.0  # the bequest under maxBequest
+        assert tolerance(bequest) == 1e-4 * 500_000.0
 
     def test_a_loop_or_local_search_solve_reports_no_gap(self):
         assert tolerance(make_result()) == 0.0

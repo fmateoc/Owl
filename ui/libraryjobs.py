@@ -15,9 +15,11 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+from pathlib import Path
+
 import streamlit as st
 
-from owlplanner.library import JobManager, Library
+from owlplanner.library import JobManager, Library, run_zip
 from owlplanner.library.store import default_library_root
 
 
@@ -29,6 +31,31 @@ def library_address_ok() -> bool:
     library-mode launcher (`owlplanner-library.cmd` / `.sh`) passes `--server.address=localhost`.
     """
     return str(st.get_option("server.address")).strip().lower() in ("localhost", "127.0.0.1")
+
+
+@st.cache_data(show_spinner=False)
+def _run_zip_cached(path: str, fingerprint: tuple) -> bytes:
+    return run_zip(Path(path))
+
+
+def run_zip_bytes(run) -> bytes:
+    """`store.run_zip` for the download buttons, cached until the run folder changes.
+
+    Without the cache every render of every zip button rebuilt the whole archive (step-3
+    review P5). The fingerprint is a walk of the folder's metadata (a cheap cache key); a
+    file vanishing mid-zip (`run_zip` names it) propagates as `LibraryError`, which the
+    pages show instead of crashing.
+    """
+    root = Path(run.path)
+    count, newest = 0, 0.0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                count += 1
+                newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue  # a file in flight: the fingerprint only has to change
+    return _run_zip_cached(str(root), (count, newest))
 
 
 @st.cache_resource

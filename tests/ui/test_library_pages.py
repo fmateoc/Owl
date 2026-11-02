@@ -146,6 +146,12 @@ class TestLibraryPage:
         at.button(key=f"open_{library.runs()[0].id}").click().run()
         assert opened == ["Run.py"]
 
+    def test_zip_downloads_are_offered_for_every_run(self, library):
+        at = _page("Library.py")
+        assert not at.exception, [e.value for e in at.exception]
+        zips = [d for d in at.get("download_button") if d.label == "Zip"]
+        assert len(zips) == len(library.runs())
+
 
 class TestRunPage:
     def test_the_headline_numbers_come_from_the_result(self, library):
@@ -183,8 +189,35 @@ class TestRunPage:
         button = next(b for b in at.button if b.label == "Edit as new run")
         button.click().run()
         assert not at.exception, [e.value for e in at.exception]
-        # The case pages hold the run's inputs, and saving will make a child run.
-        assert at.session_state["library_base_run_id"] in {r.id for r in library.runs()}
+        # The case pages hold the run's inputs, and saving will make a child of *this* run.
+        assert at.session_state["library_base_run_id"] == library.runs()[-1].id
+
+    def test_open_switches_runs_after_the_first_render(self, library):
+        """Review P2: the selector's widget state used to override "Open" after run one."""
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(m.value == "## bill later" for m in at.markdown)  # the newest run first
+        at.session_state["library_selected_run"] = library.runs()[0].id  # what Open sets
+        at.run()
+        assert any(m.value == "## bill" for m in at.markdown)
+        assert not any(m.value == "## bill later" for m in at.markdown)
+
+    def test_the_solve_button_queues_both_decision_solves(self, library, monkeypatch):
+        """Review P12: "decision" is one choice, two results (design 8.1)."""
+        from owlplanner.library import JobManager
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)  # no real worker
+        before = {j.id for j in JobManager(library).jobs()}
+        at = _page("Run.py")
+        at.selectbox(key="run_page_preset").select("decision").run()
+        next(b for b in at.button if b.label == "Solve").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        queued = [j for j in JobManager(library).jobs() if j.id not in before]
+        assert sorted(j.doc["preset"] for j in queued) == ["decision", "decision_exact"]
+
+    def test_the_run_zip_download_is_offered(self, library):
+        at = _page("Run.py")
+        assert any(d.label == "Download everything" for d in at.get("download_button"))
 
 
 class TestComparePage:
@@ -206,7 +239,7 @@ class TestComparePage:
         at = _page("Compare.py")
         text = _text(at)
         assert "The exact model, as a check" in text
-        assert "difference under local search" in text
+        assert "difference in the selected pair" in text
 
     def test_the_inputs_difference_is_in_words(self, library):
         at = _page("Compare.py")
@@ -216,6 +249,19 @@ class TestComparePage:
     def test_the_what_moved_table_is_rendered(self, library):
         at = _page("Compare.py")
         assert at.dataframe, "the 'what moved' table did not render"
+
+    def test_the_s13_flags_are_shown(self, library):
+        """Review P12: different days and commits must be flagged on the page itself."""
+        folder = library.runs()[0].path / "results" / "2026-11-02T10-00-00_decision"
+        record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+        record["solve_date"]["finished"] = "2026-11-05T10:05:00+01:00"
+        record["engine"]["commit"] = "1234567"
+        (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+        at = _page("Compare.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "solved on different days" in text and "run both again" in text
+        assert "different Owl commits" in text
 
 
 class TestTheLocalhostGuard:

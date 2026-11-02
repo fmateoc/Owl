@@ -57,11 +57,11 @@ def _catalog():
     return out
 
 
-def _companion(run, exclude):
+def _companion(run, exclude, near):
     """The run's exact-model solve, if it has one (R2's agreement check)."""
     results = [view.load_result(job.results_dir)
                for job in manager.jobs(run) if (job.results_dir / R.RECORD_JSON).exists()]
-    return C.exact_companion(results, exclude=exclude)
+    return C.exact_companion(results, exclude=exclude, near=near)
 
 
 def _signed(value):
@@ -125,8 +125,8 @@ for cell, text in zip(header, ("number", "A", "B", "difference", "reading"), str
     cell.markdown(f"**{text}**")
 
 comparison = C.compare(a, b,
-                       a_exact=_companion(run_a, exclude={job_a.id}),
-                       b_exact=_companion(run_b, exclude={job_b.id}))
+                       a_exact=_companion(run_a, exclude={job_a.id, job_b.id}, near=a),
+                       b_exact=_companion(run_b, exclude={job_a.id, job_b.id}, near=b))
 for row in comparison.rows:
     cells = st.columns([3, 2, 2, 2, 3])
     cells[0].markdown(f"**{row.label}**")
@@ -153,13 +153,13 @@ agree = comparison.agreement
 if agree:
     st.markdown("#### The exact model, as a check")
     st.caption(
-        "The same pair under local search and under the exact model (the loop with Medicare "
+        "The pair as selected and under the exact model (the loop with Medicare "
         "off, SS taxability 0.85 and capital gains priced exactly: a different model, so only "
         "its differences compare). A difference counts when both models give it the same sign "
         "and it is larger than their spread plus the error bars of unsettled loops (R2)."
     )
     st.markdown(
-        f"- difference under local search: **{_signed(agree['delta_local_search'])}**\n"
+        f"- difference in the selected pair: **{_signed(agree['delta_pair'])}**\n"
         f"- difference under the exact model: **{_signed(agree['delta_exact'])}**\n"
         f"- spread between the two: {_number(agree['spread'])}; "
         f"error bars: {_number(agree['error_bars'])}\n"
@@ -168,8 +168,8 @@ if agree:
     if agree.get("note"):
         st.caption(agree["note"])
 elif a.solved and b.solved:
-    st.caption("No exact-model companion on both sides: the agreement check needs the exact "
-               "result of each run (solve both with the Decision preset).")
+    st.caption("No exact-model companion on both sides: the agreement check needs an exact "
+               "result of its own for each run (solve both with the Decision preset).")
 
 # -- what moved (design 9.2) ------------------------------------------
 
@@ -178,7 +178,7 @@ if comparison.what_moved:
     labels_by_key = dict(C.WHAT_MOVED)
     keys = list(comparison.what_moved[0]["changes"])
     frame = pd.DataFrame(
-        [{"year": row["year"],
+        [{"year": str(row["year"]),
           **{labels_by_key[key]: row["changes"][key] for key in keys}}
          for row in comparison.what_moved]
     )

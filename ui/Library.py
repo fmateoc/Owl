@@ -31,7 +31,7 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import import_case, run_zip, scenario_from_ui
+from owlplanner.library import import_case, scenario_from_ui
 
 st.markdown("# :material/database: Library")
 kz.divider("orange")
@@ -180,8 +180,13 @@ for run in runs:
                       help="The run's page: numbers, charts, tables and its solves."):
         st.session_state["library_selected_run"] = run.id
         st.switch_page("Run.py")
-    cols[2].download_button("Zip", data=run_zip(run), file_name=f"{run.folder_name}.zip",
-                            key=f"zip_{run.id}", help="Download everything (a zip of the run).")
+    try:
+        blob = libraryjobs.run_zip_bytes(run)
+    except Exception as exc:  # noqa: BLE001 - shown, not raised (a run being re-queued, P5)
+        cols[2].caption(f"zip unavailable: {exc}")
+    else:
+        cols[2].download_button("Zip", data=blob, file_name=f"{run.folder_name}.zip",
+                                key=f"zip_{run.id}", help="Download everything (a zip of the run).")
     with cols[3].popover("Rename"):
         new = st.text_input("Name", value=run.name, key=f"rename_{run.id}")
         if st.button("Rename", key=f"renameb_{run.id}"):

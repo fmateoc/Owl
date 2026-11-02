@@ -5122,8 +5122,8 @@ library-mode launchers `owlplanner-library.cmd/.sh`; small extensions to
 `library/results.build_record`.
 
 **Reading one result (`view.py`, design 9.1).** Everything the run page shows derives from
-`record.json` / `summary.json` / `plan.json` alone (D7), so a result whose `plan.pkl` cache
-is gone reads the same. The score is `run_suite.py`'s rule (its docstring): with essential
+`record.json` / `summary.json` / `plan.json` alone (D7; the workbook's sheets come from
+`Results.xlsx`), so a result whose `plan.pkl` cache is gone reads the same. The score is `run_suite.py`'s rule (its docstring): with essential
 budget lines under maxSpending the first year's discretionary spending (k x D_0, the new
 `discretionary_year1` metric), without them the spending basis, under maxBequest the final
 bequest. Beside it the two end-of-plan numbers, never added (R3): the home at the end
@@ -5135,8 +5135,10 @@ state), SS withheld by the earnings test, the claiming ages (`plan.json`'s new
 plan: reported gap x objective, read from the reported gap, CLAUDE.md "Branch-and-bound gap";
 "local search -> loop" is not proved) and `is_exact_lp` for the agreement check.
 
-**Judging a pair (`compare.py`, design 9.2, R2/R3/S13).** A difference of a dollar or less is
-no difference; a proved pair is judged by both results' gap x objective; any unproved solve
+**Judging a pair (`compare.py`, design 9.2, R2/R3/S13).** A difference of fifty cents or
+less (TIE_DOLLARS, run_suite's `> 0.5` guard) is
+no difference; a proved pair is judged by
+both results' gap x objective; any unproved solve
 brings the 1% loop-noise band (grey, "~", "the loop can make it, with either sign"), at or
 above it the difference counts (local search decides). Flags when the two were solved on
 different days ("plans start today ... run both again"), with different presets or under
@@ -5156,7 +5158,7 @@ companion (`decision_exact`). **Deviation from the design's wording (8.1/9.2):**
 LP" is built as `run_suite.py`'s EXACT_GROUP -- the loop with Medicare off, SS taxability
 0.85 **and `withLTCG="optimize"`** -- because that is the model the suite's agreement rule
 and its condo-exact group compare against (with a large brokerage account the pure LP's LTCG
-loop did not settle in 138 of 153 runs there, its comment); the design's §8.1 Decision row
+loop did not settle in 138 of 153 runs there, its comment); the design's ï¿½8.1 Decision row
 says so now. The two Ages presets stay with step 6.
 
 **The pages.** `ui/Library.py`: the runs with their lineage (name, folder, plan year, "from
@@ -5210,13 +5212,93 @@ taxes 310,107, Ari 67y0m + Noa 67y0m, "settled"); the variant moves the score -1
 beyond the 1% band; the numbers survive without `plan.pkl`; the comparison reads "resolved",
 "the first result leads", no flags, 2 input changes in words and 28 years moved; the same
 inputs re-solved compare as "no difference" (all four numbers +0); the exact-model
-companions agree on the ordering (d_quick -14,530, d_exact -15,672: resolved). 67 new
-`tests/library` tests (the score rule, the quality line, the tolerances, the flags, R3's
-verdicts, the agreement check, "what moved", presets, the check-ignore refusal and the zip)
-and 13 `tests/ui` tests (`test_library_pages.py`, the three pages with Streamlit's AppTest
+companions agree on the ordering (d_pair -14,530, d_exact -15,672: resolved). 55 new test
+functions in `tests/library` (the score rule, the quality line, the tolerances, the flags,
+R3's verdicts, the agreement check, "what moved", presets, the check-ignore refusal and the
+zip) and 18 in `tests/ui` (`test_library_pages.py`, the three pages with Streamlit's AppTest
 and the localhost guard).
 
 Next: the second increment of step 3 (I3 threshold proximity, I6 the cash-flow Sankey, I7
 the claiming-age map), then step 4 (the scenario model and builder). D8: steps 1-3 go
 upstream as a design issue after they work in the fork -- after the increment (the user's
 call).
+
+**Step 3 independent review and fixes (2026-11-02, same session;
+`fork-notes/run-library-step3-review.md`, P1-P14).** An independent reviewer agent went over
+the step's code against the design (it ran the tests, `check_library_compare.py` and its own
+probes in `%TEMP%\opencode`). The noise rule's substance and direction, R3's leads rule in
+every sign combination (brute-forced), the score rule and every artifact key name, the
+`decision_exact` fingerprint end to end, `run_suite.agreement` term for term, `quality_notes`
+vs `run_checks`, the N4 `_open_log` fix and the localhost guard were confirmed sound. All
+findings fixed the same day except two noted below:
+
+- **P1 (blocker, section 10's refusal):** `_git_ignored` probed with a trailing "/" so
+  directory-only patterns would match a folder that does not exist yet -- and on this git
+  (2.52, Windows) with a CRLF `.gitignore` containing a blank line (the repository's own
+  shape), the blank pattern matches every not-yet-existing trailing-slash path, so
+  `check-ignore` said "ignored" for a library dropped anywhere in the repo (`Library.open`
+  created one under `src/`). The probe is now a sentinel *file* inside the folder: a file
+  path is classified correctly (the blank pattern matches nothing) and directory patterns
+  like `otherFiles/` still match paths inside it. Regression test with the CRLF + blank-line
+  `.gitignore` (it fails on the old probe), and the allow cases re-checked against the real
+  repository (`otherFiles/library` allowed, `src/...` and `docs/...` refused).
+- **P2 (the Library page's "Open"):** the Run page's selector kept its widget value across
+  reruns and silently ignored `library_selected_run` after the first render. "Open" now
+  sets the state which the Run page consumes (`pop`) and writes into the selector's key.
+  AppTest regression test.
+- **P3 (missing summary.json read as $0):** `Result.solved` now needs all three durable
+  files; a missing file reads as "no numbers" (None, the row's "-") with a quality note,
+  never as zeros a comparison calls resolved.
+- **P4 (companion lookup):** one result could be both sides' exact companion (a zero exact
+  difference read as "disagree on the sign"), a companion could be the other side's selected
+  result, and the oldest exact solve was picked regardless of day. The check now needs four
+  distinct results, both selections are excluded from both lookups, and the companion is the
+  newest exact solve of the pair's day (S13). Tests rewritten (the old one codified the
+  shared companion).
+- **P5 (run_zip):** rebuilt on every render of every zip button, could crash the page on a
+  file vanishing mid-zip, silently skipped vanished files and shipped `requeue`'s
+  `.requeue-*` trash. Now cached on the folder's fingerprint, `.requeue-*` is skipped like
+  `.attempt-*`, and a vanished file raises `LibraryError` naming it (the pages show it and
+  the user retries).
+- **P6:** "a dollar or less" was the wording, the guard is run_suite's 50 cents
+  (`TIE_DOLLARS = 0.5`): wording and test name corrected everywhere.
+- **P7 (the ACA rule):** design 9.2's "a disagreement there goes to the local-search result,
+  not to a tie" is now the verdict (in ACA years an unsettled agreement defers to the pair's
+  own difference instead of leaving "unresolved" next to a note that denies the tie).
+- **P9 (the tolerance):** `tolerance()` multiplied the gap by the *score*; it is the
+  objective value (`Plan._objectiveValue`: first-year spending under maxSpending, the bequest
+  under maxBequest) -- with essential lines the score is only the discretionary part and the
+  tolerance was understated (9x on the reviewer's example). `view.objective_value` makes it
+  explicit.
+- **P10:** the test-count claim corrected (55 new `tests/library` and 18 `tests/ui` test
+  functions in the diff against `7366cdee`, not "67" and "13"; commit `e223d866`'s "71 + 31"
+  meant tests per file, a sloppy label).
+- **P11 (ordering):** `Library.runs()` now orders by `library.json`'s `order` (the save
+  order, "the order shown") instead of sorting same-second ties by a random uuid id; a
+  copied-in folder sorts by (created, id) behind them. The results half is accepted as is:
+  the folder stamps embed the solve time and sort the `decision_exact` companion right
+  after its `decision` solve, and the pages' default skips companions anyway.
+- **P12 (test gaps):** zip buttons rendered (both pages), the S13 flags rendered on the
+  Compare page, `preset_solves("decision")` driven through `JobManager.enqueue` by the Run
+  page's Solve button (two jobs, `decision` + `decision_exact`; `_spawn` stubbed), and
+  "Edit as new run" asserts the exact base run.
+- **P13 (stale base):** `library_base_run_id` is cleared whenever a case enters the session
+  or becomes current by any other route (`sskeys.createCaseFromFile`, `createNewCase`,
+  `openCaseFromPlan`, `switchToCase`), so a save can no longer claim the wrong parent.
+  Known limit: "Edit as new run" twice in one session still refuses the duplicate case name
+  (`createCaseFromFile`'s error), with no silent skip.
+- **P14 (wordings):** an unsolved result's problem is shown once (the error line, not again
+  as a quality warning); the agreement block says "the selected pair" (the primary pair can
+  be any presets -- the check script's "d_quick" became "d_pair"); the plan-independence
+  claim now names `Results.xlsx` as the workbook's source.
+
+Not accepted, with evidence: **P8** -- the citation was said to name a nonexistent
+CLAUDE.md gotcha; `**Branch-and-bound gap:**` ("read the reported gap, not the target") is
+there, inside line 87's "Loop noise" bullet (one long line, which is why a line-oriented
+grep misses it). The citation was sharpened to name the bullet.
+
+Checks after the fixes: `check_library_compare.py` re-run **6/6** (every figure unchanged
+but the renamed key); `tests/library` + `tests/ui` green in parallel runs; flake8 clean,
+ruff only upstream's four B905s. Full suite: **3845 passed, 2 skipped** (12:36 on this
+machine; the two skips are environmental: "MOSEK is installed but not licensed here" and
+the POSIX-only tzset test).

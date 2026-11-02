@@ -33,7 +33,7 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import PRESETS, ScenarioError, load_plan, preset_solves, run_zip
+from owlplanner.library import PRESETS, ScenarioError, load_plan, preset_solves
 from owlplanner.library import results as R
 from owlplanner.library import view
 
@@ -64,10 +64,17 @@ if not runs:
 # -- pick a run and one of its solves ----------------------------------
 
 labels = {f"{r.name}  ({r.folder_name})": r for r in runs}
-wanted = st.session_state.get("library_selected_run")
-default = next((label for label, r in labels.items() if r.id == wanted), next(iter(labels)))
-run = labels[st.selectbox("Run", list(labels), index=list(labels).index(default),
-                          key="run_page_run")]
+# "Open" on the Library page names the run through the session. Consume it here and drive
+# the selector explicitly: the widget's own key (`run_page_run`) otherwise keeps its old
+# value and overrides `index`, and "Open" stops switching runs after the first render
+# (step-3 review P2).
+wanted = st.session_state.pop("library_selected_run", None)
+if wanted is not None:
+    for label, r in labels.items():
+        if r.id == wanted:
+            st.session_state["run_page_run"] = label
+            break
+run = labels[st.selectbox("Run", list(labels), key="run_page_run")]
 
 entries = []  # newest solve first: (label, job, result)
 for job in reversed(manager.jobs(run)):
@@ -111,10 +118,9 @@ if entries:
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),
                  icon=":material/error:")
-    st.caption(f"Quality: {view.quality_line(result)}")  # design 9.1's plain-language line
-    quality = view.quality_notes(result)
-    if quality:
-        for note in quality:
+    else:
+        st.caption(f"Quality: {view.quality_line(result)}")  # design 9.1's plain-language line
+        for note in view.quality_notes(result):
             st.warning(note, icon=":material/warning:")
 
     # -- headline numbers (design 9.1; run_suite.py's score rule) -------
@@ -201,9 +207,14 @@ if entries:
                 if name:
                     st.toast(f"Opened as case *{name}*; see the Results section.")
     with col2:
-        st.download_button("Download everything", data=run_zip(run),
-                           file_name=f"{run.folder_name}.zip", use_container_width=True,
-                           help="A zip of the run folder: inputs, results, records and logs.")
+        try:
+            blob = libraryjobs.run_zip_bytes(run)
+        except Exception as exc:  # noqa: BLE001 - shown, not raised (a run being re-queued, P5)
+            st.caption(f"zip unavailable: {exc}")
+        else:
+            st.download_button("Download everything", data=blob,
+                               file_name=f"{run.folder_name}.zip", use_container_width=True,
+                               help="A zip of the run folder: inputs, results, records and logs.")
     with col3:
         if st.button("Edit as new run", use_container_width=True,
                      help="Opens the run's frozen files in the case pages. Edit there and "

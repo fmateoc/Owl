@@ -154,6 +154,16 @@ def has_current_case() -> bool:
     return ss.currentCase is not None and ss.currentCase in ss.cases
 
 
+def _clear_run_base():
+    """The run library's "Edit as new run" marks the run the case came from (session's
+    `library_base_run_id`); the Library page saves against it (base and parent).
+
+    Any other way a case enters the session or becomes current clears the mark: the next
+    save must not claim the wrong parent (step-3 review P13).
+    """
+    ss.pop("library_base_run_id", None)
+
+
 def switchToCase(key):
     name = ss[key]
     # format_func adds 🔻 for display only; strip it if it leaked into the stored value.
@@ -162,8 +172,10 @@ def switchToCase(key):
     # Only set currentCase if the case exists (guards against reconnect/stale widget state).
     if name in ss.cases:
         ss.currentCase = name
+        _clear_run_base()
     elif ss.currentCase is not None and ss.currentCase not in ss.cases:
         ss.currentCase = list(ss.cases)[0] if ss.cases else None
+        _clear_run_base()
 
 
 def switchToCaseName(casename):
@@ -312,6 +324,7 @@ def createCaseFromFile(strio):
 
     ss.cases[name] = dic
     setCurrentCase(name)
+    _clear_run_base()
     return True
 
 
@@ -329,6 +342,7 @@ def openCaseFromPlan(plan, name=None):
         return None
     ss.cases[casename] = dic
     setCurrentCase(casename)
+    _clear_run_base()
     return casename
 
 
@@ -365,6 +379,7 @@ def createNewCase(case):
     base.setdefault("casetoml", "")
     ss.cases[casename] = base
     setCurrentCase(casename)
+    _clear_run_base()
 
 
 def renameCase(key):

@@ -53,7 +53,8 @@ def make_result(*, id="2026-11-02T10-00-00_decision", objective="maxSpending",
                   record=record, summary=summary, plan=plan)
 
 
-def test_a_difference_of_a_dollar_or_less_is_no_difference():
+def test_a_difference_of_fifty_cents_or_less_is_no_difference():
+    """TIE_DOLLARS, run_suite's `|delta| > 0.5` guard on the "~" marker (review P6)."""
     a, b = make_result(score_value=82_000.0), make_result(score_value=82_000.5)
     j = difference("score", score(a), score(b), ta=a, tb=b)
     assert j.verdict == "no difference"
@@ -131,11 +132,13 @@ class TestLead:
 class TestAgreement:
     def test_the_same_ordering_is_resolved(self):
         a, b = make_result(score_value=100_000.0), make_result(score_value=103_000.0)
-        a_ex = make_result(score_value=90_000.0, options=dict(EXACT_OPTIONS))
-        b_ex = make_result(score_value=92_800.0, options=dict(EXACT_OPTIONS))
+        a_ex = make_result(id="2026-11-02T11-00-00_decision_exact", score_value=90_000.0,
+                           options=dict(EXACT_OPTIONS))
+        b_ex = make_result(id="2026-11-02T11-30-00_decision_exact", score_value=92_800.0,
+                           options=dict(EXACT_OPTIONS))
         out = agreement(a, b, a_ex, b_ex)
         assert out["verdict"].startswith("resolved") and "ahead of" in out["verdict"]
-        assert out["delta_local_search"] == 3_000.0 and out["delta_exact"] == 2_800.0
+        assert out["delta_pair"] == 3_000.0 and out["delta_exact"] == 2_800.0
 
     def test_a_sign_disagreement_is_unresolved(self):
         a, b = make_result(score_value=100_000.0), make_result(score_value=100_200.0)
@@ -149,28 +152,47 @@ class TestAgreement:
         out = agreement(a, b, a_ex, b_ex)
         assert "smaller than the spread" in out["verdict"]
 
-    def test_in_aca_years_a_disagreement_goes_to_the_local_search_result(self):
+    def test_in_aca_years_a_disagreement_defers_to_the_pair_s_own_result(self):
+        """Design 9.2: "a disagreement there goes to the local-search result, not to a tie"
+        (review P7: the verdict must say so, not leave "unresolved" next to the note)."""
         years = [{"year": 2030, "aca_premiums": 12_000}]
         a = make_result(score_value=100_000.0, by_year=years)
         b = make_result(score_value=100_200.0, by_year=years)
         a_ex, b_ex = make_result(score_value=90_000.0), make_result(score_value=89_000.0)
         out = agreement(a, b, a_ex, b_ex)
+        assert "the pair's own difference decides" in out["verdict"]
         assert "mis-prices the ACA trade" in out["note"]
 
-    def test_compare_attaches_the_check_only_with_two_companions(self):
-        a, b = make_result(), make_result(score_value=84_000.0)
+    def test_compare_needs_four_distinct_results(self):
+        """Review P4: no self-companion, no shared companion (a zero exact difference would
+        read as a sign disagreement), no cross-companion."""
+        a, b = make_result(), make_result(id="2026-11-02T10-00-00_decision_b", score_value=84_000.0)
         assert compare(a, b).agreement is None
-        exact = make_result(id="2026-11-02T11-00-00_decision_exact", score_value=70_000.0,
-                            options=dict(EXACT_OPTIONS))
-        out = compare(a, b, a_exact=exact, b_exact=exact)
-        assert out.agreement is not None
-        # The selected result is never its own companion.
-        assert compare(a, b, a_exact=a, b_exact=exact).agreement is None
+        exact_a = make_result(id="2026-11-02T11-00-00_decision_exact", score_value=70_000.0,
+                              options=dict(EXACT_OPTIONS))
+        assert compare(a, b, a_exact=exact_a, b_exact=exact_a).agreement is None  # shared
+        assert compare(a, b, a_exact=a, b_exact=exact_a).agreement is None  # self
+        exact_b = make_result(id="2026-11-02T11-30-00_decision_exact", score_value=72_500.0,
+                              options=dict(EXACT_OPTIONS))
+        out = compare(a, b, a_exact=exact_a, b_exact=exact_b)
+        assert out.agreement is not None and out.agreement["delta_exact"] == 2_500.0
 
-    def test_exact_companion_finds_the_exact_model_among_a_run_s_results(self):
-        exact = make_result(score_value=70_000.0, options=dict(EXACT_OPTIONS))
-        assert exact_companion([make_result(), exact]) is exact
-        assert exact_companion([make_result()]) is None
+    def test_exact_companion_skips_the_pair_and_prefers_the_newest_same_day(self):
+        """Review P4: the companion is one of the run's *other* solves, of the pair's day."""
+        day = "2026-11-02T12:00:00+01:00"
+        near = make_result(id="2026-11-02T10-00-00_decision", finished=day)
+        old = make_result(id="2026-11-01T09-00-00_decision_exact", score_value=70_000.0,
+                          options=dict(EXACT_OPTIONS), finished="2026-11-01T09:05:00+01:00")
+        picked = make_result(id="2026-11-02T10-30-00_decision_exact", score_value=71_000.0,
+                             options=dict(EXACT_OPTIONS), finished=day)
+        newest = make_result(id="2026-11-03T10-30-00_decision_exact", score_value=72_000.0,
+                             options=dict(EXACT_OPTIONS), finished="2026-11-03T10:35:00+01:00")
+        chosen = exact_companion([old, picked, newest], exclude={"2026-11-02T10-00-00_decision"},
+                                 near=near)
+        assert chosen is picked  # the same day, not the older or the later-day one
+        assert exact_companion([old, newest], near=near) is newest  # no same-day one: newest
+        assert exact_companion([picked],
+                               exclude={"2026-11-02T10-30-00_decision_exact"}) is None
 
 
 class TestWhatMoved:

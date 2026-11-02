@@ -152,11 +152,11 @@ def main() -> int:
         out = C.compare(a2, b2, a_exact=a_ex, b_exact=b_ex)
         agree = out.agreement
         ok = (agree is not None and agree["verdict"].startswith("resolved")
-              and (agree["delta_local_search"] > 0) == (agree["delta_exact"] > 0))
+              and (agree["delta_pair"] > 0) == (agree["delta_exact"] > 0))
         failures += 0 if ok else 1
-        d_ls = f"{agree['delta_local_search']:+,.0f}" if agree else "-"
+        d_pair = f"{agree['delta_pair']:+,.0f}" if agree else "-"
         d_ex = f"{agree['delta_exact']:+,.0f}" if agree else "-"
-        print(f"{'ok  ' if ok else 'FAIL'} agreement: d_quick {d_ls}, d_exact {d_ex}: "
+        print(f"{'ok  ' if ok else 'FAIL'} agreement: d_pair {d_pair}, d_exact {d_ex}: "
               f"{agree['verdict'] if agree else 'no agreement check'}",
               file=_real_out)
 

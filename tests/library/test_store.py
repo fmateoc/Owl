@@ -295,7 +295,13 @@ class TestLock:
 
 
 class TestSection10Privacy:
-    """A library holds household data: it must never be committable (section 10; review M2)."""
+    """A library holds household data: it must never be committable (section 10; review M2).
+
+    The `.gitignore` shapes matter (step-3 review P1): with a CRLF file containing a blank
+    line -- this repository's own shape -- git 2.52 matches the blank pattern against every
+    not-yet-existing trailing-slash path, and a folder-path probe then wrongly says
+    "ignored". The probe is a sentinel file inside the folder (store._git_ignored).
+    """
 
     @staticmethod
     def _repo(tmp_path):
@@ -312,11 +318,21 @@ class TestSection10Privacy:
         assert not (repo / "library").exists()  # refused before anything is created
 
     @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    def test_a_crlf_gitignore_with_a_blank_line_still_refuses(self, tmp_path):
+        """P1's regression: the blank pattern must not swallow the probe."""
+        repo = self._repo(tmp_path)
+        (repo / ".gitignore").write_bytes(b"build/\r\n\r\n*.log\r\n")
+        for where in ("library", "src/probe", "noexist"):
+            with pytest.raises(LibraryError, match="does not ignore"):
+                Library.open(repo / where)
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
     def test_a_gitignored_folder_inside_the_repository_is_allowed(self, tmp_path):
         repo = self._repo(tmp_path)
-        (repo / ".gitignore").write_text("library/\n", encoding="utf-8")
-        lib = Library.open(repo / "library")
-        assert lib.runs() == []
+        (repo / ".gitignore").write_bytes(b"otherFiles/\r\n\r\n*.log\r\n")  # the repo's shape
+        assert Library.open(repo / "otherFiles" / "library").runs() == []
+        (repo / ".gitignore").write_text("library/\n", encoding="utf-8")  # LF, dir-only
+        assert Library.open(repo / "library").runs() == []
 
     @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
     def test_outside_a_repository_the_check_does_not_apply(self, tmp_path):
@@ -345,6 +361,26 @@ class TestRunZip:
         assert f"{run.folder_name}/results/2026-11-02T10-00-00_quick/plan.pkl" in names
         assert not any(n.endswith(".lock") for n in names)
         assert not any(".attempt-" in n for n in names)
+
+    def test_transient_machinery_folders_do_not_travel(self, lib):
+        run = lib.save_run(name="x", scenario=_scenario(), generate=_generate).run
+        trash = run.path / "results" / ".requeue-ab12cd34"
+        trash.mkdir(parents=True)
+        (trash / "summary.json").write_text("{}", encoding="utf-8")
+        names = zipfile.ZipFile(io.BytesIO(run_zip(run))).namelist()
+        assert not any(".requeue-" in n for n in names)
+
+    def test_a_file_that_vanishes_mid_zip_is_not_silently_dropped(self, lib, monkeypatch):
+        """P5: "everything" must not quietly miss a file a "run again" just moved (the page
+        shows the message and the user retries)."""
+        run = lib.save_run(name="x", scenario=_scenario(), generate=_generate).run
+
+        def vanishing(self, filename, *args, **kw):
+            raise FileNotFoundError(str(filename))
+
+        monkeypatch.setattr(zipfile.ZipFile, "write", vanishing)
+        with pytest.raises(LibraryError, match="disappeared"):
+            run_zip(run)
 
     def test_a_missing_run_folder_is_refused(self, tmp_path):
         with pytest.raises(LibraryError):

@@ -43,7 +43,14 @@ class Result:
 
     @property
     def solved(self) -> bool:
-        return self.record.get("status") == "solved" and bool(self.plan)
+        """A result with numbers: the record says solved and both durable files are there.
+
+        A reader can see a record beside an empty summary/plan (a hand-deleted file, or the
+        moment `JobRecord.publish` renames the artifacts one by one): that is not $0 of
+        everything (step-3 review P3), it is "no numbers" -- the derivations return None and
+        the quality line says which file is missing.
+        """
+        return self.record.get("status") == "solved" and bool(self.plan) and bool(self.summary)
 
 
 def load_result(results_dir) -> Result:
@@ -165,6 +172,11 @@ def quality_notes(result: Result) -> list:
     """Problems with one result, whatever the scenario (run_suite.run_checks)."""
     if not result.solved:
         status = result.record.get("status") or "no record"
+        if status == "solved":
+            missing = [name for name, doc in (("summary.json", result.summary),
+                                              ("plan.json", result.plan)) if not doc]
+            return [f"the solve's files are incomplete ({', '.join(missing)} missing): "
+                    "no numbers to show"]
         note = result.record.get("error") or result.plan.get("status") or ""
         return [f"not solved: {status}" + (f" ({note})" if note else "")]
     issues = []
@@ -250,14 +262,33 @@ def record_is_exact_lp(record: dict) -> bool:
     )
 
 
+def objective_value(result: Result) -> Optional[float]:
+    """The value the solver proved bounds on: `Plan._objectiveValue`, today's $.
+
+    maxSpending maximizes the first year's spending (`g_n[0]`, `spending_year1`); maxBequest
+    maximizes the bequest. This is what "reported gap x objective" (R2) multiplies -- not the
+    *score*, which under essential lines is only the discretionary part of the objective
+    (step-3 review P9: essential 400k + discretionary 50k would understate the tolerance 9x).
+    """
+    if not result.solved:
+        return None
+    m = result.summary
+    if (result.plan.get("objective") or (result.record.get("method") or {}).get("objective")) == "maxSpending":
+        value = m.get("spending_year1")
+    else:
+        value = m.get("final_bequest_today")
+    return None if value is None else float(value)
+
+
 def tolerance(result: Result) -> float:
     """How far a difference must move before this result calls it real (R2), today's $.
 
     A proved plan (branch-and-bound) reports a MIP gap, and the plan is proven only to gap x
-    objective: that is its tolerance (read the *reported* gap, CLAUDE.md, "Branch-and-bound
-    gap"). A loop or local-search solve reports no gap: its tolerance is the loop-noise band,
-    1% of the reference's score (the caller applies the fraction to the pair's reference).
-    Here the fractional case returns 0, and the caller adds `NOISE_FRACTION * |reference|`.
+    objective: that is its tolerance (read the *reported* gap, CLAUDE.md's "Loop noise"
+    bullet, its "Branch-and-bound gap" paragraph). A loop or local-search solve reports no
+    gap: its tolerance is the loop-noise band, 1% of the reference's value (the caller
+    applies the fraction to the pair's reference). Here the fractional case returns 0, and
+    the caller adds `NOISE_FRACTION * |reference|`.
     """
     if method_kind(result) != "proved":
         return 0.0
@@ -268,5 +299,7 @@ def tolerance(result: Result) -> float:
         return 0.0
     if gap < 0:
         return 0.0
-    value = score(result) or 0.0
+    value = objective_value(result)
+    if value is None:
+        value = score(result) or 0.0
     return gap * abs(value)

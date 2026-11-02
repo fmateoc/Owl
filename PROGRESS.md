@@ -5376,3 +5376,44 @@ are not).
 Next: step 4 (the scenario model and builder from `make_cases.py`). D8 (steps 1-3 upstream
 as a design issue, "after the increment") is unblocked: the issue draft next, the user's
 call on when.
+
+## Run-library step 3 reviewed as a whole; Q1 and Q3 fixed (2026-11-02, on `claude/run-library-step3`)
+
+A full review of step 3, both increments, in two passes: this session's own and an
+independent reviewer agent with fresh context (`fork-notes/run-library-step3-review-2.md`,
+findings Q1-Q9; the independent pass's own text and probes are `step3-indep-review.md` and
+`qprobe*.py` in `%TEMP%\opencode`). Both passes re-derived the acceptance check (**9/9**,
+figures unchanged), the test counts (55 + 18, then 19/10/3/4) and the full suite
+(**3881 passed, 2 skipped**, 12:40), verified every P1-P14 fix of the first review (P8's
+rejection correct), and confirmed the noise rule, R3's verdicts, the score rule, the
+agreement check, the `decision_exact` fingerprint, I6's identity mirror and I7's parsing.
+The two passes converged on Q1 and Q2 independently; the own pass added Q7-Q8, the
+independent one Q3-Q6.
+
+Nine findings, two should-fix, folded in the same day:
+
+- **Q1 (both passes):** I3's 0%-gains entry measured `G_n + Q_n`, not the QDCG line-1 basis
+  the model prices the bracket on (`Plan._ltcg_tax_implied`: `G_n + e_n + max(Q_n,0) - ded`,
+  `ded` = `sigmaBar_n` in the years whose brackets an unused deduction widens, #205). A
+  year with unused deduction could read "over the 0% edge" where the model is well under
+  (probe: over by 1,100 vs under by 28,900). `_gains_entries` now measures the model's own
+  basis and clips gains at taxable; `FakePlan` carries `e_n`/`sigmaBar_n`/`_ltcg_wide_n`
+  and `test_the_gains_bracket_measures_the_qdcg_taxable_income` pins the side flip.
+- **Q3 (independent):** a `work_sweep.py --json` row with fixed claiming ages (no free
+  person -- real output) crashed the Run page: the cells carry no age tuples and
+  `_age_map_chart` indexed `c.ages[0]`. The map now draws nothing for such a variant
+  ("swept no claiming ages"), `x_ages`/`y_ages` skip empty tuples, and two regression tests
+  cover it (unit and the page end to end with a crafted zero-free `scores.json`).
+
+Open, for a later pass (Q2, Q4-Q9): the NIIT exposure gate reads `I_n` only (gains-only
+years are never listed); the first quality note shows twice (caption + warning); three
+claims-vs-checks drifts (check 7's docstring, the cost-pinning claim, the "153 unsettled
+runs" quote); I3 omits the 100%-FPL credit start outside expansion states; I3's IRMAA cost
+reads $0 at the top-tier edge and at gaps under the $1 slack; `view.objective_value` is not
+`Plan._objectiveValue` under maxBequest (it adds the home; the citation says otherwise);
+P13's clearing of `library_base_run_id` misses `switchToCaseName`/`copyCase`/
+`deleteCurrentCase`.
+
+Checks after the fixes: `check_library_compare.py` **9/9** (every figure unchanged);
+54 passed over the three touched test files; flake8 and ruff clean on the six touched files.
+Full suite: **3884 passed, 2 skipped** (13:43; 3881 + the three new tests, no flakes).

@@ -274,6 +274,20 @@ class TestRunPageDetails:
         assert "Claiming-age map" in _text(at)
         assert any(u.label.startswith("A work_sweep scores file") for u in at.get("file_uploader"))
 
+    def test_a_work_variant_with_fixed_ages_draws_nothing_and_does_not_crash(self, library):
+        """A work_sweep row with no free person (the claiming ages are fixed) has nothing to
+        sweep: its cells carry no age tuples, and the page must say so, not raise (the
+        zero-free crash, step-3 review 2, Q3)."""
+        run = library.runs()[-1]  # the page's default run
+        scores = [{"name": "fixed", "free": [], "best": [804, 804], "sweeps": [],
+                   "results": {
+                       "67y0m/67y0m": {"status": "solved", "value": 84_000.0,
+                                       "tolerance": 8.4, "proved": True, "ages": [804, 804]}}}]
+        (run.path / "scores.json").write_text(json.dumps(scores), encoding="utf-8")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert "swept no claiming ages" in _text(at)
+
 
 class TestComparePage:
     def test_two_results_are_judged_against_the_noise_rule(self, library):

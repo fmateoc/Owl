@@ -141,6 +141,11 @@ def _cash_flow_sankey(result, by_year):
 
 def _age_map_chart(amap):
     """I7: the objective over the free claiming ages, ties within tolerance shaded together."""
+    if amap.dimensions == 0:
+        # A work_sweep row with fixed claiming ages scores the decided plan and sweeps
+        # nothing (its cells carry no age tuples): there is no axis to draw (review 2, Q3).
+        st.caption("This work variant swept no claiming ages (they are fixed): nothing to draw.")
+        return
     groups = amap.tie_groups()
     shades = amap.group_of()
     best = amap.best()

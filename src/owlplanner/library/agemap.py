@@ -50,11 +50,12 @@ class AgeMap:
 
     def x_ages(self) -> list:
         """Swept ages of the first free person, ascending (months)."""
-        return sorted({c.ages[0] for c in self.cells}) if self.cells else []
+        return sorted({c.ages[0] for c in self.cells if c.ages}) if self.cells else []
 
     def y_ages(self) -> list:
         """Swept ages of the second free person, ascending (months); empty with one free."""
-        return sorted({c.ages[1] for c in self.cells}) if self.dimensions > 1 else []
+        return (sorted({c.ages[1] for c in self.cells if len(c.ages) > 1})
+                if self.dimensions > 1 else [])
 
     def at(self, *ages) -> AgeCell | None:
         for cell in self.cells:

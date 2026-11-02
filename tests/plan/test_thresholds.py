@@ -48,6 +48,9 @@ class FakePlan:
         self.MAGI_aca_n = np.zeros(N)
         self.G_n = np.zeros(N)
         self.Q_n = np.zeros(N)
+        self.e_n = np.zeros(N)  # the deduction taken (QDCG line 1, _ltcg_tax_implied)
+        self.sigmaBar_n = np.zeros(N)  # its ceiling
+        self._ltcg_wide_n = True
         self.I_n = np.zeros(N)
         self.aca_costs_n = np.zeros(N)
         self.zetaBar_in = np.zeros((2, N))
@@ -162,6 +165,33 @@ class TestTheOtherKinds:
         edge = float(p.gamma_n[n] * tx.capGainRates[1][0])
         p.G_n[n] = edge + 1_000.0
         assert _by_kind(threshold_proximity(p), "gains_0") == []
+
+    def test_the_gains_bracket_measures_the_qdcg_taxable_income(self):
+        """The basis is G_n + e_n + max(Q_n, 0) - ded, not G_n + Q_n (review 2, Q1): a
+        deduction ordinary income leaves unused takes gains out of tax first (#205), so it
+        widens the 0% room and the report must not call the year over the edge."""
+        n = 3
+        base = FakePlan()
+        edge = float(base.gamma_n[n] * tx.capGainRates[1][0])  # the couple's 0%->15% edge
+        p = FakePlan()
+        p.Q_n[n] = 32_000.0
+        p.G_n[n] = edge - 32_000.0 + 1_000.0  # G + Q is $1k over the edge
+        p.e_n[n] = 10_000.0
+        # Widening year, $30k of the ceiling unused: the model's basis is $29k under.
+        p.sigmaBar_n[n] = 40_000.0
+        assert _by_kind(threshold_proximity(p), "gains_0") == []
+        # The deduction fully used: the basis is G + Q again, $1k over.
+        p.sigmaBar_n[n] = 10_000.0
+        e = _by_kind(threshold_proximity(p), "gains_0")
+        assert len(e) == 1
+        assert e[0]["side"] == "over"
+        assert e[0]["amount_today_dollars"] == pytest.approx(1_000.0 / p.gamma_n[n], abs=0.01)
+        assert e[0]["cost_today_dollars"] == pytest.approx(0.15 * 1_000.0 / p.gamma_n[n], rel=0.01)
+        # An itemizing year (the brackets do not widen) deducts e_n whatever the ceiling.
+        p._ltcg_wide_n = False
+        p.sigmaBar_n[n] = 40_000.0
+        e = _by_kind(threshold_proximity(p), "gains_0")
+        assert len(e) == 1 and e[0]["side"] == "over"
 
     def test_the_ss_taxability_bands_are_ramps_without_a_cost(self):
         p = FakePlan()

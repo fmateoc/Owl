@@ -108,19 +108,31 @@ def _irmaa_entries(p):
 def _gains_entries(p):
     """The 0% capital-gains bracket: gains are free up to the 0%->15% edge of taxable income.
 
-    The plan's gains (plus qualified dividends) stack on its ordinary taxable income
-    (`tax_federal.capitalGainTax`); crossing the edge taxes the gains it displaces at 15% (or
-    more near the 20% edge), priced by `capitalGainTax` itself at the edge and across it.
+    The income measured against the edge is the model's own: the QDCG worksheet's line-1
+    taxable income as `Plan._ltcg_tax_implied` computes it (plan.py) -- `G_n + e_n +
+    max(Q_n, 0) - ded`, where `ded` is the deduction ceiling `sigmaBar_n` in the years whose
+    gains brackets an unused deduction widens (all but the itemizing ones,
+    `Plan._ltcg_deduction_widens_n`, #205) and the taken deduction `e_n` in the others. A
+    year whose ordinary income leaves deduction unused gives gains more 0% room than
+    `G_n + Q_n` says, and the report must not call it over on that account (step-3 review 2,
+    Q1). The plan's gains stack on that income (`tax_federal.capitalGainTax`); crossing the
+    edge taxes the gains it displaces at 15% (or more near the 20% edge), priced by
+    `capitalGainTax` itself at the edge and across it.
     """
     entries = []
     N = p.N_n
     gamma = np.asarray(p.gamma_n[:N], dtype=float)
     status_n = tx.filingStatusIndex_n(p.N_i, p.n_d, N)
-    tx_income = np.asarray(p.G_n[:N], dtype=float) + np.asarray(p.Q_n[:N], dtype=float)
+    # The QDCG line-1 basis (mirrors Plan._ltcg_tax_implied; e_n is None before the first
+    # iterate, where G_n and Q_n are zero too).
+    e_n = np.zeros(N) if getattr(p, "e_n", None) is None else np.asarray(p.e_n[:N], dtype=float)
     gains = np.maximum(np.asarray(p.Q_n[:N], dtype=float), 0.0)
+    ded_n = np.where(getattr(p, "_ltcg_wide_n", True),
+                     np.asarray(p.sigmaBar_n[:N], dtype=float), e_n)
+    tx_income = np.maximum(0.0, np.asarray(p.G_n[:N], dtype=float) + e_n + gains - ded_n)
 
     def gains_tax(income):
-        return tx.capitalGainTax(p.N_i, income, gains, gamma, p.n_d, N)
+        return tx.capitalGainTax(p.N_i, income, np.minimum(gains, income), gamma, p.n_d, N)
 
     for n in range(N):
         if gains[n] <= 0:

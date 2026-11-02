@@ -84,6 +84,20 @@ class TestParsing:
         assert m.at(822, 756) is not None
         assert m.at(822, 756).tolerance == pytest.approx(NOISE_FRACTION * 100.0)
 
+    def test_a_variant_with_no_free_person_sweeps_nothing(self):
+        """A work_sweep row with fixed claiming ages scores the decided plan and sweeps
+        nothing: its cells carry no age tuples and there is no axis (review 2, Q3)."""
+        maps = agemap.parse_scores([{
+            "name": "fixed", "free": [], "best": [804, 804], "sweeps": [],
+            "results": {"67y0m/67y0m": {"status": "solved", "value": 84_000.0,
+                                        "tolerance": 8.4, "proved": True, "ages": [804, 804]}},
+        }])
+        m = maps[0]
+        assert m.dimensions == 0
+        assert m.x_ages() == [] and m.y_ages() == []
+        assert m.best().value == 84_000.0
+        assert [g[0].value for g in m.tie_groups()] == [84_000.0]
+
 
 class TestTieShading:
     def test_cells_within_tolerance_of_the_best_share_its_shade(self, maps):

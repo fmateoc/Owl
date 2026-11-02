@@ -4802,3 +4802,27 @@ name, UI defaults, float precision), so an unchanged re-save makes a new run and
 paths hash differently (T1; V9's test checks the tables only); `Library.open` deletes another
 session's staging folder mid-save (T2); the UI path rewrites `plan_year` to the current year (T3);
 `diff_summaries` misses int/float and bool/int changes (T4). Not fixed here: the user's call.
+
+**T1-T4 fixed (2026-11-02, on `claude/run-library-step1`, user's call):**
+
+- T1: `casefiles.canonicalize` (called by `scenario_from_case`, so by both entry paths, and by
+  `save_run` with the default builder): the library's own file names in the case, the case read
+  back through `save_toml`'s encoder (`toml.loads(toml.dumps(...))`, not `load_toml`, whose
+  `sanitize_config` is date-dependent), integral floats in table cells as ints. The last one was
+  found while fixing: the source workbook gives `0.0` where Owl's `saveContributions` read back
+  gives `0`, which T4's stricter diff showed and which had already split the hash. `scenario_from_ui`
+  takes `base=` (the opened run's scenario) and applies to its case only the fields where
+  `ui_to_config(config_to_ui(base))` and `ui_to_config(pages)` differ (the UI round trip itself is
+  lossy: it drops `asset_allocation.interpolation_*` on the synthetic condo case, so it is not the
+  canonical form); a section the base lacks is added only if the pages changed something in it.
+  The base's budget sidecar is reused when the reference is unchanged.
+- T2: `Library.open` removes a staging folder only when its newest mtime is over
+  `STAGING_STALE_SECONDS` (1 h) old.
+- T3: with `base=` the plan year is the base's; `plan_year=` overrides; the start date's year
+  follows it (month and day from the pages).
+- T4: `_diff_into` compares `canonical_json`.
+
+Checks: `tests/library` 82 passed (17 new); flake8 clean, ruff only upstream's four B905;
+`check_library_roundtrip.py` now compares inputs hashes too, 39/39; the review's probes re-run:
+re-saving a run's own files dedupes (`changes: []`), a UI-path scenario equals its own
+`Case.toml` re-imported, a second `open` leaves a save in progress alone.

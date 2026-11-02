@@ -120,10 +120,15 @@ Rules:
   one costs one re-solve, never the record.
 - **Inputs hash.** A hash of the canonical `scenario.json` (S10: sorted keys, fixed separators and
   number format, UTF-8 — two byte-different documents that differ only in key order or whitespace
-  hash the same; number *types* count, because the generated TOML keeps an int and a float apart,
-  review V3) and the
-  builder version. The scenario is normalized once, before hashing *and* before generating, so
-  `scenario.json` is exactly the document the frozen files were built from (V3). Saving inputs
+  hash the same; number *types* count in the case dictionary, because the generated TOML keeps an
+  int and a float apart, review V3, but not in the HFP tables, whose cells are doubles in the
+  workbook: there an integral float is stored as an int, T1) and the
+  builder version. The scenario is canonicalized once, before hashing *and* before generating
+  (T1: the library's own file names, and the case read back through `save_toml`'s encoder), so
+  `scenario.json` is exactly the document the frozen files were built from and read back as
+  (V3, T1): re-importing a run's own files gives the same hash. Saving from the pages applies only
+  the fields the pages changed to the run they were opened from, and keeps its plan year (T1, T3:
+  `ui_to_config` fills in defaults and puts the current year in the start date). Saving inputs
   identical to an existing run's says so ("identical to *wp-2029-mortgage*") instead of making a
   duplicate; the requested name, notes, tags and parent are reported back, not dropped (V8).
 - **Frozen generated files (R9).** A run's `Case.toml`, `HFP.xlsx` and `rates.csv` are what its
@@ -218,8 +223,10 @@ to the horizon with zeros, drops rows outside `today-5 .. today+horizon`, and cl
 purchase year to today, so "every row is a row the user entered" holds up to that conditioning and
 the same files imported in different years give different tables and different inputs hashes. The
 conditioning year is pinned to the run's plan year with the `as_of` input (§8.3 b) in build step
-2. `save_toml` writes floats with 8 significant figures (review V10), so the frozen `Case.toml`
-truncates what the scenario keeps verbatim.
+2. `save_toml` writes floats with 8 significant figures (review V10); the scenario stores the
+values as the frozen `Case.toml` holds them (T1). `load_toml` also clamps a past
+`startRothConversions` to this year (`sanitize_config`), another date dependence of import,
+pinned with V5's.
 
 ## 7. Saving, naming and versioning
 

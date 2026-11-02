@@ -2,11 +2,13 @@
 
 import json
 import os
+import threading
 import time
 
 import pytest
 
 from owlplanner.library import Library, LibraryError, LibraryLocked
+from owlplanner.library.store import STAGING_STALE_SECONDS
 
 
 def _scenario(marker="a"):
@@ -87,9 +89,46 @@ class TestSaveRun:
     def test_open_clears_stale_staging(self, tmp_path):
         root = tmp_path / "library"
         Library.open(root)
-        (root / ".staging" / "leftover").mkdir(parents=True)
+        leftover = root / ".staging" / "leftover"
+        (leftover / "inputs").mkdir(parents=True)
+        old = time.time() - STAGING_STALE_SECONDS - 60
+        for path in (leftover / "inputs", leftover):
+            os.utime(path, (old, old))
         Library.open(root)
         assert list((root / ".staging").iterdir()) == []
+
+    def test_open_keeps_a_fresh_staging_folder(self, tmp_path):
+        """T2: another session may be saving; only stale folders go."""
+        root = tmp_path / "library"
+        Library.open(root)
+        (root / ".staging" / "in-progress" / "inputs").mkdir(parents=True)
+        Library.open(root)
+        assert [p.name for p in (root / ".staging").iterdir()] == ["in-progress"]
+
+    def test_a_second_open_does_not_break_a_save_in_progress(self, tmp_path):
+        """T2: Library.open while another session's generate runs (two tabs, S5)."""
+        lib = Library.open(tmp_path / "library")
+        started = threading.Event()
+        errors = []
+
+        def slow(scenario, inputs_dir):
+            started.set()
+            time.sleep(0.5)
+            (inputs_dir / "Case.toml").write_text("generated", encoding="utf-8")
+
+        def save():
+            try:
+                lib.save_run(name="tab A", scenario=_scenario(), generate=slow)
+            except BaseException as exc:  # noqa: BLE001 - reported below
+                errors.append(exc)
+
+        worker = threading.Thread(target=save)
+        worker.start()
+        assert started.wait(5)
+        Library.open(tmp_path / "library")
+        worker.join()
+        assert errors == []
+        assert [r.name for r in lib.runs()] == ["tab A"]
 
     def test_the_stored_scenario_is_the_generated_document(self, lib):
         seen = {}

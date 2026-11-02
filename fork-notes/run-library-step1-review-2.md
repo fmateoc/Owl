@@ -44,3 +44,17 @@ choice: filling Owl's defaults on import through `config_to_ui` -> `ui_to_config
 lossless (on `Case_ari+noa_condo.toml` it drops `asset_allocation.interpolation_center` and
 `interpolation_width`), so either fill defaults another way or compare and dedupe on a
 defaults-filled view while storing the dict as entered.
+
+## Dispositions (2026-11-02, the user's call: fix T1-T4)
+
+| # | Disposition |
+|---|---|
+| T1 | Fixed. `casefiles.canonicalize` (from `scenario_from_case`, so both entry paths, and from `save_run` with the default builder) writes the library's file names into the case and reads it back through `save_toml`'s encoder (`toml.loads(toml.dumps(...))`; not `load_toml`, whose `sanitize_config` is date-dependent). Found while fixing: table cells were typed by how they were read (`0.0` from the source workbook, `0` from `saveContributions` read back), which split the hash too; integral floats in tables are now ints (a workbook cell is a double; the case dictionary keeps its types, V3). (b) is solved by `scenario_from_ui(base=...)`: only the fields where `ui_to_config` of the base and of the pages differ are applied to the base's case, and a section the base lacks is added only if something in it changed. Without a base (a case typed in the pages) the defaults stay, by design; a file from outside the library comes in through `import_case`. Tests: `TestCanonicalCase`, `TestSaveOnABase`, and V9's test now asserts the hash. `check_library_roundtrip.py` compares inputs hashes: 39/39. |
+| T2 | Fixed. `Library.open` removes a staging folder only when its newest mtime is more than `STAGING_STALE_SECONDS` (1 h) old. Tests `test_open_keeps_a_fresh_staging_folder`, `test_a_second_open_does_not_break_a_save_in_progress` (the probe as a test). |
+| T3 | Fixed. With `base=` the plan year is the base's; `plan_year=` overrides either; the start date takes the plan year with the pages' month and day. Tests `test_the_base_plan_year_is_kept` (a 2025 case under the 2026 test date), `test_plan_year_without_a_base`. |
+| T4 | Fixed. `_diff_into` compares `canonical_json`. Tests `test_int_to_float_is_a_change`, `test_bool_to_int_is_a_change`. |
+| T5, T6 | Open (low; design note). |
+
+Checks after the fixes: `tests/library` 82 passed; flake8 clean; ruff only upstream's four B905;
+probes 1, 3 and 4 re-run with the fixes (probes 2 and 5 call `scenario_from_ui` without a base,
+the documented route for a case typed in the pages, and still show its defaults and current year).

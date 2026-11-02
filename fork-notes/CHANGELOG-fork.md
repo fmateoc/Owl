@@ -7,6 +7,18 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 1: second review fixed (2026-11-02)
+
+`fork-notes/run-library-step1-review-2.md`, T1-T4. The stored case dictionary is canonical (the
+library's own file names, floats as the generated `Case.toml` holds them; table cells typed as a
+workbook holds them), so re-importing a run's own files gives the same hash; saving from the pages
+takes the opened run as `base=` and applies only the fields the pages changed, keeping the base's
+plan year (`ui_to_config` fills in defaults and puts the current year in the start date);
+`Library.open` removes only stale staging folders, not another session's save in progress; the
+change summary compares canonical JSON (1 vs 1.0, True vs 1). `save_run` canonicalizes a scenario
+it generates with the default builder. 82 tests in `tests/library/`; the synthetic round-trip
+check now compares inputs hashes (39/39).
+
 ### Run library, build step 1: the library core (2026-11-01)
 
 `src/owlplanner/library/`: scenario schema v1 (hand rows: the case dictionary and the HFP tables

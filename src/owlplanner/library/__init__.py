@@ -15,6 +15,8 @@ from .scenario import (  # noqa: F401
     validate,
 )
 from .casefiles import (  # noqa: F401
+    canonical_case,
+    canonicalize,
     df_to_table,
     export_case,
     import_case,

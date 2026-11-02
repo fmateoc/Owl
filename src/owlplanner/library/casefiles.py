@@ -15,16 +15,31 @@ a `budget_file` the sidecar is captured and written (V2: a frozen pair must neve
 file it does not carry), and its file is resolved CWD-then-beside-the-case exactly as
 `_load_budget_file` resolves it (V1; pass `case_dir=` or `budget_path=` where that is not enough).
 
+Canonical case dictionary (T1, `fork-notes/run-library-step1-review-2.md`): the scenario holds
+the case exactly as its generated `Case.toml` reads back. `canonical_case` writes the library's
+own file names (`HFP.xlsx` or Owl's `"None"`, the sidecar's name under `inputs/`) and passes the
+dictionary through `save_toml`'s encoder and back (8 significant figures, V10), so re-importing a
+run's own files gives the same scenario and the same inputs hash. It does not use `load_toml`,
+whose `sanitize_config` is date-dependent (a past `startRothConversions` is clamped to this year).
+
+Saving from the pages (T1, T3): `ui_to_config` fills Owl's UI defaults and turns the start date's
+year into the current year, so it cannot serve as the canonical form (it is also lossy: on the
+synthetic condo case it drops `asset_allocation.interpolation_*`). `scenario_from_ui(base=...)`
+therefore applies to the opened run's case only the fields the pages changed (the difference
+between `ui_to_config` of the base and of the pages' state), and keeps the base's plan year.
+
 Known limits of this step (from `fork-notes/run-library-step1-review.md`):
 
 - The tables are `hfp_io.read`'s **conditioned** tables (V5): every year to the horizon is
   filled with zeros, rows outside `today-5 .. today+horizon` are dropped, and a past Fixed Assets
   year is clamped to today. Import is therefore date-dependent; it is pinned to the run's plan
   year with the `as_of` input (design section 8.3 b) in build step 2.
-- `save_toml`'s encoder writes floats with 8 significant figures (V10), so the frozen `Case.toml`
-  truncates what the scenario keeps verbatim. Inherited from Owl's own save path.
+- `load_toml` (import) applies `sanitize_config`, which clamps a past `startRothConversions` to
+  this year: another date dependence of import, pinned with V5's.
+- `save_toml`'s encoder writes floats with 8 significant figures (V10); the scenario stores the
+  truncated values (T1), so it matches its frozen `Case.toml`.
 - For a case with no workbook both entry paths record the plan's zero-filled tables and export
-  an `HFP.xlsx` (V9), so the two paths hash the same.
+  an `HFP.xlsx` (V9); with `base=` the two paths give the same scenario for an unedited case.
 
 Not here: `rates.csv` (the downturn rate table, D11) arrives with build step 5b; events and
 the builder with step 4 (scenario schema version 2).
@@ -37,7 +52,7 @@ import io
 import tempfile
 from pathlib import Path
 
-from .scenario import SCHEMA_VERSION, ScenarioError, normalize, validate
+from .scenario import SCHEMA_VERSION, ScenarioError, canonical_json, normalize, validate
 
 CASE_TOML = "Case.toml"
 HFP_XLSX = "HFP.xlsx"
@@ -120,14 +135,106 @@ def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=Non
     }
     if budget_file:
         scenario["budget_file"] = {"ref": str(budget_file["ref"]), "text": str(budget_file["text"])}
-    # Normalized before hashing and before generating, so scenario.json is exactly the
-    # document the frozen files are built from (V3).
+    # Normalized and canonicalized before hashing and before generating, so scenario.json is
+    # exactly the document the frozen files are built from and read back as (V3, T1).
+    return canonicalize(scenario)
+
+
+def canonicalize(scenario: dict) -> dict:
+    """The scenario with its case dictionary in canonical form (T1); validated.
+
+    Idempotent. The case gets the library's own file names and goes through `save_toml`'s
+    encoder and back, so it equals what the generated `Case.toml` reads back as.
+    """
     scenario = normalize(scenario)
+    validate(scenario)  # rejects None and non-finite values before the encoder sees them (V4)
+    scenario["hfp"] = {name: _canonical_table(table) for name, table in scenario["hfp"].items()}
+    scenario["case"], sidecar = canonical_case(
+        scenario["case"], has_tables=bool(scenario["hfp"]), sidecar=scenario.get("budget_file")
+    )
+    if sidecar is not None:
+        scenario["budget_file"] = sidecar
+    if scenario.get("plan_year") is None:
+        scenario["plan_year"] = _plan_year_of(scenario["case"])
     validate(scenario)
     return scenario
 
 
-def scenario_from_ui(uidic: dict, plan, *, case_dir=None, budget_path=None) -> dict:
+def _canonical_cell(value):
+    # A workbook cell is a double: 0 and 0.0 are one value there, and which one a table holds
+    # depends only on how it was read (the source workbook's cells, or Owl's saveContributions
+    # read back). Integral floats become ints so that incidental typing never changes the hash.
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _canonical_table(table: dict) -> dict:
+    return {
+        "columns": list(table["columns"]),
+        "rows": [[_canonical_cell(v) for v in row] for row in table["rows"]],
+    }
+
+
+def canonical_case(case: dict, *, has_tables: bool, sidecar=None):
+    """(case, sidecar) with the library's file names, read back through the TOML encoder."""
+    import toml
+    from owlplanner.config.toml_io import _CleanFloatEncoder
+
+    case = copy.deepcopy(case)
+    case.setdefault("household_financial_profile", {})["HFP_file_name"] = HFP_XLSX if has_tables else "None"
+    if sidecar:
+        target, _ = _sidecar_target(sidecar.get("ref", ""))
+        sidecar = {"ref": target.as_posix(), "text": str(sidecar["text"])}
+        case.setdefault("optimization_parameters", {})["budget_file"] = sidecar["ref"]
+    case = toml.loads(toml.dumps(case, encoder=_CleanFloatEncoder()))
+    return case, (sidecar or None)
+
+
+def _apply_page_edits(base: dict, before: dict, after: dict) -> dict:
+    """`base` with the fields that differ between `before` and `after` (the pages' edits).
+
+    Dictionaries are walked key by key; anything else (lists included) is one field. A field
+    the pages added is added, one they dropped is dropped, an unchanged one keeps base's value.
+    """
+    result = copy.deepcopy(base)
+    _merge_edits(result, before, after)
+    return result
+
+
+def _merge_edits(target: dict, before: dict, after: dict) -> None:
+    for key in set(before) | set(after):
+        if key not in after:
+            target.pop(key, None)
+        elif key not in before:
+            target[key] = copy.deepcopy(after[key])
+        elif isinstance(before[key], dict) and isinstance(after[key], dict):
+            if isinstance(target.get(key), dict):
+                _merge_edits(target[key], before[key], after[key])
+            else:
+                # A section the base does not have: add it only if the pages changed something
+                # in it (an empty section would be a spurious change, T1).
+                section: dict = {}
+                _merge_edits(section, before[key], after[key])
+                if section:
+                    target[key] = section
+        elif canonical_json(before[key]) != canonical_json(after[key]):
+            target[key] = copy.deepcopy(after[key])
+
+
+def _with_year(start_date, year):
+    """`start_date` ('YYYY-MM-DD' or 'MM-DD') moved to `year`; other values unchanged."""
+    if year is None or not isinstance(start_date, str):
+        return start_date
+    parts = start_date.replace("/", "-").split("-")
+    if len(parts) == 3 and parts[0].isdigit():
+        return f"{int(year):04d}-{parts[1]}-{parts[2]}"
+    if len(parts) == 2:
+        return f"{int(year):04d}-{parts[0]}-{parts[1]}"
+    return start_date
+
+
+def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=None, budget_path=None) -> dict:
     """A scenario straight from the app's pages, before any solve (build step 1, R6).
 
     The case dictionary comes through `config.ui_bridge.ui_to_config` (never
@@ -137,21 +244,45 @@ def scenario_from_ui(uidic: dict, plan, *, case_dir=None, budget_path=None) -> d
     edited tables into the plan first (`ui.owlbridge.saveContributions` does it with
     `_setContributions`).
 
-    The budget sidecar is captured whenever the case names a `budget_file` (V2), resolved
-    CWD-then-`case_dir` like `plan_bridge._load_budget_file` (V1); pass `budget_path=` when
-    the file lives elsewhere.
+    `base` is the scenario of the run the pages were opened from (T1, T3). With it, only the
+    fields the pages changed are applied to the base's case (`ui_to_config` of the base against
+    `ui_to_config` of the pages), so an unedited save is identical to the base, the change
+    summary lists the edits alone, and the base's plan year is kept. Without it (a case typed
+    in the pages), the case is `ui_to_config`'s as is, with the current year as its plan year.
+    `plan_year` overrides either; the start date's year follows the plan year (the pages always
+    show the current year, and Owl ignores the start date's year). A case file from outside the
+    library comes in through `import_case`, which keeps the file's own fields and year.
+
+    The budget sidecar is captured whenever the case names a `budget_file` (V2): the base's,
+    when the reference is unchanged and no `budget_path=` is given; else resolved
+    CWD-then-`case_dir` like `plan_bridge._load_budget_file` (V1).
     """
-    from owlplanner.config.ui_bridge import ui_to_config
+    from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
 
     case = ui_to_config(dict(uidic))
+    year = plan_year
+    if base is not None:
+        base = canonicalize(base)
+        before = ui_to_config(config_to_ui(copy.deepcopy(base["case"])))
+        case = _apply_page_edits(base["case"], before, case)
+        if year is None:
+            year = base.get("plan_year")
+    if year is not None:
+        info = case.setdefault("basic_info", {})
+        info["start_date"] = _with_year(info.get("start_date"), year)
     with tempfile.TemporaryDirectory() as tmp:
         time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
-    budget_file = _read_budget_text(
-        _budget_reference(case),
-        base=Path(case_dir) if case_dir is not None else None,
-        explicit=budget_path,
-    )
-    return scenario_from_case(case, time_lists, house_lists, budget_file=budget_file)
+    ref = _budget_reference(case)
+    base_sidecar = base.get("budget_file") if base is not None else None
+    if ref and base_sidecar and budget_path is None and ref == base_sidecar["ref"]:
+        budget_file = dict(base_sidecar)
+    else:
+        budget_file = _read_budget_text(
+            ref,
+            base=Path(case_dir) if case_dir is not None else None,
+            explicit=budget_path,
+        )
+    return scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file)
 
 
 def _tables_from_plan(plan, tmpdir: Path):

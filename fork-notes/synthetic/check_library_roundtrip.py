@@ -4,8 +4,9 @@
 dictionary and HFP tables". For every case file in `cases/` and every workbook that belongs
 to it (the workbook variants `run_suite.py` runs), this script imports the pair into a
 scenario, exports the generated files to a temporary folder, imports those again, and
-compares the case dictionary (less the workbook name, our own bookkeeping) and the HFP
-tables.
+compares the inputs hashes (since T1 the case dictionary is canonical, file names included, so
+the hash must not move), plus the case dictionary, the HFP tables, the plan year and the budget
+sidecar one by one to say which part moved.
 
 Run after `make_cases.py`, from anywhere:
 
@@ -15,25 +16,18 @@ Prints one line per pair and a summary; exits 1 if any pair differs.
 """
 
 import contextlib
-import copy
 import io
 import sys
 import tempfile
 from pathlib import Path
 
-from owlplanner.library import export_case, import_case
+from owlplanner.library import export_case, import_case, scenario_hash
 
 CASES = Path(__file__).parent / "cases"
 
 # The plan's logger writes DEBUG to stdout/stderr; keep the script's own output readable.
 _quiet = contextlib.redirect_stdout(io.StringIO())
 _real_out = sys.stdout
-
-
-def normalized(case):
-    case = copy.deepcopy(case)
-    case.setdefault("household_financial_profile", {})["HFP_file_name"] = "HFP.xlsx"
-    return case
 
 
 def case_for(workbook):
@@ -65,17 +59,18 @@ def main() -> int:
             out = Path(tmp) / workbook.stem
             export_case(scenario, out)
             again = import_case(out / "Case.toml")
-            ok_case = normalized(again["case"]) == normalized(scenario["case"])
+            ok_hash = scenario_hash(again) == scenario_hash(scenario)
+            ok_case = again["case"] == scenario["case"]
             ok_hfp = again["hfp"] == scenario["hfp"]
             ok_year = again["plan_year"] == scenario["plan_year"]
             ok_budget = again.get("budget_file") == scenario.get("budget_file")
             checks += 1
             where = f"{case_file.name} + {workbook.name}"
-            if ok_case and ok_hfp and ok_year and ok_budget:
+            if ok_hash and ok_case and ok_hfp and ok_year and ok_budget:
                 print(f"ok   {where} ({len(scenario['hfp'])} tables)", file=_real_out)
             else:
                 failures += 1
-                print(f"FAIL {where}: case={ok_case} hfp={ok_hfp} "
+                print(f"FAIL {where}: hash={ok_hash} case={ok_case} hfp={ok_hfp} "
                       f"plan_year={ok_year} budget={ok_budget}", file=_real_out)
     print(f"{checks - failures}/{checks} pairs round-trip unchanged", file=_real_out)
     return 1 if failures else 0

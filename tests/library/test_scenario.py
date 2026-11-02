@@ -131,3 +131,13 @@ class TestDiffSummaries:
         changes = sc.diff_summaries(old, new, limit=5)
         assert len(changes) == 6
         assert changes[-1] == "... and 25 more change(s)"
+
+    def test_int_to_float_is_a_change(self):
+        """T4: the hash tells 1 from 1.0, so the summary must too."""
+        assert sc.diff_summaries({"a": 1}, {"a": 1.0}) == ["a: 1 -> 1.0"]
+
+    def test_bool_to_int_is_a_change(self):
+        assert sc.diff_summaries({"a": True}, {"a": 1}) == ["a: True -> 1"]
+
+    def test_equal_documents_have_no_changes(self):
+        assert sc.diff_summaries({"a": [1, 2.5], "b": {"c": "x"}}, {"b": {"c": "x"}, "a": [1, 2.5]}) == []

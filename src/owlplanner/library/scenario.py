@@ -151,7 +151,9 @@ def diff_summaries(old: Any, new: Any, prefix: str = "", limit: int = 20) -> lis
 
 
 def _diff_into(old: Any, new: Any, where: str, out: list[str]) -> None:
-    if normalize(old) == normalize(new):
+    # Canonical text, not Python equality: 1 == 1.0 == True in Python, but the hash and the
+    # generated TOML tell them apart (T4).
+    if canonical_json(old) == canonical_json(new):
         return
     label = where or "scenario"
     if isinstance(old, dict) and isinstance(new, dict):

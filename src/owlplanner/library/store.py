@@ -41,6 +41,25 @@ INPUTS_DIR = "inputs"
 SCENARIO_JSON = "scenario.json"
 LIBRARY_FORMAT = 1
 RUN_FORMAT = 1
+# A staging folder untouched for this long belongs to a save that never published (a crash):
+# `Library.open` drops it. A live save touches its folder within seconds (T2).
+STAGING_STALE_SECONDS = 3600.0
+
+
+def _newest_mtime(path: Path) -> Optional[float]:
+    """The newest mtime in a tree, or None if it vanished meanwhile (published or removed)."""
+    try:
+        newest = path.stat().st_mtime
+        if path.is_dir():
+            for dirpath, dirnames, filenames in os.walk(path):
+                for name in dirnames + filenames:
+                    try:
+                        newest = max(newest, os.stat(os.path.join(dirpath, name)).st_mtime)
+                    except OSError:
+                        pass
+        return newest
+    except OSError:
+        return None
 
 
 class LibraryError(RuntimeError):
@@ -107,12 +126,15 @@ class Library:
                 raise LibraryError(f"{lib.root} is not a library (no {LIBRARY_JSON})")
             lib._init_layout()
         lib._library_doc()  # validates the file
-        # Staging folders belong to saves that never published (a crash); at start-up no
-        # save is running (one interface per library, design section 8.2), so drop them.
+        # A stale staging folder belongs to a save that never published (a crash). Only stale
+        # ones go: another session may be saving right now (T2: two tabs, S5).
         staging = lib.root / STAGING_DIR
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        for entry in staging.iterdir():
+            newest = _newest_mtime(entry)
+            if newest is not None and now - newest > STAGING_STALE_SECONDS:
+                shutil.rmtree(entry, ignore_errors=True)
         return lib
 
     def _init_layout(self) -> None:
@@ -283,24 +305,28 @@ class Library:
         existing run (section 5: "identical to X" instead of a duplicate); the requested
         name, notes, tags, parent and plan_year then arrive in ``dropped`` (V8).
         ``generate`` writes the generated files (Case.toml, HFP.xlsx) into inputs/; it
-        defaults to library.casefiles.export_case.
+        defaults to library.casefiles.export_case, and the scenario is then canonicalized
+        first (`casefiles.canonicalize`, T1), so a hand-built scenario.json is stored as the
+        document its Case.toml reads back as.
 
         The slow work (``generate``) runs outside the lock into a staging folder (V6); the
         run is published under the lock with one rename, complete or not at all.
         """
-        scenario = normalize(scenario)
-        validate(scenario)
         if not name.strip():
             raise LibraryError("a run needs a name")
+        if generate is None:
+            from . import casefiles
+
+            generate = casefiles.export_case
+            scenario = casefiles.canonicalize(scenario)
+        else:
+            scenario = normalize(scenario)
+            validate(scenario)
         inputs_hash = scenario_hash(scenario)
         parent_info = parent if isinstance(parent, RunInfo) else (self.get(parent) if parent else None)
         changes: list = []
         if parent_info is not None:
             changes = diff_summaries(self.scenario(parent_info), scenario)
-        if generate is None:
-            from . import casefiles
-
-            generate = casefiles.export_case
 
         created_dt = datetime.now()
         rid = uuid.uuid4().hex

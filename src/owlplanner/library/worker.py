@@ -20,6 +20,7 @@ token-guarded (F2). Only the run's own results folder is written.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -42,6 +43,39 @@ _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
 _WARN_RE = re.compile(r"WARNING|ERROR")
 
 
+def _open_log(path):
+    """Open the solve log for the whole solve, in a way that still lets `requeue` rename it.
+
+    "Run again" moves `solve.log` to `solve.prev.log` while the old attempt's worker may
+    still be writing (S8's machine-sleep wake; the tests hold it there on purpose). On
+    Windows a rename needs FILE_SHARE_DELETE on every open handle, and `open()` does not
+    request it (WinError 32), so N4's all-or-nothing rename refused with "solve.log is in
+    use" and "run again" could not work until the old worker died. This opens the file with
+    all three sharing flags; after the rename the old worker's remaining lines follow the
+    file into `solve.prev.log`, which is where they belong.
+    """
+    if os.name != "nt":
+        return open(path, "w", encoding="utf-8", newline="\n")
+    import ctypes
+    import msvcrt
+
+    kernel32 = ctypes.windll.kernel32
+    kernel32.CreateFileW.restype = ctypes.c_void_p
+    kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                     ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                     ctypes.c_void_p]
+    GENERIC_WRITE = 0x40000000
+    FILE_SHARE_ALL = 0x1 | 0x2 | 0x4  # read | write | delete
+    CREATE_ALWAYS = 2
+    FILE_ATTRIBUTE_NORMAL = 0x80
+    handle = kernel32.CreateFileW(str(path), GENERIC_WRITE, FILE_SHARE_ALL, None,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, None)
+    if handle in (None, ctypes.c_void_p(-1).value):
+        raise OSError(f"cannot open the solve log {path}")
+    fd = msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+    return os.fdopen(fd, "w", encoding="utf-8", newline="\n")
+
+
 class JobCancelled(Exception):
     """The job record no longer runs under this worker's token (S8, S9)."""
 
@@ -55,7 +89,7 @@ class _LogTee:
     """
 
     def __init__(self, path, check=None):
-        self._fh = open(path, "w", encoding="utf-8", newline="\n")
+        self._fh = _open_log(path)
         self._check = check
         self._checked = 0.0
         self._pending = ""

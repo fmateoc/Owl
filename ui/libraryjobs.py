@@ -21,6 +21,16 @@ from owlplanner.library import JobManager, Library
 from owlplanner.library.store import default_library_root
 
 
+def library_address_ok() -> bool:
+    """Section 10, R11: library mode is localhost only.
+
+    A running app cannot rebind its own server, so the check is on the configured bind
+    address: the library pages are refused unless the server listens on localhost. The
+    library-mode launcher (`owlplanner-library.cmd` / `.sh`) passes `--server.address=localhost`.
+    """
+    return str(st.get_option("server.address")).strip().lower() in ("localhost", "127.0.0.1")
+
+
 @st.cache_resource
 def _manager(root: str):
     manager = JobManager(Library.open(root))

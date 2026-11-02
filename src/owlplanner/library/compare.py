@@ -279,7 +279,7 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     moved_rows, moved_totals, _columns = what_moved(a, b)
     agree = None
     if a_exact is not None and b_exact is not None and a_exact.solved and b_exact.solved:
-        if a_exact is not a and b_exact is not b:
+        if a_exact.results_id != a.results_id and b_exact.results_id != b.results_id:
             agree = agreement(a, b, a_exact, b_exact)
     return Comparison(
         rows=rows,
@@ -291,9 +291,15 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     )
 
 
-def exact_companion(results) -> Optional[Result]:
-    """The exact-model result among a run's results, if any (`view.is_exact_lp`)."""
+def exact_companion(results, exclude=()) -> Optional[Result]:
+    """The exact-model result among a run's results, if any (`view.is_exact_lp`).
+
+    `exclude` holds results ids already selected on the comparison screen: the companion of
+    a run is one of its *other* solves.
+    """
     for result in results:
+        if result.results_id in exclude:
+            continue
         if result.solved and is_exact_lp(result):
             return result
     return None

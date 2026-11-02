@@ -91,13 +91,25 @@ if assistant_core.assistant_enabled():
     pages["Tools"].insert(0, st.Page("Assistant.py", icon=":material/forum:"))
 
 # The run library is opt-in too (design section 3): OWL_LIBRARY_DIR names its folder.
+# Library mode is localhost only (section 10, R11): a public bind address refuses it.
 if os.environ.get("OWL_LIBRARY_DIR"):
-    pages["Run Library"] = [
-        st.Page("Queue.py", icon=":material/schedule:"),
-    ]
     import libraryjobs
 
-    libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
+    if libraryjobs.library_address_ok():
+        pages["Run Library"] = [
+            st.Page("Queue.py", icon=":material/schedule:"),
+            st.Page("Library.py", icon=":material/database:"),
+            st.Page("Run.py", icon=":material/monitoring:"),
+            st.Page("Compare.py", icon=":material/compare_arrows:"),
+        ]
+        libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
+    else:
+        st.error(
+            "The Run Library is switched off: it holds household data and runs on localhost "
+            "only (design section 10). Start the app with `owlplanner-library.cmd` / `.sh`, or "
+            "pass `--server.address=localhost` to streamlit.",
+            icon=":material/gpp_maybe:",
+        )
 
 pg = st.navigation(pages, position=kz.getGlobalKey("menuLocation"))
 

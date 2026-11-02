@@ -160,9 +160,12 @@ class TestAgreement:
     def test_compare_attaches_the_check_only_with_two_companions(self):
         a, b = make_result(), make_result(score_value=84_000.0)
         assert compare(a, b).agreement is None
-        exact = make_result(score_value=70_000.0, options=dict(EXACT_OPTIONS))
+        exact = make_result(id="2026-11-02T11-00-00_decision_exact", score_value=70_000.0,
+                            options=dict(EXACT_OPTIONS))
         out = compare(a, b, a_exact=exact, b_exact=exact)
         assert out.agreement is not None
+        # The selected result is never its own companion.
+        assert compare(a, b, a_exact=a, b_exact=exact).agreement is None
 
     def test_exact_companion_finds_the_exact_model_among_a_run_s_results(self):
         exact = make_result(score_value=70_000.0, options=dict(EXACT_OPTIONS))

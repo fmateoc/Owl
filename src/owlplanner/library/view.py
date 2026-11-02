@@ -228,7 +228,12 @@ def is_exact_lp(result: Result) -> bool:
     same way?". The model is the loop with Medicare off, the SS taxable fraction pinned at
     0.85 and capital gains priced exactly.
     """
-    options = (result.record.get("method") or {}).get("options") or {}
+    return record_is_exact_lp(result.record)
+
+
+def record_is_exact_lp(record: dict) -> bool:
+    """`is_exact_lp` on a record.json alone (the pages pick a default result with it)."""
+    options = (record.get("method") or {}).get("options") or {}
 
     def _norm(value):
         return str(value).strip().lower()

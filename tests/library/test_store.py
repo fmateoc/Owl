@@ -2,6 +2,8 @@
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 
@@ -228,22 +230,62 @@ class TestRenameAndDelete:
 
 class TestLock:
     def test_a_held_lock_raises(self, lib):
-        lib.lock_wait = 0.1
-        (lib.root / "library.lock").write_text("", encoding="utf-8")
-        with pytest.raises(LibraryLocked):
-            lib.save_run(name="x", scenario=_scenario(), generate=_generate)
+        other = Library(lib.root)
+        other.lock_wait = 0.1
+        with lib._lock():
+            with pytest.raises(LibraryLocked):
+                other.save_run(name="x", scenario=_scenario(), generate=_generate)
         assert list((lib.root / ".staging").iterdir()) == []
 
-    def test_a_stale_lock_is_taken_over(self, lib):
-        lib.lock_stale = 5.0
+    def test_a_leftover_lock_file_does_not_block(self, lib):
+        """T5: the file is only where the lock lives; its presence or age means nothing."""
         lock = lib.root / "library.lock"
         lock.write_text("", encoding="utf-8")
-        old = time.time() - 60
+        old = time.time() - 3600
         os.utime(lock, (old, old))
-        result = lib.save_run(name="x", scenario=_scenario(), generate=_generate)
-        assert result.created
-        assert not lock.exists()
+        lib.lock_wait = 0.1
+        assert lib.save_run(name="x", scenario=_scenario(), generate=_generate).created
+
+    def test_a_crashed_holder_releases_the_lock(self, lib):
+        """T5: a holder that dies without unlocking leaves no stale lock (the kernel frees it)."""
+        code = (
+            "import os, sys\n"
+            "from owlplanner.library import Library\n"
+            "lib = Library(sys.argv[1])\n"
+            "cm = lib._lock(); cm.__enter__()\n"
+            "print('held', flush=True)\n"
+            "os._exit(0)\n"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", code, str(lib.root)], capture_output=True, text=True, timeout=60
+        )
+        assert out.stdout.strip() == "held"
+        lib.lock_wait = 0.5
+        assert lib.save_run(name="x", scenario=_scenario(), generate=_generate).created
+
+    def test_concurrent_saves_lose_no_update(self, lib):
+        """S5/T5: every save's read-modify-write of library.json survives the others."""
+        errors = []
+
+        def save(i):
+            try:
+                lib.save_run(name=f"run {i}", scenario=_scenario(f"m{i}"), generate=_generate)
+            except BaseException as exc:  # noqa: BLE001 - reported below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=save, args=(i,)) for i in range(12)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == []
+        doc = json.loads((lib.root / "library.json").read_text(encoding="utf-8"))
+        assert sorted(doc["order"]) == sorted(r.id for r in lib.runs())
+        assert len(doc["order"]) == 12
 
     def test_the_lock_is_released_after_save(self, lib):
         lib.save_run(name="x", scenario=_scenario(), generate=_generate)
-        assert not (lib.root / "library.lock").exists()
+        other = Library(lib.root)
+        other.lock_wait = 0.0
+        with other._lock():
+            pass

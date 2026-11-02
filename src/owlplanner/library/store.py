@@ -3,7 +3,7 @@
 Layout (all paths relative to the library root):
 
     library.json            collections, pins, the order shown (build step 6 fills them)
-    library.lock            held around every read-modify-write (S5)
+    library.lock            an OS file lock held around every read-modify-write (S5, T5)
     runs/<date>_<slug>/     one folder per run; the folder name is fixed at creation (S4)
         run.json            id, name, parent, created, notes, tags, plan year, inputs hash,
                             change summary against the parent
@@ -62,6 +62,38 @@ def _newest_mtime(path: Path) -> Optional[float]:
         return None
 
 
+def _try_lock(fd: int) -> bool:
+    """Take the exclusive lock on an open file without waiting; False if another holds it."""
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)  # one byte; beyond EOF is allowed
+        except OSError:
+            return False
+        return True
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    return True
+
+
+def _unlock(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(fd, fcntl.LOCK_UN)
+
+
 class LibraryError(RuntimeError):
     """The library folder or a run is missing or malformed."""
 
@@ -113,7 +145,6 @@ class Library:
         self.root = Path(root)
         # Lock timings are instance attributes so tests can shorten them.
         self.lock_wait = 5.0
-        self.lock_stale = 10.0
 
     # -- layout ---------------------------------------------------------
 
@@ -178,29 +209,28 @@ class Library:
 
     @contextmanager
     def _lock(self) -> Iterator[None]:
-        """Hold library.lock (create-exclusive) for one read-modify-write (S5)."""
+        """Hold library.lock for one read-modify-write (S5).
+
+        An OS file lock (`flock` on POSIX, `msvcrt.locking` on Windows), not a create-exclusive
+        file (T5): the kernel releases it when the holder's process ends, so a crash leaves no
+        stale lock to take over, and two waiters can never both take one over. Separate opens
+        conflict even within one process (two Streamlit sessions are threads of one server).
+        The file itself stays on disk; deleting it would let two holders lock two files.
+        """
         path = self.root / LOCK_NAME
         deadline = time.monotonic() + self.lock_wait
-        while True:
-            try:
-                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
-                break
-            except FileExistsError:
-                try:
-                    stale = time.time() - path.stat().st_mtime > self.lock_stale
-                except OSError:
-                    stale = False  # released between open and stat; retry below
-                if stale:
-                    path.unlink(missing_ok=True)
-                    continue
-                if time.monotonic() > deadline:
-                    raise LibraryLocked(f"{path} is held by another writer") from None
-                time.sleep(0.05)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
         try:
-            yield
+            while not _try_lock(fd):
+                if time.monotonic() > deadline:
+                    raise LibraryLocked(f"{path} is held by another writer")
+                time.sleep(0.05)
+            try:
+                yield
+            finally:
+                _unlock(fd)
         finally:
-            path.unlink(missing_ok=True)
+            os.close(fd)
 
     # -- runs -----------------------------------------------------------
 

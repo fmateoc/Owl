@@ -16,8 +16,10 @@ takes the opened run as `base=` and applies only the fields the pages changed, k
 plan year (`ui_to_config` fills in defaults and puts the current year in the start date);
 `Library.open` removes only stale staging folders, not another session's save in progress; the
 change summary compares canonical JSON (1 vs 1.0, True vs 1). `save_run` canonicalizes a scenario
-it generates with the default builder. 82 tests in `tests/library/`; the synthetic round-trip
-check now compares inputs hashes (39/39).
+it generates with the default builder. T5: `library.lock` is an OS file lock (`flock` /
+`msvcrt.locking`), released by the kernel when its holder dies, instead of a create-exclusive file
+with a staleness timeout. T6: S1's evidence corrected in the design. 84 tests in `tests/library/`;
+the synthetic round-trip check now compares inputs hashes (39/39).
 
 ### Run library, build step 1: the library core (2026-11-01)
 

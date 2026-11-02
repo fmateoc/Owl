@@ -4826,3 +4826,14 @@ Checks: `tests/library` 82 passed (17 new); flake8 clean, ruff only upstream's f
 `check_library_roundtrip.py` now compares inputs hashes too, 39/39; the review's probes re-run:
 re-saving a run's own files dedupes (`changes: []`), a UI-path scenario equals its own
 `Case.toml` re-imported, a second `open` leaves a save in progress alone.
+
+**T5, T6 fixed (2026-11-02, user's call):** T5 not with the review's token idea (a check before an
+unlink leaves a window), but by making `library.lock` an OS file lock (`fcntl.flock` /
+`msvcrt.locking`, non-blocking tries until `lock_wait`; `lock_stale` removed, the file stays on
+disk): the kernel frees it when the holder dies, so nothing can be stale or taken over twice.
+Tests: held lock raises, a leftover file does not block, a subprocess that takes the lock and
+`os._exit`s leaves it free, 12 concurrent saves keep 12 `library.json` entries (mutation check: with
+`_lock` a no-op, 6-10 of 12 kept in 5 of 5 runs). The `msvcrt` branch is untested here (Linux).
+T6: S1's evidence corrected in `run-library-review-2.md` and design §8.3 (the solve month bounds
+`withSSAges`' open ages, `_ssaOpenAges` / `_ssaCheckPastAges`; `yearFracLeft` reads today's day only
+for `start_date = "today"`). `tests/library` 84 passed.

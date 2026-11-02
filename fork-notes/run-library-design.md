@@ -140,7 +140,8 @@ Rules:
   half-written), and `library.lock` is held only for the fast metadata work, never across a
   workbook write. A worker writes
   only inside its own results folder; only the interface writes `run.json` and `library.json`, and
-  it holds `library.lock` (create-exclusive, stale after a timeout) around every read-modify-write
+  it holds `library.lock` (an OS file lock, `flock` / `msvcrt.locking`: released by the kernel when
+  its holder dies, so there is no stale lock to take over, T5) around every read-modify-write
   of them (S5: two browser tabs can otherwise lose each other's update; atomic rename prevents
   corruption, not lost updates). A `run.json` that cannot be read is a damaged run: it is shown as
   such and skipped by every listing, never fatal (V7).
@@ -320,8 +321,12 @@ Owl's plan starts in the calendar year of the solve, whatever the case file says
 year is ignored (`Plan._setStartingDate`: "Year is ignored"; every `thisyear` in `plan.py` is
 `date.today().year`, checked 2026-11-01). Two consequences (R1):
 
-- **Within the plan year**, results move from day to day: among other things, the date sets the
-  share of the first year left (`yearFracLeft`).
+- **Within the plan year**, results can move with the solve date's month: the current month bounds
+  the claiming ages `withSSAges` may choose (`Plan._ssaOpenAges` / `_ssaCheckPastAges` read
+  `_ssaCurrentAgeMonths`, `date.today()`'s year and month). The share of the first year left
+  (`yearFracLeft`) reads today's day only for `start_date = "today"`; an explicit start date
+  (every case saved from the pages, the template, the synthetic cases) sets it from its own month
+  and day (`Plan._setStartingDate`; corrected 2026-11-02, step-1 review 2, T6).
 - **Across a year boundary, a run's inputs become wrong.** Balances entered as of January 2026,
   solved in 2027, are read as January 2027 balances. The 2026 row of the workbook falls before
   the plan, and the purchase year is one year closer. Nothing warns.
@@ -333,9 +338,10 @@ So (D4, revised):
 - (b) Freeze the "as of" date (D4 b; required, in step 2), **deterministically (S1)**: the
   worker's date is frozen to the run's own "as of" date — the balances' date of §6.1, validated to
   fall in the run's plan year — and recorded in `record.json`. "A date in the plan year" would not
-  do: the day within the year sets `yearFracLeft`, so two freezes at different days are different
-  plans, and step 2's check ("two solves on different days give identical results") could not
-  hold. **The freeze is a first-class input, not only a monkeypatch (S7):** a small generic
+  do: the month within the year sets the claiming ages open to `withSSAges` (and, for
+  `start_date = "today"`, the day sets `yearFracLeft`), so two freezes at different dates can be
+  different plans, and step 2's check ("two solves on different days give identical results")
+  could not hold (T6 corrected S1's mechanism; its conclusion stands). **The freeze is a first-class input, not only a monkeypatch (S7):** a small generic
   backend change — an `as_of` date honoured where `Plan` reads today, settable by
   `owlcli --as-of` and by the worker — so `owlcli run` reproduces a run (§5) and step 5b's check
   is testable; it goes upstream as an issue like the rate table (§12). Until it exists, the

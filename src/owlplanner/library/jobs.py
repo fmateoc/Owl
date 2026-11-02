@@ -18,6 +18,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import threading
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -29,6 +30,18 @@ from .procs import kill_process, pid_alive, process_start_token
 from .store import Library, RunInfo
 
 RESULTS_DIR = "results"
+
+
+def _queued_order(job: R.JobRecord):
+    """Queue order: the queued instant (not its text, H3), then the folder name."""
+    return (R.stamp_seconds(job.doc.get("queued")) or 0.0, job.id)
+
+
+# One ticker thread per library folder per process (H5). A Streamlit code reload can build a
+# second manager over the same folder; it then finds the first one's ticker still running.
+_TICKERS = {}
+_TICKERS_LOCK = threading.Lock()
+TICK_SECONDS = 2.0
 
 
 class JobsError(RuntimeError):
@@ -68,7 +81,7 @@ class JobManager:
                 out.append(R.JobRecord.read(folder))
             except R.ResultsError:
                 continue  # a damaged record is skipped, never fatal (V7's rule)
-        out.sort(key=lambda j: (j.doc.get("queued") or "", j.id))
+        out.sort(key=_queued_order)
         return out
 
     def get(self, results_dir) -> R.JobRecord:
@@ -125,8 +138,7 @@ class JobManager:
             self.adopt()
             dispatched = []
             running = sum(1 for j in self.jobs() if j.state == R.RUNNING)
-            waiting = sorted((j for j in self.jobs() if j.state == R.WAITING),
-                             key=lambda j: j.doc.get("queued") or "")
+            waiting = sorted((j for j in self.jobs() if j.state == R.WAITING), key=_queued_order)
             for job in waiting:
                 if running + len(dispatched) >= self.max_parallel:
                     break
@@ -144,7 +156,8 @@ class JobManager:
             stamped = job.doc.get("pid_started")
             # A reused PID is not ours (S9): the start token must be the recorded one.
             ours = stamped is None or process_start_token(pid) == stamped
-            fresh = (job.heartbeat_age() or float("inf")) < self.heartbeat_max_age
+            age = job.heartbeat_age()
+            fresh = age is not None and age < self.heartbeat_max_age
             if alive and ours and fresh:
                 continue  # adopted: a live worker keeps its job
             if not alive or not ours:
@@ -167,6 +180,43 @@ class JobManager:
         proc = subprocess.Popen([str(a) for a in argv], **kwargs)
         job.update(pid=proc.pid, pid_started=process_start_token(proc.pid))
         return True
+
+    def start_ticker(self, interval: float = TICK_SECONDS) -> bool:
+        """Tick in a background daemon thread, so the queue moves with no page open (H5).
+
+        Without it the queue advanced only on `enqueue`, `run_again` and the Queue page's own
+        refresh: a second waiting job stayed waiting once the tab closed. The server holds one
+        manager (`st.cache_resource`) and starts its ticker once; the tick lock serializes the
+        ticker with the pages' own ticks, and dispatch is a compare-and-swap anyway (F1).
+        Returns False when this process already ticks this library folder.
+        """
+        key = str(Path(self.library.root).resolve())
+        with _TICKERS_LOCK:
+            running = _TICKERS.get(key)
+            if running is not None and running[0].is_alive():
+                return False
+            stop = threading.Event()
+            thread = threading.Thread(target=self._tick_forever, args=(stop, float(interval)),
+                                      name="owl-library-ticker", daemon=True)
+            _TICKERS[key] = (thread, stop)
+            thread.start()
+            return True
+
+    def stop_ticker(self) -> None:
+        """Stop this library folder's ticker thread, if one runs (tests, a clean shutdown)."""
+        key = str(Path(self.library.root).resolve())
+        with _TICKERS_LOCK:
+            running = _TICKERS.pop(key, None)
+        if running is not None:
+            running[1].set()
+            running[0].join(timeout=10.0)
+
+    def _tick_forever(self, stop: threading.Event, interval: float) -> None:
+        while not stop.wait(interval):
+            try:
+                self.tick()
+            except Exception:  # a damaged folder or a lock timeout must not stop the queue
+                traceback.print_exc(file=sys.stderr)
 
     # -- cancelling ----------------------------------------------------
 

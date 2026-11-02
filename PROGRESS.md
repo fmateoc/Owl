@@ -5018,3 +5018,21 @@ G1-G2) for what the first two reviews missed. It found six H findings and fixed 
 - **H6:** `plan.pkl` staleness ignores the commit, and an unpickle error is not soft.
 
 `check_library_jobs.py` passes 4/4 on Linux. The user decides which findings to fix.
+
+**Step 2 third review fixed (2026-11-02, same session; the user's call: fix H1-H6).** Details in
+the review's dispositions.
+- **H1:** the worker freezes with a new `asof.process_as_of(...)`, so `withSSAges`' candidate
+  threads read the run's date.
+- **H2:** the determinism tests clear the suite's pin (`no_session_pin`), and the worker test
+  runs at an `as_of` other than the pin's.
+- **H3:** stamps carry their UTC offset, and are compared and sorted through `stamp_seconds`.
+- **H4:** `record.json` is written by `JobRecord.publish_record` under the job's lock, with
+  the token checked.
+- **H5:** `JobManager.start_ticker`, a daemon thread started by `ui/libraryjobs.py` from
+  `main.py`.
+- **H6:** `plan.pkl` is also keyed on `code_stamp()` (version, commit, the diff of a dirty
+  tree), and an unloadable pickle is dropped.
+
+14 new tests. Each fix was reverted in turn, and its tests failed (H1, H2, H3, H4, H6; H5's
+tests need the new method). Full suite **3766 passed / 1 skipped** (10:05). flake8 clean, ruff
+only upstream's four B905s. `check_library_jobs.py` 4/4. N1-N5 are still open.

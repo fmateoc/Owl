@@ -20,10 +20,10 @@ from datetime import datetime
 
 import streamlit as st
 
+import libraryjobs
 import sskeys as kz
-from owlplanner.library import JobManager, Library, PRESETS
+from owlplanner.library import PRESETS
 from owlplanner.library import results as R
-from owlplanner.library.store import default_library_root
 
 st.markdown("# :material/schedule: Queue")
 kz.divider("orange")
@@ -33,16 +33,11 @@ _ICON = {"waiting": ":material/hourglass_top:", "running": ":material/autorenew:
          "interrupted": ":material/warning:"}
 
 
-@st.cache_resource
-def _manager(root: str):
-    """One manager per server process (section 8.2, R5): two tabs see one queue."""
-    return JobManager(Library.open(root))
-
-
 def _since(iso, now=None):
-    if not iso:
+    then = R.stamp_seconds(iso)  # offset-aware (H3); an unreadable stamp shows "-" (M6)
+    if then is None:
         return "-"
-    seconds = max(0.0, (now or datetime.now().timestamp()) - datetime.fromisoformat(iso).timestamp())
+    seconds = max(0.0, (now or datetime.now().timestamp()) - then)
     if seconds < 60:
         return f"{seconds:.0f}s"
     if seconds < 3600:
@@ -50,7 +45,7 @@ def _since(iso, now=None):
     return f"{seconds / 3600:.1f}h"
 
 
-manager = _manager(str(default_library_root()))
+manager = libraryjobs.get_manager()  # one per server (R5); it ticks on its own (H5)
 
 # -- queue a solve -----------------------------------------------------
 runs = manager.library.runs()
@@ -72,7 +67,7 @@ with st.expander("Solve a run", expanded=not manager.jobs()):
 
 @st.fragment(run_every=2.0)
 def queue_fragment():
-    manager.tick()  # dispatch what waits, adopt live workers, interrupt dead ones
+    manager.tick()  # the ticker thread does this too; ticking here shows a click's effect at once
     jobs = manager.jobs()
     if not jobs:
         st.info("No jobs yet. A queued solve shows up here and keeps running if the tab closes.")
@@ -92,7 +87,7 @@ def queue_fragment():
         row[1].markdown(f"{_ICON.get(doc.get('state'), '')} {doc.get('state')}{beat_note}")
         started = doc.get("started") or doc.get("queued")
         finished = doc.get("finished")
-        row[2].markdown(_since(started, datetime.fromisoformat(finished).timestamp() if finished else now))
+        row[2].markdown(_since(started, R.stamp_seconds(finished) or now))
         logline = doc.get("last_log") or ""
         if doc.get("iteration") is not None:
             logline = f"iter {doc['iteration']}  \n{logline}"

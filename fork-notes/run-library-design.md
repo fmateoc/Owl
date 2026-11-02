@@ -293,6 +293,8 @@ branch-and-bound MIP (`phase0-scenarios.md`, section 4), so "quick" would not be
   were still waiting.
 - **One manager per server (R5).** The job manager is a process-wide singleton
   (`st.cache_resource`), so two browser tabs see one queue, and the queue itself lives on disk.
+  It ticks in a background thread (dispatch, adoption, interruption), so the queue moves with no
+  Queue page open (step 2 review 3, H5).
 - **Detached workers (R5).** Without a choice made here, whether a worker outlives the server
   depends on how the server stops (recalled POSIX and `multiprocessing` behaviour, not tested
   here):

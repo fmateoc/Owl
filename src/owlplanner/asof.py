@@ -85,6 +85,9 @@ def as_of(value: Optional[DateLike]) -> Iterator[Optional[date]]:
     """Context manager: freeze `today()` to `value` for a block, restore afterwards.
 
     Thread-local: sessions of a threaded server (Streamlit) do not see each other's freeze.
+    So threads started inside the block do **not** see it either: a solve that runs worker
+    threads (`withSSAges`' candidates, the stress-test sweeps) must be frozen with
+    `process_as_of` instead.
     """
     previous = getattr(_LOCAL, "as_of", None)
     _LOCAL.as_of = _parse(value)
@@ -92,3 +95,25 @@ def as_of(value: Optional[DateLike]) -> Iterator[Optional[date]]:
         yield _LOCAL.as_of
     finally:
         _LOCAL.as_of = previous
+
+
+@contextmanager
+def process_as_of(value: Optional[DateLike]) -> Iterator[Optional[date]]:
+    """Context manager: freeze `today()` process-wide for a block, restore afterwards.
+
+    Every thread sees this freeze, threads started inside the block included (review H1:
+    `withSSAges` runs its candidates on a thread pool, and under the thread-local `as_of`
+    they read the real date). For a process that solves one thing at a time: the run-library
+    worker (one job per process) and `owlcli`. The calling thread's own `as_of(...)` context,
+    if any, is suspended for the block so that it cannot shadow the value set here.
+    """
+    global _AS_OF
+    prev_global = _AS_OF
+    prev_local = getattr(_LOCAL, "as_of", None)
+    _AS_OF = _parse(value)
+    _LOCAL.as_of = None
+    try:
+        yield _AS_OF
+    finally:
+        _AS_OF = prev_global
+        _LOCAL.as_of = prev_local

@@ -7,6 +7,28 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 2: third review fixed (2026-11-02)
+
+`fork-notes/run-library-step2-review-3.md`, H1-H6.
+- **Process-wide freeze in the worker.** The worker now freezes the date with
+  `asof.process_as_of()`, so `withSSAges`' candidate threads read the run's date; with the
+  thread-local `as_of(...)` they read the real one.
+- **Determinism tests that can fail.** These tests now clear the suite's date pin
+  (`no_session_pin` fixture), and the worker test runs at an `as_of` other than the pin's. Each
+  new test was checked to fail with its fix reverted.
+- **Offset-aware stamps.** Job stamps are local time with a UTC offset (`now_iso`,
+  `stamp_seconds`), so the hour the clocks fall back no longer marks live workers dead, and the
+  queue is ordered by instant.
+- **`record.json` under the job's lock.** It is written under the lock with the token checked
+  inside (`JobRecord.publish_record`), so a stale worker cannot leave its record after "run
+  again".
+- **A ticker thread.** The server's manager ticks in a daemon thread
+  (`JobManager.start_ticker`, started by `ui/libraryjobs.py` from `main.py`), so the queue moves
+  with no Queue page open.
+- **`plan.pkl` keyed on the code.** The cache is also keyed on Owl's version and commit, plus the
+  package diff of a dirty tree (`code_stamp`, `record.json`'s `plan_pkl_code`), and a pickle that
+  fails to load is dropped.
+
 ### Run library, build step 2: jobs and the `as_of` date (2026-11-02)
 
 `src/owlplanner/library/` + `owlplanner.asof`: the "as of" date is a first-class input (design

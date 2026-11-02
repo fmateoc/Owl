@@ -55,3 +55,21 @@ def pretend_real_today(iso: str):
 def pretend_today():
     """`with pretend_today("2026-01-10"):` pretends the wall clock reads that day."""
     return pretend_real_today
+
+
+@pytest.fixture
+def no_session_pin():
+    """Clear the suite's process-wide `as_of` pin (tests/conftest.py) for one test.
+
+    Review H2: `asof.today()` returns the pin before it ever reads the clock, so with the pin
+    in place no `pretend_today` day can reach the code, and a determinism test passes with
+    the freeze it tests switched off. A worker process has no pin: test it that way.
+    """
+    from owlplanner import asof
+
+    saved = asof.get_as_of()
+    asof.set_as_of(None)
+    try:
+        yield
+    finally:
+        asof.set_as_of(saved)

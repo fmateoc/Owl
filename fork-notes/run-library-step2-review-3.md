@@ -54,3 +54,26 @@ N items say "inferred" where no probe was run.
   `--as-of` does not leak into later tests in the same xdist worker.
 - The step's acceptance check (`check_library_jobs.py`) passes 4/4 on Linux, with a real
   detached worker.
+
+## Dispositions (2026-11-02, the user's call: fix H1-H6)
+
+Each new test was run with its fix reverted and failed, then passed with the fix in place.
+
+| # | Disposition |
+|---|---|
+| H1 | Fixed. A new context manager, `asof.process_as_of(value)`, freezes the date process-wide, restores the previous value afterwards, and suspends the calling thread's own `as_of(...)` for the block. The worker uses it (one job per process). `asof.as_of`'s docstring now says that threads started inside it do not see its freeze. Tests: `test_the_freeze_reaches_the_claiming_age_candidates` runs a `custom` worker job with `withSSAges="optimize"` at as_of 2026-06-15, with the pin cleared and a pretend day of 2027-02-01; every `setSocialSecurity` call, `ssages` threads included, must read 2026-06-15 (it fails under the thread-local freeze). `test_the_process_freeze_reaches_pool_threads` and `..._is_not_shadowed_by_a_thread_context` cover `asof` itself. |
+| H2 | Fixed. A new fixture, `no_session_pin` (`tests/library/conftest.py`), clears the suite's pin for one test. The worker's determinism test now runs a run imported at as_of 2026-06-15 (not the pin's date), with the pin cleared; with the worker's freeze removed it fails, where before it passed. The CLI determinism test also clears the pin; with `--as-of` made a no-op it fails. A new test, `test_without_the_option_the_days_differ`, checks that two pretend days without `--as-of` do give different results. |
+| H3 | Fixed. `now_iso()` writes local time with its UTC offset (`2026-11-01T01:30:00-05:00`). `stamp_seconds()` parses stamps, and a naive stamp from before the fix still reads as local time. `heartbeat_age`, the queue order (`jobs._queued_order`) and the Queue page's elapsed column now go through it, which also fixes M6: a bad stamp shows "-". The adoption freshness test now treats an age of exactly 0 as fresh; `or inf` had made it stale. Tests: the repeated-hour heartbeat under `TZ=America/New_York` (age 5 s, the job stays running; skipped where `time.tzset` is missing), the queue order across the clock change, and stamps carrying an offset. |
+| H4 | Fixed. `JobRecord.publish_record(token, doc)` writes `record.json` under the job's lock, with the token checked inside the lock, as `publish` does for the artifacts. The worker builds the record first and then publishes it; `is_mine` is gone, since nothing else used it. Test: the probe as a regression test, `test_run_again_while_the_record_is_built_leaves_no_old_record`. |
+| H5 | Fixed. `JobManager.start_ticker(interval=2.0)` runs `tick()` in a daemon thread and keeps going after a failed tick, which it prints to stderr. There is one ticker per library folder per process: a second manager over the same folder, for example after a Streamlit code reload, finds the first ticker running. `stop_ticker()` stops it. `ui/libraryjobs.py` holds the `st.cache_resource` manager and starts its ticker. `main.py` calls it on every page load when `OWL_LIBRARY_DIR` is set, so the queue moves from the first page opened after a restart. `Queue.py` uses the same manager and still ticks on its own refresh, so a click shows its effect at once. Tests: a job queued before a "restart" is dispatched with no explicit tick; a second ticker is refused; a tick that raises does not stop the ticker. Smoke test: the Queue page renders under AppTest with no exception and one `owl-library-ticker` thread. |
+| H6 | Fixed. `results.code_stamp()` holds Owl's version and commit, plus the sha256 of the package's diff against HEAD when the tree is dirty ("-dirty" alone would match two different sets of edits). `record.json` carries it as `plan_pkl_code` when a pickle was written, and `load_plan` drops the cache when it differs or is missing. A pickle that fails to load (`ModuleNotFoundError`, a truncated file) is dropped, and the call returns None. Tests: another commit is dropped, a record with no stamp is dropped, an unloadable pickle is dropped soft, and the record carries the stamp. |
+
+Checks after the fixes:
+- Full suite: **3766 passed, 1 skipped** (10:05, Linux; 3752 before, plus 14 new tests).
+- `tests/library` plus `tests/ui/test_open_in_owl.py`: 155 passed.
+- flake8 is clean apart from upstream's two `test_spending_*` files; ruff reports only upstream's four B905s.
+- `check_library_jobs.py`: 4/4.
+
+The Windows branches (`msvcrt` lock, `DETACHED_PROCESS`) are not touched by these fixes, but they were not re-run on Windows here.
+
+The N items are still open.

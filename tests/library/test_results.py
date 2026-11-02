@@ -137,24 +137,57 @@ class TestPlanCache:
         obj = {"solved": [1, 2, 3]}
         sha = R.save_plan(obj, tmp_path)
         assert sha == hashlib.sha256((tmp_path / R.PLAN_PKL).read_bytes()).hexdigest()
-        record = {"plan_pkl_sha256": sha, "environment": R.environment()}
+        record = {"plan_pkl_sha256": sha, "environment": R.environment(), "plan_pkl_code": R.code_stamp()}
         assert R.load_plan(tmp_path, record) == obj
 
     def test_a_wrong_hash_is_never_loaded(self, tmp_path):
         R.save_plan([1], tmp_path)
         (tmp_path / R.PLAN_PKL).write_bytes(b"not ours")
-        assert R.load_plan(tmp_path, {"plan_pkl_sha256": "0" * 64, "environment": R.environment()}) is None
+        record = {"plan_pkl_sha256": "0" * 64, "environment": R.environment(), "plan_pkl_code": R.code_stamp()}
+        assert R.load_plan(tmp_path, record) is None
         assert not (tmp_path / R.PLAN_PKL).exists()  # dropped: a run from a zip keeps no pickles
 
     def test_a_stale_environment_is_dropped_soft(self, tmp_path):
         sha = R.save_plan([2], tmp_path)
-        stale = {"plan_pkl_sha256": sha, "environment": {"python": "0.0.0", "packages": {}}}
+        stale = {"plan_pkl_sha256": sha, "environment": {"python": "0.0.0", "packages": {}},
+                 "plan_pkl_code": R.code_stamp()}
         assert R.load_plan(tmp_path, stale) is None
         assert not (tmp_path / R.PLAN_PKL).exists()
 
+    def test_another_commit_is_dropped(self, tmp_path):
+        """H6: a pickle restores attributes as they were; under other code it is stale."""
+        sha = R.save_plan([4], tmp_path)
+        other = dict(R.code_stamp(), commit="0000000")
+        record = {"plan_pkl_sha256": sha, "environment": R.environment(), "plan_pkl_code": other}
+        assert R.load_plan(tmp_path, record) is None
+        assert not (tmp_path / R.PLAN_PKL).exists()
+
+    def test_a_record_without_a_code_stamp_is_dropped(self, tmp_path):
+        sha = R.save_plan([5], tmp_path)
+        assert R.load_plan(tmp_path, {"plan_pkl_sha256": sha, "environment": R.environment()}) is None
+
+    def test_a_pickle_that_does_not_load_is_dropped_soft(self, tmp_path):
+        """H6: a renamed module raises inside pickle.loads; the cache goes, the call returns None."""
+        blob = b"cno_such_module_h6\nPlan\n."  # GLOBAL: ModuleNotFoundError on load
+        (tmp_path / R.PLAN_PKL).write_bytes(blob)
+        record = {"plan_pkl_sha256": hashlib.sha256(blob).hexdigest(), "environment": R.environment(),
+                  "plan_pkl_code": R.code_stamp()}
+        assert R.load_plan(tmp_path, record) is None
+        assert not (tmp_path / R.PLAN_PKL).exists()
+
+    def test_the_record_carries_the_code_stamp(self):
+        doc = R.build_record(
+            run_id="r", results_id="x", as_of="2026-01-01", preset="quick", options={},
+            plan_doc=None, status="solved", started=None, finished=None, wall_time_seconds=None,
+            warnings=[], iterations=None, plan_pkl_sha256="ab" * 32,
+        )
+        assert doc["plan_pkl_code"] == R.code_stamp()
+        assert doc["plan_pkl_code"]["version"] == doc["engine"]["version"]
+
     def test_no_record_no_cache(self, tmp_path):
         R.save_plan([3], tmp_path)
-        assert R.load_plan(tmp_path, {"plan_pkl_sha256": None, "environment": R.environment()}) is None
+        record = {"plan_pkl_sha256": None, "environment": R.environment(), "plan_pkl_code": R.code_stamp()}
+        assert R.load_plan(tmp_path, record) is None
 
     def test_missing_cache_is_none(self, tmp_path):
         assert R.load_plan(tmp_path) is None

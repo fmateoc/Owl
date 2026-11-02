@@ -9,7 +9,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -162,6 +162,92 @@ class TestAdoption:
         manager.adopt()
         doc = fresh(job).doc
         assert doc["state"] == R.INTERRUPTED and "died" in doc["error"]
+
+
+class TestClockChanges:
+    """H3: stamps carry their UTC offset, so the hour the clocks fall back is not ambiguous."""
+
+    @pytest.fixture
+    def new_york(self, monkeypatch):
+        import time
+
+        if not hasattr(time, "tzset"):
+            pytest.skip("time.tzset is POSIX-only")
+        monkeypatch.setenv("TZ", "America/New_York")
+        time.tzset()
+        yield
+        monkeypatch.undo()
+        time.tzset()
+
+    def test_a_fresh_heartbeat_in_the_repeated_hour_is_fresh(self, manager, run, new_york, monkeypatch):
+        # 06:30:05 UTC on 2026-11-01 is 01:30:05 EST, the second pass of 01:xx that night.
+        instant = datetime(2026, 11, 1, 6, 30, 5, tzinfo=timezone.utc).timestamp()
+        job = make_running_job(run.path / "results" / "dst", pid=os.getpid(), heartbeat=R.now_iso(at=instant - 5))
+        assert fresh(job).doc["heartbeat"] == "2026-11-01T01:30:00-05:00"
+        assert fresh(job).heartbeat_age(now=instant) == 5.0  # a naive stamp read 3605 s here
+        monkeypatch.setattr(R.time, "time", lambda: instant)
+        manager.adopt()
+        assert fresh(job).state == R.RUNNING  # the live worker keeps its job
+
+    def test_the_queue_order_is_the_instants_not_the_text(self, manager, run):
+        # 01:50 EDT comes before 01:10 EST (the clocks fell back between them); as text it sorts after.
+        first = R.JobRecord.create(run.path / "results" / "z-first", run_id=run.id, run_name="bill",
+                                   preset="quick", options={}, as_of="2026-01-01",
+                                   queued="2026-11-01T01:50:00-04:00")
+        second = R.JobRecord.create(run.path / "results" / "a-second", run_id=run.id, run_name="bill",
+                                    preset="quick", options={}, as_of="2026-01-01",
+                                    queued="2026-11-01T01:10:00-05:00")
+        assert [j.id for j in manager.jobs()] == [first.id, second.id]
+
+    def test_stamps_carry_their_offset(self):
+        stamp = R.now_iso()
+        assert datetime.fromisoformat(stamp).utcoffset() is not None
+        assert R.stamp_seconds("not a date") is None and R.stamp_seconds(None) is None
+
+
+class TestTicker:
+    """H5: the queue moves with no page open; the server's manager ticks on its own."""
+
+    def test_a_waiting_job_is_dispatched_with_no_page_ticking(self, library, run):
+        import time
+
+        manager = JobManager(library)
+        spawned = []
+        manager._spawn = lambda job: job.take_for_dispatch() and (spawned.append(job.id) or True)
+        # Queued before a restart: nothing has ticked it in this process.
+        job = R.JobRecord.create(run.path / "results" / "queued-earlier", run_id=run.id, run_name="bill",
+                                 preset="quick", options={}, as_of="2026-01-01")
+        assert manager.start_ticker(interval=0.05)
+        try:
+            assert not JobManager(library).start_ticker(interval=0.05)  # one ticker per folder
+            deadline = time.monotonic() + 20
+            while not spawned and time.monotonic() < deadline:
+                time.sleep(0.05)
+        finally:
+            manager.stop_ticker()
+        assert spawned == [job.id]
+        assert fresh(job).state == R.RUNNING
+
+    def test_a_tick_that_raises_does_not_stop_the_ticker(self, library, monkeypatch):
+        import time
+
+        manager = JobManager(library)
+        calls = []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) == 1:
+                raise R.ResultsError("a lock timeout")
+
+        monkeypatch.setattr(manager, "tick", flaky)
+        assert manager.start_ticker(interval=0.02)
+        try:
+            deadline = time.monotonic() + 20
+            while len(calls) < 3 and time.monotonic() < deadline:
+                time.sleep(0.02)
+        finally:
+            manager.stop_ticker()
+        assert len(calls) >= 3
 
 
 class TestCancel:

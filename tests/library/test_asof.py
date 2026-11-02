@@ -92,6 +92,26 @@ class TestInput:
             assert asof.today() == date(2027, 6, 15)  # this thread is frozen
         assert seen == [date(2026, 1, 1)]  # the other thread saw the suite's pin
 
+    def test_the_process_freeze_reaches_pool_threads(self, no_session_pin, pretend_today):
+        """H1: `withSSAges` runs its candidates on a thread pool; the worker's freeze must
+        reach them. `process_as_of` does, from the threads started inside the block."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        with pretend_today("2027-02-01"):
+            with asof.process_as_of("2026-06-15"):
+                with ThreadPoolExecutor(2) as pool:
+                    assert pool.submit(asof.today).result() == date(2026, 6, 15)
+                assert asof.today() == date(2026, 6, 15)
+            assert asof.get_as_of() is None  # restored: no pin, as before the block
+            assert asof.today() == date(2027, 2, 1)
+
+    def test_the_process_freeze_is_not_shadowed_by_a_thread_context(self):
+        with asof.as_of("2027-06-15"):
+            with asof.process_as_of("2028-03-01"):
+                assert asof.today() == date(2028, 3, 1)
+            assert asof.today() == date(2027, 6, 15)  # the thread's own context is back
+        assert asof.today() == date(2026, 1, 1)
+
 
 class TestBackendHonoursIt:
     def test_sanitize_config_pins_to_the_frozen_year(self):
@@ -137,12 +157,15 @@ class TestCli:
         finally:
             asof.set_as_of("2026-01-01")
 
-    def test_two_solves_on_different_days_give_identical_results(self, tmp_path, pretend_today):
+    def test_two_solves_on_different_days_give_identical_results(self, tmp_path, pretend_today,
+                                                                 no_session_pin):
         """`owlcli run --as-of` reproduces a run (S7): the wall clock must not reach it.
 
         The two pretend days straddle a New Year (and ten months): a freeze that leaked any
         year or month read would move the plan year, the workbook conditioning or the open
-        claiming ages, and the results would differ (S1).
+        claiming ages, and the results would differ (S1). The suite's pin is cleared (H2):
+        with it, the pin and not `--as-of` supplied the date, and the test passed with the
+        option ignored.
         """
         case = tmp_path / "Case_bill.toml"
         shutil.copy(BILL, case)
@@ -158,6 +181,20 @@ class TestCli:
             outputs.append(doc)
         assert outputs[0] == outputs[1]
         assert outputs[0]["status"] == "solved"
+
+    def test_without_the_option_the_days_differ(self, tmp_path, pretend_today, no_session_pin):
+        """The test above has teeth: with no `--as-of` (and no pin) the two days differ."""
+        case = tmp_path / "Case_bill.toml"
+        shutil.copy(BILL, case)
+        outputs = []
+        for day in ("2026-01-10", "2027-02-01"):
+            with pretend_today(day):
+                result = CliRunner().invoke(cli, ["run", "--output-format", "json", str(case)])
+            assert result.exit_code == 0, result.output
+            doc = _the_json_object(result.output)
+            doc["solve_time_seconds"] = None
+            outputs.append(doc)
+        assert outputs[0] != outputs[1]
 
 
 class TestTheDateReachesTheSolve:

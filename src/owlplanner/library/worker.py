@@ -168,7 +168,10 @@ class Worker:
         scenario = json.loads((self.run_dir / "inputs" / "scenario.json").read_text(encoding="utf-8"))
         as_of_date = resolve_as_of(scenario)  # validated: inside the run's plan year (R1)
 
-        with asof.as_of(as_of_date):
+        # Process-wide (H1): the claiming-age search runs its candidates on a thread pool,
+        # and a thread-local freeze would leave them reading the real date. A worker solves
+        # one job per process, so nothing else shares the freeze.
+        with asof.process_as_of(as_of_date):
             started = R.now_iso()
             t0 = time.time()
             self.job.touch(self.token, step="building the plan")
@@ -255,8 +258,6 @@ class Worker:
     def _write_record(self, *, status, as_of=None, plan_doc=None, options=None, started=None,
                       finished=None, wall_time_seconds=None, solver=None, gap=None,
                       iterations=None, rates=None, plan_pkl_sha256=None, error=None):
-        if not self.job.is_mine(self.token):
-            return  # a stale worker: "run again" owns the folder now (S8, F2)
         doc = R.build_record(
             run_id=str(self.job.doc.get("run_id") or ""),
             results_id=self.job.id,
@@ -277,7 +278,9 @@ class Worker:
             plan_pkl_sha256=plan_pkl_sha256,
             error=error,
         )
-        R.write_record(self.results_dir, doc)
+        # Under the job's lock, token checked inside it (H4): a stale worker that woke after
+        # "run again" writes nothing ("run again" owns the folder now, S8, F2).
+        self.job.publish_record(self.token, doc)
 
     def _inputs_hash(self):
         try:

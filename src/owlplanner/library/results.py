@@ -33,7 +33,7 @@ import platform
 import secrets
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -73,8 +73,32 @@ class TokenChanged(ResultsError):
     """The job no longer runs under the writer's token (re-queued under a new one, S8)."""
 
 
-def now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+def now_iso(at: Optional[float] = None) -> str:
+    """Now, as local time **with its UTC offset** ('2026-11-01T01:30:00-05:00').
+
+    Review H3: a naive local stamp is ambiguous in the hour the clocks fall back, and
+    `datetime.fromisoformat(...).timestamp()` reads it as the first occurrence, so every
+    heartbeat written in the repeated hour looked an hour old and adoption interrupted live
+    workers. The offset makes the instant exact; the text stays readable as local time.
+    `at` (epoch seconds) stamps another instant (tests).
+    """
+    moment = datetime.now(timezone.utc) if at is None else datetime.fromtimestamp(at, timezone.utc)
+    return moment.astimezone().isoformat(timespec="seconds")
+
+
+def stamp_seconds(iso: Optional[str]) -> Optional[float]:
+    """A `now_iso` stamp as epoch seconds (None when absent or unreadable).
+
+    Compare and sort stamps through this, never as strings: two stamps on either side of a
+    clock change carry different offsets, and their text does not sort in time order. A naive
+    stamp (written before H3's fix) is read as local time, as before.
+    """
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(str(iso)).timestamp()
+    except ValueError:
+        return None
 
 
 def _replace(tmp, path):
@@ -153,6 +177,37 @@ def environment() -> dict:
         except metadata.PackageNotFoundError:
             pass
     return {"python": platform.python_version(), "packages": packages}
+
+
+def _package_diff_sha256() -> Optional[str]:
+    """sha256 of the uncommitted changes to the package's tracked files, or None."""
+    import subprocess
+
+    here = Path(__file__).resolve().parents[1]  # src/owlplanner
+    try:
+        out = subprocess.run(["git", "-C", str(here), "diff", "HEAD", "--binary", "--", "."],
+                             capture_output=True, timeout=10, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return hashlib.sha256(out).hexdigest()
+
+
+def code_stamp(engine: Optional[dict] = None) -> dict:
+    """The code a cached Plan was pickled by: Owl's version and commit (S6, review H6).
+
+    A pickle restores a Plan's attributes as they were; after a code change that renames or
+    adds one, the pages break *after* a successful load. So `plan.pkl` is valid only for the
+    code that wrote it, as design section 5 says (commit, Python and package versions).
+    "-dirty" alone would match two different sets of uncommitted edits, so a dirty tree adds
+    a hash of the package's diff against HEAD.
+    """
+    from owlplanner.version import engine_provenance
+
+    stamp = dict(engine if engine is not None else engine_provenance())
+    commit = stamp.get("commit")
+    if commit and str(commit).endswith("-dirty"):
+        stamp["diff_sha256"] = _package_diff_sha256()
+    return stamp
 
 
 class JobRecord:
@@ -256,11 +311,6 @@ class JobRecord:
             atomic_write(self.results_dir / STATUS_JSON, pretty_json(doc))
             return True
 
-    def is_mine(self, token: str) -> bool:
-        """Whether the on-disk record still runs under `token` (before writing results)."""
-        self.refresh()
-        return self.token == token
-
     def publish(self, token: str, staging, names) -> None:
         """Rename one attempt's staged artifacts into the results folder (G2).
 
@@ -280,6 +330,24 @@ class JobRecord:
                 raise TokenChanged(f"job {self.id} is no longer this worker's (re-queued under a new token)")
             for name in names:
                 _replace(Path(staging) / name, self.results_dir / name)
+
+    def publish_record(self, token: str, doc: dict) -> bool:
+        """Write this attempt's `record.json`, under the job's lock and only while the job
+        still runs under `token` (review H4).
+
+        F2 guarded the record with a check before the write, outside the lock; `requeue` could
+        run between the two (the worker's `build_record` runs `git` in that window), and the
+        old attempt's record then landed in the cleaned folder of the new one. Under the lock,
+        a record write and `requeue` cannot interleave: a stale worker writes nothing, and a
+        record written first is moved aside to `record.prev.json` by the re-queue. Returns
+        whether it wrote.
+        """
+        with _status_lock(self.results_dir):
+            current = type(self).read(self.results_dir).doc
+            if current.get("token") != token:
+                return False
+            write_record(self.results_dir, doc)
+            return True
 
     def take_for_dispatch(self) -> bool:
         """Mark a waiting job running *before* its worker starts (only one dispatcher wins).
@@ -401,10 +469,9 @@ class JobRecord:
 
     def heartbeat_age(self, now: Optional[float] = None) -> Optional[float]:
         """Seconds since the last heartbeat, or None when the worker never beat."""
-        beat = self.doc.get("heartbeat")
-        if not beat:
+        then = stamp_seconds(self.doc.get("heartbeat"))
+        if then is None:
             return None
-        then = datetime.fromisoformat(beat).timestamp()
         return (now if now is not None else time.time()) - then
 
 
@@ -427,6 +494,7 @@ def build_record(*, run_id: str, results_id: str, as_of: str, preset: str, optio
     """
     from owlplanner.version import engine_provenance
 
+    engine = engine_provenance()
     plan_doc = plan_doc or {}
     convergence = plan_doc.get("convergence")
     if not isinstance(convergence, dict):
@@ -451,7 +519,7 @@ def build_record(*, run_id: str, results_id: str, as_of: str, preset: str, optio
             "breakpoint_method": plan_doc.get("breakpoint_method", "loop"),
         },
         # Owl version and commit (S13's comparison flags read this too).
-        "engine": engine_provenance(),
+        "engine": engine,
         "solver": solver,
         "status": status,
         "gap": gap,
@@ -465,6 +533,8 @@ def build_record(*, run_id: str, results_id: str, as_of: str, preset: str, optio
         "rates": rates,
         "environment": environment(),
         "plan_pkl_sha256": plan_pkl_sha256,
+        # The code the cache was pickled by (H6): load_plan drops it under any other code.
+        "plan_pkl_code": code_stamp(engine) if plan_pkl_sha256 else None,
         "error": error,
     }
 
@@ -505,10 +575,12 @@ def load_plan(results_dir, record: Optional[dict] = None):
     """The cached Plan, or None when absent, stale or not ours; drops a stale cache (S6).
 
     Stale means record.json's environment no longer matches this Python and these packages,
-    or the bytes do not match the hash record.json carries (R10's check: the pickles a run
-    carries must match the record this solve wrote -- a run brought in from elsewhere keeps
-    its record only if the two agree, and importing one must drop its pickles). Fails soft:
-    a fresh solve replaces the cache.
+    or its code stamp no longer matches this code (Owl's version and commit, and the diff of
+    a dirty tree: `code_stamp`, H6), or the bytes do not match the hash record.json carries
+    (R10's check: the pickles a run carries must match the record this solve wrote -- a run
+    brought in from elsewhere keeps its record only if the two agree, and importing one must
+    drop its pickles). Fails soft: a pickle that does not load is dropped too, and a fresh
+    solve replaces the cache.
     """
     results_dir = Path(results_dir)
     path = results_dir / PLAN_PKL
@@ -523,7 +595,11 @@ def load_plan(results_dir, record: Optional[dict] = None):
     if not wanted or hashlib.sha256(blob).hexdigest() != wanted:
         path.unlink(missing_ok=True)  # not ours: never load it
         return None
-    if record.get("environment") != environment():
-        path.unlink(missing_ok=True)  # stale (S6): one re-solve replaces it
+    if record.get("environment") != environment() or record.get("plan_pkl_code") != code_stamp():
+        path.unlink(missing_ok=True)  # stale (S6, H6): one re-solve replaces it
         return None
-    return pickle.loads(blob)
+    try:
+        return pickle.loads(blob)
+    except Exception:  # a renamed module or class: the cache is stale, the record stands (H6)
+        path.unlink(missing_ok=True)
+        return None

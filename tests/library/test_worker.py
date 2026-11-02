@@ -35,6 +35,21 @@ def run(library, scenario):
     return library.save_run(name="bill", scenario=scenario).run
 
 
+JUNE = "2026-06-15"  # a run date that is not the suite's pin (H2)
+
+
+@pytest.fixture(scope="module")
+def scenario_june():
+    from owlplanner.library import import_case
+
+    return import_case(BILL, as_of=JUNE)
+
+
+@pytest.fixture
+def run_june(library, scenario_june):
+    return library.save_run(name="bill-june", scenario=scenario_june).run
+
+
 def make_job(run, name="2026-01-01T00-00-00_quick", **kw):
     kw.setdefault("run_id", run.id)
     kw.setdefault("run_name", run.name)
@@ -103,16 +118,17 @@ class TestOneSolve:
 
 
 class TestTwoSolvesOnDifferentDays:
-    def test_identical_results_whatever_the_wall_clock_says(self, run, pretend_today):
+    def test_identical_results_whatever_the_wall_clock_says(self, run_june, pretend_today, no_session_pin):
         """Step 2's check: the run's "as of" date, not the day of the solve, decides.
 
         The two pretend days straddle a New Year: a freeze that leaked any year or month
-        read would move the plan (S1).
+        read would move the plan (S1). The suite's pin is cleared and the run's date is not
+        the pin's (H2): with the pin, the test passed with the worker's freeze removed.
         """
         outputs = []
         for day, name in (("2026-01-10", "a"), ("2027-02-01", "b")):
             with pretend_today(day):
-                job = make_job(run, name=f"2026-01-01T00-00-0{name}_quick")
+                job = make_job(run_june, name=f"2026-01-01T00-00-0{name}_quick", as_of=JUNE)
                 assert run_job(job.results_dir, job.token) == R.DONE
             summary = json.loads((job.results_dir / R.SUMMARY_JSON).read_text(encoding="utf-8"))
             plan_doc = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))
@@ -124,6 +140,32 @@ class TestTwoSolvesOnDifferentDays:
         assert plan_a == plan_b
         for key in ("status", "converged", "gap", "iterations", "as_of", "convergence"):
             assert rec_a[key] == rec_b[key]
+        assert rec_a["as_of"] == JUNE
+
+    def test_the_freeze_reaches_the_claiming_age_candidates(self, run_june, pretend_today,
+                                                            no_session_pin, monkeypatch):
+        """H1: `withSSAges` solves its candidates on a thread pool. Under the thread-local
+        freeze they read the real date (probe on jack+jill: 378 candidate calls in the wrong
+        year, other ages, another objective); every one must read the run's date."""
+        import threading
+
+        from owlplanner import asof
+        from owlplanner import plan as plan_mod
+
+        seen = []
+        real = plan_mod.Plan.setSocialSecurity
+
+        def spy(self, *args, **kw):
+            seen.append((threading.current_thread().name.split("_")[0], asof.today().isoformat()))
+            return real(self, *args, **kw)
+
+        monkeypatch.setattr(plan_mod.Plan, "setSocialSecurity", spy)
+        job = make_job(run_june, preset="custom", options={"withSSAges": "optimize"}, as_of=JUNE)
+        with pretend_today("2027-02-01"):
+            assert run_job(job.results_dir, job.token) == R.DONE
+        threads = {name for name, _ in seen}
+        assert "ssages" in threads, seen  # the search did run candidates on its pool
+        assert {day for _, day in seen} == {JUNE}, seen
 
 
 class TestAStaleWorkerWritesNothing:
@@ -167,6 +209,44 @@ class TestAStaleWorkerWritesNothing:
         # The stale worker stopped and published nothing over the cleaned folder.
         assert result.get("state") == R.INTERRUPTED
         assert artifacts(job.results_dir) == ["solve.log", "status.json", "status.lock"]
+        doc = R.JobRecord.read(job.results_dir).doc
+        assert doc["state"] == R.WAITING and doc["token"] != old_token
+
+    def test_run_again_while_the_record_is_built_leaves_no_old_record(self, run, library, monkeypatch):
+        """H4: the record write is token-guarded under the job's lock, like the artifacts.
+
+        The worker is held between its token check and the record write (where `build_record`
+        runs `git`) while the job is re-queued. Before the fix the old attempt's "solved"
+        record landed in the cleaned folder, pointing to a pickle the re-queue had deleted.
+        """
+        import threading
+
+        job = make_job(run)
+        old_token = job.token
+        building, resume = threading.Event(), threading.Event()
+        real_build = R.build_record
+
+        def held_build(**kw):
+            if kw.get("status") == "solved" and not building.is_set():
+                building.set()
+                assert resume.wait(timeout=120)
+            return real_build(**kw)
+
+        monkeypatch.setattr(R, "build_record", held_build)
+        result = {}
+        thread = threading.Thread(target=lambda: result.update(state=run_job(job.results_dir, old_token)))
+        thread.start()
+        try:
+            assert building.wait(timeout=120), "the worker never reached the record"
+            job.finish(R.INTERRUPTED, error="stopped")
+            manager = JobManager(library)
+            manager._spawn = lambda j: False
+            manager.run_again(job)
+        finally:
+            resume.set()
+            thread.join(timeout=180)
+        assert not (job.results_dir / R.RECORD_JSON).exists()
+        assert R.read_record(job.results_dir) is None
         doc = R.JobRecord.read(job.results_dir).doc
         assert doc["state"] == R.WAITING and doc["token"] != old_token
 

@@ -95,6 +95,9 @@ if os.environ.get("OWL_LIBRARY_DIR"):
     pages["Run Library"] = [
         st.Page("Queue.py", icon=":material/schedule:"),
     ]
+    import libraryjobs
+
+    libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
 
 pg = st.navigation(pages, position=kz.getGlobalKey("menuLocation"))
 

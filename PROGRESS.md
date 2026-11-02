@@ -4837,3 +4837,6 @@ Tests: held lock raises, a leftover file does not block, a subprocess that takes
 T6: S1's evidence corrected in `run-library-review-2.md` and design §8.3 (the solve month bounds
 `withSSAges`' open ages, `_ssaOpenAges` / `_ssaCheckPastAges`; `yearFracLeft` reads today's day only
 for `start_date = "today"`). `tests/library` 84 passed.
+
+Full suite on the T1-T4 commit: 3693 passed / 1 skipped (9:32). `main` fast-forwarded to
+`claude/run-library-step1` on 2026-11-02 (user).

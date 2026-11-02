@@ -5000,3 +5000,21 @@ clean, ruff only upstream's four B905; `tests/library` 139.
 Next: step 3 (the library page, the run page, the comparison of two results with the noise rule),
 then step 4 (the scenario model and builder). The `as_of` input goes upstream as a design issue
 (`fork-notes/issue-as-of-date.md`, for the user to file).
+
+**Step 2 third review (2026-11-02, fresh session; `fork-notes/run-library-step2-review-3.md`,
+H1-H6, N1-N5; no code changed).** A fresh session reviewed `c3f45e6` (step 2 with F1-F10 and
+G1-G2) for what the first two reviews missed. It found six H findings and fixed none:
+- **H1:** the worker's thread-local freeze does not reach `withSSAges`' candidate threads,
+  which read the real year. Probe on jack+jill at as_of 2025-03-01: 378 candidate calls saw
+  2026, and the solve picked different ages and a different objective than under the
+  process-wide freeze (\$106,737 vs \$106,866). Fix: the worker should use `set_as_of`.
+- **H2:** both determinism tests pass with the freeze, or `--as-of`, disabled, because the
+  session pin in `tests/conftest.py` supplies the date. The synthetic check has teeth.
+- **H3:** naive local-time heartbeats read one hour old during the DST fall-back hour, so
+  `adopt` interrupts live workers.
+- **H4:** a stale worker's `record.json` write is check-then-write outside the lock; probe: an
+  old "solved" record is left in a re-queued folder.
+- **H5:** the queue advances only while a Queue page is open.
+- **H6:** `plan.pkl` staleness ignores the commit, and an unpickle error is not soft.
+
+`check_library_jobs.py` passes 4/4 on Linux. The user decides which findings to fix.

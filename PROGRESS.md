@@ -4966,6 +4966,37 @@ confirmed sound; the job record's concurrency was not. All findings fixed the sa
   (like `OWL_ASSISTANT=1`); `import_case(as_of=...)` records the date it conditioned at;
   `openCaseFromPlan` re-attaches the case's log stream to the restored plan.
 
+**Step 2 second review and fixes (2026-11-02, fresh session; `fork-notes/run-library-step2-review-2.md`,
+G1-G2).** A second independent pass over the step at `b4a9ef18` (the F1-F10 state), run on Windows:
+the full suite (3750 passed / 1 skipped, 7:38) exercises the `msvcrt` lock and `DETACHED_PROCESS`
+branches the Linux container could not (step-1 T5's untested branch). Freeze completeness, R1's
+refusal, the worker's `owlcli run` route, `record.json`'s fields and `converged` semantics, the plan
+cache, `genDic`'s fix, F1/F3/F5/F7 and the determinism tests were confirmed sound. Two races the
+first review's scope did not cover, both reproduced by probe and fixed the same day:
+
+- **G1 (double enqueue):** `enqueue` picked `results/<stamp>_<preset>`, checked `folder.exists()`
+  and then created it -- two Queue sessions clicking Solve in the same second landed in one folder
+  and one job record was clobbered (probe: 2 enqueues, 1 job listed; if the first was already
+  dispatched, two workers on one run). The claim is now the `mkdir` itself (atomic; `FileExistsError`
+  takes the `-n` name).
+- **G2 (the F2 guard's blind spot):** F2 token-guarded `status.json` and `record.json` writes, but
+  the artifacts (`summary.json`, `plan.json`, `Results.xlsx`, `plan.pkl`) were written unguarded,
+  while `requeue` had just cleaned exactly those files. A worker waking after "run again" (S8's
+  machine-sleep scenario) put the old attempt's artifacts back into the new attempt's folder
+  (probe: old `Results.xlsx` + `plan.pkl` beside a cleaned `summary.json`). The artifacts are now
+  staged in `.attempt-<token8>` and published by `JobRecord.publish`: renames under the job's lock
+  with the token checked inside the lock, so a publish and `requeue`'s clean-up cannot interleave
+  (a stale worker publishes nothing and drops its staging). Regression tests from both probes;
+  the probes re-run clean. Minors not fixed (M1-M6 in the review): the old `solve.log` is
+  overwritten though `record.prev.json` is kept; section 10's `git check-ignore` refusal is
+  neither implemented nor in the known limits; `adopt` treats an unreadable start token as ours;
+  `asof.as_of(None)` falls back to the process-wide freeze; a 3-part `start_date`'s year is taken
+  as the balances' year though Owl ignores it; `Queue.py`'s elapsed column parses `finished`
+  unguarded.
+
+Checks after the fixes: full suite **3752 passed / 1 skipped** (7:25; two regression tests added); flake8
+clean, ruff only upstream's four B905; `tests/library` 139.
+
 Next: step 3 (the library page, the run page, the comparison of two results with the noise rule),
 then step 4 (the scenario model and builder). The `as_of` input goes upstream as a design issue
 (`fork-notes/issue-as-of-date.md`, for the user to file).

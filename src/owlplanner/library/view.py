@@ -155,6 +155,34 @@ def claiming_ages_text(result: Result) -> str:
     return ", ".join(f"{name} {age_text(age)}" for name, age in claiming_ages(result))
 
 
+# -- "Things to look at" (I3) and the one-year cash flow (I6) ------------
+# Both blocks are written into plan.json at solve time (`thresholds.threshold_proximity`,
+# `export.cash_flow_split` via `plan_to_dict`), so a result reads the same without plan.pkl.
+
+
+def thresholds(result: Result) -> list:
+    """"Things to look at" (design 14.1, I3): plan.json's `thresholds` entries (today's $)."""
+    return list((result.plan.get("thresholds") or {}).get("entries") or [])
+
+
+def threshold_band(result: Result) -> float:
+    """The proximity band the report used (a fraction of each boundary; 0.05 when absent)."""
+    band = (result.plan.get("thresholds") or {}).get("near_band_fraction")
+    try:
+        return float(band) if band is not None else 0.05
+    except (TypeError, ValueError):
+        return 0.05
+
+
+def cash_flow(result: Result) -> dict:
+    """One year's sources and uses, per year (design 14.1, I6): plan.json's `cash_flow` block.
+
+    {"sources": {name: [per year]}, "uses": {name: [per year]}}, nominal $ of each year;
+    the two sides are equal in every year (the cash flow identity).
+    """
+    return result.plan.get("cash_flow") or {}
+
+
 # -- how good is this result (design 9.1's quality line, run_suite.run_checks) ------
 
 

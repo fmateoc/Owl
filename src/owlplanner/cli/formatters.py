@@ -11,7 +11,8 @@ Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 import json
 import numpy as np
 
-from owlplanner.export import plan_metrics, balance_sheet_arrays, fixedIncomeStreams
+from owlplanner.export import plan_metrics, balance_sheet_arrays, cash_flow_split, fixedIncomeStreams
+from owlplanner.thresholds import threshold_proximity
 from owlplanner.version import engine_provenance
 
 
@@ -209,6 +210,13 @@ def plan_to_dict(plan) -> dict:
             }
         )
 
+    # ---- per-year cash-flow split (the run page's one-year Sankey, I6) ------
+    cf = cash_flow_split(plan, N)
+    cash_flow = {
+        side: {name: [_round(v) for v in values] for name, values in rows.items()}
+        for side, rows in cf.items()
+    }
+
     # ---- Roth conversion schedule (non-zero years only) -----------------
     roth_schedule = []
     for n in range(N):
@@ -262,6 +270,12 @@ def plan_to_dict(plan) -> dict:
             "total_today_dollars": summary["roth_conversions_today_dollars"],
             "schedule": roth_schedule,
         },
+        # One year's sources and uses, per year (the run page's Sankey, I6): the cash flow
+        # identity split along the design's lines, nominal $, sources equal to uses.
+        "cash_flow": cash_flow,
+        # "Things to look at" (I3): the years whose income sits just below or just over a
+        # threshold the model knows, with the distance and the price of the crossing.
+        "thresholds": threshold_proximity(plan),
         "by_year": by_year,
     }
 

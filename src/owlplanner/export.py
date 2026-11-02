@@ -402,6 +402,60 @@ def fixedIncomeStreams(plan, N=None):
     }
 
 
+def cash_flow_split(plan, N=None):
+    """
+    One year's cash flow as the Sankey of the run page shows it (run-library-design.md, I6),
+    nominal $ per year: {"sources": {name: array}, "uses": {name: array}}.
+
+    Mirrors `Plan._check_cashflow_balance`'s identity exactly (sources minus uses is that
+    identity's residual, 0 on a solved plan), split as the design asks: the income streams,
+    each account's withdrawals and the fixed-asset sale (the condo) on the sources side; the
+    spending lines, each tax, the premiums, debt payments, big-ticket purchases and the
+    surplus deposit on the uses side. A Roth conversion is a transfer inside the accounts: it
+    appears as its own source ("from the tax-deferred accounts") and its own use, so the two
+    sides stay equal while the flow is visible.
+
+    Without a budget sheet the spending is one "Net spending" use; with one, one use per budget
+    line (`budget_spending`: the lines sum to `g_n` exactly).
+    """
+    if N is None:
+        N = plan.N_n
+    Lambda_n = np.sum(plan.Lambda_in[:, :N], axis=0)
+    sources = {
+        "Wages": np.sum(plan.omega_in[:, :N], axis=0),
+        "Social Security": np.sum(plan.zetaBar_in[:, :N], axis=0),
+        "Pensions": np.sum(plan.piBar_in[:, :N], axis=0),
+        "SPIAs": np.sum(plan.spiaBar_in[:, :N], axis=0),
+        "Other income": np.sum(plan.other_inc_in[:, :N], axis=0),
+        "Net investment income": np.sum(plan.netinv_in[:, :N], axis=0),
+        "Fixed-asset income": plan.fixed_assets_ordinary_income_n[:N],
+        "Fixed-asset sale": (plan.fixed_assets_capital_gains_n[:N]
+                             + plan.fixed_assets_tax_free_n[:N]),
+        "Taxable-account withdrawals": np.sum(plan.w_ijn[:, 0, :N], axis=0),
+        "Tax-deferred withdrawals": np.sum(plan.w_ijn[:, 1, :N], axis=0),
+        "Roth withdrawals": np.sum(plan.w_ijn[:, 2, :N], axis=0),
+        "HSA withdrawals": np.sum(plan.w_ijn[:, 3, :N], axis=0),
+        "Big-ticket inflows": np.maximum(Lambda_n, 0.0),
+        "Roth conversions (from the tax-deferred accounts)": np.sum(plan.x_in[:, :N], axis=0),
+    }
+    lines, _ = budget_spending(plan, N)
+    uses = dict(lines) if lines else {"Net spending": np.asarray(plan.g_n[:N], dtype=float)}
+    uses.update({
+        "Federal income tax": plan.T_n[:N],
+        "Gains tax": plan.U_n[:N],
+        "NIIT": plan.J_n[:N],
+        "Payroll tax": plan.payroll_n[:N],
+        "State and local tax": plan.st_T_n[:N],
+        "Medicare premiums": plan.medicare_n[:N],
+        "ACA premiums": plan.aca_costs_n[:N],
+        "Debt payments": plan.debt_payments_n[:N],
+        "Big-ticket purchases": np.maximum(-Lambda_n, 0.0),
+        "Savings (surplus)": plan.s_n[:N],
+        "Roth conversions": np.sum(plan.x_in[:, :N], axis=0),
+    })
+    return {"sources": sources, "uses": uses}
+
+
 def _duration(seconds):
     """Seconds as '8.2 s' or '2m 05s'."""
     if seconds < 60:

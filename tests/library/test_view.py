@@ -7,6 +7,7 @@ from owlplanner.library import results as R
 from owlplanner.library.view import (
     Result,
     age_text,
+    cash_flow,
     claiming_ages,
     claiming_ages_text,
     error_bar,
@@ -22,6 +23,8 @@ from owlplanner.library.view import (
     score,
     score_label,
     ss_withheld_today,
+    threshold_band,
+    thresholds,
     tolerance,
     total_taxes_today,
 )
@@ -228,3 +231,30 @@ class TestIsExactLp:
             options.update(wrong)
             result = make_result(record={"method": {"breakpoint_method": "loop", "options": options}})
             assert not is_exact_lp(result), wrong
+
+
+class TestTheRunPageBlocks:
+    """"Things to look at" (I3) and the one-year cash flow (I6), read from plan.json (D7)."""
+
+    def test_the_threshold_entries_and_their_band(self):
+        plan = dict(BASE_PLAN, thresholds={
+            "near_band_fraction": 0.05,
+            "entries": [{"year": 2031, "kind": "irmaa", "label": "IRMAA tier 1",
+                         "side": "over", "amount_today_dollars": 1_200.0,
+                         "cost_today_dollars": 1_900.0, "affects": 2033,
+                         "note": "the MAGI of 2031 sets the Medicare premiums of 2033"}],
+        })
+        result = make_result(plan=plan)
+        (entry,) = thresholds(result)
+        assert entry["label"] == "IRMAA tier 1"
+        assert threshold_band(result) == 0.05
+
+    def test_a_result_without_the_blocks_reads_as_empty(self):
+        result = make_result()
+        assert thresholds(result) == []
+        assert cash_flow(result) == {}
+        assert threshold_band(result) == 0.05  # the rule the report uses
+
+    def test_the_cash_flow_block_is_passed_through(self):
+        cf = {"sources": {"Wages": [100, 0]}, "uses": {"Net spending": [100, 0]}}
+        assert cash_flow(make_result(plan=dict(BASE_PLAN, cash_flow=cf))) == cf

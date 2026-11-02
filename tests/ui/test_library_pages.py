@@ -52,6 +52,16 @@ def _write_result(run, name, *, preset="decision", score=82_000.0, home=150_000.
     plan = {
         "objective": "maxSpending", "individuals": ["Noa", "Avi"],
         "claiming_ages": [66.1667, 70.0],
+        "thresholds": {
+            "near_band_fraction": 0.05,
+            "entries": [{"year": 2027, "kind": "irmaa", "label": "IRMAA tier 1", "side": "over",
+                         "amount_today_dollars": 1_200.0, "cost_today_dollars": 1_900.0,
+                         "affects": 2029, "note": "the MAGI of 2027 sets the premiums of 2029"}],
+        },
+        "cash_flow": {
+            "sources": {"Wages": [60_000, 30_000], "Taxable-account withdrawals": [30_000, 61_000]},
+            "uses": {"Net spending": [90_000, 91_000]},
+        },
         "by_year": [
             {"year": 2027, "spending": 90_000, "federal_income_tax": 20_000 + tax_shift,
              "ltcg_tax": 2_000,
@@ -218,6 +228,51 @@ class TestRunPage:
     def test_the_run_zip_download_is_offered(self, library):
         at = _page("Run.py")
         assert any(d.label == "Download everything" for d in at.get("download_button"))
+
+
+class TestRunPageDetails:
+    """The second increment of step 3: I3 (threshold proximity), I6 (the one-year Sankey)
+    and I7 (the claiming-age map), run-library-design.md 14.1."""
+
+    def test_things_to_look_at_shows_the_years_near_a_threshold(self, library):
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Things to look at" in text
+        assert "within 5% of a threshold" in text
+        assert any("IRMAA tier 1" in str(d.value) for d in at.dataframe)
+
+    def test_the_one_year_cash_flow_sankey_has_its_year_and_caption(self, library):
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert at.selectbox(key="run_page_cash_flow_year"), "the year picker did not render"
+        text = _text(at)
+        assert "in, the same" in text and "Roth conversion is a move between accounts" in text
+
+    def test_the_claiming_age_map_reads_scores_json_from_the_run_folder(self, library):
+        run = library.runs()[-1]  # the page's default run
+        scores = [{"name": "base", "free": ["Noa", "Avi"], "best": [804, 804], "sweeps": [],
+                   "results": {
+                       "67y0m/67y0m": {"status": "solved", "value": 84_000.0,
+                                       "tolerance": 8.4, "proved": True, "ages": [804, 804]},
+                       "66y0m/67y0m": {"status": "solved", "value": 83_997.0,
+                                       "tolerance": 8.4, "proved": True, "ages": [792, 804]},
+                       "70y0m/67y0m": {"status": "solved", "value": 83_500.0,
+                                       "tolerance": 8.4, "proved": True, "ages": [840, 804]},
+                   }}]
+        (run.path / "scores.json").write_text(json.dumps(scores), encoding="utf-8")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Claiming-age map" in text
+        assert "Reading `scores.json` from the run folder" in text
+        assert "3 scored plan(s)" in text and "2 shade(s)" in text
+        assert at.selectbox(key="run_page_age_variant"), "the variant picker did not render"
+
+    def test_without_a_scores_file_the_map_asks_for_one(self, library):
+        at = _page("Run.py")
+        assert "Claiming-age map" in _text(at)
+        assert any(u.label.startswith("A work_sweep scores file") for u in at.get("file_uploader"))
 
 
 class TestComparePage:

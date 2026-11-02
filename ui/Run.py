@@ -4,10 +4,13 @@ Run page for the run library (run-library-design.md, section 9.1).
 One run, one of its solves at a time: the header (name, change summary, parent, solve date
 and method, status, and a plain-language quality line), the headline numbers (the score as
 `run_suite.py` computes it, the home at the end and the savings left -- two numbers, never
-added, R3 -- total taxes, the claiming ages, SS withheld), charts drawn from `plan.json`
-(durable; D7), the Results workbook's sheets, and the buttons: "Open in Owl" (the existing
-pages from the cached `plan.pkl`, no solve), "Download everything" (a zip of the run) and
-"Edit as new run" (the run's frozen files into the case pages; saving makes a child run).
+added, R3 -- total taxes, the claiming ages, SS withheld), "Things to look at" (the years
+whose income sits just below or just over a threshold, design 14.1 I3), charts drawn from
+`plan.json` (durable; D7) including the one-year cash-flow Sankey (I6), the Results
+workbook's sheets, the claiming-age map over a work_sweep scores file (I7), and the
+buttons: "Open in Owl" (the existing pages from the cached `plan.pkl`, no solve),
+"Download everything" (a zip of the run) and "Edit as new run" (the run's frozen files into
+the case pages; saving makes a child run).
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -33,7 +36,7 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import PRESETS, ScenarioError, load_plan, preset_solves
+from owlplanner.library import PRESETS, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
 from owlplanner.library import view
 
@@ -51,6 +54,175 @@ _PRESET_HELP = (
 def _usd(value):
     """A metric's value: plain text (st.metric is not markdown), "-" when there is none."""
     return "-" if value is None else f"{value:,.0f}"
+
+
+def _things_to_look_at(result):
+    """I3: the years just below or just over a threshold the model knows (plan.json)."""
+    entries = view.thresholds(result)
+    if not entries:
+        return
+    st.markdown("### Things to look at")
+    band = view.threshold_band(result)
+    st.caption(
+        f"Years whose income sits within {100 * band:.0f}% of a threshold the model knows "
+        "(today's dollars). *Cost* is what closing that gap costs where the model prices the "
+        "crossing; '-' where the boundary is a ramp. The plan may be parked at a boundary on "
+        "purpose (the optimizer fills a bracket to its edge): read this as a list of margins, "
+        "not of errors."
+    )
+    rows = [{
+        "Year": e["year"],
+        "Threshold": e["label"],
+        "Side": e["side"],
+        "Amount ($)": round(e["amount_today_dollars"]),
+        "Cost ($)": "-" if e.get("cost_today_dollars") is None else round(e["cost_today_dollars"]),
+        "Affects": e.get("affects") or "-",
+        "Note": e.get("note") or "",
+    } for e in entries]
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+
+def _cash_flow_sankey(result, by_year):
+    """I6: one year's sources and uses as a Sankey (plan.json's `cash_flow`, nominal $)."""
+    cf = view.cash_flow(result)
+    sources_all = cf.get("sources") or {}
+    uses_all = cf.get("uses") or {}
+    if not sources_all or not by_year:
+        st.caption("This solve's files carry no cash-flow detail (solved before this build).")
+        return
+    years = [row["year"] for row in by_year]
+
+    def _at(rows, n):
+        return {name: float(values[n]) for name, values in rows.items()
+                if n < len(values) and values[n] > 0.5}
+
+    # Default to the purchase year, then the first Medicare year (the design's two uses).
+    default = 0
+    for n in range(len(years)):
+        if _at(uses_all, n).get("Big-ticket purchases", 0) > 0:
+            default = n
+            break
+    else:
+        for n in range(len(years)):
+            if _at(uses_all, n).get("Medicare premiums", 0) > 0:
+                default = n
+                break
+    n = st.selectbox("Year", list(range(len(years))), index=default,
+                     format_func=lambda i: str(years[i]), key="run_page_cash_flow_year")
+    sources = _at(sources_all, n)
+    uses = _at(uses_all, n)
+    if not sources or not uses:
+        st.caption(f"{years[n]}: nothing to show.")
+        return
+
+    total = sum(sources.values())
+    labels = list(sources) + [""] + list(uses)
+    hub = len(sources)
+    fig = go.Figure(go.Sankey(
+        arrangement="snap",
+        node=dict(label=labels, pad=12, thickness=14,
+                  color=["#4c78a8"] * len(sources) + ["#999999"] + ["#f58518"] * len(uses)),
+        link=dict(
+            source=list(range(len(sources))) + [hub] * len(uses),
+            target=[hub] * len(sources) + [len(sources) + 1 + j for j in range(len(uses))],
+            value=[sources[k] for k in sources] + [uses[k] for k in uses],
+            label=[f"{k}: ${v:,.0f}" for k, v in sources.items()] + [f"{k}: ${v:,.0f}" for k, v in uses.items()],
+            color=["#aec7e8"] * len(sources) + ["#ffbb78"] * len(uses),
+        ),
+    ))
+    fig.update_layout(height=430, font=dict(size=11))
+    st.plotly_chart(fig, width="stretch")
+    st.caption(
+        f"{years[n]}: ${total:,.0f} in, the same ${total:,.0f} out (nominal dollars of that "
+        "year). A Roth conversion is a move between accounts: it appears on both sides. "
+        "Spending is split along the budget's lines when the case has a budget sheet."
+    )
+
+
+def _age_map_chart(amap):
+    """I7: the objective over the free claiming ages, ties within tolerance shaded together."""
+    groups = amap.tie_groups()
+    shades = amap.group_of()
+    best = amap.best()
+    tied = len(groups[0]) if groups else 0
+    st.caption(
+        f"{len(amap.cells)} scored plan(s); {len(groups)} shade(s); the best "
+        f"{best.value:,.0f} is tied (within {max(c.tolerance for c in groups[0]):,.0f}) with "
+        f"{tied} cell(s). Cells this sweep did not score are blank."
+    )
+    if amap.dimensions > 1:
+        xs, ys = amap.x_ages(), amap.y_ages()
+        xi = {m: i for i, m in enumerate(xs)}
+        yi = {m: i for i, m in enumerate(ys)}
+        z = [[float("nan")] * len(xs) for _ in ys]
+        text = [[""] * len(xs) for _ in ys]
+        for cell in amap.cells:
+            j, i = yi.get(cell.ages[1]), xi.get(cell.ages[0])
+            if i is None or j is None:
+                continue
+            z[j][i] = shades[cell.ages]
+            text[j][i] = f"{cell.value:,.0f}"
+        fig = go.Figure(go.Heatmap(
+            z=z, text=text, texttemplate="%{text}", x=[view.age_text(m / 12) for m in xs],
+            y=[view.age_text(m / 12) for m in ys], colorscale="Greens_r", showscale=False,
+            xgap=2, ygap=2,
+            hovertemplate="%{x} · %{y}<br>objective %{text}<extra></extra>",
+        ))
+        if amap.decided and len(amap.decided) > 1:
+            fig.add_trace(go.Scatter(
+                x=[view.age_text(amap.decided[0] / 12)], y=[view.age_text(amap.decided[1] / 12)],
+                mode="markers", name="decided",
+                marker=dict(size=14, color="#d62728", symbol="circle-open", line=dict(width=3)),
+            ))
+        fig.update_layout(height=380, xaxis_title=amap.free[0], yaxis_title=amap.free[1])
+        st.plotly_chart(fig, width="stretch")
+    else:
+        pts = sorted(amap.cells, key=lambda c: c.ages)
+        fig = go.Figure(go.Scatter(x=[view.age_text(c.ages[0] / 12) for c in pts],
+                                   y=[c.value for c in pts], mode="lines+markers",
+                                   name="objective"))
+        fig.update_layout(height=320, xaxis_title=amap.free[0], yaxis_title="objective")
+        st.plotly_chart(fig, width="stretch")
+        st.dataframe(pd.DataFrame([{"Age": view.age_text(c.ages[0] / 12), "Objective": round(c.value),
+                                    "Tolerance": round(c.tolerance)} for c in pts]),
+                     width="stretch", hide_index=True)
+
+
+def _claiming_age_map(run):
+    """I7: the heat map over a work_sweep scores file (the run's, or one the user picks)."""
+    st.markdown("### Claiming-age map")
+    st.caption(
+        "The objective over the free claiming ages of one work variant (work_sweep.py output, "
+        "its --json file); cells tied within tolerance share a shade, the darkest being the "
+        "best. `fork-notes/phase5/work_sweep.py` writes this file; the Ages presets come with "
+        "step 6."
+    )
+    maps = None
+    scores_path = run.path / "scores.json"
+    if scores_path.exists():
+        try:
+            maps = agemap.load_scores(scores_path)
+            st.caption("Reading `scores.json` from the run folder.")
+        except Exception as exc:  # noqa: BLE001 - shown, not raised
+            st.warning(f"scores.json in the run folder could not be read: {exc}")
+    if maps is None:
+        up = st.file_uploader("A work_sweep scores file", type=["json"], key="run_page_scores")
+        if up is not None:
+            try:
+                maps = agemap.load_scores(up.getvalue())
+            except Exception as exc:  # noqa: BLE001 - shown, not raised
+                st.error(f"Not a work_sweep scores file: {exc}")
+    if not maps:
+        return
+    names = {}
+    for amap in maps:  # variant names repeat across suites; keep the first, label duplicates
+        name = amap.name if amap.name not in names else f"{amap.name} ({len(names)})"
+        names[name] = amap
+    amap = names[st.selectbox("Work variant", list(names), key="run_page_age_variant")]
+    if not amap.cells:
+        st.caption("This variant has no scored claiming ages.")
+        return
+    _age_map_chart(amap)
 
 
 manager = libraryjobs.get_manager()
@@ -142,11 +314,15 @@ if entries:
                + " is the score; the two end-of-plan numbers are reported side by side and "
                  "never added (R3).")
 
+    # -- "Things to look at" (design 14.1, I3) --------------------------
+    _things_to_look_at(result)
+
     # -- charts from plan.json (D7) ------------------------------------
     by_year = result.plan.get("by_year") or []
     if by_year:
         years = [row["year"] for row in by_year]
-        tabs = st.tabs(["Spending", "Account balances", "Taxes by kind", "Income sources"])
+        tabs = st.tabs(["Spending", "Account balances", "Taxes by kind", "Income sources",
+                        "Cash flow (one year)"])
         with tabs[0]:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=years, y=[row.get("spending") for row in by_year],
@@ -181,6 +357,8 @@ if entries:
             fig.update_layout(barmode="stack", yaxis_title="$ per year", xaxis_title="Year",
                               height=320)
             st.plotly_chart(fig, width="stretch")
+        with tabs[4]:
+            _cash_flow_sankey(result, by_year)
 
     # -- the workbook's sheets -----------------------------------------
     xlsx = job.results_dir / R.RESULTS_XLSX
@@ -243,6 +421,10 @@ with st.expander("Solve this run"):
                 break
             st.toast(f"Queued {job.id} ({solve})")
         st.rerun()
+
+# -- the claiming-age map (design 14.1, I7) -----------------------------
+
+_claiming_age_map(run)
 
 st.caption(
     "A results folder is one solve of the run's frozen inputs. Plans start today: results "

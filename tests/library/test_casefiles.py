@@ -342,6 +342,16 @@ class TestSaveOnABase:
 
 
 class TestDropGenerated:
+    def _base(self, monkeypatch):
+        from owlplanner.library import builder
+
+        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02])
+        base = import_case(CASE)
+        return dict(base, events=[
+            {"id": "w", "kind": "work", "person": "Jack", "start": 2026, "end": 2026, "wages": 5000},
+            {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2026, "flat_until": 2027},
+        ])
+
     def test_a_pages_save_drops_the_generated_rows_and_cells(self, monkeypatch):
         """Markers first (S11): the plan's tables carry the generated values too (the pages load
         the run's frozen files); a save keeps only the hand rows and cells. Section 6.3's
@@ -349,12 +359,8 @@ class TestDropGenerated:
         from owlplanner.library import builder
         from owlplanner.library.casefiles import _drop_generated
 
-        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02])
-        base = import_case(CASE)
-        base = dict(base, events=[
-            {"id": "w", "kind": "work", "person": "Jack", "start": 2026, "end": 2026, "wages": 5000},
-            {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2026, "flat_until": 2027},
-        ])
+        base = self._base(monkeypatch)
+        _case, _tables, provenance = builder.build(base)
         columns = list(base["hfp"]["Jack"]["columns"])
         rows = [list(row) for row in base["hfp"]["Jack"]["rows"]]
         for row in rows:
@@ -367,9 +373,43 @@ class TestDropGenerated:
             [True, "charity", "charity", 2026, 0, 3000, 0, None, False] + [None] * 5,
         ]}}
         clean_time, clean_house = _drop_generated({"Jack": {"columns": columns, "rows": rows}},
-                                                  house_lists, base)
+                                                  house_lists, provenance)
         jack = {row[columns.index("year")]: row for row in clean_time["Jack"]["rows"]}
         assert jack[2026][columns.index("anticipated wages")] == 0
         assert jack[2026][columns.index("Roth conv")] == 5
         names = [row[budget_columns.index("name")] for row in clean_house["Budget"]["rows"]]
         assert names == ["charity"]  # "rent" is generated: regenerated wholesale at build time
+
+    def test_a_pages_save_drops_the_generated_case_fields(self, monkeypatch):
+        """Review U1: the pages hold the generated case fields too (their `before` is the hand
+        case, their `after` the materialized one), and `build` writes a generated field only
+        while its event exists. A saved hand case must not carry them, or deleting an event
+        later leaves stale, unmarked inputs steering the plan."""
+        from owlplanner.library import builder
+        from owlplanner.library.casefiles import _drop_generated_case
+
+        base = self._base(monkeypatch)
+        base["events"] = [
+            *base["events"],
+            {"id": "buy", "kind": "purchase", "name": "h", "price": 700000, "year": 2027,
+             "pay_on": "Jack",
+             "place": {"state": "NY", "locality": "", "school_district": "City of X / X", "move": True},
+             "financing": {"kind": "cash", "closing": 0.03}},
+            {"id": "claim", "kind": "claim", "person": "Jack", "age": 62.0},
+        ]
+        _case, _tables, provenance = builder.build(base)
+        assert set(provenance["case_fields"]) >= {
+            "basic_info.moves", "aca_settings.aca_start_year", "solver_options.withSSAges"}
+        cleaned = _drop_generated_case(_case, provenance, base["case"])
+        assert "moves" not in cleaned["basic_info"]  # the base's hand case held none
+        # The hand values the events overrode are back: the claiming ages (the fallback for a
+        # person with no claim event) and the case's own switch.
+        assert (cleaned["fixed_income"]["social_security_ages"]
+                == base["case"]["fixed_income"]["social_security_ages"])
+        assert (cleaned.get("solver_options", {}).get("withSSAges")
+                == base["case"].get("solver_options", {}).get("withSSAges"))
+        # Rebuilding with the purchase deleted leaves no move behind (the U1 probe).
+        events = [e for e in base["events"] if e["id"] != "buy"]
+        rebuilt, _tables2, provenance2 = builder.build(dict(base, case=cleaned, events=events))
+        assert "moves" not in rebuilt["basic_info"]
+        assert provenance2["case_fields"].get("basic_info.moves") is None

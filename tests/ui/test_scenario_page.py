@@ -111,6 +111,17 @@ class TestScenarioPage:
         buy = next(e for e in saved["events"] if e["kind"] == "purchase")
         assert buy["price"] == 800000.0
 
+    def test_a_no_edit_load_shows_no_changes_and_a_no_edit_save_dedupes(self, library):
+        """Review U2: the widgets re-type event numbers as floats; canonical cells (T1/V3)
+        keep that out of the change summary and the inputs hash."""
+        at = _page()
+        assert "Changes against this run: none yet" in _text(at)
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        assert "Identical to" in _text(at)
+        assert len(library.runs()) == 1
+
     def test_an_unbuildable_scenario_says_why(self, library):
         at = _page()
         year = next(t for t in at.text_input if t.label == "Year")

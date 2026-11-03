@@ -45,7 +45,7 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import ScenarioError, diff_summaries
+from owlplanner.library import ScenarioError, canonicalize, diff_summaries
 from owlplanner.library import builder
 
 st.markdown("# :material/edit_note: Scenario")
@@ -71,11 +71,15 @@ key = run.id  # widget keys follow the run: editing two runs keeps their states 
 
 st.markdown("#### Events")
 st.caption(
-    "One row or box per event. A year field takes a calendar year or an anchor: "
+    "One row or box per event. A year field of the rent, home purchase and care events (work "
+    "spans take plain years) takes a calendar year or an anchor: "
     "`age:Ari:86` (the year Ari turns 86), `work:Noa` (Noa's last work year), `after:Noa` "
     "(the year after it), `purchase` (the home purchase's year), or `event:care` / "
-    "`event:care+2` (another event's year, shifted). The rent ends the year before the "
-    "purchase unless it names its own end (section 6.2)."
+    "`event:care+2` (another event's year -- a work span's end, a rent's start -- shifted). "
+    "The rent ends the year before the purchase unless it names its own end (section 6.2). "
+    "*Months worked* is written for every year of its span (the year work stops is the one "
+    "that matters; blank means 12 in a year with wages) -- split the span to give one year "
+    "its own value."
 )
 
 events = scenario.get("events") or []
@@ -276,6 +280,9 @@ edited = copy.deepcopy(scenario)
 built = None
 try:
     edited["events"] = _assemble()
+    # Canonical cells (T1/V3): the widgets re-type ints as floats, which must not move the
+    # inputs hash or the change summary (review U2).
+    edited = canonicalize(edited)
     built = builder.build(edited)
 except ScenarioError as exc:
     st.error(f"Not buildable yet: {exc}")
@@ -307,8 +314,17 @@ if built is not None:
         row = {"sheet": table, "name": name, "from event": event_id}
         if found is not None:
             row["type"] = _cell(found, columns, "type")
-            row["years"] = f"{_cell(found, columns, 'year')}-{_cell(found, columns, 'end') or 'end'}"
-            row["amount ($/yr, today's $)"] = _cell(found, columns, "amount")
+            if table == "Debts":  # a loan: one year and a term, not a span (review U9)
+                row["years"] = f"{_cell(found, columns, 'year')}, {_cell(found, columns, 'term')}-year loan"
+                row["amount / value ($)"] = _cell(found, columns, "amount")
+            elif table == "Fixed Assets":
+                sale = _cell(found, columns, "yod")
+                row["years"] = (f"{_cell(found, columns, 'year')}, sold {sale}" if sale
+                                else f"{_cell(found, columns, 'year')}, kept")
+                row["amount / value ($)"] = _cell(found, columns, "value")
+            else:
+                row["years"] = f"{_cell(found, columns, 'year')}-{_cell(found, columns, 'end') or 'end'}"
+                row["amount / value ($)"] = _cell(found, columns, "amount")
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     cells = [{"sheet": sheet, "cell": f"{column}, {year}", "from event": event_id}

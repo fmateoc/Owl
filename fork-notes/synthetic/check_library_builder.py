@@ -17,7 +17,8 @@ hand rows. For every scenario this check runs the builder and compares:
    every value, person sheets and Budget, Debts and Fixed Assets rows included (the row order
    too);
 3. for a work-variant scenario (no workbook of its own: an edit of the baseline workbook), the
-   generated person cells against the `hfp` edits its `set` applies.
+   whole built workbook against the baseline workbook with its `hfp` edits overlaid -- so the
+   generated rows and cells outside the edits are checked too (review U8).
 
 Every line reports one scenario; the last line reports the totals. Exit 0 when everything
 matches, 1 on a difference, 2 when the synthetic cases cannot be built.
@@ -36,6 +37,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 from owlplanner.library import export_case  # noqa: E402
 from owlplanner.library import builder  # noqa: E402
+
+BASE_WORKBOOK = "HFP_ari+noa.xlsx"  # the baseline workbook a work variant's edits apply to
 
 
 def load_workbook_values(path):
@@ -73,7 +76,11 @@ def compare_workbook(name, expected_path, built_path):
 
 
 def compare_case(expected, built):
-    """[] when the two case dictionaries hold the same values, else the differences (capped)."""
+    """[] when the two case dictionaries hold the same values, else the differences (capped).
+
+    Leaves compare with their types (review U8): per T1/V3 the generated TOML keeps an int and
+    a float apart, so `1` and `1.0` are not the same case field.
+    """
     problems = []
 
     def walk(a, b, where):
@@ -93,36 +100,35 @@ def compare_case(expected, built):
             else:
                 for i, (x, y) in enumerate(zip(a, b, strict=True)):
                     walk(x, y, f"{where}{i}.")
-        elif a != b or isinstance(a, bool) != isinstance(b, bool):
+        elif type(a) is not type(b) or a != b:
             problems.append(f"{where[:-1]}: {a!r} != {b!r}")
 
     walk(expected, built, "")
     return problems
 
 
-def compare_hfp_edits(edits, tables):
-    """[] when the builder's person cells equal the scenario's `hfp` edits, else the differences."""
-    problems = []
-    for person, spans in edits.items():
-        table = tables.get(person)
-        if table is None:
-            problems.append(f"{person}: no person sheet")
-            continue
-        columns = table["columns"]
-        by_year = {int(row[columns.index("year")]): row for row in table["rows"]}
+def expected_workbook(made, entry):
+    """A work variant's expected workbook: the baseline's with its `hfp` edits overlaid.
+
+    A work variant has no workbook of its own (its `set` is an edit of the baseline workbook),
+    but its events generate the baseline's rows too -- the home, the rent -- and those must
+    match the baseline workbook cell for cell (review U8: comparing the edit cells alone let a
+    wrong generated value through).
+    """
+    wb = openpyxl.load_workbook(made / BASE_WORKBOOK)
+    for person, spans in (entry.get("hfp") or {}).items():
+        ws = wb[person]
+        header = [c.value for c in ws[1]]
+        year_at = header.index("year") + 1
         for span in spans:
-            for year in range(span["years"][0], span["years"][-1] + 1):
-                row = by_year.get(year)
-                if row is None:
-                    problems.append(f"{person} {year}: no row")
-                    continue
-                for column, value in span.items():
-                    if column == "years":
-                        continue
-                    got = row[columns.index(column)]
-                    if got != value:
-                        problems.append(f"{person} {year} {column}: {value!r} != {got!r}")
-    return problems
+            for r in range(2, ws.max_row + 1):
+                if span["years"][0] <= ws.cell(r, year_at).value <= span["years"][-1]:
+                    for column, value in span.items():
+                        if column != "years":
+                            ws.cell(r, header.index(column) + 1).value = value
+    path = made.parent / f"_expected_{entry['name']}.xlsx"
+    wb.save(path)
+    return path
 
 
 def main():
@@ -147,16 +153,17 @@ def main():
         for entry in scenarios:
             name = entry["name"]
             scenario = copy.deepcopy(entry["scenario"])
-            case, tables, provenance = builder.build(scenario)
+            case, _tables, _provenance = builder.build(scenario)
             problems = compare_case(entry["expected_case"], case)
-            kind = "workbook" if "workbooks" in entry else "hfp edits"
+            kind = "workbook" if "workbooks" in entry else "workbook (baseline + edits)"
+            built_dir = tmp / "built" / name
+            export_case(scenario, built_dir)
             if "workbooks" in entry:
-                built_dir = tmp / "built" / name
-                export_case(scenario, built_dir)
                 for workbook in entry["workbooks"]:
                     problems += compare_workbook(workbook, made / workbook, built_dir / "HFP.xlsx")
             else:
-                problems += compare_hfp_edits(entry.get("hfp") or {}, tables)
+                problems += compare_workbook(f"{name} (baseline + edits)", expected_workbook(made, entry),
+                                             built_dir / "HFP.xlsx")
             if problems:
                 failures.append((name, kind, problems))
                 print(f"{name}: {len(problems)} difference(s) ({kind})")
@@ -166,7 +173,8 @@ def main():
                 ok += 1
         workbooks = sum(len(e.get("workbooks") or []) for e in scenarios)
         print(f"{ok}/{len(scenarios)} scenarios match make_cases.py "
-              f"({workbooks} workbooks cell for cell; case fields and hfp edits included).")
+              f"({workbooks} workbooks cell for cell; the work variants against the baseline "
+              "plus their edits; case fields and every cell included).")
         return 1 if failures else 0
 
 

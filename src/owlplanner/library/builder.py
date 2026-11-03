@@ -25,11 +25,13 @@ change; hand rows are untouched. Per-cell overrides on generated values ("closin
 24,000 instead of 21,700") are the next increment of section 6.3 and are not built yet: an edit
 to a generated value does not survive a regeneration.
 
-Anchors (I1): a year field may name a calendar year or anchor to another event -- "the year
-after Noa's last work year" (`{"anchor": "work_end", "person": "Noa", "after": true}`), "at age
-86" (`{"anchor": "age", "person": "Ari", "age": 86}`), "the purchase year"
-(`{"anchor": "purchase"}`), or another event's year (`{"anchor": "event", "id": "care"}`). The
-rent end and the owner lines follow from the purchase by construction (section 6.2).
+Anchors (I1): the year fields of the rent, purchase and care events (work spans take plain
+calendar years) may name a calendar year or anchor to another event -- "the year after Noa's
+last work year" (`{"anchor": "work_end", "person": "Noa", "after": true}`), "at age 86"
+(`{"anchor": "age", "person": "Ari", "age": 86}`), "the purchase year" (`{"anchor":
+"purchase"}`), or another event's year (`{"anchor": "event", "id": "care"}`: its year field,
+or a work span's end / a rent's start where it has none). The rent end and the owner lines
+follow from the purchase by construction (section 6.2).
 """
 
 from __future__ import annotations
@@ -125,13 +127,13 @@ def rent_rows(annual, start, flat_until, end, gamma, base):
     then growing with inflation (real growth 0), to `end` (0: the plan end).
 
     The flat years are one-year rows (a flat nominal amount declines in real terms, which one
-    constant-rate row cannot express); the tail row keeps the name `"<name> from <year>"` that
-    make_cases.py gave it. `gamma[k]` is the case's price level at `base + k` relative to
+    constant-rate row cannot express); the tail row is named "rent from <flat_until>" as
+    make_cases.py named it. `gamma[k]` is the case's price level at `base + k` relative to
     `base`, so a flat nominal amount in today's dollars is `annual * gamma[start-base] /
     gamma[year-base]` (make_cases.py: `round(RENT / gamma[1])` for a rent flat through 2027).
     """
     if flat_until <= start:
-        return [budget_row("rent", "rent", start, end, annual, essential=True)]
+        return [] if (end and end < start) else [budget_row("rent", "rent", start, end, annual, essential=True)]
     rows = []
     for year in range(start, flat_until):
         if end and year > end:
@@ -188,7 +190,9 @@ def _year_ref(value, where: str) -> dict:
         if not isinstance(value.get("person"), str) or not isinstance(value.get("age"), (int, float)) \
                 or isinstance(value.get("age"), bool):
             raise ScenarioError(f"{where}: an age anchor needs 'person' and 'age'")
-        return {"anchor": "age", "person": value["person"], "age": value["age"]}
+        if float(value["age"]) != int(value["age"]):
+            raise ScenarioError(f"{where}: an age anchor takes whole years (got {value['age']!r})")
+        return {"anchor": "age", "person": value["person"], "age": int(value["age"])}
     if anchor == "work_end":
         if not isinstance(value.get("person"), str):
             raise ScenarioError(f"{where}: a work_end anchor needs 'person'")
@@ -338,6 +342,9 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
                 raise ScenarioError(f"{where}.price must be a positive number (today's dollars)")
             if not isinstance(event.get("name"), str) or not event["name"]:
                 raise ScenarioError(f"{where}.name must name the home (rows are marked by name)")
+            pay_on = event.get("pay_on")
+            if pay_on is not None and pay_on not in names:
+                raise ScenarioError(f"{where}.pay_on {pay_on!r} is not one of the case's people {names}")
             financing = event.get("financing")
             if not isinstance(financing, dict) or financing.get("kind") not in ("cash", "loan"):
                 raise ScenarioError(f"{where}.financing must be 'cash' or a loan")
@@ -397,7 +404,12 @@ def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
             return purchase_year[0]
         if anchor == "event":
             other = resolved.get(ref["id"])
-            return other["year"] + ref["offset"] if other is not None else None
+            if other is None:
+                return None
+            # "That event's year": the year field where it has one, a work span's end, a
+            # rent's start (U3: an event anchor used to read `other["year"]` whatever the kind).
+            main = other.get("year", other.get("end", other.get("start")))
+            return main + ref["offset"]
         return None
 
     pending = {e["id"]: e for e in events}
@@ -481,6 +493,24 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
     years = resolve_years(events, hand_case)
     case = hand_case
 
+    # The plan's window (the person sheets run from the plan start to the year the last person
+    # reaches their life horizon): every resolved year must sit inside it (U7).
+    births = [int(str(d)[:4]) for d in info.get("date_of_birth") or []]
+    life = [int(expect) for expect in info.get("life_expectancy") or []]
+    end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
+    for eid, fields in years.items():
+        for field, year in fields.items():
+            if year < plan_start or (end_year is not None and year > end_year):
+                window = f"{plan_start}-{end_year}" if end_year is not None else f"from {plan_start}"
+                raise ScenarioError(f"{eid}.{field} = {year} is outside the plan ({window})")
+    by_id = {e["id"]: e for e in events}
+    for eid, fields in years.items():
+        event = by_id[eid]
+        pairs = {"rent": ("end", "start"), "care": ("end", "year"), "purchase": ("sale", "year")}
+        first, second = pairs.get(event["kind"], (None, None))
+        if first in fields and fields[first] < fields[second]:
+            raise ScenarioError(f"{eid}: {first} = {fields[first]} is before {second} = {fields[second]}")
+
     # Generated rows paired with their event, generated cells likewise. Rows are generated in
     # event order (the row order of the Budget sheet is part of the generated document).
     rows: dict[str, list[tuple[list, str]]] = {"Debts": [], "Fixed Assets": [], "Budget": []}
@@ -491,7 +521,10 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
     gamma = _gamma(hand_case) if purchase or any(e["kind"] == "rent" for e in events) else None
 
     def nominal(amount, year):
-        return round(amount * float(gamma[year - plan_start]))
+        k = year - plan_start
+        if gamma is None or not 0 <= k < len(gamma):
+            raise ScenarioError(f"{year} is outside the case's inflation path")
+        return round(amount * float(gamma[k]))
 
     work_ids = [e["id"] for e in events if e["kind"] == "work"]
     last_full = None
@@ -576,18 +609,25 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
         for i, name in enumerate(names):
             claim = next((c for c in claims if c["person"] == name), None)
             if claim is not None and claim["age"] is not None:
-                ages.append(float(claim["age"]))
+                ages.append(float(claim["age"]))  # the generated age is a float (the case's type)
             elif i < len(current):
-                ages.append(float(current[i]))
+                ages.append(current[i])  # a kept hand age keeps its own type (U8, V3)
             else:
                 raise ScenarioError(
                     f"claim: no age for {name!r} and the case holds none (an age or a fixed case value)"
                 )
-        # Owl's withSSAges is one switch: any "let Owl choose" searches both ages (the fixed
-        # one's age is then only a starting point).
-        all_fixed = all(c["age"] is not None for c in claims)
+        # Owl's withSSAges takes "optimize", "fixed", or a name / list of names to search
+        # (plan._parseSSAgesOption): a mixed scenario searches only the free ones and holds
+        # the others' ages (U4).
+        free = [c["person"] for c in claims if c["age"] is None]
+        if not free:
+            mode = "fixed"
+        elif len(free) == len(names) or set(free) == set(names):
+            mode = "optimize"
+        else:
+            mode = free
         _set_path(case, "fixed_income.social_security_ages", ages)
-        _set_path(case, "solver_options.withSSAges", "fixed" if all_fixed else "optimize")
+        _set_path(case, "solver_options.withSSAges", mode)
         for field in ("fixed_income.social_security_ages", "solver_options.withSSAges"):
             provenance["case_fields"][field] = claims[0]["id"]
 
@@ -597,9 +637,7 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
     for sheet, column, year, _value, eid in cells:
         provenance["cells"].append([sheet, column, year, eid])
 
-    hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start,
-                        [int(str(d)[:4]) for d in info.get("date_of_birth") or []],
-                        [int(expect) for expect in info.get("life_expectancy") or []])
+    hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life)
     return case, hfp, provenance
 
 
@@ -607,7 +645,7 @@ def _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life) -> dic
     """Hand rows with the generated ones: generated rows by name (regenerated wholesale),
     generated cells by position (section 6.3's markers). Sheets come in workbook order:
     the person sheets first, then Debts, Fixed Assets and Budget."""
-    generated_names = {row[1] for table in HOUSE_TABLES for row, _eid in rows[table]}
+    generated_names = {table: {row[1] for row, _eid in rows[table]} for table in HOUSE_TABLES}
     hfp: dict[str, dict] = {}
 
     # Person sheets: hand rows with the generated cells set; a generated cell year gets a row.
@@ -641,9 +679,10 @@ def _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life) -> dic
         hand = hand_hfp.get(table) or {}
         columns = list(hand.get("columns") or _table_columns(table))
         name_at = columns.index("name") if "name" in columns else None
+        names_here = generated_names[table]  # the name is the identity within one table (U5)
         kept = [
             list(row) for row in hand.get("rows") or []
-            if not (name_at is not None and len(row) > name_at and row[name_at] in generated_names)
+            if not (name_at is not None and len(row) > name_at and row[name_at] in names_here)
         ]
         kept.extend(_place_row(columns, row) for row, _eid in rows[table])
         hfp[table] = {"columns": columns, "rows": kept}
@@ -679,4 +718,8 @@ def _plan_start(case: dict, scenario: dict) -> int:
     if isinstance(start, str) and len(start) >= 4 and start[:4].isdigit():
         return int(start[:4])
     plan_year = scenario.get("plan_year")
-    return int(plan_year) if isinstance(plan_year, int) else 0
+    if isinstance(plan_year, int):
+        return int(plan_year)
+    raise ScenarioError(
+        "the plan's start year is unknown: set basic_info.start_date or the scenario's plan_year"
+    )

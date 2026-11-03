@@ -5603,8 +5603,9 @@ name), person-sheet cell (by event and year) and case field (by path) records it
 Generated rows are regenerated wholesale when the events change and hand rows are untouched;
 the name is the row's identity, so a hand row named like a generated one is replaced. The
 pages-save path drops the generated positions from the plan's tables (`casefiles._drop_generated`)
-so a deleted event leaves nothing stale behind. **Limit of this increment:** an edit to a
-generated value does not survive a regeneration (section 6.3's per-cell overrides with "back to
+and reverts the generated case fields to the base's hand values (`_drop_generated_case`), so a
+deleted event leaves nothing stale behind. **Limit of this increment:** an edit to a generated
+value does not survive a regeneration (section 6.3's per-cell overrides with "back to
 computed" are the later increment).
 
 **make_cases.py and the acceptance:** the script shares the row builders and writes
@@ -5640,8 +5641,59 @@ change summary and saves a child run, an unbuildable scenario says why). Full su
 passed, 2 skipped** (10:31, Windows; 3907 + 64 new - the POSIX-only tzset test, which skips
 here; the other skip is the unlicensed-MOSEK check). flake8/ruff clean but upstream's known
 items. Known limits, next increment: section 6.3's per-cell overrides; one
-purchase/rent/care event per scenario ("sale and re-buy later", D6); a mixed claim (one fixed
-age, one "let Owl choose") runs `withSSAges="optimize"` for both (Owl's switch is global);
-"Overwrite draft" (section 7) not built -- save-as only; and re-importing a v2 run's frozen
-files gives a hand-rows scenario (no events) with a different inputs hash (R9's flag is the
-answer for older runs).
+purchase/rent/care event per scenario ("sale and re-buy later", D6); work spans take plain
+calendar years (the events that point at them may anchor); "Overwrite draft" (section 7) not
+built -- save-as only; and re-importing a v2 run's frozen files gives a hand-rows scenario
+(no events) with a different inputs hash (R9's flag is the answer for older runs).
+
+## Run-library step 4: the independent review, U1-U12, folded (2026-11-03, on `claude/run-library-step4`)
+
+A reviewer agent went over the step-4 code against the design (`fork-notes/run-library-step4-review.md`,
+findings U1-U12; it re-ran the checks, the make_cases.py regression against `git show c61326ea:`
+and its own probes from a temp folder). Every finding was checked and folded the same day
+(the user's call); the disposition table is in the review doc. In short:
+
+- **U1 (high) a pages-save leaked the generated case fields into the hand rows** (`basic_info.moves`,
+  the district, the marketplace year, the claiming ages and the switch), so deleting an event
+  after a "Edit as new run" save left stale, unmarked inputs steering the plan. `casefiles
+  ._drop_generated_case` now reverts every generated case field to the base's hand value (the
+  drop-to-nothing first attempt lost the fallback a claim-less person needs -- Jill's age).
+  PROGRESS's "a deleted event leaves nothing stale behind" is true from here.
+- **U2 phantom changes and a dedupe defeat:** the editor's widgets re-type event numbers as
+  floats and inject default fields, so an unedited load showed changes and an unedited save
+  duplicated the run. `canonicalize` canonicalizes the events now (year fields as refs,
+  numbers as canonical cells, keys at their default dropped) and the page canonicalizes before
+  diffing and saving. T1/V3 for events: the inputs hash is no longer type-sensitive where the
+  generated files are not.
+- **U3** an `event:` anchor to a work or rent event raised a raw KeyError; it now reads that
+  event's year field, else a work span's end, else a rent's start.
+- **U4 a mixed claim abandoned the fixed age on a false premise** ("withSSAges is global").
+  `plan._parseSSAgesOption` takes a name or a list of names: the builder now writes
+  `withSSAges = [<the "let Owl choose" names>]` and the fixed ages are held. The known limit
+  is gone.
+- **U5** a hand row named like a generated row in *another* table was dropped; names are now
+  the identity within their own table. **U6** a `pay_on` typo silently dropped the big-ticket
+  outflow; it is refused now. **U7** the year edges: a fractional age anchor is refused (whole
+  years), every resolved year must sit in the plan window, a span that ends before it starts is
+  refused, and `_plan_start` raises instead of guessing.
+- **U8** the acceptance check's blind spots: `compare_case` compares leaves with their types
+  (T1/V3) and a work variant's whole built workbook is compared against the baseline workbook
+  with its edits overlaid -- previously a doubled price in a work variant passed. A kept hand
+  age keeps its own type. The check re-ran **46/46** under the stricter rules.
+- **U9** the markers table showed Debts and Fixed Assets rows as spans with a blank amount; a
+  loan shows its term and amount, a home its value and "sold YYYY" or "kept".
+- **U10/U12** doc fixes with one decision: work spans take plain calendar years (the events
+  that point at them may anchor), and `months_worked` is written for every year of its span
+  (the suite's edit format and `run_suite.py` depend on it; the year work stops is what the
+  earnings test reads; split a span for a one-year value).
+- **U11** CLAUDE.md's test counts and `rent_rows`'s docstring.
+
+New regression tests: `test_builder.py` TestReviewFixes (8: U3, U5, U6, U7 x4, U8),
+`test_casefiles.py` TestDropGenerated +1 (U1, with the probe's rebuild), `test_scenario_page.py`
++1 (U2: no phantom changes, an unedited save dedupes). Full suite **3981 passed, 2 skipped**
+(9:46; 3907 + 75 new tests - the POSIX-only tzset test, which skips on Windows). Lint clean
+but for upstream's known items. The reviewer's two open design questions stand for the user: section 5's
+"re-importing a run's own files gives the same hash" no longer holds for scenarios with events
+(amend 5/6.3a, or an import that recovers events later?), and section 6.2's "write_hfp, case
+moved into a module" is half-done by decision (the row builders moved; workbook writing and
+template filling stayed the suite's own -- amend the design?).

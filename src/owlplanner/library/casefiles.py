@@ -49,7 +49,10 @@ Known limits of this step (from `fork-notes/run-library-step1-review.md`):
 Not here: `rates.csv` (the downturn rate table, D11) arrives with build step 5b. Events and the
 builder (scenario schema version 2) are `library.builder` (step 4): export runs `build()`, so
 the generated rows and case fields of a scenario's events land in the frozen files with
-provenance markers, and hand rows are untouched.
+provenance markers, and hand rows are untouched. A pages-save against a run with events keeps
+the hand rows and the hand case values alone (`_drop_generated`, `_drop_generated_case`):
+generated values are regenerated wholesale, and an edit to one does not survive (section 6.3's
+per-cell overrides are the later increment).
 """
 
 from __future__ import annotations
@@ -156,6 +159,14 @@ def canonicalize(scenario: dict) -> dict:
     """
     scenario = normalize(scenario)
     scenario = migrate(scenario)  # stored scenarios are current-version (2, with events)
+    if scenario.get("events"):
+        from . import builder
+
+        names = list((scenario.get("case", {}).get("basic_info") or {}).get("names") or [])
+        # validate_events returns the events with their year fields normalized to refs, and
+        # the cells canonical (T1/V3): the editor's widget floats and a bare year in a hand
+        # JSON are then one document (review U2).
+        scenario["events"] = _canonical_events(builder.validate_events(scenario["events"], names))
     validate(scenario)  # rejects None and non-finite values before the encoder sees them (V4)
     scenario["hfp"] = {name: _canonical_table(table) for name, table in scenario["hfp"].items()}
     scenario["case"], sidecar = canonical_case(
@@ -214,6 +225,35 @@ def _canonical_table(table: dict) -> dict:
         "columns": list(table["columns"]),
         "rows": [[_canonical_cell(v) for v in row] for row in table["rows"]],
     }
+
+
+def _canonical_events(events: list) -> list:
+    """The events in canonical form (T1/V3; review U2).
+
+    Year fields are refs (`builder.validate_events`' normalization), every number is its
+    canonical cell (0 and 0.0 are one value in a workbook cell), and keys at their default
+    are dropped (the editor's widgets inject `level: "full"` or `pay_on: None`, which must not
+    change the document): a widget's floats and a hand-written JSON are then one document.
+    """
+    defaults = {"work": {"level": "full"},
+                "care": {"name": "care", "essential": True},
+                "purchase": {"pay_on": None, "growth": 0, "commission": 0}}
+
+    def cell(value):
+        if isinstance(value, dict):
+            return {k: cell(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [cell(v) for v in value]
+        return _canonical_cell(value)
+
+    out = []
+    for event in events:
+        event = cell(event)
+        for field, default in defaults.get(event.get("kind"), {}).items():
+            if field in event and event[field] == default and type(event[field]) is type(default):
+                event.pop(field)
+        out.append(event)
+    return out
 
 
 def canonical_case(case: dict, *, has_tables: bool, sidecar=None):
@@ -317,7 +357,11 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
     with tempfile.TemporaryDirectory() as tmp:
         time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
     if base is not None and base.get("events"):
-        time_lists, house_lists = _drop_generated(time_lists, house_lists, base)
+        from . import builder
+
+        _built_case, _built_tables, provenance = builder.build(base)
+        case = _drop_generated_case(case, provenance, base["case"])
+        time_lists, house_lists = _drop_generated(time_lists, house_lists, provenance)
     ref = _budget_reference(case)
     base_sidecar = base.get("budget_file") if base is not None else None
     if ref and base_sidecar and budget_path is None and ref == base_sidecar["ref"]:
@@ -341,17 +385,16 @@ def _tables_from_plan(plan, tmpdir: Path):
     return time_lists, house_lists
 
 
-def _drop_generated(time_lists, house_lists, base):
-    """The plan's tables without the rows and cells the base's events generate.
+def _drop_generated(time_lists, house_lists, provenance):
+    """The plan's tables without the rows and cells the events generate.
 
     The pages hold the generated values too (they load the run's frozen files). A generated row
     is regenerated wholesale when the scenario is built (section 6.3, markers first, S11), so
     the saved hand rows keep only what the events do not generate. Section 6.3's per-cell
     overrides are the later increment; here an edit to a generated value is dropped.
+    `provenance` is `builder.build`'s for the base scenario (its case fields go through
+    `_drop_generated_case`; review U1).
     """
-    from . import builder
-
-    _case, _tables, provenance = builder.build(base)
     row_names: dict[str, set] = {}
     for key in provenance["rows"]:
         table, name = key.split("|", 1)
@@ -386,6 +429,35 @@ def _drop_generated(time_lists, house_lists, base):
                      "rows": [row for row in table["rows"] if row[at] not in drop]}
         clean_house[name] = table
     return clean_time, clean_house
+
+
+def _drop_generated_case(case, provenance, base_case):
+    """The case with every generated field set back to the base's hand value.
+
+    The pages hold the generated values too (their `before` is the hand case, their `after` the
+    materialized one), and `build` writes a generated field only while its event exists. The
+    saved hand case must therefore keep the value it held before the events generated it
+    (review U1: with the materialized value, deleting an event later leaves stale, unmarked
+    inputs steering the plan; with the field dropped, the hand fallback a claim-less person
+    needs is lost). Section 6.3's overrides are the later increment: an edit to a generated
+    case field is dropped like a generated cell.
+    """
+    case = copy.deepcopy(case)
+    for path in provenance["case_fields"]:
+        keys = path.split(".")
+        node, base_node = case, base_case
+        for key in keys[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+            base_node = base_node.get(key) if isinstance(base_node, dict) else None
+            if node is None:
+                break
+        if not isinstance(node, dict):
+            continue
+        if isinstance(base_node, dict) and keys[-1] in base_node:
+            node[keys[-1]] = copy.deepcopy(base_node[keys[-1]])
+        else:
+            node.pop(keys[-1], None)
+    return case
 
 
 def _hfp_reference(case: dict):

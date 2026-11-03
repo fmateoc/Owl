@@ -13,10 +13,10 @@ Scenario schema v2 and `owlplanner.library.builder` (`fork-notes/run-library-des
 sections 6.1-6.3, D6, I1). A scenario carries **events** -- work, claiming, rent, a home
 purchase and care -- beside its hand rows, and `build(scenario) -> (case, hfp, provenance)`
 turns them into the coupled edits of section 6.2 in one place (deterministic, no side effects).
-- **Anchors (I1):** a year field may name a calendar year or anchor to `age:Ari:86` (the year
-  they turn that age), `work:Noa` / `after:Noa` (their last work year / the year after it),
-  `purchase`, or `event:care+2`; the rent end and the owner lines follow from the purchase by
-  construction.
+- **Anchors (I1):** the year fields of the rent, purchase and care events (work spans take
+  plain years) may name a calendar year or anchor to `age:Ari:86` (the year they turn that
+  age), `work:Noa` / `after:Noa` (their last work year / the year after it), `purchase`, or
+  `event:care+2`; the rent end and the owner lines follow from the purchase by construction.
 - **Provenance markers (section 6.3's first increment; S11):** every generated row, cell and
   case field records which event produced it; generated rows are regenerated wholesale and
   hand rows untouched. Per-cell overrides are not built yet: an edit to a generated value does

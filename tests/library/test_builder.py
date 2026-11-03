@@ -226,11 +226,19 @@ class TestBuild:
         assert case["solver_options"]["withSSAges"] == "fixed"
         assert provenance["case_fields"]["solver_options.withSSAges"] == "claim-ari"
 
-    def test_one_free_claiming_age_searches_both(self):
+    def test_one_free_claiming_age_searches_only_that_person(self):
         claims = [{"id": "claim-ari", "kind": "claim", "person": "Ari", "age": None}]
         case, _hfp, _provenance = b.build(_scenario(claims))
-        assert case["solver_options"]["withSSAges"] == "optimize"
+        # U4: Owl's withSSAges takes a list of names -- the free one is searched, the other
+        # person's age (kept from the case) is held.
+        assert case["solver_options"]["withSSAges"] == ["Ari"]
         assert case["fixed_income"]["social_security_ages"] == [67.0, 67.0]  # the case's ages kept
+
+    def test_everyone_free_searches_both(self):
+        claims = [{"id": "c1", "kind": "claim", "person": "Ari", "age": None},
+                  {"id": "c2", "kind": "claim", "person": "Noa", "age": None}]
+        case, _hfp, _provenance = b.build(_scenario(claims))
+        assert case["solver_options"]["withSSAges"] == "optimize"
 
     def test_a_purchase_cash(self):
         case, hfp, provenance = b.build(_scenario([WORK_ARI, WORK_NOA, RENT, BUY_CASH]))
@@ -313,6 +321,72 @@ class TestBuild:
         first = b.build(scenario)
         second = b.build(scenario)
         assert first == second
+
+
+@pytest.mark.usefixtures("flat_gamma")
+class TestReviewFixes:
+    """The step-4 review's findings (fork-notes/run-library-step4-review.md), pinned."""
+
+    def test_u3_an_event_anchor_reads_a_work_end_and_a_rent_start(self):
+        events = b.validate_events([
+            {"id": "w", "kind": "work", "person": "Ari", "start": 2026, "end": 2028, "wages": 1},
+            {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2030, "flat_until": 2031},
+            {"id": "care", "kind": "care", "amount": 1, "year": {"anchor": "event", "id": "w"}},
+        ], ["Ari", "Noa"])
+        assert b.resolve_years(events, _case())["care"]["year"] == 2028  # a span's end
+        events = b.validate_events([
+            {"id": "w", "kind": "work", "person": "Ari", "start": 2026, "end": 2028, "wages": 1},
+            {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2030, "flat_until": 2031},
+            {"id": "care", "kind": "care", "amount": 1, "year": {"anchor": "event", "id": "rent"}},
+        ], ["Ari", "Noa"])
+        assert b.resolve_years(events, _case())["care"]["year"] == 2030  # a rent's start
+
+    def test_u5_a_hand_row_named_like_a_generated_row_in_another_table_is_kept(self):
+        hand = {"Budget": {"columns": list(b.BUDGET_COLUMNS), "rows": [
+            b.budget_row("yonkers condo", "core", 2026, 0, 1000),  # the home's name in Budget
+        ]}}
+        _case_out, hfp, _provenance = b.build(_scenario([WORK_ARI, BUY_CASH], hfp=hand))
+        assert [row[1] for row in hfp["Budget"]["rows"]] == ["yonkers condo", "property tax", "HOA",
+                                                            "condo insurance"]
+
+    def test_u6_a_pay_on_typo_is_refused(self):
+        buy = dict(BUY_CASH, pay_on="Zoe")
+        with pytest.raises(ScenarioError, match="pay_on"):
+            b.build(_scenario([WORK_ARI, buy]))
+
+    def test_u7_an_age_anchor_takes_whole_years(self):
+        with pytest.raises(ScenarioError, match="whole years"):
+            b.validate_events([{"id": "c", "kind": "care", "amount": 1,
+                                "year": {"anchor": "age", "person": "Ari", "age": 86.5}}], ["Ari"])
+
+    def test_u7_years_outside_the_plan_are_refused(self):
+        events = [WORK_ARI, dict(BUY_CASH, id="buy", year=2099)]
+        with pytest.raises(ScenarioError, match="outside the plan"):
+            b.build(_scenario(events))
+        events = [WORK_ARI, dict(BUY_CASH, id="buy", year=2025)]
+        with pytest.raises(ScenarioError, match="outside the plan"):
+            b.build(_scenario(events))
+
+    def test_u7_an_end_before_the_start_is_refused(self):
+        events = [WORK_ARI, {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2030,
+                             "flat_until": 2031, "end": 2028}]
+        with pytest.raises(ScenarioError, match="before"):
+            b.build(_scenario(events))
+
+    def test_u7_the_plan_start_must_be_known(self):
+        scenario = _scenario([WORK_ARI])
+        scenario["case"]["basic_info"].pop("start_date")
+        scenario.pop("plan_year")
+        with pytest.raises(ScenarioError, match="start year is unknown"):
+            b.build(scenario)
+
+    def test_u8_a_kept_hand_age_keeps_its_type(self):
+        case = _case()
+        case["fixed_income"]["social_security_ages"] = [67, 70]  # ints, as TOML reads them
+        claims = [{"id": "claim-noa", "kind": "claim", "person": "Noa", "age": 62.0}]
+        built, _hfp, _provenance = b.build(_scenario(claims, case=case))
+        assert built["fixed_income"]["social_security_ages"] == [67, 62.0]
+        assert isinstance(built["fixed_income"]["social_security_ages"][0], int)
 
 
 class TestYearRefText:

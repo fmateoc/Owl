@@ -5542,3 +5542,8 @@ the recorded options in its plan year, the list of existing-code changes complet
 changes), the 1% band's basis is the loop (local search: \$15-74/yr shortfalls), the simplified
 model no longer called exact, the claiming-age map dropped as fork-only. Findings and dispositions
 are in the draft's "Review" section.
+
+2026-11-03 (user): Docker and #132 dropped from the post. #132 is about the pre-built Docker
+image; the fork runs the app built from source on the user's machine, and a known local process
+saving local files raises no such concern. The opening now names source installs, the Docker
+question is gone (four questions remain), and the #132 note in the draft records the decision.

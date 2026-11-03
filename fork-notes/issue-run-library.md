@@ -26,8 +26,11 @@ tool returned them, not checked against the page):
   the security of the Streamlit service"; "Your data live on your computer, not on the image, the
   same way as if you were using the Streamlit Cloud Community server. No data stays there for
   privacy reasons."; "The server is stateless between sessions. You must save the HFP file and the
-  case file as instructed in the documentation." **This is the position the issue has to answer**
-  (review finding 1); the first draft's searches missed it ("docker" and "localhost" find it).
+  case file as instructed in the documentation." Review finding 1 put this at the head of the post;
+  **dropped on 2026-11-03 (user):** #132 is about running the pre-built Docker image, where caution
+  is right; the fork runs the app built from source on the user's machine, a supported way to run
+  Owl, and a known local process saving local files raises no such concern. The post says once that
+  the library is for source installs and does not mention #132 or Docker otherwise.
 - **#27** ("Towards a CLI and scenario analysis", jleonard99, 2025-12-18): the maintainer
   (2025-12-21): a CLI "can change the paradigm of the user interface, which would then be used for
   manipulating input files and validate input"; "The output files can then be made consumable to
@@ -39,7 +42,7 @@ tool returned them, not checked against the page):
   bottom up". Cases enter and leave the library as `Case.toml` + `HFP.xlsx`, which fits this; inside
   a run the source of truth is a JSON copy of both (finding 2), which the text says.
 - **#54** ("HFP file with old year causes loading issue", sengsational, 2026-01-02): title only,
-  not read; related to question 5.
+  not read; related to question 4.
 
 Searched with no relevant hit (`gh api search/issues`, `repo:mdlacasse/Owl is:issue`): "persist"
 (0 issues), "session lost" (0); "save", "storage", "background", "compare", "history runs" gave
@@ -99,7 +102,7 @@ not merged here):
   identical, on one synthetic case, with `start_date = "today"` stored as the capture day);
   `check_library_compare.py` 9/9 (a \$400k-less variant: score -13.34%, "resolved", "the first
   result leads"; the same inputs re-solved: "no difference").
-- The 1% band (question 4) is `run_suite.py`'s "~" convention (design §9.2, R2). For the loop:
+- The 1% band (question 3) is `run_suite.py`'s "~" convention (design §9.2, R2). For the loop:
   CLAUDE.md "Loop noise", e.g. NJ vs NY at \$1.5M, loop -\$191/yr, local search +\$430, exact LP
   +\$1,006 (measured with the fork's since-removed NJ code, so not cited in the text). For local
   search, the measured shortfalls are far smaller: \$8-99/yr against the exact LP's picks
@@ -132,19 +135,20 @@ The generic score is the objective (spending basis under `maxSpending`, the bequ
 
 **Recalled, not checked here:** that Docker's `ports: 8501:8501` binds every host interface
 (`127.0.0.1:8501:8501` limits it to the host's loopback); docs.docker.com is not reachable from this
-container. Not in the text. If you confirm it, it is worth an issue of its own: it would contradict
-"accessible from localhost only" (#132) for every Docker user.
+container. Not in the text, and not our concern (we do not run the image).
 
 ## Review (2026-11-02, independent reviewer agent; all findings checked and taken)
 
-1. #132 missed: now cited in the opening; question 1 answers it; question 3 split.
+1. #132 missed: cited in the opening, question 1 answered it, question 3 split. **Reverted
+   2026-11-03 (user):** Docker and #132 are not how the fork runs Owl; the opening and the Docker
+   question are gone (see the #132 note above).
 2. "exactly as Owl reads them ... No new input format" was wrong (the source of truth is
    `scenario.json`): reworded.
 3. `owlcli run` reproduces a run only with the recorded options and in its plan year: said so.
 4. "What core would need" incomplete (`ui/main.py`, `openCaseFromPlan`, `sskeys`, `version.py`;
    the error bar is in `plan_convergence`, so MCP output changes too): completed; "no new
    dependency" added.
-5. The 1% band justified for the loop only: question 4 now gives local search's measured shortfalls
+5. The 1% band justified for the loop only: question 3 (4 before the Docker question was dropped) gives local search's measured shortfalls
    and asks about a per-method band.
 6. The "second, exact model" is fork methodology and "exact" misleads: now "a simplified model ...
    as an ordering check", with its ACA limit.
@@ -157,18 +161,14 @@ container. Not in the text. If you confirm it, it is worth an issue of its own: 
 12. "5 min": now qualified.
 13. Evidence-note errors (the five commits, the version.py timeout, upstream line numbers, the #27
     quote): fixed; the uncheckable #27 quote dropped.
-14. Question 3 bundled two questions: split (persistence in Docker at all, then the mechanics).
+14. Question 3 bundled two questions: split, then removed with the Docker question (finding 1).
 
 ---
 
 **Title:** Opt-in run library for local installs: saved runs, background solves, and comparisons that say whether a difference is real
 
-In #132 you answered a Docker user who lost their cases on closing the browser: the server is
-stateless between sessions, and no data stays on it, for privacy. For the hosted app, and for any
-server other people can reach, I agree. This proposal is only about the other case: Owl started on
-the user's own computer, where the server's disk *is* the user's disk. There, three things are
-missing for anyone who runs Owl to choose between options (retire this year or next, buy or rent,
-claim at 67 or 70):
+For anyone who runs Owl from source on their own computer to choose between options (retire this
+year or next, buy or rent, claim at 67 or 70), the web app has three gaps:
 
 - **Nothing is kept.** Cases come in by upload and leave by download; closing the tab loses the
   work, and there is no record of which inputs gave which result.
@@ -211,9 +211,9 @@ Compare, Queue) to the existing app. Three layers:
    (Medicare off, SS taxability pinned at 0.85, LTCG optimized) as an ordering check: does it rank
    the two the same way? It mis-prices marketplace years, so there it does not overrule.
 
-The hosted app is shared by all its visitors and its disk is not persistent, so it would never set
-the variable. Nothing leaves the user's machine: the library is a folder they chose, holding the
-same files they would otherwise download.
+It is meant for installs run from source (`owlplanner.sh`); the hosted app would never set the
+variable. Nothing leaves the user's machine: the library is a folder they chose, holding the same
+files they would otherwise download.
 
 **What building it taught me** (each found by a test or a review, and fixed):
 
@@ -241,8 +241,7 @@ same files they would otherwise download.
 - **Household data on disk raises the stakes on privacy.** The fork switches the library pages
   off unless streamlit binds to localhost (its launcher passes `--server.address=localhost`),
   refuses a library folder inside a git checkout that git does not ignore, and does not offer the
-  Assistant chat, which sends the case to an outside model. So it would not serve the other half
-  of #132 (reaching the app from another machine) either.
+  Assistant chat, which sends the case to an outside model.
 
 The run page also carries two extras that could come later or not at all: the years whose income
 sits within 5% of a threshold the model knows (IRMAA tiers, the 0% gains bracket, the SS bands, the
@@ -263,23 +262,17 @@ pages, a launcher), with no new dependency. In existing code:
 
 **Questions.**
 
-1. Does the distinction above work for you (a server on the user's own computer may keep the
-   user's files in a folder they name), or is statelessness a principle for local installs too?
-   If it works: in Owl, as an opt-in, or as a separate project (as Owl-budget is) that imports
-   `owlplanner` and adds pages?
+1. Is this something you would want in Owl, as an opt-in for source installs, or would you rather
+   it lived as a separate project (as Owl-budget does) that imports `owlplanner` and adds pages?
 2. If in Owl: are Streamlit pages behind an environment variable, like the Assistant, the right
    form?
-3. Docker: do you want a library there at all? If yes, the entrypoint binds `0.0.0.0` inside the
-   container, which the fork's localhost check refuses, and the compose file has no volume. Would a
-   mounted library folder, the port published on the host's loopback only, and a flag telling the
-   app it runs in a container be acceptable?
-4. The comparison's 1% band for the loop comes from my measurements in the fork, where differences
+3. The comparison's 1% band for the loop comes from my measurements in the fork, where differences
    between variants under about 1% sometimes had the wrong sign under the loop against local search
    and the exact model. Owl's "Objective error bar" covers a loop that oscillates but is 0 for a loop
    that settled on one of several fixed points. For local search the band is a conservative
    placeholder: its measured shortfalls against branch-and-bound were \$15-74 a year. Would you
    rather have a band per method, or a measure Owl reports itself?
-5. The plan year: the library refuses a run outside its year. Would you rather Owl itself warn
+4. The plan year: the library refuses a run outside its year. Would you rather Owl itself warn
    when `start_date` names a year other than the current one? A small core change that would help
    anyone who reloads last year's case file, library or not; I can file it on its own.
 

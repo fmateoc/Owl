@@ -21,13 +21,14 @@ from pathlib import Path
 
 import pytest
 
+from owlplanner import readConfig, residency
 from owlplanner.config import config_to_ui, load_toml
 
 UI_DIR = Path(__file__).resolve().parents[2] / "ui"
 CASE = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
 
 
-def _render(monkeypatch, moves):
+def _render(monkeypatch, moves, with_plan=False):
     import streamlit as st
     from streamlit.testing.v1 import AppTest
 
@@ -39,7 +40,10 @@ def _render(monkeypatch, moves):
     if moves:
         diconf["basic_info"]["moves"] = moves
     case = config_to_ui(diconf)
-    case.update({"plan": None, "id": "t1", "caseStatus": "new", "summaryDf": None})
+    case.update({
+        "plan": readConfig(str(CASE), verbose=False) if with_plan else None,
+        "id": "t1", "caseStatus": "new", "summaryDf": None,
+    })
     at = AppTest.from_file(str(UI_DIR / "Create_Case.py"), default_timeout=120)
     at.session_state["cases"] = {"t": case}
     at.session_state["currentCase"] = "t"
@@ -167,3 +171,63 @@ def test_the_pages_see_every_move_of_a_plan():
     _, dic = owb.genDic(plan)
     assert dic["stateMoveYear"] == 2031 and dic["stateMoveState"] == "FL"
     assert dic["stateMovesMore"] == [{"year": 2035, "state": "TX"}]
+
+
+# -- parity with residency (reviews W3/W4) ----------------------------------------
+
+# (moves as the page holds them, the refusal kind the warnings must show, or None when
+# residency accepts the chain). The first move is moves[0]; the rest are "Further moves".
+PARITY_CHAINS = [
+    ([{"year": 2031, "state": "FL"}], None),
+    ([{"year": 2031, "state": "FL"}, {"year": 2035, "state": "TX"}], None),
+    ([{"year": 2031, "state": "FL"}, {"year": 2031, "state": "TX"}], "Two moves in"),
+    ([{"year": 2031, "state": "FL"}, {"year": 2035, "state": "FL"}], "goes to"),
+    ([{"year": 2031, "state": "FL"}, {"year": 2030, "state": "FL"}], "goes to"),
+    ([{"year": 2031, "state": "FL"}, {"year": 2030, "state": "NY"}], "goes to"),
+    ([{"year": 2035, "state": "NY"}], "starting one"),
+    ([{"year": 2031, "state": "FL"}, {"year": 2095, "state": "TX"}], "must fall after the first plan year"),
+    ([{"year": 2031, "state": "NY", "locality": "Yonkers"}, {"year": 2035, "state": "NY"}], None),
+    ([{"year": 2031, "state": "NY", "locality": "Yonkers"},
+      {"year": 2035, "state": "NY", "locality": "Yonkers"}], "goes to"),
+]
+
+_MOVE_WARN_MARKS = ("Two moves in", "goes to", "must fall after the first plan year", "starting one")
+
+
+@pytest.mark.toml
+@pytest.mark.parametrize("moves, kind", PARITY_CHAINS)
+def test_the_move_warnings_match_what_residency_refuses(monkeypatch, moves, kind):
+    """Every refusal `residency` raises at solve time is reported as the rows are edited, and
+    an accepted chain is not warned about (reviews W3/W4: the first move is checked against
+    the residence it leaves in year order too, and the plan's year bound is warned)."""
+    at = _render(monkeypatch, moves, with_plan=True)
+    warns = [str(w.value) for w in at.warning]
+    related = [w for w in warns if any(mark in w for mark in _MOVE_WARN_MARKS)]
+
+    plan = readConfig(str(CASE), verbose=False)
+    diconf, _, _ = load_toml(str(CASE))
+    diconf["basic_info"]["state"] = "NY"
+    start = config_to_ui(diconf)
+    try:
+        residency.residence_by_year(start["state"], start["locality"], moves,
+                                    int(plan.year_n[0]), plan.N_n, start["schoolDistrict"])
+        refused = None
+    except ValueError as exc:
+        refused = str(exc)
+
+    assert bool(related) == bool(refused), (warns, refused)
+    if kind is not None:
+        assert any(kind in w for w in related), (kind, related)
+
+
+@pytest.mark.toml
+def test_further_moves_are_noticed_when_the_toggle_is_off(monkeypatch):
+    """Review W8: with the toggle off the further moves are invisible and `ui_to_config`
+    writes no moves at all -- the case keeps them but nothing solves or saves them."""
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}, {"year": 2035, "state": "TX"}])
+    toggle = [t for t in at.toggle if t.label == "Move to another state during the plan"][0]
+    toggle.set_value(False)
+    _rerun(at)
+    text = "\n".join(str(c.value) for c in at.caption)
+    assert "neither solved nor saved" in text, text
+    assert not [m for m in at.markdown if "Further moves" in str(m.value)]

@@ -126,31 +126,56 @@ def _removeMove(idx):
     _setMovesMore(more)
 
 
-def _moreMoveWarnings(moves, first):
+def _normResidence(state, locality, district):
+    """A residence as residency compares them: canonical spellings where it knows them.
+
+    A move can come from the case file with a short form ("Yonkers") while the pages'
+    selects hold the canonical name ("City of Yonkers / Yonkers"); residency canonicalizes
+    before comparing, so the warnings here must too (review W3). An unknown spelling is
+    compared as written rather than raising in the page.
+    """
+    from owlplanner import residency as _res
+
+    try:
+        return _res.normalize(state or "", locality or "", district or "")
+    except ValueError:
+        return (state or "", locality or "", district or "")
+
+
+def _moreMoveWarnings(moves, first, bounds=None):
     """The moves residency refuses at solve time, reported as the rows are edited.
 
-    Walked in year order from the starting residence, as `residency._homes_by_year` does at
-    solve time. The first move's "goes to the starting residence" case is the page's own
-    warning, so only the further moves' messages are returned.
+    Every move -- the first included -- is checked against the residence it leaves, walked in
+    year order as `residency._homes_by_year` applies them (it sorts the moves and refuses one
+    that does not change the residence in force). The first move's "goes to the starting
+    residence" case is the page's own warning beside its fields, so it is not repeated here
+    (review W3: a further move dated before the first can make the first move the refused one).
+    `bounds` is (first plan year, N_n) when the case has a plan: a move outside
+    first_year < year < first_year + N_n is refused at solve time too (review W4).
     """
     msgs = []
     tagged = [(False, first)] + [(True, m) for m in moves]
     tagged.sort(key=lambda pair: int(pair[1].get("year") or 0))
     seen = set()
-    prev = (
-        kz.getCaseKey("state") or "",
-        kz.getCaseKey("locality") or "",
-        kz.getCaseKey("schoolDistrict") or "",
+    prev = _normResidence(
+        kz.getCaseKey("state") or "", kz.getCaseKey("locality") or "", kz.getCaseKey("schoolDistrict") or ""
     )
     prev_label = "the starting residence"
     for is_more, move in tagged:
         year = int(move.get("year") or 0)
-        dest = (move.get("state") or "", move.get("locality") or "", move.get("school_district") or "")
+        dest = _normResidence(move.get("state") or "", move.get("locality") or "", move.get("school_district") or "")
         label = f"the move in {year}" if year else "a move"
         if year in seen:
             msgs.append(f"Two moves in {year}.")
         seen.add(year)
-        if is_more and dest == prev:
+        if bounds is not None:
+            first_year, n_n = bounds
+            if not first_year < year < first_year + n_n:
+                msgs.append(
+                    f"{label.capitalize()} must fall after the first plan year and within the plan "
+                    f"({first_year + 1}-{first_year + n_n - 1}); got {year}."
+                )
+        if dest == prev and (is_more or prev_label != "the starting residence"):
             where = " / ".join(filter(None, dest)) or "no state"
             msgs.append(f"{label.capitalize()} goes to {prev_label} ('{where}').")
         prev, prev_label = dest, label
@@ -233,7 +258,9 @@ def _renderMoreMoves():
         "locality": kz.getCaseKey("stateMoveLocality") or "",
         "school_district": kz.getCaseKey("stateMoveSchoolDistrict") or "",
     }
-    for msg in _moreMoveWarnings(more, first):
+    plan = kz.getCaseKey("plan")
+    bounds = (int(plan.year_n[0]), plan.N_n) if plan is not None else None
+    for msg in _moreMoveWarnings(more, first, bounds=bounds):
         st.warning(msg, icon=":material/warning:")
 
 
@@ -422,6 +449,14 @@ else:
                 kz.getCaseKey("schoolDistrict"),
             ):
                 st.warning("The new residence is the starting one.", icon=":material/warning:")
+        elif kz.getCaseKey("stateMovesMore"):
+            # Review W8: with the toggle off the further moves are invisible here and
+            # ui_to_config writes no moves at all -- they stay in the case but are neither
+            # solved nor saved until the toggle is on again (or they are removed).
+            st.caption(
+                f"{len(kz.getCaseKey('stateMovesMore'))} further move(s) stay in the case but are "
+                "neither solved nor saved while this is off. Turn it on to edit or remove them."
+            )
 
     if kz.getCaseKey("stateMoveEnabled"):
         # Fork: moves after the first, which the case file carries and the pages edit here.

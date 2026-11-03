@@ -490,3 +490,42 @@ class TestPagesSaveWithEvents:
         clean_time, _clean_house = _drop_generated({"Jack": tables["Jack"]}, {}, provenance, base["hfp"])
         assert (self._jack(clean_time, 2026, "anticipated wages")
                 == self._jack(base["hfp"], 2026, "anticipated wages"))
+
+    # Review W1: an edit to a value the events generate is regenerated away on save; the
+    # save reports it (`dropped`) rather than losing it silently.
+
+    def _saved_with(self, base, tmp_path, edit):
+        """The pages' save after `edit(plan)`: (the saved scenario, the `dropped` report)."""
+        export_case(base, tmp_path)
+        case, _, _ = load_toml(str(tmp_path / "Case.toml"))
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False)
+        edit(plan)
+        dropped = []
+        child = scenario_from_ui(config_to_ui(copy.deepcopy(case)), plan, base=base, dropped=dropped)
+        return child, dropped
+
+    def test_an_edit_to_a_generated_row_is_reported_and_not_kept(self, tmp_path):
+        def edit(plan):
+            budget = plan.houseLists["Budget"]
+            assert "rent" in list(budget["name"])  # the event's rows are in the frozen workbook
+            budget.loc[budget["name"] == "rent", "amount"] = 12345.0
+
+        child, dropped = self._saved_with(self._base(), tmp_path, edit)
+        assert any(d.startswith("Budget row 'rent'") for d in dropped), dropped
+        rows = child["hfp"]["Budget"]
+        name_at = rows["columns"].index("name")
+        assert all(row[name_at] != "rent" for row in rows["rows"])  # regenerated at export
+
+    def test_an_edit_to_a_generated_cell_is_reported(self, tmp_path):
+        def edit(plan):
+            jack = plan.timeLists["Jack"]
+            jack.loc[jack["year"] == 2026, "anticipated wages"] = 4321.0
+
+        _child, dropped = self._saved_with(self._base(), tmp_path, edit)
+        assert any(d.startswith("Jack anticipated wages 2026") for d in dropped), dropped
+
+    def test_an_unedited_save_reports_nothing(self, tmp_path):
+        base = self._base()
+        child, dropped = self._saved_with(base, tmp_path, lambda plan: None)
+        assert dropped == []
+        assert scenario_hash(child) == scenario_hash(base)

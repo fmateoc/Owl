@@ -208,7 +208,7 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     dic["stateMoveSchoolDistrict"] = (
         _ui_district(moves[0].get("state", ""), moves[0].get("school_district", "")) if moves else ""
     )
-    dic["stateMovesMore"] = [dict(m) for m in moves[1:]]  # fork: further moves, from the case file only
+    dic["stateMovesMore"] = [dict(m) for m in moves[1:]]  # fork: further moves, edited on the Create Case page (step 5)
 
     dic["interpMethod"] = aa.get("interpolation_method", "s-curve")
     _ic = aa.get("interpolation_center")

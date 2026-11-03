@@ -5855,7 +5855,7 @@ sheet's columns; `checkBudgetRows`' messages; the page renders with lines and wa
 the workbook; the Library save carries it), `tests/ui/test_run_options_deductions.py` (5: the
 radios show the file's values and the loop default, stay enabled under local search, and a choice
 reaches `getSolveParameters` and `ui_to_config` identically and round-trips through a case
-file), `tests/ui/test_create_case_move.py` +6 (further moves show their values; add, edit and
+file), `tests/ui/test_create_case_move.py` +7 (further moves show their values; add, edit and
 remove; reach the case file and the plan's `genDic` split; warn on a duplicate year and on a move
 to the residence it leaves; do not warn on a return to a state left behind),
 `tests/config/test_config_ui_bridge.py` +1 (several moves with a locality and a school district
@@ -5885,3 +5885,54 @@ Checks: `tests/ui tests/config tests/library` **799 passed, 1 skipped** (2:20, W
 Full suite (Windows, -n 4): **4027 passed, 2 skipped** (12:19; the two skips are the POSIX-only
 jobs tzset test and the unlicensed-MOSEK check, as on every Windows run). flake8/ruff: only
 upstream's known items (the `stochastic` test files' E301/E304, the four B905s).
+
+## Run-library step 5: the review's W1-W5, W7-W8 folded (2026-11-03)
+
+An independent reviewer agent went over the step-5 code against the design
+(`fork-notes/run-library-step5-review.md`, findings W1-W8; it re-ran both suites, mutation-pinned
+the three side fixes in a scratch worktree, and probed the interplays). Verdict: the step matches
+its design row, with two silent-loss interplays and a two-thirds-true warnings claim to settle.
+The user's call: W1 as the save-time notice, W2 as "the sheet wins on edit", W3-W5, W7 and W8
+folded; W6 deferred.
+
+- **W1 (medium): an edit to a generated Budget row (or person-sheet cell) reached the solve but
+  was silently regenerated away by the library save, with no marker in the editor (§6.3).**
+  Fixed as the save-time notice: `scenario_from_ui(..., dropped=)` reports every generated value
+  the pages changed (`_generated_edits`: rows by name against `builder.build`'s tables, cells by
+  position, blanks and int/float equal through the workbook round trip), and `ui/Library.py`
+  flashes "Not kept in this run: ... — edit the event on the Scenario page instead" (capped at
+  five names). The Debts/Fixed Assets and Budget editors carry §6.3's policy as a caption when the
+  case was opened from a run (`kz.runBase()`). The marker column and the per-cell overrides stay
+  the later increment.
+- **W2 (medium): for a `budget_file` case one edit meant three things** — the solve honored it,
+  the Download workbook blanked the sheet (`saveContributions` leaves file lines out) and a saved
+  run kept the file's unchanged lines. Fixed as the model's own rule: an edit to the Budget table
+  clears `plan.budgetFromFile` ("a Budget sheet with lines wins over it on every load"), so all
+  three carry the same lines; the caption says so and no longer claims the lines "have to be in
+  this table" where the seeding shows the file's.
+- **W3 (medium): the move warnings held for two of residency's three refusals.** The first move
+  was checked against the starting residence only (the page's older inline warning), so a further
+  move dated before it could make the first move the refused one and no warning fired.
+  `_moreMoveWarnings` now walks every move against the residence it leaves in year order,
+  comparing canonical spellings as `residency` does (`_normResidence`); the first move's
+  starting-residence case stays the inline warning, not a duplicate. **W4 (low):** with a plan, a
+  move outside `first_year < year < first_year + N_n` is warned with residency's own wording
+  (without one the help text is the guard). Both are pinned by
+  `test_the_move_warnings_match_what_residency_refuses`, a parity grid of ten chains (the page's
+  warnings against `residency.residence_by_year`: refused if and only if warned).
+- **W5 (low):** the Budget `type` help said "a line of another type is left out" — it is a type
+  *outside* `BUDGET_TYPES`, dropped at workbook read. Reworded.
+- **W7 (low):** counts and comments (23 new tests in the step, `test_create_case_move.py` +7;
+  the three "not editable yet" comments). **W8 (low):** with the move toggle off, a caption says
+  the N further moves stay in the case but are neither solved nor saved.
+- **W6 (low, not folded — the user's call):** `getRadio`'s coercion drifts for raw case values (a
+  `"None"` shows "loop" while the solve normalizes to "none"; a legacy bool maps to the wrong
+  choice and is refused at solve). Defense in depth: unreachable through the real paths (the
+  schema normalizes mode strings and refuses bools, and `genDic` copies the parsed
+  `solverOptions`). For a later pass.
+
+Tests (17 new): the parity grid 10 and the toggle-off note (`test_create_case_move.py`), the
+`budget_file` edit and the two W1 page tests (`test_budget_editor.py`), the three W1 report tests
+(`test_casefiles.py`). `tests/ui tests/config tests/library` **816 passed, 1 skipped**. Full suite
+(Windows, -n 4): **4044 passed, 2 skipped** (11:02). flake8/ruff: only upstream's known items. The
+review's disposition table is filled in `fork-notes/run-library-step5-review.md`.

@@ -143,7 +143,7 @@ class TestThePageShowsTheTable:
         at = _render(monkeypatch, dic)
         assert not at.exception, [str(e.message) for e in at.exception]
         text = "\n".join(str(c.value) for c in at.caption)
-        assert "budget.json" in text and "does not read it" in text
+        assert "budget.json" in text and "never opens the file" in text
 
 
 class TestARestoredRunKeepsItsTables:
@@ -252,3 +252,129 @@ class TestSavingTheCurrentCaseCarriesTheEdit:
         workbook = runs[0].path / "inputs" / "HFP.xlsx"
         budget = pd.read_excel(workbook, sheet_name="Budget")
         assert "edited line" in budget["name"].tolist()
+
+
+class TestAnEditMakesTheTableTheSource:
+    """Review W2: for a case naming `budget_file`, an edit to the Budget table makes it the
+    source everywhere (the model's own rule: a Budget sheet with lines wins over the file),
+    so the solve, the Download workbook and a saved run all carry the same lines."""
+
+    def _plan_with_budget_file(self, tmp_path):
+        from owlplanner.config import config_to_plan, load_toml
+
+        (tmp_path / "budget.json").write_text(
+            '{"schema_version": 1, "lines": [{"name": "from the file", "type": "core", "amount": 50000.0}]}',
+            encoding="utf-8",
+        )
+        case, _, _ = load_toml(str(JACK))
+        case["optimization_parameters"]["budget_file"] = "budget.json"
+        case["household_financial_profile"]["HFP_file_name"] = "None"
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False, loadHFP=True)
+        assert plan.budgetFromFile is True  # the file's lines are the plan's table
+        return plan
+
+    def test_an_edit_clears_budget_from_file_and_reaches_the_workbook(self, monkeypatch, tmp_path):
+        import streamlit as st
+        from streamlit.testing.v1 import AppTest
+        import owlbridge as owb
+
+        plan = self._plan_with_budget_file(tmp_path)
+        _, dic = owb.openCaseFromPlan(plan)
+        dic["name"] = "t"
+        dic["id"] = "t1"
+
+        real_editor = st.data_editor
+
+        def edited_budget(data, *args, **kwargs):
+            # AppTest cannot drive st.data_editor; stand in for the user's edit (review W2).
+            out = real_editor(data, *args, **kwargs)
+            if str(kwargs.get("key", "")).endswith("_budget") and len(out):
+                out = out.copy()
+                out.loc[out.index[0], "amount"] = 4321.0
+            return out
+
+        monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+        monkeypatch.setattr(st, "data_editor", edited_budget)
+        at = AppTest.from_file(str(UI_DIR / "Financial_Profile.py"), default_timeout=120)
+        at.session_state["cases"] = {"t": dic}
+        at.session_state["currentCase"] = "t"
+        at.run()
+        assert not at.exception, [str(e.message) for e in at.exception]
+        assert plan.budgetFromFile is False
+        assert at.session_state["cases"]["t"]["houseListBudget"]["amount"].tolist() == [4321.0]
+
+        # A fresh render syncs the tables into the plan (the Download button's call). Keep the
+        # sidebar's case selector on its decorated option first (AppTest cannot re-serialize it).
+        for box in at.selectbox:
+            if box.label == "Case selector":
+                box.set_value(box.options[0])
+        at.run()
+        buffer = plan.saveContributions()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "HFP.xlsx"
+            buffer.save(path)
+            budget = pd.read_excel(path, sheet_name="Budget")
+        assert budget["name"].tolist() == ["from the file"]
+        assert budget["amount"].tolist() == [4321.0]
+
+
+class TestSavingSaysWhatItDidNotKeep:
+    """Review W1: a value the run's events generate is regenerated from its event on save
+    (design section 6.3, markers first), so an edit to one in the case pages is not kept.
+    The save names those edits instead of losing them silently."""
+
+    def test_the_save_names_the_edits_it_does_not_keep(self, monkeypatch, tmp_path):
+        import streamlit as st
+        from streamlit.testing.v1 import AppTest
+        from owlplanner.config import config_to_plan, config_to_ui, load_toml
+        from owlplanner.library import Library, import_case
+        import sskeys as kz
+
+        root = tmp_path / "library"
+        monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+        monkeypatch.syspath_prepend(str(UI_DIR))
+        lib = Library.open(root)
+
+        events = [{"id": "rent", "kind": "rent", "monthly": 4000,
+                   "start": THISYEAR, "flat_until": THISYEAR + 1}]
+        run = lib.save_run(name="base", scenario=dict(import_case(str(JACK)), events=events)).run
+
+        case, dirname, _ = load_toml(str(run.path / "inputs" / "Case.toml"))
+        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False)
+        dic = config_to_ui(copy.deepcopy(case))
+        dic.update({"plan": plan, "id": plan._id, "caseStatus": "new", "summaryDf": None,
+                    "casetoml": "", "logs": None})
+        dic[kz.RUN_BASE_KEY] = run.id
+        dic["timeList0"] = plan.timeLists[plan.inames[0]]
+        if len(plan.inames) > 1:
+            dic["timeList1"] = plan.timeLists[plan.inames[1]]
+        dic["houseListDebts"] = plan.houseLists["Debts"]
+        dic["houseListFixedAssets"] = plan.houseLists["Fixed Assets"]
+        # The pages edit a generated row: the rent lines come from the "rent" event.
+        budget = plan.houseLists["Budget"].copy()
+        assert "rent" in list(budget["name"])
+        budget.loc[budget["name"] == "rent", "amount"] = 12345.0
+        dic["houseListBudget"] = budget
+
+        monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=120)
+        at.session_state["cases"] = {"t": dic}
+        at.session_state["currentCase"] = "t"
+        at.run()
+        assert not at.exception, [str(e.message) for e in at.exception]
+        next(b for b in at.button if b.label == "Save as a new run").click().run()
+        assert not at.exception, [str(e.message) for e in at.exception]
+        warns = [str(w.value) for w in at.warning]
+        assert any("Not kept in this run" in w and "Budget row 'rent'" in w for w in warns), warns
+
+    def test_the_generated_row_note_shows_only_for_a_case_edited_from_a_run(self, monkeypatch):
+        plan, dic = _case_with_plan(monkeypatch)
+        at = _render(monkeypatch, dic)
+        assert not [c for c in at.caption if "regenerated from its event" in str(c.value)]
+
+        import sskeys as kz
+
+        plan, dic = _case_with_plan(monkeypatch)
+        dic[kz.RUN_BASE_KEY] = "run-1"
+        at = _render(monkeypatch, dic)
+        assert [c for c in at.caption if "regenerated from its event" in str(c.value)]

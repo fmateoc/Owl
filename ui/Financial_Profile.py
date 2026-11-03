@@ -131,7 +131,7 @@ budgetHelp = {
     "type": (
         "Category Owl acts on. *property tax*, *medical* and *charity* are the deductible lines; "
         "*rent*, *property tax*, *insurance* and *maintenance* are the home costs a survivor keeps "
-        "paying in full. A line of another type is left out, with a warning."
+        "paying in full. A type outside this list is left out when a workbook is read, with a warning."
     ),
     "year": "First calendar year the line pays. A year before the plan start is read as the plan start.",
     "end": (
@@ -165,6 +165,15 @@ budgetHelp = {
     ),
     "kind": "Free text kept with the line, for your own categories.",
 }
+
+# Shown beside the tables when the case was opened from a run ("Edit as new run"): a row the
+# run's events generate is regenerated from its event at save (design section 6.3, markers
+# first), so the place to change it is the event (review W1). The save names any edit it does
+# not keep.
+_generatedRowNote = (
+    "A row the run's events generate is regenerated from its event when the case is saved to the "
+    "library (the **Scenario** page marks which rows): edit the event rather than the row."
+)
 
 
 def timetableColumnConfig(df, helpdic):
@@ -452,6 +461,8 @@ The second table starts at the current year and covers the rest of the plan.""")
     st.divider()
     st.markdown("### :material/account_balance: :orange[Debts and Fixed Assets]")
     st.markdown("""Debts and fixed assets are associated with the household.""")
+    if kz.runBase():
+        st.caption(_generatedRowNote)
 
     with st.expander("*Expand Debts and Fixed Assets tables*"):
         st.markdown("#### :orange[Debts]")
@@ -680,17 +691,27 @@ school district (**Create Case** page) is what receives the NY STAR credit."""
             "last row. Lines can be deleted by selecting rows in the left margin and pressing the "
             "*Delete* key."
         )
+        if kz.runBase():
+            st.caption(_generatedRowNote)
         if kz.getCaseKey("budgetFile"):
             st.caption(
-                f"This case also names a budget file (*{kz.getCaseKey('budgetFile')}*). **The interface "
-                "does not read it**: the lines have to be in this table here. Outside the interface it "
-                "feeds `owlcli` when the workbook has no Budget sheet."
+                f"This case also names a budget file (*{kz.getCaseKey('budgetFile')}*). A Budget sheet "
+                "with lines wins over it on every load, so the lines in this table are the source once "
+                "there are any: editing them carries them into the workbook, the solve and a run saved "
+                "to the library. The interface never opens the file itself." +
+                (" Enter the lines here." if not len(budgetdf) else "")
             )
         for msg in owb.checkBudgetRows(owb.conditionDebtsAndFixedAssetsDF(edited_budgetdf, "Budget")) or []:
             st.warning(msg, icon=":material/info:")
 
         # Store edited budget lines if changed
         if storeHouseEdits("houseListBudget", "Budget", budgetkey, edited_budgetdf):
+            # Review W2: a Budget sheet with lines wins over budget_file on every load
+            # (plan_bridge._load_budget_file's own rule). An edit makes this table the source,
+            # so the solve, the Download workbook and a saved run all carry the same lines.
+            plan = kz.getCaseKey("plan")
+            if plan is not None:
+                plan.budgetFromFile = False
             st.rerun()
 
     st.divider()

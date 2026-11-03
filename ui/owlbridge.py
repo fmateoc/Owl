@@ -1474,8 +1474,8 @@ def syncHouseLists(plan):
     debts = kz.getCaseKey("houseListDebts")
     fixedAssets = kz.getCaseKey("houseListFixedAssets")
     budget_df = kz.getCaseKey("houseListBudget")
-    # The Budget sheet is optional; a case saved before it existed has no key, and the sheet
-    # from the file is kept (the UI does not edit it yet).
+    # The Budget sheet is optional; a case saved before it existed has no key, and the plan's
+    # table is kept (the Financial Profile page edits it since run-library step 5).
     prior_budget = plan.houseLists.get("Budget") if getattr(plan, "houseLists", None) else None
 
     plan.houseLists = {}
@@ -2060,7 +2060,7 @@ def genDic(plan):
     dic["stateMoveState"] = moves[0].state if moves else ""
     dic["stateMoveLocality"] = moves[0].locality if moves else ""
     dic["stateMoveSchoolDistrict"] = moves[0].school_district if moves else ""
-    dic["stateMovesMore"] = [  # fork: further moves, from the case file only
+    dic["stateMovesMore"] = [  # fork: further moves, edited on the Create Case page (step 5)
         {
             "year": m.year,
             "state": m.state,

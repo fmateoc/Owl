@@ -335,7 +335,77 @@ def _with_year(start_date, year):
     return start_date
 
 
-def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=None, budget_path=None) -> dict:
+def _blank(value) -> bool:
+    """A table cell's blank: None, empty or NaN (a workbook round trip makes them one)."""
+    return value is None or (isinstance(value, str) and not value.strip()) or (
+        isinstance(value, float) and value != value
+    )
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _same_cell(a, b) -> bool:
+    """Table cells as the workbook holds them: blanks are one value, numbers compare as numbers."""
+    if a is b or (_blank(a) and _blank(b)):
+        return True
+    if _is_number(a) and _is_number(b):
+        return abs(float(a) - float(b)) <= 1e-9 * max(1.0, abs(float(a)), abs(float(b)))
+    return a == b
+
+
+def _generated_edits(time_lists, house_lists, built_tables, provenance) -> list:
+    """[where] for every generated row or cell the pages changed (step 5, review W1).
+
+    A generated value is regenerated wholesale from its event when the scenario is built
+    (section 6.3; the per-cell overrides are a later increment), so an edit to one reaches
+    the solve and the Download workbook but not the saved run. The caller is told which
+    edits are not kept rather than losing them silently.
+    """
+    out = []
+
+    def table_of(value) -> dict:
+        return _as_table(value) if value is not None else {"columns": [], "rows": []}
+
+    def row_by_name(table, name) -> dict:
+        columns = list(table["columns"])
+        if "name" not in columns:
+            return {}
+        at = columns.index("name")
+        for row in table["rows"]:
+            if len(row) > at and row[at] == name:
+                return dict(zip(columns, row, strict=False))
+        return {}
+
+    def cell_at(table, year, column):
+        columns = list(table["columns"])
+        if "year" not in columns or column not in columns:
+            return None
+        at, col = columns.index("year"), columns.index(column)
+        for row in table["rows"]:
+            if len(row) > at and int(row[at]) == int(year):
+                return row[col]
+        return None
+
+    for key, eid in sorted(provenance.get("rows", {}).items()):
+        table, name = key.split("|", 1)
+        built = row_by_name(table_of(built_tables.get(table)), name)
+        got = row_by_name(table_of((house_lists or {}).get(table)), name)
+        if any(not _same_cell(built.get(c), got.get(c)) for c in set(built) | set(got)):
+            out.append(f"{table} row {name!r} (event {eid!r})")
+    for sheet, column, year, eid in provenance.get("cells", []):
+        built = cell_at(table_of(built_tables.get(sheet)), year, column)
+        got = cell_at(table_of((time_lists or {}).get(sheet)), year, column)
+        if not _same_cell(built, got):
+            out.append(f"{sheet} {column} {year} (event {eid!r})")
+
+    return out
+
+
+def scenario_from_ui(
+    uidic: dict, plan, *, base=None, plan_year=None, case_dir=None, budget_path=None, dropped=None
+) -> dict:
     """A scenario straight from the app's pages, before any solve (build step 1, R6).
 
     The case dictionary comes through `config.ui_bridge.ui_to_config` (never
@@ -360,7 +430,9 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
 
     With a base that has events (schema v2), the rows and cells the events generate are dropped
     from the saved hand rows (`_drop_generated`): they are regenerated wholesale from the events
-    (markers first, S11), so an edit to a generated value does not survive a save.
+    (markers first, S11), so an edit to a generated value does not survive a save. `dropped`,
+    when given, collects one entry per generated value the pages changed, so the caller can say
+    which edits it does not keep instead of losing them silently (step 5, review W1).
     """
     from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
 
@@ -380,7 +452,9 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
     if base is not None and base.get("events"):
         from . import builder
 
-        _built_case, _built_tables, provenance = builder.build(base)
+        _built_case, built_tables, provenance = builder.build(base)
+        if dropped is not None:
+            dropped.extend(_generated_edits(time_lists, house_lists, built_tables, provenance))
         case = _drop_generated_case(case, provenance, base["case"])
         time_lists, house_lists = _drop_generated(time_lists, house_lists, provenance, base.get("hfp"))
     ref = _budget_reference(case)

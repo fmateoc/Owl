@@ -5783,3 +5783,11 @@ and the test waits 0.3 s (several ticks at 0.05 s) after the dispatch, so it als
 dispatched job with a live worker stays running. With that wait, the old fake fails 3/3 with
 the full suite's error (`'interrupted' == 'running'`) and the new one passes 3/3. Test-only;
 `jobs.py` unchanged. Full suite (Linux, -n 4): **4005 passed, 1 skipped** (9:01).
+
+## `main` fast-forwarded to run-library step 4 (2026-11-03)
+
+The user's call. `main` moved from `c61326ea` to the head of `claude/run-library-step4`: step 4
+(`b27d2838`), the first review's U1-U12 (`9b3e5c02`), the design 6.2 amendment, the second
+review X1-X9 and its fixes (`7b4565cf`, `f4b2d5c6`), the ticker test's race (`781e3d53`), and
+this note. Full suite on `781e3d53` (Linux): 4005 passed, 1 skipped. Next: step 5 (Budget
+editor; the missing fork widgets).

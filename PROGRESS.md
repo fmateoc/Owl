@@ -5547,3 +5547,6 @@ are in the draft's "Review" section.
 image; the fork runs the app built from source on the user's machine, and a known local process
 saving local files raises no such concern. The opening now names source installs, the Docker
 question is gone (four questions remain), and the #132 note in the draft records the decision.
+
+`main` fast-forwarded to `claude/eager-turing-4bs36n` (2026-11-03, the user's call): the
+run-library design issue draft (D8) with its review; docs only.

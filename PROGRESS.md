@@ -5699,3 +5699,32 @@ user's call, 2026-11-03)**: the design is amended there -- only the row builders
 the module (`write_hfp` and `case` stay the suite's own: workbook writing and template filling
 are not builder logic, and the suite's assembly and the builder's mapping are deliberately two
 placements checked cell for cell).
+
+## Run-library step 4: second review, X1-X9 (2026-11-03, on `claude/sweet-cori-it2jyw`)
+
+A second review of `claude/run-library-step4` at `3d77fb80` (after U1-U12), on Linux:
+`fork-notes/run-library-step4-review-2.md`. Nothing in `src/`, `ui/` or `tests/` changed; this
+branch is the step-4 branch plus the review. Re-run: `tests/library` + the Scenario page tests
+**312 passed**; `check_library_builder.py` **46/46**; `check_library_roundtrip.py` **39/39**;
+flake8 on the step's files: one E128 (`tests/library/test_builder.py:350`, X9).
+
+- **X1 (high):** a pages-save (`scenario_from_ui(base=...)`) returns a scenario with **no
+  events**: `scenario_from_case` never carries the base's, while the generated rows, cells and
+  case fields are stripped. "Edit as new run" -> save on a run with events loses the purchase,
+  rent, work and claims (probe: `noa-part-claim-62` child events `[]`, Fixed Assets 2 -> 1 rows,
+  claiming ages 62 -> 67).
+- **X2:** `_drop_generated` zeroes generated cells and drops same-name rows instead of
+  restoring the base's hand values (the U1 class, for the tables; the probe's hand 2026 wages
+  168,000 end at 0 after the work event is deleted), and an unedited pages-save is then not
+  identical to its base.
+- **X3:** `build()` is not deterministic under non-reproducible stochastic rates (`histochastic`
+  1970-2000: price 1,421,789 / 1,262,691 / 1,227,299 over three builds).
+- **X4:** the Scenario page defaults closing to 0.03 and the loan's extra to 0.02 where the
+  builder's defaults are 0, so an unedited save of a cash purchase without `closing` adds
+  $21,727 to the outflow; the change summary words both sides the same.
+- X5-X9 (low): `event:<id>` with an id ending in `-<digits>` does not round-trip; an anchor to
+  a claim raises a raw TypeError and `event:rent` reads an explicit end, not the start; one claim
+  event resets the other person's hand `withSSAges` to fixed; the page's self-anchored purchase
+  default and a `schema_version: 1 -> 2` change shown for every pre-step-4 run; the E128.
+
+Not fixed here (the user's call which to fold, and how for X3).

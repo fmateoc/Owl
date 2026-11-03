@@ -104,6 +104,7 @@ if os.environ.get("OWL_LIBRARY_DIR"):
             st.Page("Queue.py", icon=":material/schedule:"),
             st.Page("Library.py", icon=":material/database:"),
             st.Page("Run.py", icon=":material/monitoring:"),
+            st.Page("Scenario.py", icon=":material/edit_note:"),
             st.Page("Compare.py", icon=":material/compare_arrows:"),
         ]
         libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)

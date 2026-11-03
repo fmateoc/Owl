@@ -7,6 +7,28 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 4: the scenario model and builder (2026-11-03)
+
+Scenario schema v2 and `owlplanner.library.builder` (`fork-notes/run-library-design.md`
+sections 6.1-6.3, D6, I1). A scenario carries **events** -- work, claiming, rent, a home
+purchase and care -- beside its hand rows, and `build(scenario) -> (case, hfp, provenance)`
+turns them into the coupled edits of section 6.2 in one place (deterministic, no side effects).
+- **Anchors (I1):** a year field may name a calendar year or anchor to `age:Ari:86` (the year
+  they turn that age), `work:Noa` / `after:Noa` (their last work year / the year after it),
+  `purchase`, or `event:care+2`; the rent end and the owner lines follow from the purchase by
+  construction.
+- **Provenance markers (section 6.3's first increment; S11):** every generated row, cell and
+  case field records which event produced it; generated rows are regenerated wholesale and
+  hand rows untouched. Per-cell overrides are not built yet: an edit to a generated value does
+  not survive a regeneration.
+- **Schema v2** migrates v1 (every row stays a hand row); `BUILDER_VERSION` is 2, so runs of
+  older builders are flagged rather than aliasing new output (R9).
+- `make_cases.py` shares the builder's row builders and writes `scenarios.json` (46 scenarios
+  with the case each one's `set` builds); `check_library_builder.py` shows the builder
+  reproduces its **39 workbooks cell for cell** (case fields and hfp edits included).
+- New `ui/Scenario.py` in the Run Library section (the events, the markers, the computed
+  change summary, save-as-a-child-run); "Edit the scenario" on the Run page.
+
 ### Run library, build step 2: the `as_of` input dropped (2026-11-02)
 
 The user dropped the frozen "as of" date. The fork reads the date as upstream does again:

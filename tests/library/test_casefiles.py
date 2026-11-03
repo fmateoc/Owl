@@ -60,7 +60,7 @@ class TestTables:
 class TestRoundTrip:
     def test_import_export_import_gives_the_same_inputs(self, tmp_path):
         scenario = import_case(CASE)
-        assert scenario["schema_version"] == 1
+        assert scenario["schema_version"] == 2
         assert scenario["plan_year"] == 2026
         assert set(scenario["hfp"]) >= {"Debts", "Fixed Assets", "Budget"}
 
@@ -339,3 +339,37 @@ class TestSaveOnABase:
         scenario = scenario_from_ui(config_to_ui(copy.deepcopy(case)), plan, base=base)
         assert scenario["budget_file"] == base["budget_file"]
         assert scenario_hash(scenario) == scenario_hash(base)
+
+
+class TestDropGenerated:
+    def test_a_pages_save_drops_the_generated_rows_and_cells(self, monkeypatch):
+        """Markers first (S11): the plan's tables carry the generated values too (the pages load
+        the run's frozen files); a save keeps only the hand rows and cells. Section 6.3's
+        per-cell overrides are the later increment."""
+        from owlplanner.library import builder
+        from owlplanner.library.casefiles import _drop_generated
+
+        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02])
+        base = import_case(CASE)
+        base = dict(base, events=[
+            {"id": "w", "kind": "work", "person": "Jack", "start": 2026, "end": 2026, "wages": 5000},
+            {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2026, "flat_until": 2027},
+        ])
+        columns = list(base["hfp"]["Jack"]["columns"])
+        rows = [list(row) for row in base["hfp"]["Jack"]["rows"]]
+        for row in rows:
+            if row[columns.index("year")] == 2026:
+                row[columns.index("anticipated wages")] = 777  # generated: dropped
+                row[columns.index("Roth conv")] = 5  # hand: kept
+        budget_columns = list(builder.BUDGET_COLUMNS)
+        house_lists = {"Budget": {"columns": budget_columns, "rows": [
+            [True, "rent", "rent", 2026, 2026, 999, 0, None, True] + [None] * 5,
+            [True, "charity", "charity", 2026, 0, 3000, 0, None, False] + [None] * 5,
+        ]}}
+        clean_time, clean_house = _drop_generated({"Jack": {"columns": columns, "rows": rows}},
+                                                  house_lists, base)
+        jack = {row[columns.index("year")]: row for row in clean_time["Jack"]["rows"]}
+        assert jack[2026][columns.index("anticipated wages")] == 0
+        assert jack[2026][columns.index("Roth conv")] == 5
+        names = [row[budget_columns.index("name")] for row in clean_house["Budget"]["rows"]]
+        assert names == ["charity"]  # "rent" is generated: regenerated wholesale at build time

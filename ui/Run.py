@@ -9,8 +9,9 @@ whose income sits just below or just over a threshold, design 14.1 I3), charts d
 `plan.json` (durable; D7) including the one-year cash-flow Sankey (I6), the Results
 workbook's sheets, the claiming-age map over a work_sweep scores file (I7), and the
 buttons: "Open in Owl" (the existing pages from the cached `plan.pkl`, no solve),
-"Download everything" (a zip of the run) and "Edit as new run" (the run's frozen files into
-the case pages; saving makes a child run).
+"Download everything" (a zip of the run), "Edit as new run" (the run's frozen files into
+the case pages; saving makes a child run) and "Edit the scenario" (the run's events on the
+Scenario page; step 4).
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -377,7 +378,7 @@ if entries:
         st.caption("The Results workbook is gone from this folder; solve again to get it.")
 
     # -- buttons -------------------------------------------------------
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("Open in Owl", type="primary", use_container_width=True,
                      help="The existing pages (Graphs, Worksheets, Reports) from the cached "
@@ -413,6 +414,12 @@ if entries:
                 kz.setRunBase(run.id)  # saved on the Library page as its child
                 st.toast("The run's inputs are open in the case pages (Create Case). "
                          "Save them as a new run on the Library page.")
+    with col4:
+        if st.button("Edit the scenario", use_container_width=True,
+                     help="The run's events (work, claiming, rent, a home purchase, care) on "
+                          "the Scenario page; what they generate is marked (design section 6)."):
+            st.session_state["library_selected_run"] = run.id
+            st.switch_page("Scenario.py")
 
 # -- solve this run ----------------------------------------------------
 

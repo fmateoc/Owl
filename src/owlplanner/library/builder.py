@@ -1,0 +1,682 @@
+"""Scenario model and builder: events to Owl's case dictionary and HFP tables (step 4).
+
+Design `fork-notes/run-library-design.md` sections 6.1-6.3, build step 4 and D6/I1. A scenario
+carries **events** (work, claiming, rent, a home purchase, care) beside its hand rows (`case`,
+`hfp`: rows the user entered or imported). `build()` turns the events into the coupled edits of
+section 6.2 in one place:
+
+- the place gives the state, locality, school district and a move in the purchase year;
+- the purchase gives a Fixed Assets row in purchase-year dollars (grown by the case's own
+  inflation path, as `make_cases.py` does), a Debts row linked to it by name, the big-ticket
+  outflow, the owner's Budget lines from that year, and rent lines ending the year before;
+- the last work year gives the marketplace start year, `months worked`, and the wages and
+  contributions in the person sheets;
+- the claiming events give `social_security_ages` and the `withSSAges` switch.
+
+`build(scenario) -> (case, hfp, provenance)` is deterministic and has no side effects. The row
+builders (`budget_row`, `rent_rows`, `owner_rows`) are shared with
+`fork-notes/synthetic/make_cases.py`, and `check_library_builder.py` checks the builder's
+placement against that script's 39 workbooks cell for cell.
+
+Provenance (section 6.3, markers first per S11): every generated row and cell records which
+event produced it -- Budget, Debts and Fixed Assets rows by their `name`, person-sheet cells by
+event and year, case fields by path. A generated row is regenerated wholesale when the events
+change; hand rows are untouched. Per-cell overrides on generated values ("closing costs 2029:
+24,000 instead of 21,700") are the next increment of section 6.3 and are not built yet: an edit
+to a generated value does not survive a regeneration.
+
+Anchors (I1): a year field may name a calendar year or anchor to another event -- "the year
+after Noa's last work year" (`{"anchor": "work_end", "person": "Noa", "after": true}`), "at age
+86" (`{"anchor": "age", "person": "Ari", "age": 86}`), "the purchase year"
+(`{"anchor": "purchase"}`), or another event's year (`{"anchor": "event", "id": "care"}`). The
+rent end and the owner lines follow from the purchase by construction (section 6.2).
+"""
+
+from __future__ import annotations
+
+import copy
+import io
+from typing import Any
+
+from .scenario import ScenarioError
+
+# The person-sheet columns (upstream's order, hfp_io._timeHorizonItems). The house tables follow
+# hfp_io's own lists; Budget is budget.SHEET_COLUMNS (the 14-column format gen_hfp_us's writer
+# predates, make_cases.py rewrites it in).
+PERSON_COLUMNS = (
+    "year",
+    "anticipated wages",
+    "months worked",
+    "other inc",
+    "net inv",
+    "taxable ctrb",
+    "401k ctrb",
+    "employer ctrb",
+    "Roth 401k ctrb",
+    "IRA ctrb",
+    "Roth IRA ctrb",
+    "HSA ctrb",
+    "Roth conv",
+    "Roth conv fixed",
+    "QCD",
+    "big-ticket items",
+)
+DEBT_COLUMNS = ("active", "name", "type", "year", "term", "amount", "rate", "property")
+ASSET_COLUMNS = ("active", "name", "type", "year", "basis", "value", "rate", "yod", "commission")
+BUDGET_COLUMNS = (
+    "active",
+    "name",
+    "type",
+    "year",
+    "end",
+    "amount",
+    "rate",
+    "survivor",
+    "essential",
+    "clock",
+    "start_age",
+    "end_age",
+    "index",
+    "kind",
+)
+HOUSE_TABLES = ("Debts", "Fixed Assets", "Budget")
+
+EVENT_KINDS = ("work", "claim", "rent", "purchase", "care")
+
+# Plain event fields to person-sheet columns (the rest of the sheet stays hand cells).
+PAY_COLUMNS = {
+    "wages": "anticipated wages",
+    "k401k": "401k ctrb",
+    "employer": "employer ctrb",
+    "ira": "IRA ctrb",
+    "months_worked": "months worked",
+}
+
+
+# ---------------------------------------------------------------------------
+# Budget, Debts and Fixed Assets rows (shared with make_cases.py)
+# ---------------------------------------------------------------------------
+
+
+def budget_row(name, typ, year, end, amount, rate=0.0, survivor=None, essential=False, **age):
+    """One Budget sheet row (the 14 columns of budget.SHEET_COLUMNS)."""
+    row = {
+        "active": True,
+        "name": name,
+        "type": typ,
+        "year": year,
+        "end": end,
+        "amount": amount,
+        "rate": rate,
+        "survivor": survivor,
+        "essential": essential,
+        "clock": None,
+        "start_age": None,
+        "end_age": None,
+        "index": None,
+        "kind": None,
+    }
+    row.update(age)
+    return [row[c] for c in BUDGET_COLUMNS]
+
+
+def rent_rows(annual, start, flat_until, end, gamma, base):
+    """Rent rows: `annual` in today's dollars from `start`, nominal-flat through `flat_until`,
+    then growing with inflation (real growth 0), to `end` (0: the plan end).
+
+    The flat years are one-year rows (a flat nominal amount declines in real terms, which one
+    constant-rate row cannot express); the tail row keeps the name `"<name> from <year>"` that
+    make_cases.py gave it. `gamma[k]` is the case's price level at `base + k` relative to
+    `base`, so a flat nominal amount in today's dollars is `annual * gamma[start-base] /
+    gamma[year-base]` (make_cases.py: `round(RENT / gamma[1])` for a rent flat through 2027).
+    """
+    if flat_until <= start:
+        return [budget_row("rent", "rent", start, end, annual, essential=True)]
+    rows = []
+    for year in range(start, flat_until):
+        if end and year > end:
+            return rows
+        amount = annual if year == start else round(annual * float(gamma[start - base]) / float(gamma[year - base]))
+        rows.append(budget_row("rent" if year == start else f"rent in {year}", "rent", year, year,
+                               amount, essential=True))
+    if not end or flat_until <= end:
+        amount = round(annual * float(gamma[start - base]) / float(gamma[flat_until - base]))
+        rows.append(budget_row(f"rent from {flat_until}", "rent", flat_until, end, amount, essential=True))
+    return rows
+
+
+def owner_rows(property_tax, hoa, insurance, first_year, last_year=0):
+    """The owner's Budget rows from the purchase year (`last_year` 0: the plan end)."""
+    return [
+        budget_row("property tax", "property tax", first_year, last_year, property_tax, rate=1.0, essential=True),
+        budget_row("HOA", "maintenance", first_year, last_year, hoa, essential=True),
+        budget_row("condo insurance", "insurance", first_year, last_year, insurance, essential=True),
+    ]
+
+
+def care_row(amount, year, end=0, name="care", essential=True):
+    return [budget_row(name, "care", year, end, amount, essential=essential)]
+
+
+def asset_row(name, year, value, rate, yod, commission, typ="residence", basis=None):
+    """One Fixed Assets row: value and basis in the purchase year's dollars."""
+    return [True, name, typ, year, value if basis is None else basis, value, rate, yod or 0, commission]
+
+
+def debt_row(name, year, term, amount, rate, property_name, typ="mortgage"):
+    """One Debts row; `property` is the residence whose sale pays the loan off."""
+    return [True, name, typ, year, term, amount, rate, property_name]
+
+
+# ---------------------------------------------------------------------------
+# Events
+# ---------------------------------------------------------------------------
+
+
+def _year_ref(value, where: str) -> dict:
+    """A year field normalized to {"year": n} or {"anchor": ...} (a bare int is a year)."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return {"year": int(value)}
+    if not isinstance(value, dict):
+        raise ScenarioError(f"{where}: a year must be a calendar year or an anchor, got {value!r}")
+    if "year" in value:
+        if not isinstance(value["year"], int) or isinstance(value["year"], bool):
+            raise ScenarioError(f"{where}.year must be a calendar year, got {value['year']!r}")
+        return {"year": int(value["year"])}
+    anchor = value.get("anchor")
+    if anchor == "age":
+        if not isinstance(value.get("person"), str) or not isinstance(value.get("age"), (int, float)) \
+                or isinstance(value.get("age"), bool):
+            raise ScenarioError(f"{where}: an age anchor needs 'person' and 'age'")
+        return {"anchor": "age", "person": value["person"], "age": value["age"]}
+    if anchor == "work_end":
+        if not isinstance(value.get("person"), str):
+            raise ScenarioError(f"{where}: a work_end anchor needs 'person'")
+        return {"anchor": "work_end", "person": value["person"], "after": bool(value.get("after", False))}
+    if anchor == "purchase":
+        return {"anchor": "purchase"}
+    if anchor == "event":
+        if not isinstance(value.get("id"), str):
+            raise ScenarioError(f"{where}: an event anchor needs 'id'")
+        offset = value.get("offset", 0)
+        if not isinstance(offset, int) or isinstance(offset, bool):
+            raise ScenarioError(f"{where}: the event anchor's offset must be an integer")
+        return {"anchor": "event", "id": value["id"], "offset": offset}
+    raise ScenarioError(f"{where}: unknown year anchor {anchor!r}")
+
+
+def _year_fields(event: dict) -> list[str]:
+    """The names of the event's year fields."""
+    kind = event["kind"]
+    if kind == "work":
+        return ["start", "end"]
+    if kind == "rent":
+        return ["start", "flat_until"] + (["end"] if "end" in event else [])
+    if kind == "purchase":
+        return ["year"] + (["sale"] if "sale" in event else [])
+    if kind == "care":
+        return ["year"] + (["end"] if "end" in event else [])
+    return []
+
+
+# The editable text form of a year field (the scenario editor's inputs): a calendar year,
+# "age:<person>:<age>", "work:<person>" (their last work year), "after:<person>" (the year
+# after it), "purchase" (the home purchase's year), or "event:<id>" with an optional "+<n>" /
+# "-<n>" (that event's year, shifted).
+def year_ref_text(ref) -> str:
+    """A year field as editable text (the inverse of `parse_year_ref`)."""
+    if isinstance(ref, int) and not isinstance(ref, bool):
+        return str(ref)
+    if not isinstance(ref, dict):
+        return repr(ref)
+    if "year" in ref:
+        return str(ref["year"])
+    anchor = ref.get("anchor")
+    if anchor == "age":
+        return f"age:{ref.get('person')}:{ref.get('age'):g}"
+    if anchor == "work_end":
+        return ("after:" if ref.get("after") else "work:") + str(ref.get("person"))
+    if anchor == "purchase":
+        return "purchase"
+    if anchor == "event":
+        offset = int(ref.get("offset") or 0)
+        return f"event:{ref.get('id')}" + (f"{offset:+d}" if offset else "")
+    return repr(ref)
+
+
+def parse_year_ref(text, where="year") -> dict:
+    """A year field from its editable text form (ScenarioError with the grammar on bad text)."""
+    grammar = ("a calendar year, 'age:<person>:<age>', 'work:<person>', 'after:<person>', "
+               "'purchase', or 'event:<id>' (with '+<n>' / '-<n>')")
+    if not isinstance(text, str):
+        raise ScenarioError(f"{where}: expected the text form of a year ({grammar})")
+    value = text.strip()
+    if value.lstrip("-").isdigit():
+        return {"year": int(value)}
+    if value.startswith("age:"):
+        parts = value.split(":")
+        if len(parts) == 3:
+            try:
+                return {"anchor": "age", "person": parts[1], "age": float(parts[2])}
+            except ValueError:
+                pass
+    elif value.startswith("work:") and len(value) > len("work:"):
+        return {"anchor": "work_end", "person": value[len("work:"):], "after": False}
+    elif value.startswith("after:") and len(value) > len("after:"):
+        return {"anchor": "work_end", "person": value[len("after:"):], "after": True}
+    elif value == "purchase":
+        return {"anchor": "purchase"}
+    elif value.startswith("event:"):
+        body = value[len("event:"):]
+        offset = 0
+        at = max(body.rfind("+"), body.rfind("-"))
+        if at > 0 and body[at + 1:].isdigit():
+            offset = int(body[at:])
+            body = body[:at]
+        if body:
+            return {"anchor": "event", "id": body, "offset": offset}
+    raise ScenarioError(f"{where}: {text!r} is not a year ({grammar})")
+
+
+def validate_events(events: Any, names: list[str]) -> list[dict]:
+    """Check a scenario's events and return them normalized (year fields as refs)."""
+    if events is None:
+        return []
+    if not isinstance(events, list):
+        raise ScenarioError("scenario.events must be a list of events")
+    seen: set[str] = set()
+    out: list[dict] = []
+    for i, event in enumerate(events):
+        where = f"events[{i}]"
+        if not isinstance(event, dict):
+            raise ScenarioError(f"{where} must be a dict")
+        kind = event.get("kind")
+        if kind not in EVENT_KINDS:
+            raise ScenarioError(f"{where}.kind must be one of {list(EVENT_KINDS)}, got {kind!r}")
+        eid = event.get("id")
+        if not isinstance(eid, str) or not eid:
+            raise ScenarioError(f"{where}.id must be a non-empty string (the provenance marker)")
+        if eid in seen:
+            raise ScenarioError(f"{where}.id {eid!r} is used twice")
+        seen.add(eid)
+        event = dict(event)
+        if kind in ("work", "claim"):
+            person = event.get("person")
+            if person not in names:
+                raise ScenarioError(f"{where}.person {person!r} is not one of the case's people {names}")
+        if kind == "work":
+            for field in ("start", "end"):
+                value = event.get(field)
+                if not isinstance(value, int) or isinstance(value, bool):
+                    raise ScenarioError(f"{where}.{field} must be a calendar year")
+            if event["end"] < event["start"]:
+                raise ScenarioError(f"{where}: ends before it starts")
+            level = event.get("level", "full")
+            if level not in ("full", "part"):
+                raise ScenarioError(f"{where}.level must be 'full' or 'part', got {level!r}")
+            for field in PAY_COLUMNS:
+                if field in event and field != "months_worked":
+                    value = event[field]
+                    if not isinstance(value, (int, float)) or isinstance(value, bool):
+                        raise ScenarioError(f"{where}.{field} must be a number")
+            months = event.get("months_worked")
+            if months is not None and (not isinstance(months, int) or not 0 <= months <= 12):
+                raise ScenarioError(f"{where}.months_worked must be 0-12")
+        elif kind == "claim":
+            if "age" not in event:
+                raise ScenarioError(f"{where}: 'age' is required (None lets Owl choose)")
+            age = event["age"]
+            if age is not None and (not isinstance(age, (int, float)) or isinstance(age, bool) or age <= 0):
+                raise ScenarioError(f"{where}.age must be a positive number or None (let Owl choose)")
+        elif kind == "rent":
+            monthly = event.get("monthly")
+            if not isinstance(monthly, (int, float)) or isinstance(monthly, bool) or monthly <= 0:
+                raise ScenarioError(f"{where}.monthly must be a positive number")
+        elif kind == "purchase":
+            price = event.get("price")
+            if not isinstance(price, (int, float)) or isinstance(price, bool) or price <= 0:
+                raise ScenarioError(f"{where}.price must be a positive number (today's dollars)")
+            if not isinstance(event.get("name"), str) or not event["name"]:
+                raise ScenarioError(f"{where}.name must name the home (rows are marked by name)")
+            financing = event.get("financing")
+            if not isinstance(financing, dict) or financing.get("kind") not in ("cash", "loan"):
+                raise ScenarioError(f"{where}.financing must be 'cash' or a loan")
+            if financing.get("kind") == "loan":
+                for field in ("term", "rate"):
+                    if field not in financing:
+                        raise ScenarioError(f"{where}.financing needs {field!r} for a loan")
+        elif kind == "care":
+            amount = event.get("amount")
+            if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
+                raise ScenarioError(f"{where}.amount must be a positive number (today's dollars)")
+        if kind != "work":  # work takes plain calendar years (checked above), the rest anchors
+            for field in _year_fields(event):
+                if field not in event:
+                    raise ScenarioError(f"{where}.{field} is required")
+                event[field] = _year_ref(event[field], f"{where}.{field}")
+        out.append(event)
+    # One home purchase, one rent and one care span for now (design D6: "moves without a
+    # purchase, sale and re-buy later" is a later increment; their rows carry fixed names).
+    for kind in ("purchase", "rent", "care"):
+        if sum(1 for e in out if e["kind"] == kind) > 1:
+            raise ScenarioError(f"at most one {kind} event per scenario (a sale and re-buy later)")
+    return out
+
+
+def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
+    """The calendar year of every event's year field (the I1 anchors resolved).
+
+    Raises ScenarioError on an anchor that cannot be resolved: a missing person or event, or a
+    cycle between events.
+    """
+    info = case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    birth_years: dict[str, int] = {}
+    for name, dob in zip(names, info.get("date_of_birth") or [], strict=False):
+        try:
+            birth_years[name] = int(str(dob)[:4])
+        except ValueError:
+            raise ScenarioError(f"basic_info.date_of_birth for {name!r} is not a date: {dob!r}") from None
+    work_ends: dict[str, int] = {}
+    for event in events:
+        if event["kind"] == "work":
+            work_ends[event["person"]] = max(work_ends.get(event["person"], -10**9), int(event["end"]))
+
+    resolved: dict[str, dict[str, int]] = {}
+    purchase_year: list[int | None] = [None]
+
+    def resolve(ref: dict) -> int | None:
+        if "year" in ref:
+            return int(ref["year"])
+        anchor = ref["anchor"]
+        if anchor == "age":
+            return birth_years.get(ref["person"], 0) + int(ref["age"]) if ref["person"] in birth_years else None
+        if anchor == "work_end":
+            return work_ends[ref["person"]] + (1 if ref["after"] else 0) if ref["person"] in work_ends else None
+        if anchor == "purchase":
+            return purchase_year[0]
+        if anchor == "event":
+            other = resolved.get(ref["id"])
+            return other["year"] + ref["offset"] if other is not None else None
+        return None
+
+    pending = {e["id"]: e for e in events}
+    for _ in range(len(events) + 2):
+        progress = False
+        for eid, event in list(pending.items()):
+            years = {}
+            for field in _year_fields(event):
+                if event["kind"] == "work":
+                    years[field] = int(event[field])
+                    continue
+                value = resolve(event[field])
+                if value is not None:
+                    years[field] = value
+            if len(years) == len(_year_fields(event)):
+                resolved[eid] = years
+                if event["kind"] == "purchase":
+                    purchase_year[0] = years["year"]
+                del pending[eid]
+                progress = True
+        if not pending:
+            return resolved
+        if not progress:
+            break
+    stuck = [
+        f"{eid}.{field}"
+        for eid, event in pending.items()
+        for field in _year_fields(event)
+    ]
+    raise ScenarioError(
+        "event years that cannot be resolved (a missing person or event, or a cycle): " + "; ".join(stuck)
+    )
+
+
+# ---------------------------------------------------------------------------
+# build()
+# ---------------------------------------------------------------------------
+
+
+def _set_path(case: dict, path: str, value) -> None:
+    keys = path.split(".")
+    node = case
+    for key in keys[:-1]:
+        node = node.setdefault(key, {})
+    node[keys[-1]] = value
+
+
+def _gamma(case: dict) -> list[float]:
+    """The case's own inflation path (gamma_n): the price level of each plan year relative to
+    the plan's first year (gamma[0] == 1). Read through a plan build with no HFP and no solve;
+    the logs go to a string (make_cases.py reads the same array for nominal amounts)."""
+    import tempfile
+
+    from owlplanner.config import config_to_plan
+
+    plan = config_to_plan(copy.deepcopy(case), tempfile.gettempdir(), logstreams=[io.StringIO()], loadHFP=False)
+    gamma = [float(g) for g in plan.gamma_n]
+    if gamma and gamma[0] != 1.0:
+        raise ScenarioError(f"the case's inflation path does not start at 1: gamma[0] = {gamma[0]}")
+    return gamma
+
+
+def build(scenario: dict) -> tuple[dict, dict, dict]:
+    """(case, hfp tables, provenance) for a scenario: its hand rows plus what its events generate.
+
+    Deterministic and without side effects (design section 6.2). With no events this is the
+    hand document unchanged. `hfp` maps a sheet name to {"columns": [...], "rows": [[...]]};
+    the provenance marks every generated row, cell and case field with the id of the event
+    that produced it (section 6.3).
+    """
+    hand_case = copy.deepcopy(scenario.get("case") or {})
+    hand_hfp = copy.deepcopy(scenario.get("hfp") or {})
+    events = validate_events(scenario.get("events"), list((hand_case.get("basic_info") or {}).get("names") or []))
+    provenance: dict[str, Any] = {"case_fields": {}, "rows": {}, "cells": []}
+    if not events:
+        return hand_case, hand_hfp, provenance
+
+    info = hand_case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    plan_start = _plan_start(hand_case, scenario)
+    years = resolve_years(events, hand_case)
+    case = hand_case
+
+    # Generated rows paired with their event, generated cells likewise. Rows are generated in
+    # event order (the row order of the Budget sheet is part of the generated document).
+    rows: dict[str, list[tuple[list, str]]] = {"Debts": [], "Fixed Assets": [], "Budget": []}
+    cells: list[tuple[str, str, int, Any, str]] = []  # (sheet, column, year, value, event id)
+
+    purchase = next((e for e in events if e["kind"] == "purchase"), None)
+    purchase_year = years[purchase["id"]]["year"] if purchase else None
+    gamma = _gamma(hand_case) if purchase or any(e["kind"] == "rent" for e in events) else None
+
+    def nominal(amount, year):
+        return round(amount * float(gamma[year - plan_start]))
+
+    work_ids = [e["id"] for e in events if e["kind"] == "work"]
+    last_full = None
+    for event in events:
+        kind = event["kind"]
+        where = years[event["id"]]
+        if kind == "work":
+            # Wages and contributions in the person sheets (section 6.2).
+            if event.get("level", "full") == "full":
+                last_full = event["end"] if last_full is None else max(last_full, event["end"])
+            for year in range(event["start"], event["end"] + 1):
+                for field, column in PAY_COLUMNS.items():
+                    if event.get(field) is not None:
+                        cells.append((event["person"], column, year, event[field], event["id"]))
+        elif kind == "purchase":
+            # The home: a Fixed Assets row in purchase-year dollars, a Debts row linked to it by
+            # name, the big-ticket outflow, the owner's Budget lines, and the move (section 6.2).
+            year = where["year"]
+            sale = where.get("sale") or 0
+            price = nominal(purchase["price"], year)
+            financing = purchase.get("financing") or {"kind": "cash"}
+            rows["Fixed Assets"].append((asset_row(
+                purchase["name"], year, price, purchase.get("growth", 0.0), sale,
+                purchase.get("commission", 0.0), purchase.get("type", "residence"),
+                purchase.get("basis")), purchase["id"]))
+            if financing.get("kind") == "loan":
+                down = financing.get("down", 0.20)
+                closing = financing.get("closing", 0.0)
+                extra = financing.get("extra", 0.0)
+                loan = round(price * (1 - down))
+                rows["Debts"].append((debt_row(
+                    financing.get("name", f"{purchase['name']} mortgage"), year, financing["term"],
+                    loan, financing["rate"], purchase["name"]), purchase["id"]))
+                outflow = -round(price * (down + closing) + loan * extra)
+            else:
+                closing = financing.get("closing", 0.0)
+                outflow = -round(price * (1 + closing))
+            cells.append((purchase.get("pay_on") or (names[0] if names else ""), "big-ticket items", year,
+                          outflow, purchase["id"]))
+            costs = purchase.get("costs") or {}
+            for row in owner_rows(costs.get("property tax", 0), costs.get("hoa", 0), costs.get("insurance", 0),
+                                  year, (sale - 1) if sale else 0):
+                rows["Budget"].append((row, purchase["id"]))
+            place = purchase.get("place") or {}
+            if place.get("move"):
+                _set_path(case, "basic_info.moves", [{
+                    "year": year,
+                    "state": place.get("state", "NY"),
+                    "locality": place.get("locality", ""),
+                    "school_district": place.get("school_district", ""),
+                }])
+                provenance["case_fields"]["basic_info.moves"] = purchase["id"]
+            else:
+                _set_path(case, "basic_info.school_district", place.get("school_district", ""))
+                provenance["case_fields"]["basic_info.school_district"] = purchase["id"]
+        elif kind == "rent":
+            # Rent to the year before the purchase (section 6.2, I1).
+            if "end" in event:
+                end = where["end"]
+            elif purchase_year is not None:
+                end = purchase_year - 1
+            else:
+                end = 0
+            for row in rent_rows(event["monthly"] * 12, where["start"], where["flat_until"], end, gamma, plan_start):
+                rows["Budget"].append((row, event["id"]))
+        elif kind == "care":
+            for row in care_row(event["amount"], where["year"], where.get("end") or 0,
+                                event.get("name", "care"), event.get("essential", True)):
+                rows["Budget"].append((row, event["id"]))
+
+    if work_ids:
+        # The last work year gives the marketplace start year (section 6.2): employer coverage
+        # runs while either spouse works full time (make_cases.py's rule).
+        _set_path(case, "aca_settings.aca_start_year", (last_full + 1) if last_full is not None else plan_start)
+        provenance["case_fields"]["aca_settings.aca_start_year"] = work_ids[0]
+
+    # -- claiming: the ages and the switch ----------------------------------------------------
+    claims = [e for e in events if e["kind"] == "claim"]
+    if claims:
+        current = list((hand_case.get("fixed_income") or {}).get("social_security_ages") or [])
+        ages = []
+        for i, name in enumerate(names):
+            claim = next((c for c in claims if c["person"] == name), None)
+            if claim is not None and claim["age"] is not None:
+                ages.append(float(claim["age"]))
+            elif i < len(current):
+                ages.append(float(current[i]))
+            else:
+                raise ScenarioError(
+                    f"claim: no age for {name!r} and the case holds none (an age or a fixed case value)"
+                )
+        # Owl's withSSAges is one switch: any "let Owl choose" searches both ages (the fixed
+        # one's age is then only a starting point).
+        all_fixed = all(c["age"] is not None for c in claims)
+        _set_path(case, "fixed_income.social_security_ages", ages)
+        _set_path(case, "solver_options.withSSAges", "fixed" if all_fixed else "optimize")
+        for field in ("fixed_income.social_security_ages", "solver_options.withSSAges"):
+            provenance["case_fields"][field] = claims[0]["id"]
+
+    for table in HOUSE_TABLES:
+        for row, eid in rows[table]:
+            provenance["rows"][f"{table}|{row[1]}"] = eid
+    for sheet, column, year, _value, eid in cells:
+        provenance["cells"].append([sheet, column, year, eid])
+
+    hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start,
+                        [int(str(d)[:4]) for d in info.get("date_of_birth") or []],
+                        [int(expect) for expect in info.get("life_expectancy") or []])
+    return case, hfp, provenance
+
+
+def _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life) -> dict:
+    """Hand rows with the generated ones: generated rows by name (regenerated wholesale),
+    generated cells by position (section 6.3's markers). Sheets come in workbook order:
+    the person sheets first, then Debts, Fixed Assets and Budget."""
+    generated_names = {row[1] for table in HOUSE_TABLES for row, _eid in rows[table]}
+    hfp: dict[str, dict] = {}
+
+    # Person sheets: hand rows with the generated cells set; a generated cell year gets a row.
+    by_sheet: dict[str, dict[int, dict[str, Any]]] = {}
+    for sheet, column, year, value, _eid in cells:
+        by_sheet.setdefault(sheet, {}).setdefault(year, {})[column] = value
+    sheet_names = list(dict.fromkeys([*names, *[s for s in hand_hfp if s not in HOUSE_TABLES]]))
+    end_year = max((birth + expect for birth, expect in zip(births, life, strict=False)), default=plan_start)
+    for sheet in sheet_names:
+        hand = hand_hfp.get(sheet) or {}
+        columns = list(hand.get("columns") or PERSON_COLUMNS)
+        year_at = columns.index("year")
+        rows_by_year: dict[int, list] = {}
+        for row in hand.get("rows") or []:
+            rows_by_year[int(row[year_at])] = list(row)
+        if not rows_by_year:
+            for year in range(plan_start, end_year + 1):
+                row = [0] * len(columns)
+                row[year_at] = year
+                rows_by_year[year] = row
+        for year, values in by_sheet.get(sheet, {}).items():
+            if year not in rows_by_year:
+                row = [0] * len(columns)
+                row[year_at] = year
+                rows_by_year[year] = row
+            for column, value in values.items():
+                rows_by_year[year][columns.index(column)] = value
+        hfp[sheet] = {"columns": columns, "rows": [rows_by_year[y] for y in sorted(rows_by_year)]}
+
+    for table in HOUSE_TABLES:
+        hand = hand_hfp.get(table) or {}
+        columns = list(hand.get("columns") or _table_columns(table))
+        name_at = columns.index("name") if "name" in columns else None
+        kept = [
+            list(row) for row in hand.get("rows") or []
+            if not (name_at is not None and len(row) > name_at and row[name_at] in generated_names)
+        ]
+        kept.extend(_place_row(columns, row) for row, _eid in rows[table])
+        hfp[table] = {"columns": columns, "rows": kept}
+    return hfp
+
+
+def _table_columns(table: str) -> list[str]:
+    return {
+        "Debts": list(DEBT_COLUMNS),
+        "Fixed Assets": list(ASSET_COLUMNS),
+        "Budget": list(BUDGET_COLUMNS),
+    }[table]
+
+
+def _place_row(columns: list[str], row: list) -> list:
+    """A generated row (built in the canonical column order) placed in the table's columns."""
+    source = {
+        len(BUDGET_COLUMNS): BUDGET_COLUMNS,
+        len(ASSET_COLUMNS): ASSET_COLUMNS,
+        len(DEBT_COLUMNS): DEBT_COLUMNS,
+    }.get(len(row))
+    if source is None or list(columns) == list(source):
+        return list(row)
+    out = [None] * len(columns)
+    for value, column in zip(row, source, strict=True):
+        if column in columns:
+            out[columns.index(column)] = value
+    return out
+
+
+def _plan_start(case: dict, scenario: dict) -> int:
+    start = (case.get("basic_info") or {}).get("start_date")
+    if isinstance(start, str) and len(start) >= 4 and start[:4].isdigit():
+        return int(start[:4])
+    plan_year = scenario.get("plan_year")
+    return int(plan_year) if isinstance(plan_year, int) else 0

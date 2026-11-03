@@ -1,10 +1,13 @@
-"""Scenario schema v1 for the run library: hand rows only.
+"""Scenario schema for the run library: hand rows, and (since v2) events and their builder.
 
 A scenario is the source of truth of a run (`fork-notes/run-library-design.md`, section 6).
 Schema version 1 holds Owl's case dictionary (`case`) and the HFP workbook tables (`hfp`)
 as JSON and nothing else: every row is a row the user entered or imported ("hand rows").
-Events and the builder arrive in a later schema version (section 6.3a); each format change
-ships a migration (`migrate`).
+Version 2 (build step 4) adds `events` (work, claiming, rent, a home purchase, care; D6) whose
+coupled edits the builder generates (`library.builder.build`), with provenance markers: a
+generated row or cell is marked with the event that produced it and regenerated wholesale,
+hand rows are untouched (section 6.3, markers first per S11). Each format change ships a
+migration (`migrate`).
 
 Canonical form (the inputs hash, section 5, S10): keys sorted, compact separators, and every
 number kept as entered: an int stays an int and a float stays a float (V3), because the generated
@@ -21,12 +24,12 @@ import json
 import math
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Version of the generation code that turns a scenario into Case.toml / HFP.xlsx
-# (library.casefiles). Part of the inputs hash: a change here makes old runs "built with
-# an older builder" instead of aliasing two different outputs (section 5, R9).
-BUILDER_VERSION = 1
+# (library.casefiles and library.builder). Part of the inputs hash: a change here makes old runs
+# "built with an older builder" instead of aliasing two different outputs (section 5, R9).
+BUILDER_VERSION = 2
 
 
 class ScenarioError(ValueError):
@@ -91,13 +94,13 @@ def _check_case_values(obj: Any, where: str) -> None:
 
 
 def validate(scenario: Any) -> dict:
-    """Check a scenario document against schema version 1 and return it."""
+    """Check a scenario against its schema version (1: hand rows; 2: + events) and return it."""
     if not isinstance(scenario, dict):
         raise ScenarioError(f"scenario must be a dict, got {type(scenario).__name__}")
     version = scenario.get("schema_version")
-    if version != SCHEMA_VERSION:
+    if version not in (1, SCHEMA_VERSION):
         raise ScenarioError(
-            f"schema_version {version!r} cannot be read (this build handles {SCHEMA_VERSION}); "
+            f"schema_version {version!r} cannot be read (this build handles 1 and {SCHEMA_VERSION}); "
             "the run stays readable from its generated files (design section 6.3a)"
         )
     case = scenario.get("case")
@@ -120,14 +123,31 @@ def validate(scenario: Any) -> dict:
     plan_year = scenario.get("plan_year")
     if plan_year is not None and not isinstance(plan_year, int):
         raise ScenarioError(f"plan_year must be an int, got {plan_year!r}")
+    if version == SCHEMA_VERSION:
+        events = scenario.get("events", [])
+        if not isinstance(events, list):
+            raise ScenarioError("scenario.events must be a list of events")
+        from . import builder  # lazy: builder imports this module
+
+        builder.validate_events(events, list((case.get("basic_info") or {}).get("names") or []))
     return scenario
 
 
 def migrate(scenario: dict) -> dict:
-    """Bring a scenario up to SCHEMA_VERSION. Version 1 is the first: nothing to migrate."""
+    """Bring a scenario up to SCHEMA_VERSION and return it (a copy; the input is untouched).
+
+    Version 1 (hand rows) becomes version 2 with no events: every row stays a hand row.
+    """
     version = scenario.get("schema_version")
     if version == SCHEMA_VERSION:
-        return scenario
+        out = dict(scenario)
+        out.setdefault("events", [])
+        return out
+    if version == 1:
+        out = {k: v for k, v in scenario.items() if k not in ("events", "provenance")}
+        out["schema_version"] = SCHEMA_VERSION
+        out["events"] = []
+        return out
     raise ScenarioError(f"no migration from schema_version {version!r}")
 
 
@@ -139,15 +159,77 @@ def _short(value: Any, limit: int = 40) -> str:
 def diff_summaries(old: Any, new: Any, prefix: str = "", limit: int = 20) -> list[str]:
     """A field-by-field diff of two scenarios in words (design section 7).
 
-    Hand rows (schema v1) are diffed structurally; worded-per-event summaries arrive with
-    the scenario model (step 4). At most `limit` lines; the last line counts the rest.
+    Events are worded per event ("purchase: ... 2029 ... -> ... 2031 ...") and matched by id;
+    hand rows are diffed structurally. At most `limit` lines; the last line counts the rest.
     """
     changes: list[str] = []
+    if isinstance(old, dict) and isinstance(new, dict):
+        _events_into(old, new, changes)
+        old = {k: v for k, v in old.items() if k not in ("events", "provenance")}
+        new = {k: v for k, v in new.items() if k not in ("events", "provenance")}
     _diff_into(old, new, prefix, changes)
     if len(changes) > limit:
         rest = len(changes) - limit
         changes = changes[:limit] + [f"... and {rest} more change(s)"]
     return changes
+
+
+def _events_into(old: dict, new: dict, out: list[str]) -> None:
+    """The events diff, worded per event (section 7), matched by id."""
+    old_events = {e.get("id"): e for e in old.get("events") or [] if isinstance(e, dict)}
+    new_events = {e.get("id"): e for e in new.get("events") or [] if isinstance(e, dict)}
+    for eid in sorted(set(old_events) | set(new_events)):
+        before, after = old_events.get(eid), new_events.get(eid)
+        if before is None:
+            out.append(f"{after.get('kind', 'event')}: {_event_words(after)} (added)")
+        elif after is None:
+            out.append(f"{before.get('kind', 'event')}: {_event_words(before)} (removed)")
+        elif canonical_json(before) != canonical_json(after):
+            out.append(f"{before.get('kind', 'event')}: {_event_words(before)} -> {_event_words(after)}")
+
+
+def _event_words(event: dict) -> str:
+    """One event in words ("buy in Yonkers (10701) in 2027, cash")."""
+    kind = event.get("kind")
+    if kind == "work":
+        level = "full time" if event.get("level", "full") == "full" else "part time"
+        return f"{event.get('person')} {level} {event.get('start')}-{event.get('end')}"
+    if kind == "claim":
+        age = event.get("age")
+        return (f"{event.get('person')} claims at {age}" if age is not None
+                else f"{event.get('person')}: let Owl choose")
+    if kind == "rent":
+        return (f"{event.get('monthly')}/mo from {_ref_words(event.get('start'))}, "
+                f"flat through {_ref_words(event.get('flat_until'))}")
+    if kind == "purchase":
+        financing = event.get("financing") or {"kind": "cash"}
+        how = ("cash" if financing.get("kind") != "loan"
+               else f"{financing.get('term')}-year loan at {financing.get('rate')}%")
+        return f"{event.get('name')} in {_ref_words(event.get('year'))}, {how}"
+    if kind == "care":
+        return f"{event.get('amount')}/yr from {_ref_words(event.get('year'))}"
+    return repr(event)
+
+
+def _ref_words(ref: Any) -> str:
+    """A year field in words: a calendar year or its anchor ("the year after Noa's work")."""
+    if isinstance(ref, int) and not isinstance(ref, bool):
+        return str(ref)
+    if isinstance(ref, dict):
+        if "year" in ref:
+            return str(ref["year"])
+        anchor = ref.get("anchor")
+        if anchor == "age":
+            return f"{ref.get('person')} at {ref.get('age')}"
+        if anchor == "work_end":
+            which = "the year after" if ref.get("after") else "the last year of"
+            return f"{which} {ref.get('person')}'s work"
+        if anchor == "purchase":
+            return "the purchase year"
+        if anchor == "event":
+            offset = ref.get("offset") or 0
+            return f"{ref.get('id')}" + (f" +{offset}" if offset else "")
+    return repr(ref)
 
 
 def _diff_into(old: Any, new: Any, where: str, out: list[str]) -> None:

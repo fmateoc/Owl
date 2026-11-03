@@ -46,8 +46,10 @@ Known limits of this step (from `fork-notes/run-library-step1-review.md`):
 - For a case with no workbook both entry paths record the plan's zero-filled tables and export
   an `HFP.xlsx` (V9); with `base=` the two paths give the same scenario for an unedited case.
 
-Not here: `rates.csv` (the downturn rate table, D11) arrives with build step 5b; events and
-the builder with step 4 (scenario schema version 2).
+Not here: `rates.csv` (the downturn rate table, D11) arrives with build step 5b. Events and the
+builder (scenario schema version 2) are `library.builder` (step 4): export runs `build()`, so
+the generated rows and case fields of a scenario's events land in the frozen files with
+provenance markers, and hand rows are untouched.
 """
 
 from __future__ import annotations
@@ -58,7 +60,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from .scenario import SCHEMA_VERSION, ScenarioError, canonical_json, normalize, validate
+from .scenario import SCHEMA_VERSION, ScenarioError, canonical_json, migrate, normalize, validate
 
 CASE_TOML = "Case.toml"
 HFP_XLSX = "HFP.xlsx"
@@ -121,7 +123,7 @@ def _plan_year_of(case: dict):
 
 
 def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=None, budget_file=None) -> dict:
-    """A schema-v1 scenario from a case dictionary and the HFP tables (hand rows).
+    """A scenario of hand rows from a case dictionary and the HFP tables (section 6.4).
 
     `time_lists` maps a person's name to their year table (DataFrame or {columns, rows});
     `house_lists` holds "Debts", "Fixed Assets" and "Budget". `budget_file` is
@@ -153,6 +155,7 @@ def canonicalize(scenario: dict) -> dict:
     encoder and back, so it equals what the generated `Case.toml` reads back as.
     """
     scenario = normalize(scenario)
+    scenario = migrate(scenario)  # stored scenarios are current-version (2, with events)
     validate(scenario)  # rejects None and non-finite values before the encoder sees them (V4)
     scenario["hfp"] = {name: _canonical_table(table) for name, table in scenario["hfp"].items()}
     scenario["case"], sidecar = canonical_case(
@@ -293,6 +296,10 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
     The budget sidecar is captured whenever the case names a `budget_file` (V2): the base's,
     when the reference is unchanged and no `budget_path=` is given; else resolved
     CWD-then-`case_dir` like `plan_bridge._load_budget_file` (V1).
+
+    With a base that has events (schema v2), the rows and cells the events generate are dropped
+    from the saved hand rows (`_drop_generated`): they are regenerated wholesale from the events
+    (markers first, S11), so an edit to a generated value does not survive a save.
     """
     from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
 
@@ -309,6 +316,8 @@ def scenario_from_ui(uidic: dict, plan, *, base=None, plan_year=None, case_dir=N
         info["start_date"] = _with_year(info.get("start_date"), year)
     with tempfile.TemporaryDirectory() as tmp:
         time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
+    if base is not None and base.get("events"):
+        time_lists, house_lists = _drop_generated(time_lists, house_lists, base)
     ref = _budget_reference(case)
     base_sidecar = base.get("budget_file") if base is not None else None
     if ref and base_sidecar and budget_path is None and ref == base_sidecar["ref"]:
@@ -330,6 +339,53 @@ def _tables_from_plan(plan, tmpdir: Path):
     plan.saveContributions().save(workbook)
     _, time_lists, house_lists, _, _ = hfp_io.read(str(workbook), plan.inames, plan.horizons, plan.mylog)
     return time_lists, house_lists
+
+
+def _drop_generated(time_lists, house_lists, base):
+    """The plan's tables without the rows and cells the base's events generate.
+
+    The pages hold the generated values too (they load the run's frozen files). A generated row
+    is regenerated wholesale when the scenario is built (section 6.3, markers first, S11), so
+    the saved hand rows keep only what the events do not generate. Section 6.3's per-cell
+    overrides are the later increment; here an edit to a generated value is dropped.
+    """
+    from . import builder
+
+    _case, _tables, provenance = builder.build(base)
+    row_names: dict[str, set] = {}
+    for key in provenance["rows"]:
+        table, name = key.split("|", 1)
+        row_names.setdefault(table, set()).add(name)
+    cells: dict[str, dict[int, set]] = {}
+    for sheet, column, year, _eid in provenance["cells"]:
+        cells.setdefault(sheet, {}).setdefault(int(year), set()).add(column)
+
+    clean_time = {}
+    for name, table in (time_lists or {}).items():
+        table = _as_table(table)
+        by_year = cells.get(name, {})
+        if by_year:
+            columns = list(table["columns"])
+            year_at = columns.index("year")
+            rows = []
+            for row in table["rows"]:
+                row = list(row)
+                for column in by_year.get(int(row[year_at]), ()):
+                    if column in columns:
+                        row[columns.index(column)] = 0
+                rows.append(row)
+            table = {"columns": columns, "rows": rows}
+        clean_time[name] = table
+    clean_house = {}
+    for name, table in (house_lists or {}).items():
+        table = _as_table(table)
+        drop = row_names.get(name, set())
+        if drop and "name" in table["columns"]:
+            at = table["columns"].index("name")
+            table = {"columns": list(table["columns"]),
+                     "rows": [row for row in table["rows"] if row[at] not in drop]}
+        clean_house[name] = table
+    return clean_time, clean_house
 
 
 def _hfp_reference(case: dict):
@@ -427,16 +483,18 @@ def _sidecar_target(ref: str):
 def export_case(scenario: dict, out_dir) -> list:
     """Write the generated files (Case.toml, HFP.xlsx, the budget sidecar) into out_dir.
 
-    This is the step-1 builder for hand rows: the generated files of a run are written once
-    and frozen (section 5, R9). Returns the paths written.
+    The frozen files of a run (section 5, R9): the hand rows plus what the scenario's events
+    generate (`library.builder.build`, step 4). Returns the paths written.
     """
     import pandas as pd
     from owlplanner.config.toml_io import save_toml
 
+    from . import builder
+
     validate(scenario)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    case = copy.deepcopy(scenario["case"])
+    case, tables, _provenance = builder.build(scenario)
     written = []
 
     sidecar = scenario.get("budget_file")
@@ -455,7 +513,6 @@ def export_case(scenario: dict, out_dir) -> list:
             case.setdefault("optimization_parameters", {})["budget_file"] = target.as_posix()
 
     workbook = out / HFP_XLSX
-    tables = scenario["hfp"]
     if tables:
         with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
             for sheet, table in tables.items():

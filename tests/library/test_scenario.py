@@ -1,4 +1,4 @@
-"""Scenario schema v1: canonical form, the inputs hash, validation, the change diff."""
+"""Scenario schema: canonical form, the inputs hash, validation, migrations, the change diff."""
 
 import pytest
 
@@ -67,10 +67,15 @@ class TestValidate:
     def test_minimal_is_valid(self):
         assert sc.validate(_minimal()) is not None
 
-    @pytest.mark.parametrize("version", [0, 2, None, "1"])
+    @pytest.mark.parametrize("version", [0, 3, None, "1"])
     def test_other_schema_versions_are_rejected(self, version):
         with pytest.raises(sc.ScenarioError, match="schema_version"):
             sc.validate(_minimal(schema_version=version))
+
+    def test_v2_events_are_validated(self):
+        doc = _minimal(schema_version=2, events=[{"id": "x", "kind": "tour", "person": "Joe"}])
+        with pytest.raises(sc.ScenarioError, match="kind"):
+            sc.validate(doc)
 
     def test_case_must_be_a_dict(self):
         with pytest.raises(sc.ScenarioError, match="case"):
@@ -97,9 +102,19 @@ class TestValidate:
 
 
 class TestMigrate:
-    def test_v1_passes_through(self):
+    def test_v1_becomes_v2_with_no_events(self):
         doc = _minimal()
-        assert sc.migrate(doc) is doc
+        out = sc.migrate(doc)
+        assert out["schema_version"] == 2
+        assert out["events"] == []
+        assert out["case"] == doc["case"] and out["hfp"] == doc["hfp"]
+        assert "schema_version" in doc and doc["schema_version"] == 1  # the input is untouched
+
+    def test_v2_keeps_its_events(self):
+        doc = _minimal(schema_version=2, events=[{"id": "w", "kind": "work", "person": "Joe"}])
+        out = sc.migrate(doc)
+        assert out["events"] == doc["events"]
+        assert sc.migrate(out)["events"] == doc["events"]  # idempotent
 
     def test_unknown_versions_raise(self):
         with pytest.raises(sc.ScenarioError, match="migration"):
@@ -107,6 +122,37 @@ class TestMigrate:
 
 
 class TestDiffSummaries:
+    def test_events_are_worded_per_event(self):
+        old = {"events": [{"id": "buy", "kind": "purchase", "name": "wp condo", "year": 2029,
+                           "financing": {"kind": "loan", "term": 30, "rate": 6.25}}]}
+        new = {"events": [{"id": "buy", "kind": "purchase", "name": "wp condo", "year": 2031,
+                           "financing": {"kind": "loan", "term": 30, "rate": 6.25}}]}
+        assert sc.diff_summaries(old, new) == [
+            "purchase: wp condo in 2029, 30-year loan at 6.25% -> wp condo in 2031, 30-year loan at 6.25%"
+        ]
+
+    def test_added_and_removed_events(self):
+        old = {"events": [{"id": "rent", "kind": "rent", "monthly": 4000, "start": 2026,
+                           "flat_until": 2027}]}
+        new = {"events": [{"id": "care", "kind": "care", "year": 2050, "amount": 110000}]}
+        assert sc.diff_summaries(old, new) == [
+            "care: 110000/yr from 2050 (added)",
+            "rent: 4000/mo from 2026, flat through 2027 (removed)",
+        ]
+
+    def test_anchors_are_worded(self):
+        assert sc._ref_words({"anchor": "age", "person": "Ari", "age": 86}) == "Ari at 86"
+        assert sc._ref_words({"anchor": "work_end", "person": "Noa", "after": True}) == \
+            "the year after Noa's work"
+        assert sc._ref_words({"anchor": "purchase"}) == "the purchase year"
+        assert sc._ref_words(2029) == "2029"
+
+    def test_the_materialized_noise_is_skipped(self):
+        # Events and provenance are not structural rows: their churn is worded or silent.
+        old = _minimal()
+        new = _minimal(events=[], provenance={"rows": {"Budget|rent": "x"}})
+        assert sc.diff_summaries(old, new) == []
+
     def test_changed_leaf(self):
         changes = sc.diff_summaries(
             {"case": {"objective": "maxSpending"}},

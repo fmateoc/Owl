@@ -5560,3 +5560,88 @@ Clean merge (`30073969`); in `src/` only the version string changed, and the for
 `version.py` is kept. `CHANGELOG.md` equals upstream's byte for byte. Full suite **3907 passed,
 1 skipped** (9:46, Linux; unchanged count). flake8/ruff: only upstream's known items (the
 `tests/stochastic` E301/E304s, the four B905s). `main` fast-forwarded afterwards (the user's call).
+
+## Run-library step 4: the scenario model and builder (2026-11-03, on `claude/run-library-step4`)
+
+Build step 4 of `fork-notes/run-library-design.md` (section 11): "Scenario model and builder
+from `make_cases.py`; scenario editor pages with provenance (markers first; section 6.3's
+overrides are a later increment of this step, S11)" -- check: "the builder reproduces
+`make_cases.py`'s 39 workbooks cell for cell". The user's call for this increment: core plus
+I1's anchors (events dated relative to other events). I12's care figures (NY-metro costs) are
+still unverified, so the care event keeps a plain start year here (an age anchor is available).
+
+**Schema v2** (`library/scenario.py`): `events` beside the hand rows (`case`, `hfp`).
+`validate` reads 1 and 2; `migrate` brings 1 to 2 with no events (every row stays a hand row,
+section 6.4); `canonicalize` migrates, so everything stored is current-version. `BUILDER_VERSION`
+is 2: older runs read "built with an older builder" instead of aliasing new output (R9) -- old
+v1 runs included, since a re-import now lands in v2. `diff_summaries` words events per event
+("purchase: wp condo in 2029, 30-year loan at 6.25% -> ... 2031 ...", section 7) and skips the
+provenance.
+
+**Builder** (`library/builder.py`): the five D6 event kinds (work, claim, rent, purchase, care)
+and I1's anchors -- `{"anchor": "age", "person": "Ari", "age": 86}`, `work_end` with `after`,
+`purchase`, and `{"anchor": "event", "id": ...}` with an offset -- plus an editable text form
+for them (`year_ref_text` / `parse_year_ref`: `age:Ari:86`, `after:Noa`, `purchase`,
+`event:care+2`) that the editor's inputs use. `build(scenario) -> (case, hfp, provenance)` is
+deterministic and without side effects (the inflation path through `config_to_plan` with
+`loadHFP=False` and throwaway log streams) and does the coupled edits of section 6.2 in one
+place: the move (or the school district) from the purchase, `aca_settings.aca_start_year` from
+the last full-time work year (1 + its end; employer coverage runs while either spouse works
+full time -- make_cases.py's rule), `social_security_ages` and `withSSAges` from the claims,
+the Fixed Assets row in purchase-year dollars (grown by the case's own `gamma_n`), the Debts
+row linked to it by name, the big-ticket outflow on `pay_on`'s sheet, the owner's Budget lines,
+the rent rows to the year before the purchase, and the care row. The rent rule ("$4,000/month,
+the same in 2027, then inflation") is `rent_rows`: one-year rows through `flat_until` (a flat
+nominal amount declines in real terms, which one constant-rate row cannot express) and a tail
+row named "rent from 2027" as make_cases.py named it. The row builders (`budget_row`,
+`rent_rows`, `owner_rows`) moved into the library and `make_cases.py` uses them now (section
+6.2: one implementation); `write_hfp` and `case` stay the suite's own (workbook writing and
+template filling are not builder logic).
+
+**Provenance (markers first, S11):** every generated row (Budget, Debts, Fixed Assets, by
+name), person-sheet cell (by event and year) and case field (by path) records its event.
+Generated rows are regenerated wholesale when the events change and hand rows are untouched;
+the name is the row's identity, so a hand row named like a generated one is replaced. The
+pages-save path drops the generated positions from the plan's tables (`casefiles._drop_generated`)
+so a deleted event leaves nothing stale behind. **Limit of this increment:** an edit to a
+generated value does not survive a regeneration (section 6.3's per-cell overrides with "back to
+computed" are the later increment).
+
+**make_cases.py and the acceptance:** the script shares the row builders and writes
+`scenarios.json`: the same cases as v2 scenarios (36 grid + 2 long-term-care + 7 work + 1
+earnings-test = 46), each with `expected_case` (the case its `set` builds) and the workbooks or
+hfp edits its events must produce. The care event anchors at age 86 (= `CARE_YEAR`) and the
+ltc-sell sale at the care event, against the script's explicit years. Before the refactor the
+39 workbooks were generated from `git show HEAD:` of the script and compared with the new
+ones: cell for cell identical (the JSONs byte-identical), so make_cases.py's output is
+unchanged. `fork-notes/synthetic/check_library_builder.py` (the step's check) runs make_cases.py
+fresh and compares the builder's output through `export_case`: **46/46 scenarios match (39
+workbooks cell for cell; case fields and hfp edits included)**. Sensitivity probed (one-off):
+a doubled price, a tampered expected district and a tampered wage cell are each caught while
+the untouched scenario matches. `check_library_roundtrip.py` stays **39/39** through the new
+export path (`export_case` builds first), and the step-2 and step-3 checks re-run green on the
+same code: `check_library_jobs.py` **5/5** (a real background solve included) and
+`check_library_compare.py` **9/9** (every figure unchanged).
+
+**Editor** (`ui/Scenario.py`, registered in `ui/main.py`'s Run Library; "Edit the scenario" on
+the Run page): the work and claiming events as tables, rent / home purchase / care as boxes
+with the anchor grammar in their year fields, and "What the events generate (marked)": the
+generated rows with their years and amounts, the person-sheet cells and the case fields, each
+with its event. The save box shows the computed change summary against the open run and saves
+as a new run whose parent is the one edited (D3). People, accounts, the goal and the
+assumptions (section 6.1's other rows) stay in the case pages ("Edit as new run").
+
+Tests: `tests/library/test_builder.py` (52: the row builders, event validation, every anchor,
+build's coupled edits and markers, regeneration, determinism, the text grammar round trip, and
+one run on the real inflation path), `test_scenario.py` +6 (v2 validate, the migration, the
+worded diffs), `test_casefiles.py` +1 (`_drop_generated`), `tests/ui/test_scenario_page.py`
+(5, AppTest: the page renders, the markers carry their events, a changed price moves the
+change summary and saves a child run, an unbuildable scenario says why). Full suite **3970
+passed, 2 skipped** (10:31, Windows; 3907 + 64 new - the POSIX-only tzset test, which skips
+here; the other skip is the unlicensed-MOSEK check). flake8/ruff clean but upstream's known
+items. Known limits, next increment: section 6.3's per-cell overrides; one
+purchase/rent/care event per scenario ("sale and re-buy later", D6); a mixed claim (one fixed
+age, one "let Owl choose") runs `withSSAges="optimize"` for both (Owl's switch is global);
+"Overwrite draft" (section 7) not built -- save-as only; and re-importing a v2 run's frozen
+files gives a hand-rows scenario (no events) with a different inputs hash (R9's flag is the
+answer for older runs).

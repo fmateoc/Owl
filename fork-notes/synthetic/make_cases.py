@@ -36,6 +36,14 @@ Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
                                 format: the earnings-test case), "grid" (also place, year,
                                 financing), "ltc", and "reference" (the grid entry equal to the baseline)
     work_variants.json          the same work variants for fork-notes/phase5/work_sweep.py
+    scenarios.json              the same cases as schema-v2 scenarios for the run library's builder
+                                (run-library-design.md section 6, step 4): events plus the hand
+                                rows, with "expected_case" (the case its `set` builds) and the
+                                workbooks or hfp edits each one must produce. The row builders
+                                (budget_row, rent_rows, owner_rows) live in owlplanner.library
+                                .builder, which the interface uses too; check_library_builder.py
+                                compares the builder's placement against the workbooks above,
+                                cell for cell.
 
 Amounts follow Owl's conventions: Budget lines in today's dollars; Fixed Assets value and basis in
 the purchase year's dollars, Debts amounts and big-ticket items in that year's nominal dollars,
@@ -64,6 +72,9 @@ TEMPLATE = ROOT / "fork-notes" / "phase0" / "Case_us.template.toml"
 sys.path.insert(0, str(ROOT / "src"))
 from owlplanner.budget import SHEET_COLUMNS  # noqa: E402
 from owlplanner.config import config_to_plan  # noqa: E402
+# The row builders live in the run library (library.builder, step 4): the suite and the
+# interface share one implementation (run-library-design.md section 6.2).
+from owlplanner.library.builder import budget_row, owner_rows, rent_rows  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("gen_hfp_us", ROOT / "fork-notes" / "phase0" / "gen_hfp_us.py")
 gen = importlib.util.module_from_spec(_spec)
@@ -152,7 +163,8 @@ ARM_YEARS = (2027,)            # a purchase now or soon: later rates are unknown
 HOME_RATE = 0.5                # real growth of the condo's value (stand-in)
 COMMISSION = 5.0               # selling cost at the plan end or at a sale (stand-in)
 RENT = 4000 * 12               # Yonkers rent (user, 2026-10-29): $4,000/month, the same in 2027, then
-#                                growing with inflation (rent_lines)
+#                                growing with inflation (rent_rows)
+RENT_FLAT_UNTIL = 2027         # rent is nominal-flat through this year (the user's 2027 rule)
 CARE = 110000                  # care per year from 2050 (age 86), today's $ (stand-in)
 CARE_YEAR = 2050
 # The rate-sensitivity groups (run_suite.py): the decisions scored against the reference in every
@@ -170,41 +182,28 @@ RATES = {
 OUT_OF_POCKET = 4500             # out-of-pocket medical per year, today's $ (stand-in)
 
 
-def line(name, typ, year, end, amount, rate=0.0, survivor=None, essential=False, **age):
-    row = {"active": True, "name": name, "type": typ, "year": year, "end": end, "amount": amount,
-           "rate": rate, "survivor": survivor, "essential": essential,
-           "clock": None, "start_age": None, "end_age": None, "index": None, "kind": None}
-    row.update(age)
-    return [row[c] for c in SHEET_COLUMNS]
-
-
 # Lines shared by every workbook: discretionary core, an age-clock travel line (Track B), essential
 # out-of-pocket medical, the template's gold-plan lines (for these birth months), charity.
 COMMON = [
-    line("core", "core", START, 0, 72000),
-    line("travel while able", "travel", None, None, 12000, clock="age", start_age=62, end_age=80, index="younger"),
-    line("out of pocket medical", "medical", START, 0, OUT_OF_POCKET, rate=2.0, survivor=60, essential=True),
-    *[line(gl[1], gl[2], gl[3], gl[4], gl[5], rate=gl[6], survivor=gl[7], essential=gl[8])
+    budget_row("core", "core", START, 0, 72000),
+    budget_row("travel while able", "travel", None, None, 12000, clock="age", start_age=62, end_age=80,
+               index="younger"),
+    budget_row("out of pocket medical", "medical", START, 0, OUT_OF_POCKET, rate=2.0, survivor=60, essential=True),
+    *[budget_row(gl[1], gl[2], gl[3], gl[4], gl[5], rate=gl[6], survivor=gl[7], essential=gl[8])
       for gl in gen.BUDGET_LINES[1:]],
-    line("charity", "charity", START, 0, 3000),
+    budget_row("charity", "charity", START, 0, 3000),
 ]
 
 
 def rent_lines(gamma, last_year=0):
     """Rent from START to last_year (0: the plan end): RENT in 2026, the same nominal amount in 2027
     (so RENT / gamma[1] in today's dollars), then that amount with inflation (real growth 0)."""
-    lines = [line("rent", "rent", START, START, RENT, essential=True)]
-    if last_year == 0 or last_year > START:
-        lines.append(line("rent from 2027", "rent", START + 1, last_year, round(RENT / float(gamma[1])),
-                          essential=True))
-    return lines
+    return rent_rows(RENT, START, RENT_FLAT_UNTIL, last_year, gamma, START)
 
 
 def owner_lines(place, first_year, last_year=0):
     c = PLACES[place]
-    return [line("property tax", "property tax", first_year, last_year, c["property tax"], rate=1.0, essential=True),
-            line("HOA", "maintenance", first_year, last_year, c["maintenance"], essential=True),
-            line("condo insurance", "insurance", first_year, last_year, c["insurance"], essential=True)]
+    return owner_rows(c["property tax"], c["maintenance"], c["insurance"], first_year, last_year)
 
 
 def write_hfp(path, budget, work=None, debts=(), assets=(), big_ticket=()):
@@ -284,27 +283,126 @@ def main():
     def nominal(amount, year):
         return round(amount * float(gamma[year - START]))
 
+    # --- Schema-v2 scenarios for the run library's builder (run-library-design.md section 6,
+    # step 4): the same cases as events, with the case fields the events generate (the move or
+    # district, the marketplace year, the claiming ages) left out of the hand rows.
+    # check_library_builder.py compares the builder's output with the workbooks, cell for cell.
+    def set_entry(path, value):
+        """One `path=value` entry of a scenario's `set` (the strings run_suite.py reads)."""
+        return f"{path}={value if isinstance(value, str) else json.dumps(value)}"
+
+    def apply_set(case, changes):
+        out = copy.deepcopy(case)
+        for path, value in changes:
+            node = out
+            keys = path.split(".")
+            for key in keys[:-1]:
+                node = node.setdefault(key, {})
+            node[keys[-1]] = copy.deepcopy(value)
+        return out
+
+    pay_fields = {"anticipated wages": "wages", "401k ctrb": "k401k", "employer ctrb": "employer"}
+
+    def work_event(eid, person, years, kind, months=None):
+        vals = (FULL if kind == "full" else PART)[person]
+        event = {"id": eid, "kind": "work", "person": person, "start": years[0], "end": years[-1],
+                 "level": "full" if kind == "full" else "part"}
+        for column, field in pay_fields.items():
+            if column in vals:
+                event[field] = vals[column]
+        if months is not None:
+            event["months_worked"] = months
+        return event
+
+    financing = {"mortgage": (30, MORTGAGE_RATE, "mortgage"), "arm5": (5, ARM_RATE, "ARM"),
+                 "arm30": (30, ARM_RATE, "ARM")}
+
+    def purchase_event(place, year, fin, sale=None):
+        c = PLACES[place]
+        event = {"id": "buy", "kind": "purchase", "name": f"{place} condo", "price": c["price"],
+                 "year": year, "pay_on": "Ari", "growth": HOME_RATE, "commission": COMMISSION,
+                 "place": {"state": "NY", "locality": c["locality"], "school_district": c["district"],
+                           "move": c["move"]},
+                 "costs": {"property tax": c["property tax"], "hoa": c["maintenance"],
+                           "insurance": c["insurance"]}}
+        if fin == "cash":
+            event["financing"] = {"kind": "cash", "closing": CLOSING}
+        else:
+            term, rate, suffix = financing[fin]
+            event["financing"] = {"kind": "loan", "term": term, "rate": rate, "down": DOWN,
+                                  "closing": CLOSING, "extra": MORTGAGE_EXTRA,
+                                  "name": f"{place} {suffix}"}
+        if sale is not None:
+            event["sale"] = sale
+        return event
+
+    def base_events(extra_work=(), claims=(), sale=None, purchase=REFERENCE):
+        """Both work in 2026 and stop; rent in Yonkers; a purchase (the baseline's by default)."""
+        place, year, fin = purchase
+        return [work_event("work-ari-2026", "Ari", [START, START], "full"),
+                work_event("work-noa-2026", "Noa", [START, START], "full"),
+                *extra_work,
+                {"id": "rent", "kind": "rent", "monthly": RENT // 12, "start": START,
+                 "flat_until": RENT_FLAT_UNTIL},
+                purchase_event(place, year, fin, sale=sale), *claims]
+
+    def record(name, kind, events, changes, workbooks=None, hfp_edits=None):
+        """One scenario entry: the events, the hand rows, and the case the `set` builds."""
+        hand_fields = ("household_financial_profile.HFP_file_name", "fixed_income.social_security_pia_amounts")
+        entry = {
+            "name": name,
+            "kind": kind,
+            "expected_case": apply_set(base, changes),
+            "scenario": {
+                "schema_version": 2,
+                "plan_year": START,
+                "events": events,
+                "case": apply_set(base, [c for c in changes if c[0] in hand_fields]),
+                "hfp": {"Budget": {"columns": list(SHEET_COLUMNS), "rows": [list(r) for r in COMMON]}},
+            },
+        }
+        if workbooks:
+            entry["workbooks"] = workbooks
+        if hfp_edits:
+            entry["hfp"] = hfp_edits
+        scenarios.append(entry)
+
+    scenarios = []
+
     # Work variants: edits of the baseline workbook (the format work_sweep.py reads), so each one
     # carries the baseline's purchase.
     work_json = []
     for name, what, work, aca, pias in WORK_VARIANTS:
         hfp_edits = {}
+        extra_events = []
         for person, (kind, years) in work.items():
             vals = (FULL if kind == "full" else PART)[person]
             hfp_edits[person] = [{"years": [years[0], years[-1]], **vals, "months worked": 12}]
+            extra_events.append(work_event(f"work-{person.lower()}-{kind}", person, years, kind, months=12))
+        changes = [("aca_settings.aca_start_year", aca),
+                   ("fixed_income.social_security_pia_amounts", pias)]
         work_json.append({"name": name, "what": what,
-                          "set": [f"aca_settings.aca_start_year={aca}",
-                                  f"fixed_income.social_security_pia_amounts={json.dumps(pias)}"],
+                          "set": [set_entry(p, v) for p, v in changes],
                           **({"hfp": hfp_edits} if hfp_edits else {})})
+        record(name, "work", base_events(extra_work=extra_events), changes, hfp_edits=hfp_edits or None)
 
     # The SSA earnings test: with these figures every variant claims at 70, so nobody is paid before
     # FRA while working. Force it: Noa (62 in December 2026) works part time in 2027-2028 above the
     # exempt amount, and both claim at 62.
     noa_part = next(w for w in work_json if w["name"] == "noa-part-2027-28")
+    claim_changes = [("solver_options.withSSAges", "fixed"),
+                     ("fixed_income.social_security_ages", [62.0, 62.0])]
     extra = [{"name": "noa-part-claim-62", "what": "Noa works part time 2027-2028, both claim at 62 (earnings test)",
-              "set": [*noa_part["set"], "solver_options.withSSAges=fixed",
-                      "fixed_income.social_security_ages=[62.0, 62.0]"],
+              "set": [*noa_part["set"], *(set_entry(p, v) for p, v in claim_changes)],
               "hfp": noa_part["hfp"]}]
+    record("noa-part-claim-62", "extra",
+           base_events(extra_work=[work_event("work-noa-part", "Noa", [2027, 2028], "part", months=12)],
+                       claims=[{"id": "claim-ari", "kind": "claim", "person": "Ari", "age": 62.0},
+                               {"id": "claim-noa", "kind": "claim", "person": "Noa", "age": 62.0}]),
+           [("aca_settings.aca_start_year", 2027),
+            ("fixed_income.social_security_pia_amounts", [3150, 2520]),
+            *claim_changes],
+           hfp_edits=noa_part["hfp"])
 
     grid = []
     for place, c in PLACES.items():
@@ -313,10 +411,10 @@ def main():
             asset = [True, f"{place} condo", "residence", year, price, price, HOME_RATE, 0, COMMISSION]
             budget = COMMON + rent_lines(gamma, year - 1) + owner_lines(place, year)
             if c["move"]:
-                sets = ["basic_info.moves=" + json.dumps(
-                    [{"year": year, "state": "NY", "locality": c["locality"], "school_district": c["district"]}])]
+                set_changes = [("basic_info.moves", [{"year": year, "state": "NY", "locality": c["locality"],
+                                                      "school_district": c["district"]}])]
             else:
-                sets = [f"basic_info.school_district={c['district']}"]
+                set_changes = [("basic_info.school_district", c["district"])]
             for fin in ("cash", "mortgage"):
                 hfp = f"HFP_{SLUG}_condo_{place}_{year}_{fin}.xlsx"
                 if fin == "cash":
@@ -330,9 +428,12 @@ def main():
                               big_ticket=[("Ari", year, -round(price * (DOWN + CLOSING) + loan * MORTGAGE_EXTRA))])
                 if (place, year, fin) == REFERENCE:
                     shutil.copyfile(out / hfp, out / f"HFP_{SLUG}.xlsx")
+                changes = [("household_financial_profile.HFP_file_name", hfp), *set_changes]
                 grid.append({"name": f"{place}-{year}-{fin}", "place": place, "year": year, "financing": fin,
                              "what": f"buy in {c['what']} in {year}, {fin}",
-                             "set": [f"household_financial_profile.HFP_file_name={hfp}", *sets]})
+                             "set": [set_entry(p, v) for p, v in changes]})
+                record(f"{place}-{year}-{fin}", "grid", base_events(purchase=(place, year, fin)), changes,
+                       workbooks=[hfp] + ([f"HFP_{SLUG}.xlsx"] if (place, year, fin) == REFERENCE else []))
             if year in ARM_YEARS:
                 # The 5/6 ARM (user, 2026-10-29: about 5.9% for a purchase now or soon), two ways out of it.
                 # Owl's Debts rows are fixed-rate loans paid evenly over their term, and a loan ends early only
@@ -347,13 +448,16 @@ def main():
                     write_hfp(out / hfp, budget, assets=[asset],
                               debts=[[True, f"{place} ARM", "mortgage", year, term, loan, ARM_RATE, f"{place} condo"]],
                               big_ticket=[("Ari", year, -round(price * (DOWN + CLOSING) + loan * MORTGAGE_EXTRA))])
+                    changes = [("household_financial_profile.HFP_file_name", hfp), *set_changes]
                     grid.append({"name": f"{place}-{year}-{fin}", "place": place, "year": year, "financing": fin,
                                  "what": f"buy in {c['what']} in {year}, {what}",
-                                 "set": [f"household_financial_profile.HFP_file_name={hfp}", *sets]})
+                                 "set": [set_entry(p, v) for p, v in changes]})
+                    record(f"{place}-{year}-{fin}", "grid", base_events(purchase=(place, year, fin)), changes,
+                           workbooks=[hfp])
 
     # Long-term care: the Yonkers condo bought in 2027 with cash, care from CARE_YEAR to the end.
     price = nominal(PLACES["yonkers"]["price"], 2027)
-    care = [line("care", "care", CARE_YEAR, 0, CARE, essential=True)]
+    care = [budget_row("care", "care", CARE_YEAR, 0, CARE, essential=True)]
     tix = [("Ari", 2027, -round(price * (1 + CLOSING)))]
     keep = [True, "yonkers condo", "residence", 2027, price, price, HOME_RATE, 0, COMMISSION]
     sell = [True, "yonkers condo", "residence", 2027, price, price, HOME_RATE, CARE_YEAR, COMMISSION]
@@ -362,12 +466,22 @@ def main():
     write_hfp(out / f"HFP_{SLUG}_ltc_sell.xlsx",
               COMMON + rent_lines(gamma, 2026) + owner_lines("yonkers", 2027, CARE_YEAR - 1) + care,
               assets=[sell], big_ticket=tix)
-    district = f"basic_info.school_district={PLACES['yonkers']['district']}"
-    ltc = [{"name": "ltc-keep", "what": f"Yonkers condo (2027, cash) kept; care {CARE:,}/yr from {CARE_YEAR} "
-                                        "paid from savings",
-            "set": [f"household_financial_profile.HFP_file_name=HFP_{SLUG}_ltc_keep.xlsx", district]},
-           {"name": "ltc-sell", "what": f"the same, the condo sold in {CARE_YEAR} to pay for the care",
-            "set": [f"household_financial_profile.HFP_file_name=HFP_{SLUG}_ltc_sell.xlsx", district]}]
+    # The scenario's care event anchors to age 86 (CARE_YEAR) and the sale to the care event (I1).
+    care_event = {"id": "care", "kind": "care", "year": {"anchor": "age", "person": "Ari", "age": 86},
+                  "amount": CARE}
+    ltc = []
+    for name, what, hfp, sale in (
+        ("ltc-keep", f"Yonkers condo (2027, cash) kept; care {CARE:,}/yr from {CARE_YEAR} paid from savings",
+         f"HFP_{SLUG}_ltc_keep.xlsx", None),
+        ("ltc-sell", f"the same, the condo sold in {CARE_YEAR} to pay for the care",
+         f"HFP_{SLUG}_ltc_sell.xlsx", {"anchor": "event", "id": "care"}),
+    ):
+        changes = [("household_financial_profile.HFP_file_name", hfp),
+                   ("basic_info.school_district", PLACES["yonkers"]["district"])]
+        ltc.append({"name": name, "what": what, "set": [set_entry(p, v) for p, v in changes]})
+        record(name, "ltc",
+               base_events(sale=sale, purchase=("yonkers", 2027, "cash")) + [care_event],
+               changes, workbooks=[hfp])
 
     with open(out / "condo_grid.json", "w", encoding="utf-8") as f:
         json.dump({"description": "Condo purchase grid and long-term-care pair (make_cases.py); invented costs.",
@@ -382,8 +496,16 @@ def main():
                    "variants": [{k: w[k] for k in ("name", "set", "hfp") if k in w} for w in work_json]},
                   f, indent=1)
         f.write("\n")
+    with open(out / "scenarios.json", "w", encoding="utf-8") as f:
+        json.dump({"description": ("The same cases as schema-v2 scenarios for the run library's builder "
+                                   "(run-library-design.md section 6, step 4); each entry carries the "
+                                   "case its set builds (\"expected_case\") and the workbooks or hfp "
+                                   "edits its events must produce. check_library_builder.py compares "
+                                   "the builder's output with the workbooks, cell for cell."),
+                   "scenarios": scenarios}, f, indent=1)
+        f.write("\n")
     print(f"Wrote the synthetic household to {out}: {len(list(out.glob('HFP_*.xlsx')))} workbooks, "
-          f"{len(grid)} condo variants, {len(work_json)} work variants.")
+          f"{len(grid)} condo variants, {len(work_json)} work variants, {len(scenarios)} scenarios.")
 
 
 if __name__ == "__main__":

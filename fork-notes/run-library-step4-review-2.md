@@ -59,3 +59,30 @@ installed in this container).
   unknown keys through `_assemble`.
 - X5: escape the offset (e.g. `event:<id>@+2`), or match the id against the scenario's ids first.
 - X6, X7: small code fixes; X7 needs a rule (keep the hand mode for a person with no claim event).
+
+## Disposition of X1-X9 (2026-11-03, same day; folded on `claude/run-library-step4`)
+
+The user's call: fix all nine on the step-4 branch. Every new regression test was run against
+the pre-fix code (`7b4565cf`) and fails there, except those that pin behavior that already
+held (the seeded-rates build, two rows of the X7 table, a non-default value kept).
+
+| # | Disposition |
+|---|---|
+| X1 | **Fixed.** `scenario_from_ui` carries the base's events into the saved scenario. Tests: `test_casefiles.py::TestPagesSaveWithEvents` -- the pages' own path (export, `config_to_plan`, `config_to_ui`, `scenario_from_ui(base=...)`) on jack+jill with work, rent, a loan purchase and a claim: the events stay and an unedited save hashes as its base. Found while fixing: reverting a generated field left the section the build had created (`aca_settings = {}` on a case with none); `_drop_generated_case` now removes such a section. |
+| X2 | **Fixed.** `_drop_generated(..., base_hfp)` gives a generated cell back its hand value (0 where the base had none) and puts a hand row the events replaced by name back where the base table had it. Tests: deleting the work event after a save brings Jack's 2026 hand wages back; a hand `property tax` row the owner lines replace comes back in place and the save hashes as its base. The step-4 probe (`p_flow.py`): diff 0, same hash, Ari's 2026 wages 168,000 after the delete. |
+| X3 | **Fixed (the reviewer's first option, refuse).** `_gamma` raises a `ScenarioError` when the case's rate model is not deterministic (`rateModel.deterministic`, the model's own flag) and the case does not fix the seed (`reproducible_rates`): the message names both ways out. Only scenarios with a purchase or a rent call `_gamma`. Tests: histochastic is refused; with `reproducible_rates = true, rate_seed = 1234` two builds give one price. |
+| X4 | **Fixed.** The builder's defaults are constants (`builder.FINANCING_DEFAULTS`, `PLACE_DEFAULTS`) read by `build`, by the canonical form (a key at its default is the key left out, so the page's written-out terms, place and zero costs dedupe) and by the page (an existing event's missing key shows the builder's default; a new purchase still suggests 3% / 2%, saved as typed). The page carries the keys no widget edits (`type`, `basis`, ...). The change summary words a purchase's price and sale, a work span's wages, a rent's and a care span's end, and when the two sides' words are equal it names the fields that moved. Tests: `test_scenario.py` (words, canonical defaults) and the page (`TestSecondReview`: an unedited save of a bare cash purchase is "Identical to"; a price edit keeps `type`/`basis` and adds no closing cost). `BUILDER_VERSION` 3 (with X7, the generated output and the canonical form change). |
+| X5 | **Fixed.** `parse_year_ref(..., ids=)`: a known id wins, and the trailing `+<n>` / `-<n>` is an offset only when the rest is a known id; the page passes the scenario's ids. Without ids the old reading stays. Test: `event:work-ari-2026` round-trips; `-1` and `+2` after it are offsets. |
+| X6 | **Fixed.** `validate_events` refuses an `event:` anchor to an unknown id or to a claim ("is a claim event, which has no year"); "that event's year" is chosen by the target's kind (`EVENT_YEAR_FIELD`: work end, rent start, purchase/care year). Tests for both. The unknown-id anchor's message changed (an existing test's match updated). |
+| X7 | **Fixed (rule: a person with no claim event keeps the hand case's choice, as they keep its age).** `_searched_names` reads the hand `withSSAges` the way `plan._parseSSAgesOption` does. Test table: hand optimize + Ari fixed -> `["Noa"]`; hand fixed + Ari fixed -> fixed; hand "Noa" + Ari free -> optimize; hand `["Ari"]` + Noa fixed -> `["Ari"]`; both claimed -> the events decide. The U4 test now sets its hand case to fixed (its fixture searched both, which now keeps Noa searched). |
+| X8 | **Fixed.** A new purchase's year defaults to the plan year + 1, a new care span to the first person at 86 (the I12 figures are still unverified, so only the year default moved), and the rent's years follow the plan year. The page diffs against the run's document in the current schema, and a schema-1 run gets a caption saying a save stores a schema-2 copy as a new run. Tests: the "Buy a home" box opens buildable with year 2027 (frozen date); a schema-1 run shows "none yet" and the caption. |
+| X9 | **Fixed.** The E128 in `test_builder.py`. |
+
+Not changed, noted: a scenario whose hand rows were written as JSON rather than read from a
+workbook (`scenarios.json`'s documents) is normalized by its first pages-save (`None` cells
+become `''` or 0, the five rows before the plan appear) and so does not hash as its base. The
+library's own entry paths (import, the pages, the Scenario page on top of either) store hand
+rows in the read-back form, and those are identical (tests above). The section 5 round-trip
+question of the first review still stands for the user.
+
+Re-run after the fixes: see PROGRESS.md "Run-library step 4: second review folded".

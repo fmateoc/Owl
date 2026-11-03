@@ -5728,3 +5728,45 @@ flake8 on the step's files: one E128 (`tests/library/test_builder.py:350`, X9).
   default and a `schema_version: 1 -> 2` change shown for every pre-step-4 run; the E128.
 
 Not fixed here (the user's call which to fold, and how for X3).
+
+## Run-library step 4: second review folded, X1-X9 (2026-11-03)
+
+The user's call: fix X1-X9 on the step-4 branch. Disposition table in
+`fork-notes/run-library-step4-review-2.md`; the fixes, in short:
+
+- **X1** `scenario_from_ui` carries the base's events (they were dropped with everything they
+  generate); reverting a generated field also removes a section the build had created
+  (`aca_settings = {}` on a case with none -- found by the new end-to-end test).
+- **X2** `_drop_generated(..., base_hfp)` puts back the hand cells and the same-name hand rows
+  the events replaced, at their place.
+- **X3** `_gamma` refuses a non-deterministic rate model without a fixed seed (the model's own
+  `deterministic` flag and `reproducible_rates`), only where a purchase or rent needs gamma.
+- **X4** `builder.FINANCING_DEFAULTS` / `PLACE_DEFAULTS`, read by `build`, the canonical form
+  (keys at their default dropped, zero owner costs too) and the page; the page keeps the keys
+  it does not edit; the change summary words the price, sale, wages and ends, and names the
+  changed fields when both sides' words are equal.
+- **X5** `parse_year_ref(..., ids=)`; **X6** `event:` anchors to an unknown id or a claim are
+  refused, the year field is chosen by the target's kind (`EVENT_YEAR_FIELD`); **X7** a person
+  with no claim event keeps the hand `withSSAges` choice (`_searched_names`); **X8** a new
+  purchase defaults to the plan year + 1, care to the first person at 86, rent to the plan
+  year, and a schema-1 run shows no phantom change but a caption; **X9** the E128.
+- `BUILDER_VERSION` 3 (X7 and the canonical form change the generated output and the hash).
+
+Tests: 23 new (`test_builder.py` TestSecondReviewFixes 10, `test_scenario.py` 5,
+`test_casefiles.py` TestPagesSaveWithEvents 4, `test_scenario_page.py` TestSecondReview 4;
+two existing tests adjusted: the unknown-id anchor's message, the U4 test's hand case set to
+fixed). Run against the pre-fix code (`7b4565cf`), 20 fail there; the rest pin behavior that
+already held. Checks: `check_library_builder.py` **46/46**, `check_library_roundtrip.py`
+**39/39**; the review's pages-save probe on the imported synthetic baseline: diff 0, same hash,
+the 168,000 hand wages back after deleting the work event. Full suite (Linux, -n 4): **4004
+passed, 1 skipped, 1 failed** (9:59): the failure is step 2's
+`test_jobs.py::TestTicker::test_a_waiting_job_is_dispatched_with_no_page_ticking`, which passes
+alone, passed 6/6 under a parallel library-suite load, and has a race in the test itself: its
+fake `_spawn` marks the job running with no PID, and any tick before `stop_ticker()` runs
+`adopt()`, which interrupts it (`pid_alive(None)`). Not fixed here (outside X1-X9); the library
+and UI tests re-run green (529 passed). flake8/ruff: only upstream's known items.
+
+Not changed: a scenario whose hand rows were written as JSON (`scenarios.json`'s documents)
+rather than read from a workbook is normalized by its first pages-save, so it does not hash as
+its base; the library's own entry paths store read-back rows and are identical. The first
+review's section 5 round-trip question still stands for the user.

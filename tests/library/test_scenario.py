@@ -187,3 +187,54 @@ class TestDiffSummaries:
 
     def test_equal_documents_have_no_changes(self):
         assert sc.diff_summaries({"a": [1, 2.5], "b": {"c": "x"}}, {"b": {"c": "x"}, "a": [1, 2.5]}) == []
+
+
+class TestSecondReviewWords:
+    """Review X4: the change summary shows the purchase's price, and names the fields that
+    moved when the words alone do not show the change."""
+
+    def test_the_price_is_worded(self):
+        old = {"events": [{"id": "buy", "kind": "purchase", "name": "condo", "price": 700000, "year": 2027}]}
+        new = {"events": [{"id": "buy", "kind": "purchase", "name": "condo", "price": 800000, "year": 2027}]}
+        assert sc.diff_summaries(old, new) == [
+            "purchase: condo at 700000 (today's $) in 2027, cash -> condo at 800000 (today's $) in 2027, cash"]
+
+    def test_a_change_the_words_do_not_show_names_its_field(self):
+        old = {"events": [{"id": "buy", "kind": "purchase", "name": "condo", "year": 2027,
+                           "financing": {"kind": "cash"}}]}
+        new = {"events": [{"id": "buy", "kind": "purchase", "name": "condo", "year": 2027,
+                           "financing": {"kind": "cash", "closing": 0.03}}]}
+        [line] = sc.diff_summaries(old, new)
+        assert line.startswith("purchase: condo in 2027, cash -> condo in 2027, cash (")
+        assert "financing.closing" in line and "0.03" in line
+
+
+class TestCanonicalPurchaseDefaults:
+    """Review X4: a purchase key at the builder's default and the key left out are one
+    document (the page writes the financing terms, the place and the costs every time)."""
+
+    @staticmethod
+    def _doc(purchase):
+        from owlplanner.library import canonicalize
+
+        base = {"id": "buy", "kind": "purchase", "name": "condo", "price": 700000, "year": 2027}
+        return canonicalize({"schema_version": 2, "plan_year": 2026,
+                             "case": {"basic_info": {"names": ["Ari"]}}, "hfp": {},
+                             "events": [dict(base, **purchase)]})["events"]
+
+    def test_defaults_written_out_equal_defaults_left_out(self):
+        bare = self._doc({"financing": {"kind": "cash"}})
+        full = self._doc({"financing": {"kind": "cash", "closing": 0.0},
+                          "place": {"state": "NY", "locality": "", "school_district": "", "move": False},
+                          "costs": {"property tax": 0.0, "hoa": 0, "insurance": 0.0}})
+        assert full == bare
+
+    def test_a_loan_s_default_terms_drop(self):
+        assert (self._doc({"financing": {"kind": "loan", "term": 30, "rate": 6.25, "down": 0.2,
+                                         "closing": 0.0, "extra": 0.0}})
+                == self._doc({"financing": {"kind": "loan", "term": 30, "rate": 6.25}}))
+
+    def test_a_value_off_its_default_stays(self):
+        [event] = self._doc({"financing": {"kind": "cash", "closing": 0.03}, "costs": {"hoa": 9600}})
+        assert event["financing"] == {"kind": "cash", "closing": 0.03}
+        assert event["costs"] == {"hoa": 9600}

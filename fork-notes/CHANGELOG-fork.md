@@ -22,12 +22,21 @@ turns them into the coupled edits of section 6.2 in one place (deterministic, no
   hand rows untouched. Per-cell overrides are not built yet: an edit to a generated value does
   not survive a regeneration.
 - **Schema v2** migrates v1 (every row stays a hand row); `BUILDER_VERSION` is 2, so runs of
-  older builders are flagged rather than aliasing new output (R9).
+  older builders are flagged rather than aliasing new output (R9); 3 after the second review.
 - `make_cases.py` shares the builder's row builders and writes `scenarios.json` (46 scenarios
   with the case each one's `set` builds); `check_library_builder.py` shows the builder
   reproduces its **39 workbooks cell for cell** (case fields and hfp edits included).
 - New `ui/Scenario.py` in the Run Library section (the events, the markers, the computed
   change summary, save-as-a-child-run); "Edit the scenario" on the Run page.
+- Second review (`fork-notes/run-library-step4-review-2.md`, X1-X9), folded the same day:
+  a save from the case pages keeps the run's events and puts back the hand values they
+  replaced (X1, X2); a case whose rates draw a new inflation path at every build is refused
+  where a purchase or rent needs that path (X3); the Scenario page uses the builder's
+  defaults, keeps the keys it does not edit, and its change summary shows the price and any
+  field the words do not (X4); `event:<id>` round-trips ids ending in `-<digits>` (X5); an
+  anchor to a claim is refused and `event:rent` reads the rent's start (X6); a person with no
+  claim event keeps the hand `withSSAges` choice (X7); a new purchase defaults to the year
+  after the plan year, and a schema-1 run shows no phantom change (X8). `BUILDER_VERSION` is 3.
 
 ### Run library, build step 2: the `as_of` input dropped (2026-11-02)
 

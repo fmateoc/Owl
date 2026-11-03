@@ -19,8 +19,9 @@ time and frozen (section 5).
 
 What the events do not cover -- balances, PIAs, the goal, the assumptions and the Owl settings
 (section 6.1's People, Accounts, Goal and Advanced rows) -- stays in the case dictionary and is
-edited in the existing pages ("Edit as new run" on the Run page; saving there keeps the events'
-generated values, section 6.3).
+edited in the existing pages ("Edit as new run" on the Run page). Saving there keeps the run's
+events; what they generate is regenerated from them, and the hand values they replaced are
+kept (section 6.3; review X1/X2).
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -39,13 +40,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
+from datetime import date
 
 import pandas as pd
 import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import ScenarioError, canonicalize, diff_summaries
+from owlplanner.library import SCHEMA_VERSION, ScenarioError, canonicalize, diff_summaries
 from owlplanner.library import builder
 
 st.markdown("# :material/edit_note: Scenario")
@@ -83,6 +85,11 @@ st.caption(
 )
 
 events = scenario.get("events") or []
+names = list((scenario.get("case", {}).get("basic_info") or {}).get("names") or [])
+plan_year = scenario.get("plan_year") or date.today().year
+# Defaults for an event the run does not have yet: years from the plan year, not the
+# household's (review X8). An event the run has shows its own values, and a key it leaves out
+# shows the builder's default for it, so an unedited save changes nothing (review X4).
 work_rows = [{
     "id": e.get("id"), "person": e.get("person"), "level": e.get("level", "full"),
     "start": e.get("start"), "end": e.get("end"),
@@ -123,9 +130,10 @@ with st.expander("Rent", expanded=rent is not None):
     rent_id = r1.text_input("Event id", value=(rent or {}).get("id", "rent"), key=f"scn_rent_id_{key}")
     rent_monthly = r2.number_input("Monthly rent ($)", value=float((rent or {}).get("monthly", 4000)),
                                    key=f"scn_rent_monthly_{key}")
-    rent_start = r3.text_input("From", value=builder.year_ref_text((rent or {}).get("start", 2026)),
+    rent_start = r3.text_input("From", value=builder.year_ref_text((rent or {}).get("start", plan_year)),
                                key=f"scn_rent_start_{key}")
-    rent_flat = r4.text_input("Flat through", value=builder.year_ref_text((rent or {}).get("flat_until", 2027)),
+    rent_flat = r4.text_input("Flat through",
+                              value=builder.year_ref_text((rent or {}).get("flat_until", plan_year + 1)),
                               key=f"scn_rent_flat_{key}")
     rent_end = st.text_input(
         "To (blank: the year before the purchase, or the plan end)",
@@ -135,13 +143,19 @@ with st.expander("Rent", expanded=rent is not None):
 with st.expander("Home purchase", expanded=buy is not None):
     buy_on = st.checkbox("Buy a home", value=buy is not None, key=f"scn_buy_on_{key}")
     financing = (buy or {}).get("financing") or {"kind": "cash"}
+    if buy is not None:  # the event's own terms, the builder's defaults for what it leaves out
+        terms = {**builder.FINANCING_DEFAULTS["loan"], **builder.FINANCING_DEFAULTS["cash"], **financing}
+    else:  # suggestions for a new purchase, shown in the fields and saved as typed
+        terms = {"down": 0.20, "closing": 0.03, "extra": 0.02}
     b1, b2, b3, b4 = st.columns(4)
     buy_id = b1.text_input("Event id", value=(buy or {}).get("id", "buy"), key=f"scn_buy_id_{key}")
     buy_name = b2.text_input("Home (the rows' name)", value=(buy or {}).get("name", "home"),
                              key=f"scn_buy_name_{key}")
     buy_price = b3.number_input("Price (today's $)", value=float((buy or {}).get("price", 700000)),
                                 key=f"scn_buy_price_{key}")
-    buy_year = b4.text_input("Year", value=builder.year_ref_text((buy or {}).get("year") or {"anchor": "purchase"}),
+    # A new purchase defaults to the year after the plan year (review X8: "purchase" anchored
+    # the purchase to itself).
+    buy_year = b4.text_input("Year", value=builder.year_ref_text((buy or {}).get("year") or plan_year + 1),
                              key=f"scn_buy_year_{key}")
     s1, s2, s3, s4 = st.columns(4)
     buy_sale = s1.text_input("Sold (blank: kept)",
@@ -159,19 +173,19 @@ with st.expander("Home purchase", expanded=buy is not None):
                                key=f"scn_buy_term_{key}")
     buy_rate = f2.number_input("Rate (%)", value=float(financing.get("rate", 6.25)),
                                key=f"scn_buy_rate_{key}")
-    buy_down = f3.number_input("Down payment (share)", value=float(financing.get("down", 0.20)),
+    buy_down = f3.number_input("Down payment (share)", value=float(terms["down"]),
                                key=f"scn_buy_down_{key}")
-    buy_closing = f4.number_input("Closing costs (share)", value=float(financing.get("closing", 0.03)),
+    buy_closing = f4.number_input("Closing costs (share)", value=float(terms["closing"]),
                                   key=f"scn_buy_closing_{key}")
-    buy_extra = f5.number_input("Loan closing (share)", value=float(financing.get("extra", 0.02)),
+    buy_extra = f5.number_input("Loan closing (share)", value=float(terms["extra"]),
                                 key=f"scn_buy_extra_{key}")
-    place = (buy or {}).get("place") or {}
+    place = {**builder.PLACE_DEFAULTS, **((buy or {}).get("place") or {})}
     costs = (buy or {}).get("costs") or {}
     p1, p2, p3, p4 = st.columns(4)
-    place_state = p1.text_input("State", value=place.get("state", "NY"), key=f"scn_place_state_{key}")
-    place_locality = p2.text_input("Locality", value=place.get("locality", ""),
+    place_state = p1.text_input("State", value=place["state"], key=f"scn_place_state_{key}")
+    place_locality = p2.text_input("Locality", value=place["locality"],
                                    key=f"scn_place_locality_{key}")
-    place_district = p3.text_input("School district", value=place.get("school_district", ""),
+    place_district = p3.text_input("School district", value=place["school_district"],
                                    key=f"scn_place_district_{key}")
     place_move = p4.checkbox("Move there", value=bool(place.get("move")), key=f"scn_place_move_{key}")
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -194,7 +208,8 @@ with st.expander("Care", expanded=care is not None):
                               key=f"scn_care_name_{key}")
     care_amount = c3.number_input("Cost ($/yr, today's $)", value=float((care or {}).get("amount", 110000)),
                                   key=f"scn_care_amount_{key}")
-    care_year = c4.text_input("From", value=builder.year_ref_text((care or {}).get("year") or {"anchor": "purchase"}),
+    _care_default = {"anchor": "age", "person": names[0], "age": 86} if names else plan_year
+    care_year = c4.text_input("From", value=builder.year_ref_text((care or {}).get("year") or _care_default),
                               key=f"scn_care_year_{key}")
     care_end = st.text_input("To (blank: the plan end)",
                              value=("" if not care or "end" not in care else builder.year_ref_text(care["end"])),
@@ -207,12 +222,33 @@ def _present(value):
     return value is not None and not (isinstance(value, float) and pd.isna(value)) and value != ""
 
 
+# The keys each box edits; any other key of the run's event (a purchase's `type` or `basis`,
+# say) is carried through a save unchanged (review X4: they were dropped).
+_MANAGED = {
+    "work": {"id", "kind", "person", "level", "start", "end", "wages", "k401k", "employer", "ira",
+             "months_worked"},
+    "rent": {"id", "kind", "monthly", "start", "flat_until", "end"},
+    "purchase": {"id", "kind", "name", "price", "year", "pay_on", "growth", "commission", "place",
+                 "costs", "sale", "financing"},
+    "care": {"id", "kind", "name", "amount", "year", "end", "essential"},
+}
+
+
+def _kept(event, kind):
+    """The run's event's keys that no widget edits."""
+    return {k: copy.deepcopy(v) for k, v in (event or {}).items() if k not in _MANAGED[kind]}
+
+
+_work_by_id = {e.get("id"): e for e in events if e.get("kind") == "work"}
+
+
 def _work_events(rows):
     out = []
     for row in rows:
         if not any(_present(v) for v in row.values()):
             continue  # the empty row the editor adds
-        event = {"id": row["id"], "kind": "work", "person": row["person"],
+        event = {**_kept(_work_by_id.get(row["id"]), "work"),
+                 "id": row["id"], "kind": "work", "person": row["person"],
                  "level": row["level"] or "full",
                  "start": int(row["start"]), "end": int(row["end"])}  # a table cell is a float
         for column, field in (("wages", "wages"), ("401k", "k401k"), ("employer", "employer"),
@@ -234,22 +270,32 @@ def _claim_events(rows):
     return out
 
 
-def _year(text, where):
-    return builder.parse_year_ref(text, where) if _present(text) else None
+def _year_ref(text, where, ids=()):
+    # The scenario's ids settle `event:<id>-<n>` for an id that ends in -<digits> (review X5).
+    return builder.parse_year_ref(text, where, ids=ids) if _present(text) else None
 
 
 def _assemble():
     """The events list from the widgets above (ScenarioError with the field that is wrong)."""
     events = _work_events(work_df.to_dict("records"))
     events += _claim_events(claim_df.to_dict("records"))
+    ids = [e["id"] for e in events]
+    ids += [i.strip() or d for on, i, d in ((rent_on, rent_id, "rent"), (buy_on, buy_id, "buy"),
+                                            (care_on, care_id, "care")) if on]
+
+    def _year(text, where):
+        return _year_ref(text, where, ids)
+
     if rent_on:
-        event = {"id": rent_id.strip() or "rent", "kind": "rent", "monthly": rent_monthly,
+        event = {**_kept(rent, "rent"),
+                 "id": rent_id.strip() or "rent", "kind": "rent", "monthly": rent_monthly,
                  "start": _year(rent_start, "rent.from"), "flat_until": _year(rent_flat, "rent.flat through")}
         if _present(rent_end):
             event["end"] = _year(rent_end, "rent.to")
         events.append(event)
     if buy_on:
-        event = {"id": buy_id.strip() or "buy", "kind": "purchase", "name": buy_name.strip() or "home",
+        event = {**_kept(buy, "purchase"),
+                 "id": buy_id.strip() or "buy", "kind": "purchase", "name": buy_name.strip() or "home",
                  "price": buy_price, "year": _year(buy_year, "purchase.year"),
                  "pay_on": buy_pay_on.strip() or None,
                  "growth": buy_growth, "commission": buy_commission,
@@ -267,7 +313,8 @@ def _assemble():
             event["financing"] = {"kind": "cash", "closing": buy_closing}
         events.append(event)
     if care_on:
-        event = {"id": care_id.strip() or "care", "kind": "care", "name": care_name.strip() or "care",
+        event = {**_kept(care, "care"),
+                 "id": care_id.strip() or "care", "kind": "care", "name": care_name.strip() or "care",
                  "amount": care_amount, "year": _year(care_year, "care.from"),
                  "essential": bool(care_essential)}
         if _present(care_end):
@@ -343,8 +390,18 @@ if built is not None:
 # -- save ---------------------------------------------------------------
 
 st.markdown("#### Save")
-changes = diff_summaries(scenario, edited) if built is not None else []
+# Against the run's own document in the current schema: a run saved before events existed
+# (schema 1) is migrated, which is not a change of its inputs (review X8).
+try:
+    current = canonicalize(scenario)
+except ScenarioError:
+    current = scenario
+changes = diff_summaries(current, edited) if built is not None else []
 st.caption("Changes against this run: " + ("; ".join(changes) if changes else "none yet"))
+if scenario.get("schema_version") != SCHEMA_VERSION:
+    st.caption(f"This run was saved in scenario schema {scenario.get('schema_version')} (before events); "
+               f"saving it here stores a schema-{SCHEMA_VERSION} copy as a new run, even with no edit "
+               "(its generated files are built by the current builder, section 5 R9).")
 st.caption(
     "Saving makes a new run whose parent is this one (a run is immutable, D3); its Case.toml "
     "and HFP.xlsx are generated from these events and frozen (section 5). Balances, PIAs, the "

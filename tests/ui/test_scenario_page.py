@@ -129,3 +129,77 @@ class TestScenarioPage:
         at.run()
         text = _text(at)
         assert "Not buildable yet" in text or "Cannot build" in text
+
+
+def _library_with(tmp_path, monkeypatch, events, *, schema_version=None):
+    root = tmp_path / "library"
+    monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+    monkeypatch.syspath_prepend(str(UI_DIR))
+    lib = Library.open(root)
+    scenario = dict(import_case(BILL), events=copy.deepcopy(events))
+    run = lib.save_run(name="bill", scenario=scenario).run
+    if schema_version == 1:  # a run saved before events existed: rewrite its stored document
+        import json
+
+        path = run.path / "inputs" / "scenario.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        stored["schema_version"] = 1
+        stored.pop("events", None)
+        path.write_text(json.dumps(stored), encoding="utf-8")
+    return lib
+
+
+class TestSecondReview:
+    """fork-notes/run-library-step4-review-2.md: X4 and X8 on the page."""
+
+    # A purchase with keys the page's widgets do not edit (`type`, `basis`) and with the
+    # financing terms left at the builder's defaults (no `closing`).
+    BARE_BUY = [{"id": "buy", "kind": "purchase", "name": "condo", "price": 700000, "year": 2027,
+                 "pay_on": "Bill", "type": "residence", "basis": 500000,
+                 "financing": {"kind": "cash"}}]
+
+    def test_x4_an_unedited_save_of_a_bare_purchase_changes_nothing(self, tmp_path, monkeypatch):
+        lib = _library_with(tmp_path, monkeypatch, self.BARE_BUY)
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "Changes against this run: none yet" in _text(at)
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        assert "Identical to" in _text(at)
+        assert len(lib.runs()) == 1
+
+    def test_x4_an_edit_keeps_the_keys_no_widget_shows(self, tmp_path, monkeypatch):
+        lib = _library_with(tmp_path, monkeypatch, self.BARE_BUY)
+        at = _page()
+        price = next(n for n in at.number_input if n.label.startswith("Price"))
+        price.set_value(800000.0)
+        at.run()
+        assert "condo at 700000 (today's $) in 2027, cash -> condo at 800000 (today's $)" in _text(at)
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        child = next(r for r in lib.runs() if r.name != "bill")
+        [buy] = [e for e in lib.scenario(child.id)["events"] if e["kind"] == "purchase"]
+        assert buy["basis"] == 500000 and buy["type"] == "residence"
+        assert buy["financing"] == {"kind": "cash"}  # no closing cost added
+
+    def test_x8_a_new_purchase_is_buildable_as_it_opens(self, tmp_path, monkeypatch):
+        _library_with(tmp_path, monkeypatch, [])
+        at = _page()
+        box = next(c for c in at.checkbox if c.label == "Buy a home")
+        box.check()
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Not buildable yet" not in text and "Cannot build" not in text
+        year = next(t for t in at.text_input if t.label == "Year")
+        assert year.value == "2027"  # the year after the plan year (2026 under the frozen date)
+
+    def test_x8_a_schema_1_run_shows_no_phantom_change(self, tmp_path, monkeypatch):
+        _library_with(tmp_path, monkeypatch, [], schema_version=1)
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Changes against this run: none yet" in text
+        assert "saved in scenario schema 1" in text

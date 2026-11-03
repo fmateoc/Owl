@@ -176,7 +176,7 @@ class TestAnchors:
     def test_an_unresolvable_anchor_is_refused(self):
         events = [{"id": "care", "kind": "care", "amount": 1,
                    "year": {"anchor": "event", "id": "nope"}}]
-        with pytest.raises(ScenarioError, match="cannot be resolved"):
+        with pytest.raises(ScenarioError, match="no event has the id 'nope'"):
             self._resolve(events)
 
     def test_a_cycle_is_refused(self):
@@ -228,7 +228,9 @@ class TestBuild:
 
     def test_one_free_claiming_age_searches_only_that_person(self):
         claims = [{"id": "claim-ari", "kind": "claim", "person": "Ari", "age": None}]
-        case, _hfp, _provenance = b.build(_scenario(claims))
+        hand = _case()
+        hand["solver_options"]["withSSAges"] = "fixed"  # Noa's hand choice: held
+        case, _hfp, _provenance = b.build(_scenario(claims, case=hand))
         # U4: Owl's withSSAges takes a list of names -- the free one is searched, the other
         # person's age (kept from the case) is held.
         assert case["solver_options"]["withSSAges"] == ["Ari"]
@@ -346,8 +348,8 @@ class TestReviewFixes:
             b.budget_row("yonkers condo", "core", 2026, 0, 1000),  # the home's name in Budget
         ]}}
         _case_out, hfp, _provenance = b.build(_scenario([WORK_ARI, BUY_CASH], hfp=hand))
-        assert [row[1] for row in hfp["Budget"]["rows"]] == ["yonkers condo", "property tax", "HOA",
-                                                            "condo insurance"]
+        assert [row[1] for row in hfp["Budget"]["rows"]] == [
+            "yonkers condo", "property tax", "HOA", "condo insurance"]
 
     def test_u6_a_pay_on_typo_is_refused(self):
         buy = dict(BUY_CASH, pay_on="Zoe")
@@ -434,3 +436,69 @@ class TestRealGamma:
         assert provenance["rows"]["Budget|rent"] == "rent"
         again = b.build(scenario)
         assert again == (case, hfp, provenance)
+
+
+class TestSecondReviewFixes:
+    """fork-notes/run-library-step4-review-2.md, X3-X7."""
+
+    def _resolve(self, events, case=None):
+        case = case if case is not None else _case()
+        return b.resolve_years(b.validate_events(events, case["basic_info"]["names"]), case)
+
+    @staticmethod
+    def _histochastic(**extra):
+        from pathlib import Path
+
+        from owlplanner.library import import_case
+
+        case_file = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
+        scenario = import_case(str(case_file))
+        rates = scenario["case"]["rates_selection"]
+        rates.clear()
+        rates.update({"method": "histochastic", "from": 1970, "to": 2000, **extra})
+        return dict(scenario, events=[{"id": "buy", "kind": "purchase", "name": "h", "price": 700000,
+                                       "year": 2027, "financing": {"kind": "cash"}}])
+
+    def test_x3_a_random_inflation_path_is_refused(self):
+        with pytest.raises(ScenarioError, match="draw a new inflation path at every build"):
+            b.build(self._histochastic())
+
+    def test_x3_a_seeded_random_path_builds_the_same_price(self):
+        scenario = self._histochastic(reproducible_rates=True, rate_seed=1234)
+        prices = {b.build(scenario)[1]["Fixed Assets"]["rows"][0][5] for _ in range(2)}
+        assert len(prices) == 1
+
+    def test_x5_an_id_ending_in_digits_round_trips(self):
+        ids = ["work-ari-2026", "care"]
+        ref = {"anchor": "event", "id": "work-ari-2026", "offset": 0}
+        assert b.parse_year_ref(b.year_ref_text(ref), ids=ids) == ref
+        assert b.parse_year_ref("event:work-ari-2026+2", ids=ids)["offset"] == 2
+        assert b.parse_year_ref("event:work-ari-2026-1", ids=ids) == {
+            "anchor": "event", "id": "work-ari-2026", "offset": -1}
+        assert b.parse_year_ref("event:care-2", ids=ids) == {"anchor": "event", "id": "care", "offset": -2}
+
+    def test_x6_an_anchor_to_a_claim_is_refused(self):
+        events = [{"id": "c", "kind": "claim", "person": "Ari", "age": 67},
+                  {"id": "care", "kind": "care", "amount": 1, "year": {"anchor": "event", "id": "c", "offset": 2}}]
+        with pytest.raises(ScenarioError, match="claim event, which has no year"):
+            self._resolve(events)
+
+    def test_x6_an_anchor_to_a_rent_reads_its_start_even_with_an_end(self):
+        events = [dict(RENT, end=2030),
+                  {"id": "care", "kind": "care", "amount": 1, "year": {"anchor": "event", "id": "rent"}}]
+        assert self._resolve(events)["care"]["year"] == 2026
+
+    @pytest.mark.parametrize("hand, claims, expected", [
+        # Noa has no claim event: the hand case's choice for Noa stands, searched or held.
+        ("optimize", [("Ari", 67)], ["Noa"]),
+        ("fixed", [("Ari", 67)], "fixed"),
+        ("Noa", [("Ari", None)], "optimize"),
+        (["Ari"], [("Noa", 64)], ["Ari"]),
+        ("optimize", [("Ari", 67), ("Noa", 64)], "fixed"),  # both claimed: the events decide
+    ])
+    def test_x7_a_person_with_no_claim_event_keeps_the_hand_switch(self, hand, claims, expected):
+        case = _case()
+        case["solver_options"]["withSSAges"] = hand
+        events = [{"id": f"c-{name}", "kind": "claim", "person": name, "age": age} for name, age in claims]
+        built, _hfp, _provenance = b.build(_scenario(events, case=case))
+        assert built["solver_options"]["withSSAges"] == expected

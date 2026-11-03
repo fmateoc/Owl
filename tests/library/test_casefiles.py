@@ -413,3 +413,80 @@ class TestDropGenerated:
         rebuilt, _tables2, provenance2 = builder.build(dict(base, case=cleaned, events=events))
         assert "moves" not in rebuilt["basic_info"]
         assert provenance2["case_fields"].get("basic_info.moves") is None
+
+
+class TestPagesSaveWithEvents:
+    """Review X1/X2: "Edit as new run" and a save from the case pages, end to end, on a run
+    with events: the events stay the run's, the hand values they replaced come back, and an
+    unedited save is the base itself (T1)."""
+
+    EVENTS = [
+        # Over a year whose hand cell holds wages (the hand value must come back on delete).
+        {"id": "w", "kind": "work", "person": "Jack", "start": 2026, "end": 2026, "wages": 5000},
+        {"id": "rent", "kind": "rent", "monthly": 4000, "start": 2026, "flat_until": 2027},
+        {"id": "buy", "kind": "purchase", "name": "condo", "price": 700000, "year": 2028,
+         "pay_on": "Jack", "costs": {"property tax": 9500},  # jack+jill live in TN: no district
+         "financing": {"kind": "loan", "term": 30, "rate": 6.25}},
+        {"id": "c", "kind": "claim", "person": "Jill", "age": 64.0},
+    ]
+
+    def _base(self, hand_budget_row=None):
+        base = import_case(CASE)
+        if hand_budget_row is not None:  # a hand row the purchase's owner lines replace by name
+            budget = base["hfp"].setdefault("Budget", {"columns": None, "rows": []})
+            from owlplanner.library import builder
+
+            budget["columns"] = budget.get("columns") or list(builder.BUDGET_COLUMNS)
+            budget["rows"] = [*budget["rows"], hand_budget_row]
+        return canonicalize(dict(base, events=copy.deepcopy(self.EVENTS)))
+
+    def _pages_save(self, base, tmp_path):
+        """What the pages do: open the run's frozen files, then save against the run."""
+        export_case(base, tmp_path)
+        case, _, _ = load_toml(str(tmp_path / "Case.toml"))
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False)
+        return scenario_from_ui(config_to_ui(copy.deepcopy(case)), plan, base=base)
+
+    def _jack(self, hfp, year, column):
+        table = hfp["Jack"]
+        row = next(r for r in table["rows"] if r[table["columns"].index("year")] == year)
+        return row[table["columns"].index(column)]
+
+    def test_an_unedited_save_keeps_the_events_and_is_the_base(self, tmp_path):
+        base = self._base()
+        hand_wages = self._jack(base["hfp"], 2026, "anticipated wages")
+        assert hand_wages not in (0, 5000)  # the event overrides a real hand value
+        child = self._pages_save(base, tmp_path)
+        assert child["events"] == base["events"]
+        assert diff_summaries(base, child) == []
+        assert scenario_hash(child) == scenario_hash(base)
+
+    def test_deleting_an_event_after_a_save_brings_the_hand_value_back(self, tmp_path):
+        from owlplanner.library import builder
+
+        base = self._base()
+        hand_wages = self._jack(base["hfp"], 2026, "anticipated wages")
+        child = self._pages_save(base, tmp_path)
+        gone = canonicalize(dict(child, events=[e for e in child["events"] if e["id"] != "w"]))
+        _case, hfp, _provenance = builder.build(gone)
+        assert self._jack(hfp, 2026, "anticipated wages") == hand_wages
+
+    def test_a_hand_row_replaced_by_name_comes_back_in_place(self, tmp_path):
+        from owlplanner.library import builder
+
+        hand = builder.budget_row("property tax", "property tax", 2026, 0, 1234, rate=1.0, essential=True)
+        base = self._base(hand_budget_row=hand)
+        child = self._pages_save(base, tmp_path)
+        assert child["hfp"]["Budget"] == base["hfp"]["Budget"]
+        assert scenario_hash(child) == scenario_hash(base)
+
+    def test_drop_generated_restores_from_the_base(self, monkeypatch):
+        from owlplanner.library import builder
+        from owlplanner.library.casefiles import _drop_generated
+
+        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02, 1.0404])
+        base = self._base()
+        _case, tables, provenance = builder.build(base)
+        clean_time, _clean_house = _drop_generated({"Jack": tables["Jack"]}, {}, provenance, base["hfp"])
+        assert (self._jack(clean_time, 2026, "anticipated wages")
+                == self._jack(base["hfp"], 2026, "anticipated wages"))

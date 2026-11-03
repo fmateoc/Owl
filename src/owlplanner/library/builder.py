@@ -13,7 +13,9 @@ section 6.2 in one place:
   contributions in the person sheets;
 - the claiming events give `social_security_ages` and the `withSSAges` switch.
 
-`build(scenario) -> (case, hfp, provenance)` is deterministic and has no side effects. The row
+`build(scenario) -> (case, hfp, provenance)` is deterministic and has no side effects; a case
+whose rate model draws a new inflation path at every build (a stochastic method without a fixed
+seed) is refused where an event needs that path (review X3). The row
 builders (`budget_row`, `rent_rows`, `owner_rows`) are shared with
 `fork-notes/synthetic/make_cases.py`, and `check_library_builder.py` checks the builder's
 placement against that script's 39 workbooks cell for cell.
@@ -93,6 +95,19 @@ PAY_COLUMNS = {
     "ira": "IRA ctrb",
     "months_worked": "months worked",
 }
+
+# The builder's defaults for a purchase's optional fields: one place, read by build(), by the
+# canonical form (a key at its default is dropped, casefiles._canonical_events) and by the
+# Scenario page's widgets (review X4: the page had its own, larger closing-cost defaults).
+FINANCING_DEFAULTS = {
+    "cash": {"closing": 0.0},
+    "loan": {"down": 0.20, "closing": 0.0, "extra": 0.0},
+}
+PLACE_DEFAULTS = {"state": "NY", "locality": "", "school_district": "", "move": False}
+
+# "That event's year" for an `event:` anchor, by the target's kind (review X6): a work span's
+# end, a rent's start, a purchase's or care span's year. A claim has no year.
+EVENT_YEAR_FIELD = {"work": "end", "rent": "start", "purchase": "year", "care": "year"}
 
 
 # ---------------------------------------------------------------------------
@@ -248,8 +263,13 @@ def year_ref_text(ref) -> str:
     return repr(ref)
 
 
-def parse_year_ref(text, where="year") -> dict:
-    """A year field from its editable text form (ScenarioError with the grammar on bad text)."""
+def parse_year_ref(text, where="year", ids=None) -> dict:
+    """A year field from its editable text form (ScenarioError with the grammar on bad text).
+
+    `ids` (the scenario's event ids, when known) settles `event:<id>-<n>` against an id that
+    itself ends in `-<digits>`, as the synthetic suite's `work-ari-2026` does (review X5): a
+    known id wins, else the trailing `+<n>` / `-<n>` is the offset.
+    """
     grammar = ("a calendar year, 'age:<person>:<age>', 'work:<person>', 'after:<person>', "
                "'purchase', or 'event:<id>' (with '+<n>' / '-<n>')")
     if not isinstance(text, str):
@@ -272,13 +292,14 @@ def parse_year_ref(text, where="year") -> dict:
         return {"anchor": "purchase"}
     elif value.startswith("event:"):
         body = value[len("event:"):]
-        offset = 0
+        known = set(ids or ())
+        if body and body in known:
+            return {"anchor": "event", "id": body, "offset": 0}
         at = max(body.rfind("+"), body.rfind("-"))
-        if at > 0 and body[at + 1:].isdigit():
-            offset = int(body[at:])
-            body = body[:at]
+        if at > 0 and body[at + 1:].isdigit() and (not known or body[:at] in known):
+            return {"anchor": "event", "id": body[:at], "offset": int(body[at:])}
         if body:
-            return {"anchor": "event", "id": body, "offset": offset}
+            return {"anchor": "event", "id": body, "offset": 0}
     raise ScenarioError(f"{where}: {text!r} is not a year ({grammar})")
 
 
@@ -362,6 +383,21 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
                     raise ScenarioError(f"{where}.{field} is required")
                 event[field] = _year_ref(event[field], f"{where}.{field}")
         out.append(event)
+    # An `event:` anchor must name an event that has a year (review X6: a claim has none, and
+    # an anchor to one used to raise a raw TypeError).
+    kinds = {e["id"]: e["kind"] for e in out}
+    for i, event in enumerate(out):
+        for field in _year_fields(event) if event["kind"] != "work" else ():
+            ref = event[field]
+            if ref.get("anchor") != "event":
+                continue
+            target = kinds.get(ref["id"])
+            if target is None:
+                raise ScenarioError(f"events[{i}].{field}: no event has the id {ref['id']!r}")
+            if target not in EVENT_YEAR_FIELD:
+                raise ScenarioError(
+                    f"events[{i}].{field}: {ref['id']!r} is a {target} event, which has no year to anchor to"
+                )
     # One home purchase, one rent and one care span for now (design D6: "moves without a
     # purchase, sale and re-buy later" is a later increment; their rows carry fixed names).
     for kind in ("purchase", "rent", "care"):
@@ -391,6 +427,7 @@ def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
 
     resolved: dict[str, dict[str, int]] = {}
     purchase_year: list[int | None] = [None]
+    kinds = {e["id"]: e["kind"] for e in events}
 
     def resolve(ref: dict) -> int | None:
         if "year" in ref:
@@ -406,10 +443,10 @@ def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
             other = resolved.get(ref["id"])
             if other is None:
                 return None
-            # "That event's year": the year field where it has one, a work span's end, a
-            # rent's start (U3: an event anchor used to read `other["year"]` whatever the kind).
-            main = other.get("year", other.get("end", other.get("start")))
-            return main + ref["offset"]
+            # "That event's year" by the target's kind (U3, X6): a work span's end, a rent's
+            # start (even when the rent names its own end), a purchase's or care span's year.
+            main = other.get(EVENT_YEAR_FIELD.get(kinds.get(ref["id"]), "year"))
+            return None if main is None else main + ref["offset"]
         return None
 
     pending = {e["id"]: e for e in events}
@@ -466,6 +503,18 @@ def _gamma(case: dict) -> list[float]:
     from owlplanner.config import config_to_plan
 
     plan = config_to_plan(copy.deepcopy(case), tempfile.gettempdir(), logstreams=[io.StringIO()], loadHFP=False)
+    # A stochastic rate model draws a new inflation path at every plan build unless the case
+    # fixes its seed: the purchase price and the rent's flat rows would then be a random draw,
+    # frozen into the run and unrelated to the path the solve draws (review X3).
+    model = getattr(plan, "rateModel", None)
+    if model is not None and not getattr(model, "deterministic", False) and not plan.reproducibleRates:
+        method = (case.get("rates_selection") or {}).get("method")
+        raise ScenarioError(
+            f"the case's rates ({method!r}) draw a new inflation path at every build, so a purchase "
+            "price or a rent in nominal dollars cannot be built from it: set reproducible rates "
+            "with a seed (rates_selection.reproducible_rates and rate_seed), or use a "
+            "deterministic rate method"
+        )
     gamma = [float(g) for g in plan.gamma_n]
     if gamma and gamma[0] != 1.0:
         raise ScenarioError(f"the case's inflation path does not start at 1: gamma[0] = {gamma[0]}")
@@ -546,39 +595,37 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
             sale = where.get("sale") or 0
             price = nominal(purchase["price"], year)
             financing = purchase.get("financing") or {"kind": "cash"}
+            terms = {**FINANCING_DEFAULTS[financing.get("kind", "cash")], **financing}
             rows["Fixed Assets"].append((asset_row(
                 purchase["name"], year, price, purchase.get("growth", 0.0), sale,
                 purchase.get("commission", 0.0), purchase.get("type", "residence"),
                 purchase.get("basis")), purchase["id"]))
             if financing.get("kind") == "loan":
-                down = financing.get("down", 0.20)
-                closing = financing.get("closing", 0.0)
-                extra = financing.get("extra", 0.0)
+                down, closing, extra = terms["down"], terms["closing"], terms["extra"]
                 loan = round(price * (1 - down))
                 rows["Debts"].append((debt_row(
                     financing.get("name", f"{purchase['name']} mortgage"), year, financing["term"],
                     loan, financing["rate"], purchase["name"]), purchase["id"]))
                 outflow = -round(price * (down + closing) + loan * extra)
             else:
-                closing = financing.get("closing", 0.0)
-                outflow = -round(price * (1 + closing))
+                outflow = -round(price * (1 + terms["closing"]))
             cells.append((purchase.get("pay_on") or (names[0] if names else ""), "big-ticket items", year,
                           outflow, purchase["id"]))
             costs = purchase.get("costs") or {}
             for row in owner_rows(costs.get("property tax", 0), costs.get("hoa", 0), costs.get("insurance", 0),
                                   year, (sale - 1) if sale else 0):
                 rows["Budget"].append((row, purchase["id"]))
-            place = purchase.get("place") or {}
-            if place.get("move"):
+            place = {**PLACE_DEFAULTS, **(purchase.get("place") or {})}
+            if place["move"]:
                 _set_path(case, "basic_info.moves", [{
                     "year": year,
-                    "state": place.get("state", "NY"),
-                    "locality": place.get("locality", ""),
-                    "school_district": place.get("school_district", ""),
+                    "state": place["state"],
+                    "locality": place["locality"],
+                    "school_district": place["school_district"],
                 }])
                 provenance["case_fields"]["basic_info.moves"] = purchase["id"]
             else:
-                _set_path(case, "basic_info.school_district", place.get("school_district", ""))
+                _set_path(case, "basic_info.school_district", place["school_district"])
                 provenance["case_fields"]["basic_info.school_district"] = purchase["id"]
         elif kind == "rent":
             # Rent to the year before the purchase (section 6.2, I1).
@@ -618,11 +665,17 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
                 )
         # Owl's withSSAges takes "optimize", "fixed", or a name / list of names to search
         # (plan._parseSSAgesOption): a mixed scenario searches only the free ones and holds
-        # the others' ages (U4).
-        free = [c["person"] for c in claims if c["age"] is None]
+        # the others' ages (U4). A person with no claim event keeps the hand case's choice,
+        # searched or held, as they keep its age (review X7).
+        hand_free = _searched_names(
+            (hand_case.get("solver_options") or {}).get("withSSAges", "fixed"), names)
+        claimed = {c["person"] for c in claims}
+        free = [name for name in names
+                if (name in claimed and any(c["person"] == name and c["age"] is None for c in claims))
+                or (name not in claimed and name in hand_free)]
         if not free:
             mode = "fixed"
-        elif len(free) == len(names) or set(free) == set(names):
+        elif set(free) == set(names):
             mode = "optimize"
         else:
             mode = free
@@ -639,6 +692,17 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
 
     hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life)
     return case, hfp, provenance
+
+
+def _searched_names(option, names) -> set:
+    """The people a withSSAges value searches (plan._parseSSAgesOption's reading)."""
+    if isinstance(option, str):
+        if option.strip().lower() == "optimize":
+            return set(names)
+        return {option} & set(names)
+    if isinstance(option, (list, tuple)):
+        return set(option) & set(names)
+    return set()
 
 
 def _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life) -> dict:

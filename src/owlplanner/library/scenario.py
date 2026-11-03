@@ -29,7 +29,9 @@ SCHEMA_VERSION = 2
 # Version of the generation code that turns a scenario into Case.toml / HFP.xlsx
 # (library.casefiles and library.builder). Part of the inputs hash: a change here makes old runs
 # "built with an older builder" instead of aliasing two different outputs (section 5, R9).
-BUILDER_VERSION = 2
+# 3 (step 4, second review): a person with no claim event keeps the hand case's withSSAges
+# choice (X7), and a purchase's keys at the builder's defaults leave the canonical form (X4).
+BUILDER_VERSION = 3
 
 
 class ScenarioError(ValueError):
@@ -185,7 +187,15 @@ def _events_into(old: dict, new: dict, out: list[str]) -> None:
         elif after is None:
             out.append(f"{before.get('kind', 'event')}: {_event_words(before)} (removed)")
         elif canonical_json(before) != canonical_json(after):
-            out.append(f"{before.get('kind', 'event')}: {_event_words(before)} -> {_event_words(after)}")
+            words = (_event_words(before), _event_words(after))
+            line = f"{before.get('kind', 'event')}: {words[0]} -> {words[1]}"
+            if words[0] == words[1]:
+                # The words do not show this change (a closing cost, a district, ...): name the
+                # fields that moved (review X4).
+                fields: list[str] = []
+                _diff_into(before, after, "", fields)
+                line += " (" + "; ".join(fields) + ")"
+            out.append(line)
 
 
 def _event_words(event: dict) -> str:
@@ -193,21 +203,26 @@ def _event_words(event: dict) -> str:
     kind = event.get("kind")
     if kind == "work":
         level = "full time" if event.get("level", "full") == "full" else "part time"
-        return f"{event.get('person')} {level} {event.get('start')}-{event.get('end')}"
+        pay = f", wages {event['wages']}" if event.get("wages") is not None else ""
+        return f"{event.get('person')} {level} {event.get('start')}-{event.get('end')}{pay}"
     if kind == "claim":
         age = event.get("age")
         return (f"{event.get('person')} claims at {age}" if age is not None
                 else f"{event.get('person')}: let Owl choose")
     if kind == "rent":
+        end = f" to {_ref_words(event['end'])}" if "end" in event else ""
         return (f"{event.get('monthly')}/mo from {_ref_words(event.get('start'))}, "
-                f"flat through {_ref_words(event.get('flat_until'))}")
+                f"flat through {_ref_words(event.get('flat_until'))}{end}")
     if kind == "purchase":
         financing = event.get("financing") or {"kind": "cash"}
         how = ("cash" if financing.get("kind") != "loan"
                else f"{financing.get('term')}-year loan at {financing.get('rate')}%")
-        return f"{event.get('name')} in {_ref_words(event.get('year'))}, {how}"
+        price = f" at {event['price']} (today's $)" if event.get("price") is not None else ""
+        sale = f", sold {_ref_words(event['sale'])}" if "sale" in event else ""
+        return f"{event.get('name')}{price} in {_ref_words(event.get('year'))}, {how}{sale}"
     if kind == "care":
-        return f"{event.get('amount')}/yr from {_ref_words(event.get('year'))}"
+        end = f" to {_ref_words(event['end'])}" if "end" in event else ""
+        return f"{event.get('amount')}/yr from {_ref_words(event.get('year'))}{end}"
     return repr(event)
 
 

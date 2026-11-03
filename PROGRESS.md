@@ -5692,8 +5692,10 @@ New regression tests: `test_builder.py` TestReviewFixes (8: U3, U5, U6, U7 x4, U
 `test_casefiles.py` TestDropGenerated +1 (U1, with the probe's rebuild), `test_scenario_page.py`
 +1 (U2: no phantom changes, an unedited save dedupes). Full suite **3981 passed, 2 skipped**
 (9:46; 3907 + 75 new tests - the POSIX-only tzset test, which skips on Windows). Lint clean
-but for upstream's known items. The reviewer's two open design questions stand for the user: section 5's
-"re-importing a run's own files gives the same hash" no longer holds for scenarios with events
-(amend 5/6.3a, or an import that recovers events later?), and section 6.2's "write_hfp, case
-moved into a module" is half-done by decision (the row builders moved; workbook writing and
-template filling stayed the suite's own -- amend the design?).
+but for upstream's known items. The reviewer's open design questions: section 5's "re-importing a run's own files gives
+the same hash" no longer holds for scenarios with events (amend 5/6.3a, or an import that
+recovers events later?) -- stands for the user; section 6.2's wording is **answered (the
+user's call, 2026-11-03)**: the design is amended there -- only the row builders moved into
+the module (`write_hfp` and `case` stay the suite's own: workbook writing and template filling
+are not builder logic, and the suite's assembly and the builder's mapping are deliberately two
+placements checked cell for cell).

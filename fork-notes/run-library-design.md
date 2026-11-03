@@ -183,8 +183,17 @@ effects. It does the coupled edits of section 2 in one place:
 - the last work year gives the marketplace start year, `months worked`, and the wages and
   contributions in the person sheets.
 
-It starts from `make_cases.py` (`rent_lines`, `owner_lines`, `write_hfp`, `case`) moved into a
-module with tests, so the suite and the interface share one implementation.
+It starts from `make_cases.py`'s row builders (`line`, `rent_lines`, `owner_lines`) moved into
+the library with tests (`library.builder`: `budget_row`, `rent_rows`, `owner_rows`, `care_row`,
+`asset_row`, `debt_row`), so the suite and the interface share one implementation. `write_hfp`
+(the workbook writer) and `case` (the template filling) stay `make_cases.py`'s own: the
+builder's document is the case dictionary and the HFP tables, and `export_case` writes the
+generated files -- workbook writing and template filling are not builder logic. The suite's
+explicit assembly and the builder's event mapping are deliberately two placements of the same
+coupled edits and are checked against each other cell for cell (step 4's check,
+`fork-notes/synthetic/check_library_builder.py`). *(Amended 2026-11-03 at the user's call after
+the step-4 review: only the row builders moved into the module; `write_hfp` and `case` by
+decision.)*
 
 ### 6.3 Generated rows versus hand edits
 

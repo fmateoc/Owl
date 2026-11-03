@@ -123,5 +123,6 @@ call: fold the review into the step).
 Re-run after the fixes: `check_library_builder.py` **46/46** with U8's stricter comparison
 (the work variants against the baseline plus their edits), `tests/library` +
 `tests/ui/test_scenario_page.py` **303 passed, 1 skipped**, lint clean but for upstream's
-known items. Of the open questions below, U1 and U4 are resolved; the two design-text
-questions stand for the user.
+known items. Of the open questions below, U1 and U4 are resolved; the section 6.2 wording
+question is answered (the design is amended there, 2026-11-03, the user's call: only the row
+builders moved into the module); the section 5 round-trip question stands for the user.

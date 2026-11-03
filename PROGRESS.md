@@ -5770,3 +5770,16 @@ Not changed: a scenario whose hand rows were written as JSON (`scenarios.json`'s
 rather than read from a workbook is normalized by its first pages-save, so it does not hash as
 its base; the library's own entry paths store read-back rows and are identical. The first
 review's section 5 round-trip question still stands for the user.
+
+## The ticker test's race fixed (2026-11-03)
+
+`tests/library/test_jobs.py::TestTicker::test_a_waiting_job_is_dispatched_with_no_page_ticking`
+(step 2, H5) failed once in the full suite above. Cause, in the test: its fake `_spawn` took
+the job (state running) but recorded no worker, which the real `_spawn` does right after
+(`jobs.py`: `job.update(pid=..., pid_started=...)`); every `tick()` starts with `adopt()`, which
+reads a running job with no PID as dead and interrupts it, so a tick between the dispatch and
+`stop_ticker()` failed the test. The fake now records this live test process as the worker,
+and the test waits 0.3 s (several ticks at 0.05 s) after the dispatch, so it also checks that a
+dispatched job with a live worker stays running. With that wait, the old fake fails 3/3 with
+the full suite's error (`'interrupted' == 'running'`) and the new one passes 3/3. Test-only;
+`jobs.py` unchanged. Full suite (Linux, -n 4): **4005 passed, 1 skipped** (9:01).

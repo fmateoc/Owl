@@ -215,7 +215,19 @@ class TestTicker:
 
         manager = JobManager(library)
         spawned = []
-        manager._spawn = lambda job: job.take_for_dispatch() and (spawned.append(job.id) or True)
+
+        def spawn(job):
+            # What _spawn does, with this live test process standing in for the worker: take
+            # the job, then record the worker's PID and start token. Without the record, any
+            # tick before stop_ticker() runs adopt(), which reads the PID-less running job as
+            # dead and interrupts it (the race that failed the full suite once, 2026-11-03).
+            if not job.take_for_dispatch():
+                return False
+            job.update(pid=os.getpid(), pid_started=process_start_token(os.getpid()))
+            spawned.append(job.id)
+            return True
+
+        manager._spawn = spawn
         # Queued before a restart: nothing has ticked it in this process.
         job = R.JobRecord.create(run.path / "results" / "queued-earlier", run_id=run.id, run_name="bill",
                                  preset="quick", options={}, plan_year=2026)
@@ -225,6 +237,7 @@ class TestTicker:
             deadline = time.monotonic() + 20
             while not spawned and time.monotonic() < deadline:
                 time.sleep(0.05)
+            time.sleep(0.3)  # several more ticks: a dispatched job with a live worker stays running
         finally:
             manager.stop_ticker()
         assert spawned == [job.id]

@@ -54,6 +54,10 @@ kz.initCaseKey("localSearch", False)
 kz.initCaseKey("mipStrategy", "branch-and-bound")
 kz.initCaseKey("ssTaxabilityMode", "loop")
 kz.initCaseKey("ssTaxabilityValue", 0.85)
+# Fork: carried from the case file until here (config.ui_bridge.SOLVER_UI_PASSTHROUGH_KEYS),
+# with no widget. Bound to the passthrough names, so no bridge translation is involved.
+kz.initCaseKey("withItemized", "loop")
+kz.initCaseKey("withSTAR", "loop")
 
 
 ret = kz.titleBar(":material/tune: Run Options")
@@ -268,6 +272,31 @@ else:
 
     st.divider()
     with st.expander("*Advanced options*"):
+        # Above "Calculations" on purpose: the local-search caption there says it overrides
+        # "every breakpoint below", which is true of the MILP settings and not of these two.
+        st.markdown("#### :orange[Deductions and Credits]")
+        col1, col2 = st.columns(2, gap="large", vertical_alignment="top")
+        with col1:
+            helpmsg = (
+                "Fork: whether a year deducts its itemized total (state and local taxes up to the SALT "
+                "cap, property tax, mortgage interest, charity and medical above their floors; New York "
+                "has its own itemized deduction) or the standard deduction. The larger of the two is "
+                "deducted, year by year. ’loop’ decides from the previous step of the self-consistent "
+                "iteration; ’none’ turns itemizing off everywhere (the standard deduction)."
+            )
+            ret = kz.getRadio("Itemized deductions", ["loop", "none"], "withItemized", help=helpmsg)
+        with col2:
+            helpmsg = (
+                "Fork: the NY STAR credit for an owner in a school district chosen on the Create Case "
+                "page (Basic, and Enhanced from 65 under the income limit). ’loop’ reads the credit "
+                "from the previous step of the iteration; ’optimize’ lets the plan hold its income "
+                "under the Enhanced limit where that pays (binary variables); ’none’ turns the credit "
+                "off. Local search solves it with binary variables too (’loop’ and ’optimize’ mean the "
+                "same there), and keeps ’none’."
+            )
+            ret = kz.getRadio("NY STAR credit", ["loop", "optimize", "none"], "withSTAR", help=helpmsg)
+
+        st.divider()
         st.markdown("#### :orange[Calculations]")
         helpmsg_ls = (
             "Carry the tax breakpoints (Social Security taxability, Medicare, ACA, capital gains and "

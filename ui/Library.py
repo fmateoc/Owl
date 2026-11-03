@@ -30,6 +30,7 @@ from pathlib import Path
 import streamlit as st
 
 import libraryjobs
+import owlbridge as owb
 import sskeys as kz
 from owlplanner.library import import_case, scenario_from_ui
 
@@ -101,6 +102,11 @@ def _save_current_case(name, notes, tags):
         except Exception:  # noqa: BLE001 - a deleted run is simply not the base any more
             base = None
     try:
+        # The tables come from the plan (`scenario_from_ui`), not from the case keys: sync the
+        # page-edited ones in first, or a table edited and not yet run or downloaded would be
+        # missing from the run.
+        if plan is not None:
+            owb.syncContributions()
         scenario = scenario_from_ui(dic, plan, base=base)
         result = lib.save_run(name=name or kz.currentCaseName(), scenario=scenario,
                               parent=base_run_id, notes=notes,

@@ -67,6 +67,176 @@ def _district_select(label, district_key, state):
         kz.getSelectbox(label, choices, district_key, help=_district_help)
 
 
+# --- moves after the first (fork: the case file carries them; run-library step 5 edits them) ---
+
+
+def _moreMoveKey(idx, field):
+    return kz.genCaseKey(f"mvMore{idx}_{field}")
+
+
+def _onMoreMove(idx, field):
+    """Copy one widget of further move *idx* into stateMovesMore."""
+    more = [dict(m) for m in kz.getCaseKey("stateMovesMore") or []]
+    if idx >= len(more):
+        return
+    val = st.session_state.get(_moreMoveKey(idx, field))
+    if field == "year":
+        more[idx]["year"] = int(val)
+    elif val:
+        more[idx][field] = val
+    else:
+        more[idx].pop(field, None)
+    kz.setCaseKey("stateMovesMore", more)
+
+
+def _dropMoreMoveField(idx, field):
+    """Drop a further move's field (its state no longer has that city or district)."""
+    more = [dict(m) for m in kz.getCaseKey("stateMovesMore") or []]
+    if idx < len(more):
+        more[idx].pop(field, None)
+        kz.setCaseKey("stateMovesMore", more)
+    st.session_state.pop(_moreMoveKey(idx, field), None)
+
+
+def _setMovesMore(more):
+    """Replace the further moves. The rows' widget state goes with the old rows: removing one
+    shifts the rest onto its keys (#194's half-typed row problem, for whole rows)."""
+    kz.setCaseKey("stateMovesMore", more)
+    for i in range(len(more) + 2):
+        for field in ("year", "state", "locality", "school_district"):
+            st.session_state.pop(_moreMoveKey(i, field), None)
+
+
+def _addMove():
+    more = [dict(m) for m in kz.getCaseKey("stateMovesMore") or []]
+    last = more[-1] if more else {}
+    more.append(
+        {
+            "year": int(last.get("year") or kz.getCaseKey("stateMoveYear") or date.today().year) + 2,
+            "state": last.get("state") or kz.getCaseKey("stateMoveState") or "",
+        }
+    )
+    _setMovesMore(more)
+
+
+def _removeMove(idx):
+    more = [dict(m) for m in kz.getCaseKey("stateMovesMore") or []]
+    if idx < len(more):
+        del more[idx]
+    _setMovesMore(more)
+
+
+def _moreMoveWarnings(moves, first):
+    """The moves residency refuses at solve time, reported as the rows are edited.
+
+    Walked in year order from the starting residence, as `residency._homes_by_year` does at
+    solve time. The first move's "goes to the starting residence" case is the page's own
+    warning, so only the further moves' messages are returned.
+    """
+    msgs = []
+    tagged = [(False, first)] + [(True, m) for m in moves]
+    tagged.sort(key=lambda pair: int(pair[1].get("year") or 0))
+    seen = set()
+    prev = (
+        kz.getCaseKey("state") or "",
+        kz.getCaseKey("locality") or "",
+        kz.getCaseKey("schoolDistrict") or "",
+    )
+    prev_label = "the starting residence"
+    for is_more, move in tagged:
+        year = int(move.get("year") or 0)
+        dest = (move.get("state") or "", move.get("locality") or "", move.get("school_district") or "")
+        label = f"the move in {year}" if year else "a move"
+        if year in seen:
+            msgs.append(f"Two moves in {year}.")
+        seen.add(year)
+        if is_more and dest == prev:
+            where = " / ".join(filter(None, dest)) or "no state"
+            msgs.append(f"{label.capitalize()} goes to {prev_label} ('{where}').")
+        prev, prev_label = dest, label
+    return msgs
+
+
+def _renderMoreMoves():
+    """The moves after the first, one block of cascading selects each."""
+    thisyear = date.today().year
+    more = [dict(m) for m in kz.getCaseKey("stateMovesMore") or []]
+    st.markdown("##### :orange[Further moves]")
+    for idx, move in enumerate(more):
+        st.markdown(f"**Move {idx + 2}**")
+        cols = st.columns([2, 3, 3, 1], gap="small", vertical_alignment="top")
+        with cols[0]:
+            st.number_input(
+                f"Year of move {idx + 2}",
+                value=int(move.get("year") or thisyear + 5),
+                min_value=thisyear + 1,
+                max_value=thisyear + 100,
+                step=1,
+                key=_moreMoveKey(idx, "year"),
+                on_change=_onMoreMove,
+                args=[idx, "year"],
+                help="First calendar year taxed by the new state. It must fall within the plan.",
+            )
+        with cols[1]:
+            states = _state_choices()
+            state = move.get("state") or ""
+            st.selectbox(
+                f"State of move {idx + 2}",
+                states,
+                index=states.index(state) if state in states else 0,
+                key=_moreMoveKey(idx, "state"),
+                on_change=_onMoreMove,
+                args=[idx, "state"],
+                help="State of residence from that year on. Leave blank to stop modeling state taxes.",
+            )
+            localities = _locality_choices(state)
+            if move.get("locality") and move["locality"] not in localities:
+                _dropMoreMoveField(idx, "locality")
+            if len(localities) > 1:
+                loc = move.get("locality") or ""
+                st.selectbox(
+                    f"City income tax of move {idx + 2} (optional)",
+                    localities,
+                    index=localities.index(loc) if loc in localities else 0,
+                    key=_moreMoveKey(idx, "locality"),
+                    on_change=_onMoreMove,
+                    args=[idx, "locality"],
+                    help="City income tax from that year on. Blank means the rest of the state.",
+                )
+        with cols[2]:
+            districts = _district_choices(state)
+            if move.get("school_district") and move["school_district"] not in districts:
+                _dropMoreMoveField(idx, "school_district")
+            if len(districts) > 1:
+                district = move.get("school_district") or ""
+                st.selectbox(
+                    f"School district of move {idx + 2} (optional)",
+                    districts,
+                    index=districts.index(district) if district in districts else 0,
+                    key=_moreMoveKey(idx, "school_district"),
+                    on_change=_onMoreMove,
+                    args=[idx, "school_district"],
+                    help=_district_help,
+                )
+        with cols[3]:
+            st.button(
+                ":material/delete:",
+                key=kz.genCaseKey(f"mvMoreRemove{idx}"),
+                on_click=_removeMove,
+                args=[idx],
+                help=f"Remove move {idx + 2}.",
+            )
+    st.button("Add a move :material/add:", on_click=_addMove)
+    first = {
+        "year": kz.getCaseKey("stateMoveYear"),
+        "state": kz.getCaseKey("stateMoveState") or "",
+        "locality": kz.getCaseKey("stateMoveLocality") or "",
+        "school_district": kz.getCaseKey("stateMoveSchoolDistrict") or "",
+    }
+    for msg in _moreMoveWarnings(more, first):
+        st.warning(msg, icon=":material/warning:")
+
+
 def _loadHFPExample(file):
     if file:
         hfp_name = tomlex.getHFPName(file)
@@ -252,11 +422,10 @@ else:
                 kz.getCaseKey("schoolDistrict"),
             ):
                 st.warning("The new residence is the starting one.", icon=":material/warning:")
-            if kz.getCaseKey("stateMovesMore"):
-                st.info(
-                    f"The case file has {len(kz.getCaseKey('stateMovesMore'))} further move(s), kept as they are.",
-                    icon=":material/info:",
-                )
+
+    if kz.getCaseKey("stateMoveEnabled"):
+        # Fork: moves after the first, which the case file carries and the pages edit here.
+        _renderMoreMoves()
 
     kz.initCaseKey("description", "")
     helpmsg = "Provide a short distinguishing description for the case."
@@ -358,7 +527,7 @@ Once changes are complete, click the `Create case` button.""")
                 help=(
                     "An Excel (.xlsx) or OpenDocument (.ods) workbook with one sheet per individual "
                     "containing year-by-year wages, retirement contributions, Roth conversions, and large expenses, "
-                    "plus optional household sheets for debts and fixed assets."
+                    "plus optional household sheets for debts, fixed assets and budget."
                 ),
             )
             if stHFP is not None:

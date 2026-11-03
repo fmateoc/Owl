@@ -768,6 +768,34 @@ def test_state_move_reaches_the_plan_and_back():
     assert plan.state == ""
 
 
+def test_several_moves_round_trip_with_their_localities_and_districts():
+    """The fork takes several moves (residency); the pages edit all of them (run-library step 5)."""
+    from datetime import date
+
+    y1, y2 = date.today().year + 3, date.today().year + 8
+    moves = [
+        {"year": y1, "state": "NY", "locality": "Yonkers", "school_district": "City of Yonkers / Yonkers"},
+        {"year": y2, "state": "FL"},
+    ]
+    diconf = _minimal_married_config()
+    diconf["basic_info"]["state"] = "NY"
+    diconf["basic_info"]["moves"] = moves
+    diconf["rates_selection"]["values"] = [6.0, 4.0, 3.3, 2.8]
+
+    uidic = config_to_ui(diconf)
+    assert uidic["stateMoveYear"] == y1
+    assert uidic["stateMoveLocality"] == "Yonkers"
+    assert uidic["stateMoveSchoolDistrict"] == "City of Yonkers / Yonkers"
+    assert uidic["stateMovesMore"] == [{"year": y2, "state": "FL"}]
+    assert ui_to_config(uidic)["basic_info"]["moves"] == moves
+
+    plan = config_to_plan(diconf, verbose=False, loadHFP=False)
+    assert [(m.year, m.state, m.locality) for m in plan.state_moves] == [
+        (y1, "NY", "Yonkers"), (y2, "FL", ""),
+    ]
+    assert plan_to_config(plan)["basic_info"]["moves"] == moves
+
+
 def _minimal_config_for_rates():
     """Minimal config dict with rates_selection section."""
     return {

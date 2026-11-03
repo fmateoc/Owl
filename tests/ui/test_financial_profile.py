@@ -186,8 +186,8 @@ def test_workbook_download_does_not_need_a_solve(monkeypatch, tmp_path):
 
     # One workbook holds every table on the page, so it is offered below all of them.
     heads = [str(m.value) for m in at.markdown if str(m.value).startswith("### ")]
-    titles = ["Wages and Contributions", "Debts and Fixed Assets", "Save your Financial Profile"]
-    assert [i for t in titles for i, h in enumerate(heads) if t in h] == [0, 1, 2], heads
+    titles = ["Wages and Contributions", "Debts and Fixed Assets", "Budget", "Save your Financial Profile"]
+    assert [i for t in titles for i, h in enumerate(heads) if t in h] == [0, 1, 2, 3], heads
 
     # And the workbook it would hand over carries the column that was missing.
     buffer = plan.saveContributions()

@@ -25,6 +25,7 @@ import pandas as pd
 from datetime import date
 
 from owlplanner.debts import PROPERTY_TYPES
+from owlplanner.budget import AGE_INDEXES, CLOCKS
 from owlplanner.hfp_io import getTableTypes, quietTimeHorizonItems
 
 import sskeys as kz
@@ -123,6 +124,48 @@ timetableHelpPast["Roth conv fixed"] = (
     "Not applicable to past years: a conversion already performed always counts"
 )
 
+# Bubble help for the Budget columns (the Documentation page carries the full description).
+budgetHelp = {
+    "active": "Check box for the line to be considered in the plan",
+    "name": "Give a unique name to your budget line",
+    "type": (
+        "Category Owl acts on. *property tax*, *medical* and *charity* are the deductible lines; "
+        "*rent*, *property tax*, *insurance* and *maintenance* are the home costs a survivor keeps "
+        "paying in full. A line of another type is left out, with a warning."
+    ),
+    "year": "First calendar year the line pays. A year before the plan start is read as the plan start.",
+    "end": (
+        "Last calendar year, inclusive. 0 means through the last year of the plan; a negative value "
+        "counts back from it (-1 is the year before the last)."
+    ),
+    "amount": "Annual amount in today's dollars, as of the first year the line pays.",
+    "rate": (
+        "Real growth above inflation (%), from the first year on: 0 means the line tracks inflation, "
+        "1.0 grows 1% a year faster than inflation. Negative shrinks the line."
+    ),
+    "survivor": (
+        "Percentage of the line kept after the first death (0-100). Blank is the case's survivor "
+        "percentage, except for rent, property tax, insurance and maintenance, which a survivor "
+        "keeps paying in full."
+    ),
+    "essential": (
+        "Paid at its amount whatever the spending level: a floor, not a share. With essential "
+        "lines, only the other lines scale under maxSpending."
+    ),
+    "clock": (
+        "*calendar* (the default; year/end above) or *age*: then the line pays in the years the "
+        "ages of *index* fall between start_age and end_age, and year/end are ignored."
+    ),
+    "start_age": "Age the line starts at (clock = age).",
+    "end_age": "Age the line ends at (clock = age).",
+    "index": (
+        "Whose age an age-clock line follows: *younger* (the default) or *older* is a household "
+        "line, read against that spouse while both are alive and the survivor's after the first "
+        "death; a person's name makes a personal line, which ends at that person's death."
+    ),
+    "kind": "Free text kept with the line, for your own categories.",
+}
+
 
 def timetableColumnConfig(df, helpdic):
     """Column configuration for a Wages and Contributions editor, with bubble help."""
@@ -147,6 +190,48 @@ def timetableColumnConfig(df, helpdic):
         )
 
     return formatdic
+
+
+def budgetColumnConfig(names):
+    """Column configuration for the Budget editor, with bubble help (budgetHelp).
+
+    year, end, rate and survivor may stay blank: they mean the plan start, the plan end,
+    inflation and the case's survivor share (see the help).
+    """
+    return {
+        "active": st.column_config.CheckboxColumn(
+            "active", help=budgetHelp["active"], default=True, required=True
+        ),
+        "name": st.column_config.TextColumn("name", help=budgetHelp["name"], required=True),
+        "type": st.column_config.SelectboxColumn(
+            "type", help=budgetHelp["type"], required=True, options=getTableTypes("Budget")
+        ),
+        "year": st.column_config.NumberColumn("year", help=budgetHelp["year"], min_value=1950, step=1),
+        "end": st.column_config.NumberColumn("end", help=budgetHelp["end"], step=1),
+        "amount": st.column_config.NumberColumn(
+            "amount", help=budgetHelp["amount"], min_value=0, required=True, format="dollar", step=1
+        ),
+        "rate": st.column_config.NumberColumn("rate", help=budgetHelp["rate"], step=0.01),
+        "survivor": st.column_config.NumberColumn(
+            "survivor", help=budgetHelp["survivor"], min_value=0, max_value=100, format="%d", step=1
+        ),
+        "essential": st.column_config.CheckboxColumn(
+            "essential", help=budgetHelp["essential"], default=False
+        ),
+        "clock": st.column_config.SelectboxColumn(
+            "clock", help=budgetHelp["clock"], options=list(CLOCKS), required=False
+        ),
+        "start_age": st.column_config.NumberColumn(
+            "start_age", help=budgetHelp["start_age"], min_value=0, max_value=120, step=1
+        ),
+        "end_age": st.column_config.NumberColumn(
+            "end_age", help=budgetHelp["end_age"], min_value=0, max_value=120, step=1
+        ),
+        "index": st.column_config.SelectboxColumn(
+            "index", help=budgetHelp["index"], options=list(AGE_INDEXES) + [n for n in names if n], required=False
+        ),
+        "kind": st.column_config.TextColumn("kind", help=budgetHelp["kind"]),
+    }
 
 
 def houseEditorBase(listKey, tableType, widgetKey, config):
@@ -211,11 +296,12 @@ if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
     if kz.getCaseKey("timeList0") is None:
-        kz.runOncePerCase(owb.resetTimeLists)
+        kz.runOncePerCase(owb.seedProfileTables)
     kz.initCaseKey("stHFP", None)
     # Initialize houseLists if they don't exist
     kz.initCaseKey("houseListDebts", None)
     kz.initCaseKey("houseListFixedAssets", None)
+    kz.initCaseKey("houseListBudget", None)
     n = 2 if kz.getCaseKey("status") == "married" else 1
 
     if kz.getCaseKey("stHFP") is None:
@@ -245,7 +331,7 @@ that has not yet been uploaded.""")
             help=(
                 "An Excel (.xlsx) or OpenDocument (.ods) workbook with one sheet per individual "
                 "containing year-by-year wages, retirement contributions, Roth conversions, and large expenses, "
-                "plus optional household sheets for debts and fixed assets."
+                "plus optional household sheets for debts, fixed assets and budget."
             ),
         )
         if stHFP is not None:
@@ -566,6 +652,48 @@ pressing the *Delete* key."""
             st.rerun()
 
     st.divider()
+    st.markdown("### :material/payments: :orange[Budget]")
+    st.markdown(
+        """Spending lines in today's dollars: core spending, rent, property tax, travel, care, charity
+and the rest, each with its years, a real growth rate and the share a survivor keeps. With the *budget*
+spending profile (**Goals** page) the lines set the shape of spending year by year. In every profile the
+*property tax*, *medical* and *charity* lines feed the tax deductions, and a *property tax* line with a
+school district (**Create Case** page) is what receives the NY STAR credit."""
+    )
+
+    with st.expander("*Expand Budget table*"):
+        budgetkey = kz.genCaseKey("budget")
+        budgetconf = budgetColumnConfig([kz.getCaseKey("iname0"), kz.getCaseKey("iname1")])
+        budgetdf = houseEditorBase("houseListBudget", "Budget", budgetkey, budgetconf).copy()
+        # As for the Debts property column: an empty cell is None in the editor, "" in the table.
+        for col in ("clock", "index"):
+            budgetdf[col] = [v or None for v in budgetdf[col]]
+        edited_budgetdf = st.data_editor(
+            budgetdf, column_config=budgetconf, num_rows="dynamic", hide_index=True, key=budgetkey
+        )
+        st.caption(
+            "Amounts are annual, in today's dollars, as of the first year the line pays. *end* is the "
+            "last calendar year, inclusive: 0 means through the plan's last year, and a negative value "
+            "counts back from it. A line with *clock* *age* pays in the years the ages of *index* fall "
+            "between *start_age* and *end_age*, and ignores *year* and *end*.\n\n"
+            "Additional lines can be directly entered in the table by clicking :material/add: on the "
+            "last row. Lines can be deleted by selecting rows in the left margin and pressing the "
+            "*Delete* key."
+        )
+        if kz.getCaseKey("budgetFile"):
+            st.caption(
+                f"This case also names a budget file (*{kz.getCaseKey('budgetFile')}*). **The interface "
+                "does not read it**: the lines have to be in this table here. Outside the interface it "
+                "feeds `owlcli` when the workbook has no Budget sheet."
+            )
+        for msg in owb.checkBudgetRows(owb.conditionDebtsAndFixedAssetsDF(edited_budgetdf, "Budget")) or []:
+            st.warning(msg, icon=":material/info:")
+
+        # Store edited budget lines if changed
+        if storeHouseEdits("houseListBudget", "Budget", budgetkey, edited_budgetdf):
+            st.rerun()
+
+    st.divider()
     # One workbook holds every table on this page, so it is offered below all of them
     # rather than under the first. Building it needs the tables, not a solved plan, so
     # this stays available even for a case that cannot run -- unlike the same download
@@ -575,7 +703,7 @@ pressing the *Delete* key."""
         st.markdown("### :material/download: :orange[Save your Financial Profile]")
         st.markdown(
             """Download every table on this page as one **Household Financial Profile** workbook:
-the *Wages and Contributions* sheet for each individual, plus *Debts* and *Fixed Assets*."""
+the *Wages and Contributions* sheet for each individual, plus *Debts*, *Fixed Assets* and *Budget*."""
         )
         hfpClicked = st.download_button(
             "Download HFP workbook",

@@ -332,7 +332,8 @@ reference for the details and limitations of
 state-tax modeling.
 
 If you plan to move during retirement, turn on *Move to another state during the plan* and
-enter the year of the move and the new state. Only one move is modeled. The state where you
+enter the year of the move and the new state. Further moves can be added below, under
+*Further moves*, one block per move. The state where you
 live on December 31 taxes the whole year, so the year of the move is taxed by the new state
 and the years before it by the starting state. Leave the new state blank to stop modeling
 state taxes from that year. The optimizer takes the move into account: leaving a high-tax
@@ -636,7 +637,7 @@ If a file was originally associated with a *case* file, a message will remind th
 If values were entered or edited directly in the table,
 they can be saved in Excel format with the **Download HFP workbook** button at the foot of the
 **Financial Profile** page. That download covers every table on the page — the
-*Wages and Contributions* sheet for each individual, plus *Debts* and *Fixed Assets* — and is
+*Wages and Contributions* sheet for each individual, plus *Debts*, *Fixed Assets* and *Budget* — and is
 available as soon as the *case* has a plan, so it does not wait for a successful run.
 The same workbook is offered again as **HFP workbook** in the *Downloads* section of the
 **Reports** page once the *case* has been solved. Either one lets you rerun the same *case*
@@ -794,6 +795,8 @@ duration) pass to heirs with a step-up in basis and are not taxed, as noted abov
 The optional *Budget* worksheet builds the spending profile from line items when the profile type is
 *budget* (on the **Goals** page). Budgeting is not optimized: the lines set the shape of net spending
 year by year, and the optimizer then works with that shape as it does with *flat* or *smile*.
+The lines are edited in the *Budget* table on the **Financial Profile** page and carried in the
+*Budget* sheet of the workbook.
 
 |active|name|type|year|end|amount|rate|survivor|
 |--|--|--|--|--|--|--|--|
@@ -866,7 +869,8 @@ charity. New York has its own itemized deduction, taken whether or not the feder
 property tax without a cap, charity, medical above 10% of AGI and mortgage interest, reduced by up to
 25% above \\$200,000 of NY income for a couple.
 Whether a year itemizes, and the income-based floors, follow the previous step of the self-consistent
-loop. The solver option *withItemized* = "none" turns all of this off (the standard deduction
+loop. The *Itemized deductions* choice on the **Run Options** page (solver option *withItemized*),
+set to "none", turns all of this off (the standard deduction
 everywhere). Not modeled: the alternative minimum tax, the limit on itemized deductions in the 37%
 bracket (its amount is reported). *Other medical expenses* on the Run Options page are the medical
 expense of these deductions when the budget has no *medical* line; with one, the budget's lines are used
@@ -879,8 +883,9 @@ credit, a check from New York State: the Basic credit while the household's inco
 turns 65 while that income is at most \\$110,750 (2026; \\$113,550 for 2027, then rising with inflation).
 Keep the *property tax* line at the full bill: the credit is paid separately. The amounts are the 2025
 credits of each district, growing 2% a year. The credit comes off the state income tax in the reports,
-and off the property tax of New York's itemized deduction. The solver option *withSTAR* = "optimize"
-lets the plan keep its income under the Enhanced limit where that pays; "none" turns it off.
+and off the property tax of New York's itemized deduction. The *NY STAR credit* choice on the
+**Run Options** page (solver option *withSTAR*) lets the plan keep its income under the Enhanced
+limit where that pays when set to "optimize"; "none" turns it off.
 """)
 
     with st.expander(":orange[**Fixed Income**]", expanded=expand_all, type="compact"):

@@ -7,6 +7,40 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 5: the Budget editor and the missing fork widgets (2026-11-03)
+
+`fork-notes/run-library-design.md` section 11, step 5: the inputs the case pages could not edit.
+- **Budget editor** (`ui/Financial_Profile.py`): the Budget sheet gets a table of its own beside
+  Debts and Fixed Assets (the same `houseEditorBase` pattern), with bubble help for all 14
+  columns, and the model's own "adds nothing to the plan" checks (`budget.lines_left_out`, the
+  ones `_evaluateBudget` logs at solve time) reported beside it as the rows are edited
+  (`owlbridge.checkBudgetRows`). `houseListBudget` joins the case keys; `syncHouseLists` already
+  carried it, and a case naming `budget_file` says the interface does not read the file.
+- **A restored run keeps its tables** (`owlbridge.seedProfileTables`): "Open in Owl" restores a
+  solved Plan into the pages (design 9.1), and the Financial Profile page zeroed the plan's
+  Wages and Contributions on arrival (`resetTimeLists`) and showed empty tables. The page now
+  seeds its keys from the plan when the plan holds tables, without marking the case modified;
+  a plan with no tables still starts from the zeroed skeleton.
+- **Saving the current case to the library syncs the pages' tables first**
+  (`owlbridge.syncContributions`, called by `ui/Library.py`): `scenario_from_ui` takes the
+  tables from the plan ("the caller syncs first"), so a table edited and not yet run or
+  downloaded was missing from the saved run.
+- **`withItemized` and `withSTAR`** (Run Options, *Advanced options* -> *Deductions and
+  Credits*): radios bound to the passthrough names, so the solve path (`getSolveParameters`)
+  and the save path (`ui_to_config`) read the same case key and cannot drift. Both stay
+  editable under local search: it solves STAR with MILP like "optimize" does, and honors
+  "none"; the itemizing switch is not a breakpoint family.
+- **All moves** (`ui/Create_Case.py`): moves after the first are edited under *Further moves*,
+  one block of cascading selects per move (year, state, city, school district) with a Remove
+  button, and the mistakes `residency` refuses at solve time (a duplicate year, a move to the
+  residence it leaves) are reported as the rows are edited.
+- Tests: `tests/ui/test_budget_editor.py`, `tests/ui/test_run_options_deductions.py`, the
+  further moves in `tests/ui/test_create_case_move.py`, several moves in
+  `tests/config/test_config_ui_bridge.py`. `tests/conftest.py`'s frozen date now accepts plain
+  `datetime.date` instances (`_FixedDateMeta.__instancecheck__`): AppTest hands widget state
+  back as one, and streamlit's `date_input` rejected it on the second run of a page with a
+  date widget.
+
 ### Run library, build step 4: the scenario model and builder (2026-11-03)
 
 Scenario schema v2 and `owlplanner.library.builder` (`fork-notes/run-library-design.md`
@@ -398,8 +432,9 @@ each optionally naming a `locality` (`moves = [{year = 2032, state = "NJ"}]`, or
 stay in the state if it changes the locality. The residence in force on December 31 governs the
 whole year. Plan attributes, the per-year flags (`st_conv_n`, `st_tax_ss_n`, `st_fed_sd_n`,
 `st_senior_bonus_n`, `st_pension_eligible_n`) and `_states_n()` follow upstream's names. The web UI
-uses upstream's move toggle for the first move, with a city selector, and keeps any further moves
-from the case file as they are. The explanation reports the first move as upstream's `move` and,
+uses upstream's move toggle for the first move, with a city selector, and edits further moves under
+*Further moves* on the same page (run-library step 5; before it they were kept from the case file
+as they were). The explanation reports the first move as upstream's `move` and,
 when there are more, all of them in `moves`.
 
 ### Changed: state indexing and exemptions now come from upstream (#157)

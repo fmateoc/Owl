@@ -41,7 +41,21 @@ _REAL_DATE = datetime.date
 _FROZEN_DATE = _REAL_DATE(2026, 1, 1)
 
 
-class _FixedDate(_REAL_DATE):
+class _FixedDateMeta(type):
+    """A frozen date is still a date.
+
+    AppTest (like any serializer) hands widget state back as plain datetime.date values.
+    Modules patched with _FixedDate check `isinstance(value, date)` against it -- streamlit's
+    date_input rejects the plain value ("Provided type: date") on the second run of a page
+    with a date widget. The instance check accepts any real date, so the freeze stays
+    transparent to isinstance while today() stays frozen.
+    """
+
+    def __instancecheck__(cls, instance):
+        return isinstance(instance, _REAL_DATE) and not isinstance(instance, datetime.datetime)
+
+
+class _FixedDate(_REAL_DATE, metaclass=_FixedDateMeta):
     """datetime.date subclass whose today() always returns _FROZEN_DATE."""
 
     @classmethod

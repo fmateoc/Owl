@@ -5791,3 +5791,97 @@ The user's call. `main` moved from `c61326ea` to the head of `claude/run-library
 review X1-X9 and its fixes (`7b4565cf`, `f4b2d5c6`), the ticker test's race (`781e3d53`), and
 this note. Full suite on `781e3d53` (Linux): 4005 passed, 1 skipped. Next: step 5 (Budget
 editor; the missing fork widgets).
+
+## Run-library step 5: the Budget editor and the missing fork widgets (2026-11-03, on `claude/run-library-step5`)
+
+Build step 5 of `fork-notes/run-library-design.md` (section 11): *"Budget editor; the missing fork
+widgets (`withItemized`, `withSTAR`, all moves)"*. The design's check column for this step is
+empty; the checks are the tests listed below. Everything is the case pages (generic UI: the Budget
+editor is offered upstream later, section 12) and the run library picks it all up through the paths
+step 1 built (`scenario_from_ui` reads the case keys and the plan's tables).
+
+**Budget editor** (`ui/Financial_Profile.py`): a third table section, `### Budget`, with its own
+expander and the same `houseEditorBase` / `storeHouseEdits` loop as Debts and Fixed Assets
+(`houseListBudget`, through the "Budget" branch of `hfp_io.conditionDebtsAndFixedAssetsDF` that
+already existed; `syncHouseLists` already carried it). All 14 `budget.SHEET_COLUMNS` get bubble
+help (`budgetHelp`, the `timetableHelp` pattern). Beside the table, the model's own "adds nothing
+to the plan" checks (`budget.lines_left_out`, exactly the ones `_evaluateBudget` logs at solve
+time) are reported as the rows are edited -- a line whose years never meet the plan, an age clock
+without its ages, an index that names nobody -- as `checkQCDColumn` does for QCD
+(`owlbridge.checkBudgetRows`). A case naming `budget_file` says the interface does not read the
+file (Documentation's own words).
+
+**A restored run keeps its tables** (`owlbridge.seedProfileTables`, replacing the page's
+`runOncePerCase(owb.resetTimeLists)`): "Open in Owl" restores a solved Plan into the pages (design
+9.1), and the Financial Profile page then **zeroed the plan's Wages and Contributions**
+(`plan.zeroWagesAndContributions`) and showed empty tables -- found while wiring the Budget
+editor's seeding. The page now seeds `timeList*` / `houseList*` from the plan when it holds
+tables, with `storeCaseKey` (seeding is not an edit: `setCaseKey` would mark a solved run
+"modified"), and fills only keys that are still empty. A plan with no tables (a case uploaded
+without its workbook) still starts from the zeroed skeleton, as before.
+
+**Saving the current case to the library syncs the pages' tables first**
+(`owlbridge.syncContributions` = `_setContributions(plan, "set")`, called by
+`ui/Library.py::_save_current_case`): `scenario_from_ui` takes the HFP tables from the plan, and
+its docstring puts the sync on the caller ("The caller syncs the UI's edited tables into the plan
+first"). The Library page did not, so a Budget/Debts/Fixed Assets/wages edit that had not been run
+or downloaded yet was missing from the saved run. Test: an edited `houseListBudget` reaches the
+saved run's `inputs/HFP.xlsx`.
+
+**`withItemized` and `withSTAR`** (`ui/Run_Options.py`, *Advanced options* -> *Deductions and
+Credits*, placed above *Calculations* on purpose): radios bound to the passthrough names themselves
+(`SOLVER_UI_PASSTHROUGH_KEYS`), so `getSolveParameters` (the solve) and `ui_to_config` (the
+save) read the same case key and cannot drift (#156's lesson; no bridge translation involved).
+Values are the `_MODE_OPTIONS` literals ("none"/"loop", plus "optimize" for STAR). Both stay
+enabled under the local-search toggle: `Plan._applyBreakpointOptions` forces STAR to "optimize"
+but honors "none", and itemizing is not a breakpoint family -- so the "individual settings do not
+apply" caption is not extended to them (it says "every breakpoint below").
+
+**All moves** (`ui/Create_Case.py`): moves after the first -- which `config_to_ui` carries as
+`stateMovesMore` and the pages only counted in an info banner -- are edited under *Further moves*:
+one block of cascading selects per move (year, state, city, school district; the first move's
+`_state_choices` / `_locality_choices` / `_district_choices`, so a city or district outside its
+state cannot be entered), an "Add a move" button and a per-row Remove. The rows are `stateMovesMore`
+dicts exactly as `ui_to_config` writes them (`{year, state, [locality], [school_district]}`);
+adding or removing drops the rows' widget state, so shifted rows cannot inherit each other's
+half-typed values (#194's problem, for whole rows). The mistakes `residency._homes_by_year` refuses
+at solve time are reported as the rows are edited: two moves in one year, and a move to the
+residence it leaves (walked in year order from the starting residence; returning to a state you left
+is legal and is not warned).
+
+Tests (the step's checks): `tests/ui/test_budget_editor.py` (10: the column help covers the
+sheet's columns; `checkBudgetRows`' messages; the page renders with lines and warns; the
+`budget_file` note; a restored run keeps its tables and its "solved" status; a table edit reaches
+the workbook; the Library save carries it), `tests/ui/test_run_options_deductions.py` (5: the
+radios show the file's values and the loop default, stay enabled under local search, and a choice
+reaches `getSolveParameters` and `ui_to_config` identically and round-trips through a case
+file), `tests/ui/test_create_case_move.py` +6 (further moves show their values; add, edit and
+remove; reach the case file and the plan's `genDic` split; warn on a duplicate year and on a move
+to the residence it leaves; do not warn on a return to a state left behind),
+`tests/config/test_config_ui_bridge.py` +1 (several moves with a locality and a school district
+round-trip through the UI keys and the plan). Two AppTest quirks of interaction tests are handled in
+the tests: the title bar's case selector decorates its options (the case name plus a marker
+character) so a rerun cannot
+re-serialize it (`test_ui_disabled_options`'s workaround, used before every rerun), and
+streamlit's `date_input` rejected the plain `datetime.date` AppTest hands widget state back as
+once `freeze_year` had rebound `date` (`tests/conftest.py`: `_FixedDateMeta.__instancecheck__`
+now accepts any real date, so the freeze stays transparent to isinstance; found by the first
+add-a-move rerun). AppTest cannot drive `st.data_editor`, so the editor's edit loop is covered
+through the storage path (`syncContributions` -> `saveContributions`, and the Library save), as
+the Debts and Fixed Assets editors are.
+
+Also: `tests/ui/test_financial_profile.py` (upstream's) asserts the `### ` heading order to check
+the download button sits below every table; it now lists *Budget* between *Debts and Fixed Assets*
+and *Save your Financial Profile*. `ui/Documentation.py`: the Budget sheet says where its lines are
+edited, the itemized and STAR paragraphs name their Run Options widgets, and the move paragraph
+describes *Further moves* instead of "Only one move is modeled". `fork-notes/CHANGELOG-fork.md` has
+the entry.
+
+Not built (outside the design's named scope, for later): widgets for the other passthrough-only
+keys -- `previousSTARIncomes` (STAR income before the plan; defaults to the MAGI entries, which
+have widgets) and `withSeniorBonus`.
+
+Checks: `tests/ui tests/config tests/library` **799 passed, 1 skipped** (2:20, Windows, -n 4).
+Full suite (Windows, -n 4): **4027 passed, 2 skipped** (12:19; the two skips are the POSIX-only
+jobs tzset test and the unlicensed-MOSEK check, as on every Windows run). flake8/ruff: only
+upstream's known items (the `stochastic` test files' E301/E304, the four B905s).

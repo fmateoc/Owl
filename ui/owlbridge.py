@@ -1304,6 +1304,18 @@ def _setContributions(plan, action):
 
 
 @_checkPlan
+def syncContributions(plan):
+    """
+    The Financial Profile editors' tables into the plan, as saveContributions does first.
+
+    A caller that reads the plan's tables (the library's save, `scenario_from_ui`) has to call
+    this first: a table edited on the page but not yet run or downloaded is only in the case
+    keys, and would be missing from the saved run.
+    """
+    return _setContributions(plan, "set")
+
+
+@_checkPlan
 def readHFP(plan, stFile, file=None):
     """
     Load HFP from file -> Plan -> UI.
@@ -1373,6 +1385,29 @@ def checkQCDColumn(plan, df, i):
 
 
 @_checkPlan
+def checkBudgetRows(plan, df):
+    """
+    Report the Budget rows that would add nothing to the plan, as they are edited.
+
+    The model's own checks (`budget.lines_left_out`, the same ones `_evaluateBudget` logs at
+    solve time), surfaced next to the table: a line whose years never meet the plan, an age
+    clock without its ages, an index that names nobody. Returns the messages, empty when
+    every active line contributes.
+    """
+    from owlplanner import budget as budgeting
+
+    thisyear = date.today().year
+    year_n = np.asarray(plan.year_n, dtype=float)
+    ages_in = year_n[np.newaxis, :] - np.asarray(plan.yobs, dtype=float)[:, np.newaxis]
+    who = {"ages_in": ages_in, "inames": plan.inames, "i_d": getattr(plan, "i_d", 0)}
+    try:
+        left = budgeting.lines_left_out(df, plan.N_n, thisyear, n_d=getattr(plan, "n_d", plan.N_n), **who)
+    except Exception as e:  # noqa: BLE001 - a malformed table is reported, not raised
+        return [str(e)]
+    return [f"Budget line {name!r} {why}: it adds nothing to the plan." for name, why in left]
+
+
+@_checkPlan
 def resetWagesAndContributions(plan):
     return plan.zeroWagesAndContributions()
 
@@ -1391,6 +1426,38 @@ def resetTimeLists():
     #               pd.DataFrame(columns=["name", "type", "year", "term", "amount", "rate"]))
     # kz.setCaseKey("houseListFixedAssets",
     #               pd.DataFrame(columns=["name", "type", "basis", "value", "rate", "yod", "commission"]))
+
+
+def seedProfileTables():
+    """
+    First fill of the Financial Profile's tables: what the plan already holds, else zeros.
+
+    A case opened from a file with loadHFP=False and a case restored from a solved Plan
+    ("Open in Owl", run-library design section 9.1) carry their tables in the plan, not in
+    the case keys. Zeroing them here (the old resetTimeLists call) destroyed the restored
+    run's Wages and Contributions on the first visit to the page. A plan that holds no
+    tables (a fresh case) still starts from the zeroed skeleton.
+    """
+    plan = kz.getCaseKey("plan")
+    if plan is not None and getattr(plan, "timeLists", None):
+        # Stored, not set: seeding the page is not an edit, and a restored run keeps its
+        # "solved" status (setCaseKey would mark it modified). Only what is missing is
+        # filled: a key that already holds a table (a workbook read in, a test's) stays.
+        for i, iname in enumerate(plan.inames):
+            table = plan.timeLists.get(iname)
+            if kz.getCaseKey(f"timeList{i}") is None and table is not None:
+                kz.storeCaseKey(f"timeList{i}", table)
+                kz.storeCaseKey(f"_timeList{i}", table)
+        house = getattr(plan, "houseLists", None) or {}
+        for key, listKey in (
+            ("Debts", "houseListDebts"),
+            ("Fixed Assets", "houseListFixedAssets"),
+            ("Budget", "houseListBudget"),
+        ):
+            if kz.getCaseKey(listKey) is None:
+                kz.storeCaseKey(listKey, house.get(key))
+        return
+    resetTimeLists()
 
 
 def syncHouseLists(plan):

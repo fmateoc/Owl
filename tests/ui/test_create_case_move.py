@@ -48,6 +48,17 @@ def _render(monkeypatch, moves):
     return at
 
 
+def _rerun(at):
+    # The sidebar's case selector decorates the case name in its options; keep it on that
+    # option (as test_ui_disabled_options does), or the rerun cannot re-serialize it.
+    for box in at.selectbox:
+        if box.label == "Case selector":
+            box.set_value(box.options[0])
+    at.run()
+    assert not at.exception, [str(e.message) for e in at.exception]
+    return at
+
+
 @pytest.mark.toml
 def test_move_fields_hidden_without_a_move(monkeypatch):
     at = _render(monkeypatch, None)
@@ -63,3 +74,96 @@ def test_move_fields_show_the_move(monkeypatch):
     assert toggle[0].value is True
     assert [n.value for n in at.number_input if n.label == "Year of the move"] == [2031]
     assert [s.value for s in at.selectbox if s.label == "New state"] == ["FL"]
+
+
+# -- moves after the first (fork; run-library step 5) ------------------
+
+
+def _add_move(at):
+    next(b for b in at.button if b.label.startswith("Add a move")).click()
+    return _rerun(at)
+
+
+@pytest.mark.toml
+def test_further_moves_show_their_values(monkeypatch):
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}, {"year": 2035, "state": "TX"}])
+    assert [n.value for n in at.number_input if n.label == "Year of move 2"] == [2035]
+    assert [s.value for s in at.selectbox if s.label == "State of move 2"] == ["TX"]
+
+
+@pytest.mark.toml
+def test_a_move_can_be_added_edited_and_removed(monkeypatch):
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}])
+    assert at.session_state["cases"]["t"]["stateMovesMore"] == []
+
+    _add_move(at)
+    more = at.session_state["cases"]["t"]["stateMovesMore"]
+    assert len(more) == 1 and more[0]["state"] == "FL"  # starts from the move above
+
+    [s for s in at.selectbox if s.label == "State of move 2"][0].set_value("CA")
+    _rerun(at)
+    assert at.session_state["cases"]["t"]["stateMovesMore"][0]["state"] == "CA"
+
+    removes = [b for b in at.button if b.label == ":material/delete:"]
+    assert len(removes) == 1
+    removes[0].click()
+    _rerun(at)
+    assert at.session_state["cases"]["t"]["stateMovesMore"] == []
+
+
+@pytest.mark.toml
+def test_the_further_moves_reach_the_case_file(monkeypatch):
+    moves = [
+        {"year": 2031, "state": "NY", "locality": "Yonkers", "school_district": "City of Yonkers / Yonkers"},
+        {"year": 2035, "state": "FL"},
+    ]
+    at = _render(monkeypatch, moves)
+    assert at.session_state["cases"]["t"]["stateMovesMore"] == [{"year": 2035, "state": "FL"}]
+    from owlplanner.config.ui_bridge import ui_to_config
+
+    assert ui_to_config(at.session_state["cases"]["t"])["basic_info"]["moves"] == moves
+
+
+@pytest.mark.toml
+def test_two_moves_in_one_year_warn(monkeypatch):
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}])
+    _add_move(at)
+    [n for n in at.number_input if n.label == "Year of move 2"][0].set_value(2031)
+    _rerun(at)
+    warns = [str(w.value) for w in at.warning]
+    assert any("Two moves in 2031" in w for w in warns), warns
+
+
+@pytest.mark.toml
+def test_a_move_to_the_residence_it_leaves_warns(monkeypatch):
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}])
+    _add_move(at)  # defaults to the destination of the move above
+    warns = [str(w.value) for w in at.warning]
+    assert any("goes to the move in 2031" in w for w in warns), warns
+
+
+@pytest.mark.toml
+def test_a_move_back_to_the_starting_state_does_not_warn(monkeypatch):
+    """The rule is that a move changes the residence it leaves, not that it never returns."""
+    at = _render(monkeypatch, [{"year": 2031, "state": "FL"}])
+    _add_move(at)
+    [s for s in at.selectbox if s.label == "State of move 2"][0].set_value("NY")
+    _rerun(at)
+    warns = [str(w.value) for w in at.warning]
+    assert not any("goes to" in w for w in warns), warns
+
+
+@pytest.mark.toml
+def test_the_pages_see_every_move_of_a_plan():
+    """"Open in Owl" builds the page keys from a Plan (`genDic`): the split matches
+    `config_to_ui`'s, so the further moves land in the same editor."""
+    import owlbridge as owb
+    from owlplanner.config import config_to_plan
+
+    diconf, dirname, _ = load_toml(str(CASE))
+    diconf["basic_info"]["state"] = "NY"
+    diconf["basic_info"]["moves"] = [{"year": 2031, "state": "FL"}, {"year": 2035, "state": "TX"}]
+    plan = config_to_plan(diconf, dirname, verbose=False, loadHFP=True)
+    _, dic = owb.genDic(plan)
+    assert dic["stateMoveYear"] == 2031 and dic["stateMoveState"] == "FL"
+    assert dic["stateMovesMore"] == [{"year": 2035, "state": "TX"}]

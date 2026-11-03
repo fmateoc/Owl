@@ -5550,3 +5550,13 @@ question is gone (four questions remain), and the #132 note in the draft records
 
 `main` fast-forwarded to `claude/eager-turing-4bs36n` (2026-11-03, the user's call): the
 run-library design issue draft (D8) with its review; docs only.
+
+## Upstream `dev` `73dc881` merged (2026-11-03, on `claude/eager-turing-4bs36n`)
+
+Five commits past `1cf1925`: `825a72b` (Connect your AI names all eighteen MCP tools and both
+resources), `47d23fd` (Docker images native on Apple Silicon, #242), `f1002d4` (version
+2026.10.30), `2deb60e` (Docker images pin uv 0.13.6), `73dc881` (benchmarks in the Makefile).
+Clean merge (`30073969`); in `src/` only the version string changed, and the fork's git retry in
+`version.py` is kept. `CHANGELOG.md` equals upstream's byte for byte. Full suite **3907 passed,
+1 skipped** (9:46, Linux; unchanged count). flake8/ruff: only upstream's known items (the
+`tests/stochastic` E301/E304s, the four B905s). `main` fast-forwarded afterwards (the user's call).

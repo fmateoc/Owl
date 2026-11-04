@@ -6244,4 +6244,7 @@ Tests +11 (`tests/library/test_rates_table.py` +5, `tests/rate_models/test_rate_
 fix** (`src/` and `ui/owlbridge.py` stashed, the tests re-run: 9 failed / 2 passed); the two
 that pass pin behavior the fixes keep (a case without the options builds as before; other
 upload errors carry no hint). `test_ab3_the_working_directory_is_the_fallback` failed before
-only on the new error wording. Lint: only upstream's known items.
+only on the new error wording. Full suite (Linux, -n 4): **4133 passed, 1 skipped** (9:22;
+Windows' 4121 / 2 skipped + 11, the skip count is the platform's). The acceptance check
+(`check_library_rates.py`, after `make_cases.py`) reruns at **11/11**. Lint: only upstream's
+known items.

@@ -206,3 +206,7 @@ the Library's Import), or accept a rates upload there.
 - **AB4 folded:** `owlbridge.createCaseFromFile` adds a hint to a table case's
   `FileNotFoundError` (the Run Library's **Import a case** takes the rates CSV; or `owlcli run`
   beside the CSV); other upload errors are unchanged. Tests: `test_ab4_*`.
+
+Verification of the fold: the 11 new tests (9 checked to fail before their fix; the other two
+pin kept behavior), full suite on Linux 4133 passed / 1 skipped (9:22), `check_library_rates.py`
+11/11, lint only upstream's items.

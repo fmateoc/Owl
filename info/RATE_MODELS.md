@@ -111,6 +111,27 @@ method = "historical"
 from = 1969
 ```
 
+#### `table`
+
+Year-by-year rates read from a CSV file named in the case file (a `year` column and the columns 'S&P 500', 'Bonds Baa', 'T-Notes', 'Inflation', values in percent). The file sits beside the case file; its years are matched to the plan's years.
+
+| Parameter | Required | Type | Description |
+|-----------|----------|------|-------------|
+| `method` | Yes | str | model name (`"table"`) |
+| `rates_file` | Yes | str | The rates CSV, resolved beside the case file (as the HFP workbook is). |
+| `base_dir` | No | str | Directory the file name is resolved against (set when the case is loaded, not stored). |
+| `start_year` | No | int | The plan's first calendar year (set by Plan.setRates, not stored). |
+| `in_percent` | No | bool | If True (default), table values are in percent (7.0 = 7%) and are divided by 100. |
+| `rows` | No | list[list[float]] | The table in memory ([year, S&P 500, Bonds Baa, T-Notes, Inflation] per row). |
+
+**Example:**
+
+```toml
+[rates_selection]
+method = "table"
+rates_file = "rates.csv"
+```
+
 ### :orange[Stochastic models]
 
 #### `garch_dcc`

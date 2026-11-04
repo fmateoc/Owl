@@ -1447,6 +1447,7 @@ Inflation is floored at −5% to exclude Great Depression tail artefacts.
 | `historical_gaussian` | Varying | Stochastic | History-grounded statistics; no user parameters needed | Assumes normally distributed returns; draws are independent |
 | `historical_lognormal` | Varying | Stochastic | History-grounded log-normal; bounded below −100%; right-skewed | Draws are independent; log-normal approximation |
 | `historical` | Varying | Deterministic | Exact historical replay; no modeling assumptions | No Monte Carlo; one path per start year |
+| `table` | Varying | Deterministic | Year-by-year rates read from a CSV the case file names (a run's own sequence, frozen with its inputs) | Must cover the plan's years; one path, no uncertainty modeling |
 | `lognormal` | Varying | Stochastic | User-specified parameters; bounded below −100%; right-skewed; GBM-consistent | Accuracy depends entirely on user inputs |
 | `vector_ar` | Varying | Stochastic | Captures momentum and mean-reversion across all asset classes | More complex; sensitive to choice of historical window |
 | `historical_copula` | Varying | Stochastic | Preserves exact marginal distributions (no Gaussian shape imposed); captures full rank-correlation structure | Bounded to historical `[min, max]`; resolution limited to T years; no serial autocorrelation |

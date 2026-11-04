@@ -7,6 +7,45 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 5b: the rates table and the named downturn sequences (2026-11-04)
+
+`fork-notes/run-library-design.md` section 11, step 5b (D11, I11, review R13): a year-by-year
+rates CSV the case file names, and the named downturn sequences placed at a year.
+- **The `table` rate method** (`rate_models/table.py`): `[rates_selection] method = "table"`
+  with a `rates_file` reads returns from that CSV instead of generating them -- a `year` column
+  and the four rate columns of `data/rates.csv` (extra columns ignored, so that history file
+  itself can be named), values in percent. The file is resolved beside the case file as the
+  HFP workbook is (`Plan._config_dir`), rows are matched to the plan's calendar years, and the
+  plan keeps the rows it read for the paths that have no case directory (the interface's
+  `apply_config_to_plan`, `clone`). `to_config` writes only the file name back.
+- **The run library** stores the table in the scenario (`rates_table`, schema v3 with a
+  migration; `BUILDER_VERSION` 4), so it is in the inputs hash (R13), imports it with the case
+  (`import_case`, resolved as the workbook is) and writes the run's `rates.csv` beside
+  `Case.toml`, which names it. The two consistency rules are `validate`'s: a table and the
+  case must agree on `method = "table"`.
+- **Downturn events (I11):** a scenario event `{kind: "downturn", sequence, start}` places a
+  named sequence at a year or an anchor (`purchase`, `age:Ari:70`, ...). The builder generates
+  the run's rates table as **the case's own rate path with the sequence's window overlaid at
+  the placement** (the user's call), so the years outside the window keep the run's own method
+  and the stress question is "the same plan, but the market does this". The named sequences
+  (`data/downturn_sequences.toml`, `library/sequences.py`) carry their sources: `crash-30` is
+  an invented stress year, `three-negative-years` (2000-2002) and `poor-decade` (1973-1982)
+  replay rows of Owl's own rate history. One downturn event per run for now (the variant
+  dimension is step 6). A run's nominal amounts are built from the table's inflation path when
+  there is one, so a downturn overlay moves the purchase price and the rent rows with it.
+- **The pages keep a table case intact** (the user's call: safety + Scenario rows): the Rates
+  page shows the table read-only ("edit the downturn event"), `config_to_ui` / `ui_to_config` /
+  `genDic` / `_setRates` carry `method = "table"` and its file name instead of resetting the
+  method (the selectors' "not available" reset would have rewritten the case), and the
+  Scenario page edits the downturn event like the other events (sequence picker with its
+  source, placement with the anchor grammar).
+- The step's check is `fork-notes/synthetic/check_library_rates.py`: `owlcli run` of a run's
+  frozen `inputs/Case.toml`, called from another working directory, reproduces the interface's
+  worker solve array for array (`plan.json`), for a downturn run and a hand-table run alike.
+- Tests: `tests/rate_models/test_rate_model_table.py` (20) and
+  `tests/library/test_rates_table.py` (22). `info/RATE_MODELS.md` regenerated (the generator
+  adds the `table` section; nothing else moves).
+
 ### Run library, build step 5: the Budget editor and the missing fork widgets (2026-11-03)
 
 `fork-notes/run-library-design.md` section 11, step 5: the inputs the case pages could not edit.

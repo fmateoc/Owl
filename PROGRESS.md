@@ -5982,3 +5982,73 @@ The user's call. `main` moved from `64244f8` to the head of `claude/run-library-
 (`26054d5`), the first review's W1-W5, W7-W8 (`4aefd31`), the second review Y1-Y5 (`1812604`),
 its Y1-Y4 fixes (`25f42b3`, `ed94733`), and this note. Full suite on `25f42b3` (Linux): 4052
 passed, 1 skipped. Next: step 5b (D11's rate table), then 6 (collections).
+
+## Run-library step 5b: the rate table and the named downturn sequences (2026-11-04, on `claude/run-library-step5b`)
+
+Design section 11, step 5b (D11, I11, R13): a year-by-year rates CSV the case file names, read
+by a new rate method, and the named downturn sequences. The user's two calls before the build:
+the sequence fills only its window and the years outside keep **the run's own rate method** (the
+stress question stays "the same plan, but the market does this"), and the pages get **safety +
+Scenario rows** (no Rates-page table editor this step).
+- **The `table` rate method** (`src/owlplanner/rate_models/table.py`, in the registry and
+  `info/RATE_MODELS.md` regenerated): `[rates_selection] method = "table"` + `rates_file` reads
+  its returns from that CSV -- a `year` column and the four rate columns of
+  `src/owlplanner/data/rates.csv` (extra columns ignored, so Owl's own history file can be
+  named), values in percent. The file resolves CWD-then-beside-the-case (`Plan._config_dir`,
+  set by `config_to_plan`; the HFP workbook's order), rows are matched to the plan's calendar
+  years (`start_year`, passed by `Plan.setRates` like `dataframe`'s `n_years`), and a plan that
+  cannot re-read its file reuses the rows it already holds (the interface's `apply_config_to_plan`
+  and `clone`, which also pass `dirname` and the rows). `to_config` writes only the file name.
+- **The library** stores the table in the scenario (`rates_table`, schema v3 + migration 1/2->3;
+  `BUILDER_VERSION` 4): it is in the inputs hash (R13), `import_case` reads it as it reads the
+  workbook (explicit path, CWD, beside the case; `rates_path=`), `export_case` writes
+  `inputs/rates.csv` and the generated `Case.toml` names it. `validate` holds the two
+  consistency rules (a table and the case must agree on `method = "table"`, both directions).
+- **Downturn events (I11):** `{kind: "downturn", sequence, start}` places a named sequence at a
+  year or an anchor (`purchase`, `age:Ari:70`, `event:buy+2`); `builder.rates_table` generates
+  the run's table as the case's own rate path (through a plan build, like `_gamma`) with the
+  sequence's window overlaid at the placement, and `build()` names the table in the generated
+  case with provenance markers on the event. The named sequences
+  (`data/downturn_sequences.toml`, `library/sequences.py`) carry their sources: `crash-30` is
+  an invented stress year (Boldin's "custom downturns", the design's I11), `three-negative-years`
+  (2000-2002) and `poor-decade` (1973-1982) replay rows of Owl's own `data/rates.csv`. One
+  downturn event per run (the variant dimension is step 6); a hand table and an event refuse to
+  coexist (the event generates the table: "drop one"), and a sequence over a `table` case is
+  refused (no baseline to overlay). A table run's nominal amounts come from the table's
+  inflation path (`build()`'s gamma), so an overlay moves the purchase price and the rent rows.
+- **The pages keep a table case intact** (the review's W1/Y line of thought: the selectors'
+  "not available" reset would have rewritten the case, and `_setRates` raises on unknown
+  methods): `config_to_ui` / `ui_to_config` / `_ui_rate_method_to_config` / `_ui_rates_to_config`
+  carry `method = "table"` and `ratesFile` (no forced historical window), `owlbridge.genDic`
+  sets the read-only state, `_setRates` re-reads the frozen file through `plan.setRates`, and
+  the Rates page shows the table read-only ("edit the scenario's downturn event"). The Scenario
+  page edits the downturn event like the others (sequence picker with its source and window,
+  placement in the anchor grammar; `_MANAGED` keeps unmanaged keys).
+- **The acceptance** (`fork-notes/synthetic/check_library_rates.py`, the Check column):
+  `owlcli run` of a run's frozen `inputs/Case.toml`, called from another working directory,
+  reproduces the interface's worker solve field for field (`plan.json`, the solve's own timing
+  aside), for a downturn run and
+  a hand-table run alike; the run's `record.json` records `rates.method = "table"`; the
+  sequence's window sits at its placement with the baseline row outside it; re-importing the
+  frozen files gives the run's own inputs hash (T1); re-exporting writes the same `rates.csv`.
+  Both solves are the plain loop (the synthetic case's ages are held and Medicare put on the
+  loop first: its `withSSAges x withMedicare = "optimize"` makes every age candidate a MIP).
+  **11/11 checks pass** (2026-11-04; the two plan comparisons differ only in
+  `solve_time_seconds`, which the check nulls).
+- Tests: `tests/rate_models/test_rate_model_table.py` (20: reading by year, units, the errors a
+  short or bad table gives, the TOML round trip, `Plan.setRates` with `_config_dir` and the
+  in-memory fallback, `clone` with a new expectancy) and `tests/library/test_rates_table.py`
+  (22: the hand table's import/export/round trip, the overlay and its anchors, the marked case
+  fields, the refusals, the schema rules, the pages saves, gamma from the table).
+- Notes for the record: the schema bump means re-importing a run saved before step 5b gives a
+  new hash (a v3 document; like v1->v2 at step 4). The table must cover the plan's years or the
+  solve names the missing ones -- a `clone` with a longer expectancy needs a longer table. The
+  plan keeps the table's rows in memory (`TableRateModel.rows`), which is what lets the pages
+  solve a table case with no case directory in reach.
+
+
+Full suite (Windows, -n 4): **4094 passed, 2 skipped** (9:40; 4052 + 42 new tests; the skips are
+the POSIX-only `test_jobs.py` tzset test and `test_solver_status.py`'s unlicensed-MOSEK check).
+`info/PARAMETERS.md` gained the `table` method and its `rates_file` / `in_percent` keys, and
+`ui/Documentation.py`'s method table its `table` row. flake8/ruff: only upstream's known items.
+

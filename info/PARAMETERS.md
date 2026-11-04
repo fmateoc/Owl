@@ -198,7 +198,7 @@ Rates use standard financial conventions:
 | `liquidation_capgains_rate` | float | Assumed capital-gains tax rate (as percentage, e.g., `15.0` for 15%) applied to fixed-asset disposition (commission plus this rate on the gain) on the liquid balance sheet. Default is `15.0` |
 | `dividend_rate` | float | Dividend rate as a percentage (e.g., `1.72` for 1.72%) |
 | `obbba_expiration_year` | integer | Year when the OBBBA (One Big Beautiful Bill Act) provisions expire. Default is `2032` |
-| `method` | string | Method for determining rates. Valid values: `"trailing_30"`, `"optimistic"`, `"conservative"`, `"user"`, `"historical"`, `"historical_average"`, `"gaussian"`, `"historical_gaussian"`, `"lognormal"`, `"historical_lognormal"`, `"historical_bootstrap"`, `"vector_ar"`, `"garch_dcc"`, `"historical_copula"`, `"gmm"`, `"hmm"`, `"dataframe"` |
+| `method` | string | Method for determining rates. Valid values: `"trailing_30"`, `"optimistic"`, `"conservative"`, `"user"`, `"historical"`, `"historical_average"`, `"gaussian"`, `"historical_gaussian"`, `"lognormal"`, `"historical_lognormal"`, `"historical_bootstrap"`, `"vector_ar"`, `"garch_dcc"`, `"historical_copula"`, `"gmm"`, `"hmm"`, `"dataframe"`, `"table"` |
 
 **Legacy names:** `trailing-30`, `historical average`, `histogaussian`, `histolognormal`, `bootstrap_sor`, and `var` are older names for `trailing_30`, `historical_average`, `historical_gaussian`, `historical_lognormal`, `historical_bootstrap`, and `vector_ar`; `stochastic` and `histochastic` both stand for `historical_gaussian`, and `default` for `trailing_30`. They are still read, with a warning, but will be removed in a future release: new cases should use the names above.
 
@@ -208,6 +208,12 @@ Rates use standard financial conventions:
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `values` | list of 4 floats | Mean returns in percent: [S&P 500, Corporate Baa bonds, 10-year Treasury notes, Inflation] (e.g., `7` for 7%) |
+
+#### :orange[For method = "table"]
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `rates_file` | string | A year-by-year rates CSV beside the case file (as the HFP workbook is): a `year` column and the columns `S&P 500`, `Bonds Baa`, `T-Notes`, `Inflation`, values in percent. Extra columns are ignored (Owl's own `data/rates.csv` can be named). Its rows are matched to the plan's calendar years; a plan year with no row is an error |
+| `in_percent` | boolean | *(Optional)* When `false`, the table's values are decimals (e.g., `0.07` for 7%) instead of percent. Default is `true` |
 
 #### :orange[For method = "gaussian" or "lognormal"]
 | Parameter | Type | Description |

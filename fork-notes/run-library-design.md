@@ -96,7 +96,8 @@ otherFiles/library/                      # gitignored (otherFiles/ is ignored up
         scenario.json                    # the source of truth (with schema_version)
         Case.toml                        # generated: owlcli and the existing pages read it
         HFP.xlsx                         # generated
-        rates.csv                        # generated when the run uses a downturn sequence (D11)
+        rates.csv                        # generated when the run has a rates table (D11): a
+                                         # hand table or a downturn sequence (step 5b)
       results/                           # one folder per solve
         2026-11-03T14-02_local-search/
           record.json                    # solve date, method preset and options, Owl version and
@@ -195,6 +196,14 @@ coupled edits and are checked against each other cell for cell (step 4's check,
 the step-4 review: only the row builders moved into the module; `write_hfp` and `case` by
 decision.)*
 
+The rates table (step 5b, D11) is generated beside the couple: `library.builder.rates_table`
+is the pure function for it -- the hand table (`scenario["rates_table"]`) or, for a downturn
+event, the case's own rate path with the sequence's window overlaid at its placement (the
+user's call: the stress question stays "the same plan, but the market does this"). `build()`
+names the table in the generated case (`rates_selection.method = "table"` and the file name,
+marked when an event generates them) and `export_case` writes `rates.csv`; a run's nominal
+amounts are built from the table's inflation path when there is one.
+
 ### 6.3 Generated rows versus hand edits
 
 The user may want to adjust a single generated value, for example the 2029 closing costs.
@@ -218,9 +227,11 @@ and the remainder decomposition follow only if a real need appears.
 ### 6.3a Schema versions (R8)
 
 `scenario.json` carries a `schema_version`. Version 1 (build step 1) holds hand rows only: the
-case dictionary and the HFP tables as JSON. Events arrive in a later version (step 4). Each
-format change ships a migration. A run whose scenario cannot be migrated stays readable and
-solvable from its frozen files (section 5); only "edit as new run" needs the migration.
+case dictionary and the HFP tables as JSON and nothing else. Version 2 (build step 4) adds
+`events` (work, claiming, rent, a home purchase, care; D6). Version 3 (build step 5b) adds the
+optional `rates_table` and the `downturn` event kind (D11, I11). Each format change ships a
+migration. A run whose scenario cannot be migrated stays readable and solvable from its frozen
+files (section 5); only "edit as new run" needs the migration.
 
 ### 6.4 Bringing in existing files
 

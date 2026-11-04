@@ -4,7 +4,7 @@ Second independent review of `claude/run-library-step5` at `4aefd31` (the step, 
 first review's W1-W5, W7-W8 folded). Scope: the code diff against `main` (`src/owlplanner/library/
 casefiles.py`, `ui/Create_Case.py`, `ui/Financial_Profile.py`, `ui/Library.py`, `ui/Run_Options.py`,
 `ui/owlbridge.py`, `tests/conftest.py`), read against the first review and PROGRESS.md's claims.
-Findings Y1-Y5. Nothing is fixed here; the dispositions are the user's call.
+Findings Y1-Y5. Y1-Y4 fixed on 2026-11-04 (the user's call; see the disposition table at the end).
 
 Every finding below states how it was checked. "Probe" means a scratch test or script run in a
 worktree of `4aefd31` (with `PYTHONPATH=<worktree>/src`, see CLAUDE.md), not committed; its output
@@ -159,3 +159,16 @@ out of `timeList*` (not verified), so this is defense in depth, like W6. Fix sug
   storage path, as PROGRESS says).
 - The Documentation page text beyond the lines in the diff.
 - The full suite (only `tests/ui tests/config tests/library` were run).
+
+## Disposition of Y1-Y5 (2026-11-04, the user's call: fix Y1-Y4)
+
+| # | Disposition |
+|---|---|
+| Y1 | **Fixed** as suggested: `config_to_ui` reads each further move through `ui_bridge._ui_further_move` (state upper-cased, `tax_local.canonical_locality`, `_ui_district`; an unknown value stays as written, for the solve to report). The first move's city is still read as written (pre-existing, not this step's; its district was already canonicalized). Tests: `test_a_further_move_in_another_accepted_spelling_is_kept` (3 cases: district alone, lower-case city, lower-case state; kept canonical, case not marked modified, selects show the value) and `test_config_to_ui_spells_further_moves_as_the_selects_list_them`. |
+| Y2 | **Fixed**: the further-move year widget's bounds include the move's own year (`min(thisyear + 1, year)`, `max(thisyear + 100, year)`), so the row renders and W4's bound warning says what residency refuses. Test `test_a_further_move_in_the_past_renders_and_warns` (renders, warns with the plan, and the row can be removed). |
+| Y3 | **Fixed** as suggested: the two `initCaseKey` lines dropped; `getRadio` shows "loop" with no key and writes the key only on a change. Test `test_a_visit_writes_nothing_to_the_case`; `test_a_choice_survives_the_case_file_round_trip` now expects the untouched `withSTAR` absent rather than "loop". |
+| Y4 | **Fixed**: `_save_current_case` stops on `syncContributions() is False` and flashes "Cannot save this case yet: the Wages and Contributions tables were not accepted." Test `test_a_refused_table_is_not_saved_with_the_old_one` (the probe's table: no run saved, the error shown after the rerun). |
+| Y5 | Not folded (not asked). |
+
+Each new test was checked to fail on `4aefd31`'s `src/` and `ui/` (8 failures: the 7 new tests
+and the adjusted round-trip assertion) and to pass with the fixes.

@@ -253,6 +253,45 @@ class TestSavingTheCurrentCaseCarriesTheEdit:
         budget = pd.read_excel(workbook, sheet_name="Budget")
         assert "edited line" in budget["name"].tolist()
 
+    def test_a_refused_table_is_not_saved_with_the_old_one(self, monkeypatch, tmp_path):
+        """Review Y4: when the plan refuses the pages' tables the save stops and says so; it
+        used to go ahead with the plan's previous tables, and the rerun hid the page's error."""
+        from streamlit.testing.v1 import AppTest
+        from owlplanner.library import Library
+
+        root = tmp_path / "library"
+        monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+        monkeypatch.syspath_prepend(str(UI_DIR))
+        lib = Library.open(root)
+
+        case, dirname, _ = load_toml(str(JACK))
+        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=True)
+        dic = config_to_ui(copy.deepcopy(case))
+        dic.update({"plan": plan, "id": plan._id, "caseStatus": "new", "summaryDf": None,
+                    "casetoml": "", "logs": None})
+        jack = plan.timeLists[plan.inames[0]].copy()
+        row = jack.index[jack["year"] == THISYEAR][0]
+        jack.loc[row, "anticipated wages"] = 123_456.0  # the edit
+        jack.loc[row, "months worked"] = 13  # refused by hfp_io.read
+        dic["timeList0"] = jack
+        dic["timeList1"] = plan.timeLists[plan.inames[1]]
+        for key, table in (("houseListDebts", "Debts"), ("houseListFixedAssets", "Fixed Assets"),
+                           ("houseListBudget", "Budget")):
+            dic[key] = plan.houseLists[table]
+
+        import streamlit as st
+
+        monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=120)
+        at.session_state["cases"] = {"t": dic}
+        at.session_state["currentCase"] = "t"
+        at.run()
+        next(b for b in at.button if b.label == "Save as a new run").click().run()
+        assert not at.exception, [str(e.message) for e in at.exception]
+        assert list(lib.runs()) == []
+        errors = [str(e.value) for e in at.error]
+        assert any("were not accepted" in e for e in errors), errors
+
 
 class TestAnEditMakesTheTableTheSource:
     """Review W2: for a case naming `budget_file`, an edit to the Budget table makes it the

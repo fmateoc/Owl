@@ -83,6 +83,19 @@ def test_the_default_is_the_loop(monkeypatch):
 
 
 @pytest.mark.toml
+def test_a_visit_writes_nothing_to_the_case(monkeypatch):
+    """Review Y3: showing the radios must not store their default. ui_to_config writes every
+    passthrough key the case holds, so a stored "loop" made an unchanged case save as a changed
+    run (two "added" options and another scenario hash)."""
+    at = _render(monkeypatch)
+    _rerun(at)
+    case = at.session_state["cases"]["t"]
+    assert "withItemized" not in case and "withSTAR" not in case
+    saved = ui_to_config(case)["solver_options"]
+    assert "withItemized" not in saved and "withSTAR" not in saved
+
+
+@pytest.mark.toml
 def test_neither_radio_is_disabled_by_local_search(monkeypatch):
     """Local search forces the breakpoint families to MILP (the caption under its toggle),
     but STAR = "none" and the itemizing switch are honored there too, so both stay editable
@@ -118,7 +131,7 @@ def test_a_choice_survives_the_case_file_round_trip(monkeypatch):
     _rerun(at)
     case = at.session_state["cases"]["t"]
     saved = ui_to_config(case)["solver_options"]
-    assert saved["withItemized"] == "none" and saved["withSTAR"] == "loop"
+    assert saved["withItemized"] == "none" and "withSTAR" not in saved  # untouched: not written (Y3)
 
     monkeypatch.setattr(kz, "getCaseKey", case.get)
     _, run_opts = kz.getSolveParameters()
@@ -126,4 +139,4 @@ def test_a_choice_survives_the_case_file_round_trip(monkeypatch):
 
     back = config_to_ui({"basic_info": {"names": ["Jack", "Jill"], "status": "married"},
                          "solver_options": saved})
-    assert back["withItemized"] == "none" and back["withSTAR"] == "loop"
+    assert back["withItemized"] == "none" and back.get("withSTAR") is None

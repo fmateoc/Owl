@@ -992,3 +992,21 @@ def test_set_allocation_ratios_spouses_is_recorded_as_individual():
     assert p1.ARCoord == "individual"
     assert p1.boundsAR["generic"] == [pair, pair]
     np.testing.assert_allclose(p1.alpha_ijkn, p2.alpha_ijkn)
+
+
+def test_config_to_ui_spells_further_moves_as_the_selects_list_them():
+    """Review Y1: the Create Case selects hold canonical spellings and drop anything else, so
+    further moves are canonicalized on the way in, as the first move's district is; a value
+    residency does not know stays as written (the solve reports it)."""
+    from owlplanner.config.ui_bridge import config_to_ui
+
+    moves = [
+        {"year": 2030, "state": "FL"},
+        {"year": 2034, "state": "ny", "locality": "yonkers", "school_district": "Yonkers"},
+        {"year": 2040, "state": "NY", "school_district": "Nowhere"},
+    ]
+    dic = config_to_ui({"basic_info": {"names": ["A"], "status": "single", "state": "NY", "moves": moves}})
+    assert dic["stateMovesMore"] == [
+        {"year": 2034, "state": "NY", "locality": "Yonkers", "school_district": "City of Yonkers / Yonkers"},
+        {"year": 2040, "state": "NY", "school_district": "Nowhere"},
+    ]

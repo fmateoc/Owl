@@ -5957,3 +5957,20 @@ Findings, each reproduced by a probe (not committed), nothing fixed (the user's 
   plan's previous tables; the rerun wipes the error (reach through the editor not established).
 - **Y5 (nit):** the STAR help omits Basic's own income limit; `seedProfileTables`' zeroing
   fallback is unreachable (every `Plan` holds tables from `__init__`).
+
+## Run-library step 5: Y1-Y4 fixed (2026-11-04)
+
+The user's call on the second review: fix Y1-Y4 (Y5 left). Dispositions in
+`fork-notes/run-library-step5-review-2.md`; entry in `fork-notes/CHANGELOG-fork.md`.
+- **Y1:** `config_to_ui` reads further moves through `ui_bridge._ui_further_move` (state
+  upper-cased, canonical city and district, unknown values as written), so the Create Case
+  selects no longer drop a spelling residency accepts.
+- **Y2:** the further-move year widget's bounds include the move's own year; a past move renders
+  with W4's warning and can be removed.
+- **Y3:** Run Options no longer stores `withItemized` / `withSTAR` defaults.
+- **Y4:** the library save stops with a message when `syncContributions()` returns `False`.
+
+Tests (+8, each checked to fail on `4aefd31`'s `src/` and `ui/`): `test_create_case_move.py` +4
+(Y1 three spellings, Y2), `test_config_ui_bridge.py` +1 (Y1), `test_run_options_deductions.py` +1
+(Y3; the round-trip test now expects the untouched `withSTAR` absent), `test_budget_editor.py` +1
+(Y4). The four touched files: 103 passed. flake8/ruff: only upstream's known items.

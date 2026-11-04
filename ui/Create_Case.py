@@ -189,13 +189,17 @@ def _renderMoreMoves():
     st.markdown("##### :orange[Further moves]")
     for idx, move in enumerate(more):
         st.markdown(f"**Move {idx + 2}**")
+        year = int(move.get("year") or thisyear + 5)
         cols = st.columns([2, 3, 3, 1], gap="small", vertical_alignment="top")
         with cols[0]:
             st.number_input(
                 f"Year of move {idx + 2}",
-                value=int(move.get("year") or thisyear + 5),
-                min_value=thisyear + 1,
-                max_value=thisyear + 100,
+                value=year,
+                # Review Y2: a move already in the past (a case reopened in a later year, a run
+                # from an earlier one) must still render, so its row can be fixed or removed; the
+                # warnings below say what residency refuses.
+                min_value=min(thisyear + 1, year),
+                max_value=max(thisyear + 100, year),
                 step=1,
                 key=_moreMoveKey(idx, "year"),
                 on_change=_onMoreMove,

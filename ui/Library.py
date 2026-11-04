@@ -105,8 +105,15 @@ def _save_current_case(name, notes, tags):
         # The tables come from the plan (`scenario_from_ui`), not from the case keys: sync the
         # page-edited ones in first, or a table edited and not yet run or downloaded would be
         # missing from the run.
-        if plan is not None:
-            owb.syncContributions()
+        if plan is not None and owb.syncContributions() is False:
+            # Review Y4: the plan refused the pages' tables; saving now would store its previous
+            # ones without a word (the rerun after the button clears the page's own error).
+            libraryjobs.flash(
+                "error",
+                "Cannot save this case yet: the Wages and Contributions tables were not accepted. "
+                "Fix them on the Financial Profile page.",
+            )
+            return
         dropped = []
         scenario = scenario_from_ui(dic, plan, base=base, dropped=dropped)
         result = lib.save_run(name=name or kz.currentCaseName(), scenario=scenario,

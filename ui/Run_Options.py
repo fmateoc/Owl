@@ -54,10 +54,9 @@ kz.initCaseKey("localSearch", False)
 kz.initCaseKey("mipStrategy", "branch-and-bound")
 kz.initCaseKey("ssTaxabilityMode", "loop")
 kz.initCaseKey("ssTaxabilityValue", 0.85)
-# Fork: carried from the case file until here (config.ui_bridge.SOLVER_UI_PASSTHROUGH_KEYS),
-# with no widget. Bound to the passthrough names, so no bridge translation is involved.
-kz.initCaseKey("withItemized", "loop")
-kz.initCaseKey("withSTAR", "loop")
+# Fork: withItemized and withSTAR (config.ui_bridge.SOLVER_UI_PASSTHROUGH_KEYS) are not
+# initialized here (review Y3): a stored default would be written by ui_to_config and make an
+# unchanged case save as a changed run. Their radios show "loop" (Plan's default) until a choice.
 
 
 ret = kz.titleBar(":material/tune: Run Options")

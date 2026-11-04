@@ -148,6 +148,29 @@ def _ui_district(state: str, name: str) -> str:
         return name or ""
 
 
+def _ui_further_move(move: dict) -> dict:
+    """A move after the first as the Create Case selects list it (step 5, review Y1).
+
+    The page's selects hold canonical spellings and drop a city or district outside their
+    choices, so a spelling residency accepts (the district alone, "Yonkers"; a city in another
+    case; a lower-case state) would be lost on the first render. Unknown values stay as written.
+    """
+    from .. import tax_local
+
+    out = dict(move)
+    state = (out.get("state") or "").upper().strip()
+    if "state" in out:
+        out["state"] = state
+    if out.get("locality"):
+        try:
+            out["locality"] = tax_local.canonical_locality(state, out["locality"])
+        except ValueError:
+            pass
+    if out.get("school_district"):
+        out["school_district"] = _ui_district(state, out["school_district"])
+    return out
+
+
 def _start_date_to_ui(start_date: str) -> date:
     """Convert config start_date string to UI date object."""
     tdate = start_date.replace("/", "-").split("-")
@@ -208,7 +231,8 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     dic["stateMoveSchoolDistrict"] = (
         _ui_district(moves[0].get("state", ""), moves[0].get("school_district", "")) if moves else ""
     )
-    dic["stateMovesMore"] = [dict(m) for m in moves[1:]]  # fork: further moves, edited on the Create Case page (step 5)
+    # fork: further moves, edited on the Create Case page (step 5), spelled as its selects list them
+    dic["stateMovesMore"] = [_ui_further_move(m) for m in moves[1:]]
 
     dic["interpMethod"] = aa.get("interpolation_method", "s-curve")
     _ic = aa.get("interpolation_center")
@@ -731,7 +755,7 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
             first["locality"] = uidic["stateMoveLocality"]
         if uidic.get("stateMoveSchoolDistrict"):
             first["school_district"] = uidic["stateMoveSchoolDistrict"]
-        # Fork: moves after the first come from the case file and are kept as they are.
+        # Fork: moves after the first, as the Create Case page edits them (stateMovesMore).
         diconf["basic_info"]["moves"] = [first] + [dict(m) for m in uidic.get("stateMovesMore") or []]
 
     if uidic.get("budgetFile"):

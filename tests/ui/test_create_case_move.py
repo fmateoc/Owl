@@ -231,3 +231,41 @@ def test_further_moves_are_noticed_when_the_toggle_is_off(monkeypatch):
     text = "\n".join(str(c.value) for c in at.caption)
     assert "neither solved nor saved" in text, text
     assert not [m for m in at.markdown if "Further moves" in str(m.value)]
+
+
+@pytest.mark.toml
+@pytest.mark.parametrize("written, kept", [
+    ({"school_district": "Yonkers"}, {"school_district": "City of Yonkers / Yonkers"}),
+    ({"locality": "yonkers"}, {"locality": "Yonkers"}),
+    ({"state": "ny"}, {}),
+])
+def test_a_further_move_in_another_accepted_spelling_is_kept(monkeypatch, written, kept):
+    """Review Y1: a district or city spelled as residency accepts it (the district alone, any
+    case for a city or state) is kept in its canonical spelling, not dropped by the selects."""
+    second = {"year": 2034, "state": "NY", **written}
+    at = _render(monkeypatch, [{"year": 2030, "state": "FL"}, second])
+    case = at.session_state["cases"]["t"]
+    assert case["stateMovesMore"] == [{**second, "state": "NY", **kept}]
+    assert case["caseStatus"] == "new"  # nothing was edited
+    assert [s.value for s in at.selectbox if s.label == "State of move 2"] == ["NY"]
+    for field, label in (("locality", "City income tax of move 2 (optional)"),
+                         ("school_district", "School district of move 2 (optional)")):
+        if field in kept:
+            assert [s.value for s in at.selectbox if s.label == label] == [kept[field]]
+    norm = residency.normalize(second["state"], second.get("locality", ""), second.get("school_district", ""))
+    assert norm == residency.normalize("NY", case["stateMovesMore"][0].get("locality", ""),
+                                       case["stateMovesMore"][0].get("school_district", ""))
+
+
+@pytest.mark.toml
+def test_a_further_move_in_the_past_renders_and_warns(monkeypatch):
+    """Review Y2: a move dated this year or earlier (a case reopened in a later year) used to
+    stop the page at the year widget's minimum; it renders, so the row can be fixed or removed,
+    and the plan's bound is warned."""
+    at = _render(monkeypatch, [{"year": 2030, "state": "FL"}, {"year": 2025, "state": "NY"}], with_plan=True)
+    assert [n.value for n in at.number_input if n.label == "Year of move 2"] == [2025]
+    warns = [str(w.value) for w in at.warning]
+    assert any("must fall after the first plan year" in w and "2025" in w for w in warns), warns
+    next(b for b in at.button if b.label == ":material/delete:").click()
+    _rerun(at)
+    assert at.session_state["cases"]["t"]["stateMovesMore"] == []

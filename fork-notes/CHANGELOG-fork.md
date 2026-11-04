@@ -40,6 +40,14 @@ has) is logged in `PROGRESS.md` only.
   `datetime.date` instances (`_FixedDateMeta.__instancecheck__`): AppTest hands widget state
   back as one, and streamlit's `date_input` rejected it on the second run of a page with a
   date widget.
+- **Second review, Y1-Y4** (`fork-notes/run-library-step5-review-2.md`): further moves are read
+  in the spelling the Create Case selects list (`ui_bridge._ui_further_move`: state upper-cased,
+  canonical city and district), so a spelling residency accepts ("Yonkers" for the district, a
+  lower-case city) is no longer dropped on the first render (Y1); a further move dated this year
+  or earlier renders with its warning instead of stopping the page (Y2); Run Options no longer
+  stores `withItemized` / `withSTAR` defaults, which made an unchanged case save as a changed
+  run (Y3); the library save stops with a message when the plan refuses the pages' tables,
+  instead of saving its previous ones (Y4).
 
 ### Run library, build step 4: the scenario model and builder (2026-11-03)
 

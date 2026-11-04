@@ -5973,4 +5973,5 @@ The user's call on the second review: fix Y1-Y4 (Y5 left). Dispositions in
 Tests (+8, each checked to fail on `4aefd31`'s `src/` and `ui/`): `test_create_case_move.py` +4
 (Y1 three spellings, Y2), `test_config_ui_bridge.py` +1 (Y1), `test_run_options_deductions.py` +1
 (Y3; the round-trip test now expects the untouched `withSTAR` absent), `test_budget_editor.py` +1
-(Y4). The four touched files: 103 passed. flake8/ruff: only upstream's known items.
+(Y4). The four touched files: 103 passed. Full suite (Linux, -n 4): **4052 passed, 1 skipped**
+(8:48). flake8/ruff: only upstream's known items.

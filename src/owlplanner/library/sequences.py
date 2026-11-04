@@ -8,7 +8,6 @@ on the placement year (`library.builder.rates_table`). The windows and their sou
 
 from __future__ import annotations
 
-import functools
 from pathlib import Path
 
 SEQUENCES_FILE = Path(__file__).resolve().parents[1] / "data" / "downturn_sequences.toml"
@@ -21,10 +20,10 @@ class SequenceError(ValueError):
     """The sequences data file does not hold what a downturn event needs."""
 
 
-@functools.lru_cache(maxsize=2)
 def load_sequences(path=None) -> dict:
     """{name: {"description": str, "source": str, "window": [[S&P 500, Bonds Baa, T-Notes, Inflation], ...]}}
-    for every named sequence (returns in percent per year)."""
+    for every named sequence (returns in percent per year). Read at every call (no cache): the
+    file is tiny, and a live server must see an edit (review Z7)."""
     import toml
 
     path = Path(path) if path is not None else SEQUENCES_FILE

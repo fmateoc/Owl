@@ -1821,15 +1821,22 @@ class Plan:
 
         if method == "table":
             # A rates CSV named in the case file: resolved beside the case (self._config_dir,
-            # set by config_to_plan), matched to the plan's own calendar years. When this plan
-            # has already read that table and cannot re-read it (the interface's path: no case
-            # directory), the rows in memory are reused (as the budget file's are, plan_bridge).
+            # set by config_to_plan), matched to the plan's own calendar years. The file is
+            # tried first at every setRates (it may have changed on disk, review Z1); the rows
+            # this plan already holds are reused only when the file cannot be resolved or read
+            # (the interface's path: no case directory in reach), as the budget file's are
+            # (plan_bridge).
             model_config.setdefault("base_dir", getattr(self, "_config_dir", ""))
             model_config.setdefault("start_year", int(self.year_n[0]))
             old = getattr(self, "rateModel", None)
             if getattr(old, "model_name", None) == "table" and "rows" not in model_config \
                     and old.params.get("rates_file") == model_config.get("rates_file"):
-                model_config["rows"] = getattr(old, "rows", None)
+                from owlplanner.rate_models.table import try_read_rates_csv
+
+                rows = try_read_rates_csv(model_config.get("rates_file"), model_config.get("base_dir") or "")
+                if rows is None:  # the file cannot be resolved or read: the rows in memory
+                    rows = getattr(old, "rows", None)
+                model_config["rows"] = rows
 
         # --------------------------------------------------
         # Load rate model class

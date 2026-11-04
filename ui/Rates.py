@@ -114,8 +114,9 @@ else:
         st.markdown("#### :orange[Rates from a Table]")
         st.caption(
             f"This run reads its annual rates from `{name}` (the year-by-year table the case "
-            "file names). Edit the scenario's downturn event on the **Scenario** page, or "
-            "import a case with another table, to change them."
+            "file names). To change them, import a case with another table (the Library page's "
+            "**Import a case** takes a rates CSV); when a downturn event on the **Scenario** "
+            "page generates this table, edit that event instead."
         )
         years = [int(y) for y in plan.year_n]
         st.dataframe(

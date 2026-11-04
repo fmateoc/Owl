@@ -16,8 +16,9 @@ rates CSV the case file names, and the named downturn sequences placed at a year
   and the four rate columns of `data/rates.csv` (extra columns ignored, so that history file
   itself can be named), values in percent. The file is resolved beside the case file as the
   HFP workbook is (`Plan._config_dir`), rows are matched to the plan's calendar years, and the
-  plan keeps the rows it read for the paths that have no case directory (the interface's
-  `apply_config_to_plan`, `clone`). `to_config` writes only the file name back.
+  file is re-read at every `Plan.setRates` (review Z1) -- a plan falls back to the rows it
+  already holds only when the file cannot be resolved or read (the paths that have no case
+  directory in reach). `to_config` writes only the file name back.
 - **The run library** stores the table in the scenario (`rates_table`, schema v3 with a
   migration; `BUILDER_VERSION` 4), so it is in the inputs hash (R13), imports it with the case
   (`import_case`, resolved as the workbook is) and writes the run's `rates.csv` beside
@@ -34,17 +35,31 @@ rates CSV the case file names, and the named downturn sequences placed at a year
   dimension is step 6). A run's nominal amounts are built from the table's inflation path when
   there is one, so a downturn overlay moves the purchase price and the rent rows with it.
 - **The pages keep a table case intact** (the user's call: safety + Scenario rows): the Rates
-  page shows the table read-only ("edit the downturn event"), `config_to_ui` / `ui_to_config` /
-  `genDic` / `_setRates` carry `method = "table"` and its file name instead of resetting the
-  method (the selectors' "not available" reset would have rewritten the case), and the
-  Scenario page edits the downturn event like the other events (sequence picker with its
+  page shows the table read-only (its caption names what can change it), `config_to_ui` /
+  `ui_to_config` / `genDic` / `_setRates` carry `method = "table"` and its file name instead of
+  resetting the method (the selectors' "not available" reset would have rewritten the case), and
+  the Scenario page edits the downturn event like the other events (sequence picker with its
   source, placement with the anchor grammar).
 - The step's check is `fork-notes/synthetic/check_library_rates.py`: `owlcli run` of a run's
   frozen `inputs/Case.toml`, called from another working directory, reproduces the interface's
   worker solve array for array (`plan.json`), for a downturn run and a hand-table run alike.
-- Tests: `tests/rate_models/test_rate_model_table.py` (20) and
-  `tests/library/test_rates_table.py` (22). `info/RATE_MODELS.md` regenerated (the generator
-  adds the `table` section; nothing else moves).
+- Tests: `tests/rate_models/test_rate_model_table.py` and
+  `tests/library/test_rates_table.py` (42 at the step, 63 after the review below).
+  `info/RATE_MODELS.md` regenerated (the generator adds the `table` section; nothing else
+  moves).
+- **Review Z1-Z9 folded** (`fork-notes/run-library-step5b-review.md`; the user's call: all
+  nine): a changed `rates.csv` is re-read -- the rows a plan holds are reused only when the
+  file cannot be resolved or read (Z1); a stochastic baseline must fix its seed **in the
+  case** (`reproducible_rates` and `rate_seed`) and one export computes one table
+  (`build(rates_table=)`), so the frozen `rates.csv` is the table the run was priced with
+  (Z2); the Import tab takes a rates CSV (`rates_path=`) and a no-base save stores the table
+  the plan holds in memory (Z3); a downturn placement in no plan year -- before the plan or
+  past its end -- and one whose window starts before the plan and would be cut are refused
+  (Z4); `method = "table"` with no `rates_file` and a `nan`/`inf` cell name what is wrong by
+  row and column, and an Excel BOM is read (Z5, Z6); the named sequences' windows are builder
+  input, in the inputs hash (only runs with a downturn change hash), and `sequences()` is no
+  longer cached (Z7); the acceptance record is scoped (T1 is the hand-table run's; the
+  summary metrics compared are `plan.json`'s) (Z8); a comment's schema number (Z9).
 
 ### Run library, build step 5: the Budget editor and the missing fork widgets (2026-11-03)
 

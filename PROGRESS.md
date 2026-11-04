@@ -5996,9 +5996,11 @@ Scenario rows** (no Rates-page table editor this step).
   `src/owlplanner/data/rates.csv` (extra columns ignored, so Owl's own history file can be
   named), values in percent. The file resolves CWD-then-beside-the-case (`Plan._config_dir`,
   set by `config_to_plan`; the HFP workbook's order), rows are matched to the plan's calendar
-  years (`start_year`, passed by `Plan.setRates` like `dataframe`'s `n_years`), and a plan that
-  cannot re-read its file reuses the rows it already holds (the interface's `apply_config_to_plan`
-  and `clone`, which also pass `dirname` and the rows). `to_config` writes only the file name.
+  years (`start_year`, passed by `Plan.setRates` like `dataframe`'s `n_years`), and the file is
+  re-read at every `setRates` (a changed `rates.csv` reaches the plan, review Z1) -- the rows a
+  plan already holds are reused only when the file cannot be resolved or read (the interface's
+  path with no case directory in reach; `clone` passes `dirname`). `to_config` writes only the
+  file name.
 - **The library** stores the table in the scenario (`rates_table`, schema v3 + migration 1/2->3;
   `BUILDER_VERSION` 4): it is in the inputs hash (R13), `import_case` reads it as it reads the
   workbook (explicit path, CWD, beside the case; `rates_path=`), `export_case` writes
@@ -6026,11 +6028,14 @@ Scenario rows** (no Rates-page table editor this step).
   placement in the anchor grammar; `_MANAGED` keeps unmanaged keys).
 - **The acceptance** (`fork-notes/synthetic/check_library_rates.py`, the Check column):
   `owlcli run` of a run's frozen `inputs/Case.toml`, called from another working directory,
-  reproduces the interface's worker solve field for field (`plan.json`, the solve's own timing
-  aside), for a downturn run and
+  reproduces the interface's worker solve field for field (`plan.json` -- the summary metrics
+  among its fields, the solve's own timing aside; the run's `summary.json` is checked to hold
+  its metrics, not compared, review Z8), for a downturn run and
   a hand-table run alike; the run's `record.json` records `rates.method = "table"`; the
   sequence's window sits at its placement with the baseline row outside it; re-importing the
-  frozen files gives the run's own inputs hash (T1); re-exporting writes the same `rates.csv`.
+  frozen files gives the run's own inputs hash (T1 -- the hand-table run: a downturn run
+  re-imports as a hand-table scenario by design, every re-import drops events since step 4);
+  re-exporting writes the same `rates.csv`.
   Both solves are the plain loop (the synthetic case's ages are held and Medicare put on the
   loop first: its `withSSAges x withMedicare = "optimize"` makes every age candidate a MIP).
   **11/11 checks pass** (2026-11-04; the two plan comparisons differ only in
@@ -6081,4 +6086,78 @@ variants: Z7 folds a hash of the used sequences' windows into `scenario_hash` on
 with a downturn event; Z3 adds the Import uploader and takes the no-base save's table from the
 plan's rows). Nothing of it is folded yet; the review's "unverified / to check" items are
 listed there as optional.
+
+
+## Run-library step 5b: Z1-Z9 folded (2026-11-04)
+
+The user's call on `fork-notes/run-library-step5b-review.md`: fold all nine findings, per the
+work order `fork-notes/run-library-step5b-handoff.md`. Dispositions (each named test checked to
+fail before its fix; the review's probes rerun after):
+- **Z1 (medium): a changed `rates.csv` was silently replaced by the plan's stale rows.**
+  `Plan.setRates` now tries the file first (`rate_models.table.try_read_rates_csv`) and falls
+  back to the rows the plan holds only when the file cannot be resolved or read (the
+  interface's path: no case directory in reach -- the budget file's precedent). The comment and
+  the step-5b entry's wording above now say exactly that. `probe_review_z1.py` after:
+  `2) after apply_config_to_plan: 2027 rate = -0.55`, `STALE ROWS WIN, FILE IGNORED: False`.
+- **Z2 (medium): `reproducible_rates` without `rate_seed` froze two different tables in one
+  export.** `_throwaway_plan`'s guard now reads the **case** (the plan cannot tell a minted
+  seed from a fixed one): a stochastic method needs `reproducible_rates` **and** `rate_seed`
+  in the case, and the message says so. `export_case` computes the rates table once and passes
+  it in (`build(scenario, rates_table=)`; the three-value return is unchanged), so one export
+  builds and writes one and the same table. The probe's catching rerun
+  (`%TEMP%\opencode\probe_z2_after.py`) after: the seedless case refused with the named
+  message; the seeded one `two rates_table() calls equal: True`,
+  `one export: build() saw 1 table(s); written csv == build()'s table: True`,
+  `two exports write the same rates.csv: True`.
+- **Z3 (low): the two workflows the pages' own text recommends dead-ended.** The Import tab
+  takes a rates CSV (a fourth uploader, passed as `rates_path=`), and `import_case` reads the
+  table before the plan build and passes its rows in, so an uploaded file that is not beside
+  the case feeds both the plan and the scenario; `scenario_from_ui` with no base stores the
+  table the plan holds in memory (`TableRateModel.rows`, the budget lines' precedent) instead
+  of refusing with "import the CSV beside the case file"; the Rates caption names what can
+  change the table (a hand table's route is the import; a generated one's is its downturn
+  event). `probe_review_z3.py` after: `(b) save with base=None succeeded: rates_table in
+  scenario: True`; an import with no CSV anywhere now says `pass rates_path= to the caller`.
+- **Z4 (low): a placement that misses the plan looked applied.** `builder.rates_table`'s
+  overlay refuses a window in no plan year (before the plan or past its end) and a window that
+  starts before the plan and would be cut; a window that starts inside the plan and runs past
+  its end stays "simply not used" (documented). The one ambiguity in the work order (its rule
+  sentence vs its test sentence for a placement entirely past the plan) went to the user:
+  **a window that lands nowhere raises** ("a placement that misses the plan must not look
+  applied"), only the run-past-the-end truncation stays. `probe_review_z4.py` after (its plan
+  is 2026-2058): 2020, 2024, 2069, 2075 and `age:Jack:60` all refused, the placement and the
+  plan window named.
+- **Z5 (low): `method = "table"` with no `rates_file` raised a bare `KeyError`.**
+  `TableRateModel.from_config` raises `ValueError("rate method 'table' needs a 'rates_file'
+  ...")` (a blank counts as none) through `config_to_plan` too.
+- **Z6 (low): hostile CSV input.** `read_rates_csv` opens the file as `utf-8-sig` (Excel's
+  "CSV UTF-8" writes a BOM) and refuses non-finite cells by year and column ("row 2027, column
+  'S&P 500' is not a finite number"): the plain plan path and the library's confusing "not a
+  number: None" are one named error now. `probe_review_z5.py` after: `(a)` the named error,
+  `(b) BOM csv read: 45 rows`, `(c)` refused before it reaches a plan.
+- **Z7 (low): the sequence window was builder input the inputs hash did not see.**
+  `scenario_hash` folds in a hash of the named sequences the scenario's downturn events use
+  (name + window) when there is such an event (design section 5 amended with the choice), and
+  `sequences()` is no longer `lru_cache`d (a live server sees an edited file).
+  **This changes the hash of downturn runs only** -- a run without a downturn event keeps its
+  hash, and nothing on disk moves: a stored run's hash is still its stored scenario's, only a
+  re-import of a downturn run's frozen files no longer aliases an edited window (the review's
+  `probe_review_z6.py` still trips at its `load_sequences.cache_clear()` line: there is no
+  cache to clear).
+- **Z8 (low): the acceptance record overstated.** The step-5b acceptance bullet above and the
+  check's docstring scope T1 to the hand-table run (a downturn run re-imports as a hand-table
+  scenario by design -- every re-import drops events since step 4) and say the plan comparison
+  carries the summary metrics inside `plan.json`; `summary.json` is checked to exist, not
+  compared. The check still passes **11/11**.
+- **Z9 (nit):** `canonicalize`'s comment says schema (3, with events and the rates table).
+
+Tests (+21: `tests/rate_models/test_rate_model_table.py` +9 -- Z1's twin, Z5, Z6's reader;
+`tests/library/test_rates_table.py` +12 -- Z2, Z3, Z4, Z6's import side, Z7; the two files now
+29 + 34 = 63). **20 of the 21 were checked to fail before their fix** (the fixes under `src/`
+stashed, the tests re-run: 20 failed / 43 passed, every one named above); the twenty-first
+(`test_z2_a_seeded_baseline_exports_byte_identical_rates`) pins the seeded property and passes
+either way. The four touched suites (`tests\library tests\rate_models tests\config tests\ui`):
+**1225 passed, 1 skipped** (2:33). Full suite (Windows, -n 4): **4115 passed, 2 skipped**
+(12:20; 4094 + 21). The acceptance check reruns at **11/11** (its docstring and the record
+above scoped per Z8). flake8/ruff: only upstream's known items.
 

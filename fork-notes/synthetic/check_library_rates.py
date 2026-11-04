@@ -6,7 +6,9 @@
    downturn event generates its `inputs/rates.csv` is solved through the library's worker
    (the interface's solve) and again from its frozen `inputs/Case.toml` by `owlcli run`,
    called from a different working directory: the two agree on the plan's every field
-   (`plan.json`, the solve's own timing aside) and the run's `summary.json` metrics;
+   (`plan.json`, which carries the summary metrics among its fields; the solve's own timing
+   aside), and the run's `summary.json` is checked to hold its metrics (one key's existence
+   and shape, not a comparison -- review Z8);
 2. the run's inputs carry the table: `inputs/rates.csv` is written, the generated
    `Case.toml` names it (`rates_selection.method = "table"`, `rates_file = "rates.csv"`),
    and the sequence's window sits at its placement year while the years outside it keep
@@ -14,7 +16,9 @@
 3. `record.json` records the rate method as `table` (its `rates` block);
 4. the same acceptance for a **hand** table: a case whose `rates.csv` is imported with it
    solves identically both ways, and re-imports of the frozen files give the same inputs
-   hash (T1) -- the table is stored in the scenario, so it is in the hash (R13).
+   hash (T1) -- the table is stored in the scenario, so it is in the hash (R13). T1 is the
+   hand table's alone by design: every re-import drops the events (step 4), so a downturn
+   run re-imports as a hand-table scenario.
 
 Run after `make_cases.py`, from anywhere:
 

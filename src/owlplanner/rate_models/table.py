@@ -28,6 +28,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ###########################################################################
 import csv
+import math
 import os
 
 import numpy as np
@@ -43,8 +44,11 @@ def read_rates_csv(path):
     """The table in `path` as rows of [year (int), S&P 500, Bonds Baa, T-Notes, Inflation]
     (numbers in percent). The header must hold the five columns (extra columns are ignored,
     so Owl's own rate history `data/rates.csv` can be named); rows may come in any order.
+    The file is read as `utf-8-sig` (Excel's "CSV UTF-8" writes a byte-order mark) and every
+    cell must be a finite number: `nan`, `inf` and `1e999` are refused by year and column,
+    before they reach a plan (review Z6).
     """
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
         header = next((row for row in reader if any(cell.strip() for cell in row)), None)
         if header is None:
@@ -63,10 +67,42 @@ def read_rates_csv(path):
                 continue
             try:
                 cells = [line[i].strip() for i in take]
-                rows.append([int(cells[0])] + [float(v) for v in cells[1:]])
+                year = int(cells[0])
+                values = [float(v) for v in cells[1:]]
             except (IndexError, ValueError) as e:
                 raise ValueError(f"Rates table '{path}': bad row {line!r}") from e
+            for column, value in zip(RATE_TABLE_COLUMNS[1:], values, strict=True):
+                if not math.isfinite(value):
+                    raise ValueError(
+                        f"Rates table '{path}': row {year}, column {column!r} is not a finite "
+                        f"number ({value!r})"
+                    )
+            rows.append([year] + values)
     return rows
+
+
+def resolve_rates_csv(name, base_dir=""):
+    """The file to read for `name`: the name as given (a path, or relative to the working
+    directory), then beside the case file (`base_dir`); the order the HFP workbook and the
+    budget file use. FileNotFoundError when neither candidate exists."""
+    name = str(name or "").strip()
+    candidates = [name] if os.path.isabs(name) else [name, os.path.join(base_dir or "", name)]
+    path = next((c for c in candidates if c and os.path.exists(c)), None)
+    if path is None:
+        where = f" or beside the case file ({base_dir})" if base_dir else ""
+        raise FileNotFoundError(f"Rates table {name!r} not found{where}.")
+    return path
+
+
+def try_read_rates_csv(name, base_dir=""):
+    """The rows of the rates CSV `name` (resolved as `resolve_rates_csv` resolves it), or None
+    when the file cannot be resolved or read -- the case a plan falls back to the rows it
+    already holds in (`Plan.setRates`, review Z1). A readable file with bad content still
+    raises: its table is not silently swapped for another one."""
+    try:
+        return read_rates_csv(resolve_rates_csv(name, base_dir))
+    except OSError:
+        return None
 
 
 class TableRateModel(BaseRateModel):
@@ -128,6 +164,12 @@ class TableRateModel(BaseRateModel):
     def from_config(cls, rates_section: dict) -> dict:
         """Only what a case file may name: the file name (and the units)."""
         section = dict(rates_section)
+        if not str(section.get("rates_file") or "").strip():
+            raise ValueError(
+                "rate method 'table' needs a 'rates_file' (the rates CSV the rows are read "
+                "from, resolved beside the case file): set rates_selection.rates_file, or "
+                "choose another rate method"
+            )
         out = {"rates_file": section["rates_file"]}
         if section.get("in_percent") is not None:
             out["in_percent"] = bool(section["in_percent"])
@@ -188,10 +230,4 @@ class TableRateModel(BaseRateModel):
         """The table from `rates_file`, resolved as the HFP workbook and budget_file are:
         the name as given (a path, or relative to the working directory), then beside the
         case file (`base_dir`)."""
-        name = str(self.get_param("rates_file") or "").strip()
-        candidates = [name] if os.path.isabs(name) else [name, os.path.join(self.get_param("base_dir") or "", name)]
-        path = next((c for c in candidates if c and os.path.exists(c)), None)
-        if path is None:
-            where = f" or beside the case file ({self.get_param('base_dir')})" if self.get_param("base_dir") else ""
-            raise FileNotFoundError(f"Rates table {name!r} not found{where}.")
-        return read_rates_csv(path)
+        return read_rates_csv(resolve_rates_csv(self.get_param("rates_file"), self.get_param("base_dir") or ""))

@@ -169,7 +169,7 @@ def canonicalize(scenario: dict) -> dict:
     encoder and back, so it equals what the generated `Case.toml` reads back as.
     """
     scenario = normalize(scenario)
-    scenario = migrate(scenario)  # stored scenarios are current-version (2, with events)
+    scenario = migrate(scenario)  # stored scenarios are current-version (3, with events and the rates table)
     if scenario.get("events"):
         from . import builder
 
@@ -445,7 +445,11 @@ def scenario_from_ui(
 
     The budget sidecar is captured whenever the case names a `budget_file` (V2): the base's,
     when the reference is unchanged and no `budget_path=` is given; else resolved
-    CWD-then-`case_dir` like `plan_bridge._load_budget_file` (V1).
+    CWD-then-`case_dir` like `plan_bridge._load_budget_file` (V1). A `table` case's rates table
+    is captured the same way (review Z3): the base's when there is a base, otherwise the rows
+    the plan holds in memory (`TableRateModel.rows`, the budget lines' precedent) -- the pages
+    cannot upload a rates CSV here, so a no-base save stores the table instead of refusing
+    with "import the CSV beside the case file".
 
     With a base that has events (schema v2), the rows and cells the events generate are dropped
     from the saved hand rows (`_drop_generated`): they are regenerated wholesale from the events
@@ -487,7 +491,8 @@ def scenario_from_ui(
             explicit=budget_path,
         )
     scenario = scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file,
-                                  rates_table=base.get("rates_table") if base is not None else None)
+                                  rates_table=base.get("rates_table") if base is not None
+                                  else _rates_table_from_plan(plan))
     if base is not None and base.get("events"):
         # The pages edit hand rows only: the base's events stay the run's (review X1: they
         # were dropped, and with them everything they generate).
@@ -504,6 +509,23 @@ def _tables_from_plan(plan, tmpdir: Path):
     plan.saveContributions().save(workbook)
     _, time_lists, house_lists, _, _ = hfp_io.read(str(workbook), plan.inames, plan.horizons, plan.mylog)
     return time_lists, house_lists
+
+
+def _rates_table_from_plan(plan):
+    """The rates table the plan holds in memory (method 'table'), or None (review Z3).
+
+    A case typed in the pages holds its rates table in the plan exactly as it holds the budget
+    lines, so a no-base save stores it from there. When the plan holds no table, the schema's
+    refusal ("the case names a rate table ... but the scenario holds none") stands.
+    """
+    from owlplanner.rate_models.table import RATE_TABLE_COLUMNS
+
+    model = getattr(plan, "rateModel", None)
+    rows = (getattr(model, "rows", None)
+            if model is not None and getattr(model, "model_name", None) == "table" else None)
+    if not rows:
+        return None
+    return {"columns": list(RATE_TABLE_COLUMNS), "rows": [list(row) for row in rows]}
 
 
 def _drop_generated(time_lists, house_lists, provenance, base_hfp=None):
@@ -683,7 +705,9 @@ def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> 
     `scenario_from_ui` takes), so both entry paths agree (V9). A case whose rates come from
     a CSV (`rates_selection.method = "table"`, step 5b) brings that table in too, resolved
     as the workbook is (an explicit `rates_path`, then the name as given, then beside the
-    case file).
+    case file); it is read first and its rows passed to the plan build, so an explicit
+    `rates_path` can name a file that is not beside the case (the Import page's uploader)
+    and the plan reads the very table the scenario stores (review Z3).
     """
     from owlplanner import hfp_io
     from owlplanner.config.plan_bridge import config_to_plan
@@ -691,9 +715,11 @@ def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> 
 
     case_path = Path(case_path)
     case, dirname, _ = load_toml(str(case_path))
+    rates_table = _read_rates_table(_rates_reference(case), base=case_path.parent, explicit=rates_path)
     # The plan supplies inames and horizons (life expectancy), the two inputs hfp_io.read
     # needs to condition the tables; nothing is solved.
-    plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=False)
+    plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=False,
+                          rates_rows=rates_table["rows"] if rates_table is not None else None)
 
     ref = _hfp_reference(case)
     workbook = Path(hfp_path) if hfp_path is not None else None
@@ -712,7 +738,6 @@ def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> 
             time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
 
     budget_file = _read_budget_text(_budget_reference(case), base=case_path.parent, explicit=budget_path)
-    rates_table = _read_rates_table(_rates_reference(case), base=case_path.parent, explicit=rates_path)
     return scenario_from_case(case, time_lists, house_lists, budget_file=budget_file, rates_table=rates_table)
 
 
@@ -779,7 +804,11 @@ def export_case(scenario: dict, out_dir) -> list:
     validate(scenario)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    case, tables, _provenance = builder.build(scenario)
+    # The run's rates table is computed once and passed to build (review Z2): the table that
+    # prices the workbook's nominal amounts is the one written as rates.csv, and one export
+    # builds one table (one draw of a stochastic baseline, one seed).
+    rates = builder.rates_table(scenario)
+    case, tables, _provenance = builder.build(scenario, rates_table=rates)
     written = []
 
     sidecar = scenario.get("budget_file")
@@ -808,7 +837,6 @@ def export_case(scenario: dict, out_dir) -> list:
         # No tables, no workbook: Owl's canonical no-HFP sentinel (plan_bridge).
         case.setdefault("household_financial_profile", {})["HFP_file_name"] = "None"
 
-    rates = builder.rates_table(scenario)
     if rates is not None:
         rates_file = out / builder.RATES_CSV
         _write_rates_csv(rates_file, rates)

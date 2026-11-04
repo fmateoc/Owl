@@ -71,9 +71,38 @@ def pretty_json(obj: Any) -> str:
 
 
 def scenario_hash(scenario: dict) -> str:
-    """The inputs hash: canonical scenario plus the builder version (section 5)."""
-    text = canonical_json({"builder_version": BUILDER_VERSION, "scenario": scenario})
+    """The inputs hash: canonical scenario plus the builder version (section 5).
+
+    Plus a hash of the named downturn sequences the scenario's events use (name + window,
+    review Z7): the windows are builder input (`data/downturn_sequences.toml`), the generated
+    `rates.csv` changes with them, and two runs with different frozen files must not share a
+    hash. Only a scenario with a downturn event gains this term; runs without one keep the
+    hash they had (the builder version covers builder *code*, not this data file).
+    """
+    payload: dict[str, Any] = {"builder_version": BUILDER_VERSION, "scenario": scenario}
+    windows = _sequence_windows(scenario)
+    if windows:
+        payload["sequence_windows"] = windows
+    text = canonical_json(payload)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _sequence_windows(scenario: dict) -> dict:
+    """{sequence name: its window} for the scenario's downturn events (review Z7), or {} when
+    it has none. Read through `library.sequences` at call time (lazy import: `builder` imports
+    this module, and a live server must see an edited data file)."""
+    from .sequences import sequences
+
+    downs = [e for e in scenario.get("events") or []
+             if isinstance(e, dict) and e.get("kind") == "downturn"]
+    if not downs:
+        return {}
+    known = sequences()
+    out = {}
+    for event in downs:
+        name = str(event.get("sequence"))
+        out[name] = [list(row) for row in known.get(name, {}).get("window", [])]
+    return out
 
 
 def _check_case_values(obj: Any, where: str) -> None:

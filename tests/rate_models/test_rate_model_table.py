@@ -6,7 +6,9 @@ Covers:
 - `rows` in memory in place of the file, and the file resolved beside the case (`base_dir`);
 - the TOML round trip: only `rates_file` (and `in_percent`) reach the case file;
 - `Plan.setRates("table", ...)`: the plan's own years, the `_config_dir` resolution and the
-  in-memory fallback when the file cannot be re-read.
+  in-memory fallback when the file cannot be re-read (its twin: a changed file is re-read);
+- hostile input (review Z5/Z6): no `rates_file` names what is missing, an Excel byte-order
+  mark is read, and `nan` / `inf` cells are refused by year and column.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -151,6 +153,45 @@ def test_a_bad_row_is_named():
         _model(rows=[ROWS[0], [2027, "x", 1.0, 1.0, 1.0]]).generate(2)
 
 
+# ---- hostile input (review Z5/Z6) -------------------------------------
+
+
+def test_no_rates_file_names_what_is_missing():
+    with pytest.raises(ValueError, match="needs a 'rates_file'"):
+        TableRateModel.from_config({"method": "table"})
+
+
+def test_a_blank_rates_file_names_what_is_missing():
+    with pytest.raises(ValueError, match="needs a 'rates_file'"):
+        TableRateModel.from_config({"method": "table", "rates_file": "   "})
+
+
+def test_the_case_path_names_a_missing_rates_file():
+    """Review Z5: `config_to_plan` refuses by name, not with a bare `KeyError: 'rates_file'`."""
+    from owlplanner.config import config_to_plan, load_toml
+
+    case, dirname, _ = load_toml(CASE)
+    case["rates_selection"] = {"method": "table"}
+    with pytest.raises(ValueError, match="needs a 'rates_file'"):
+        config_to_plan(case, dirname, verbose=False, loadHFP=False)
+
+
+def test_a_byte_order_mark_is_read(tmp_path):
+    """Excel's "CSV UTF-8" writes a BOM; the header still reads `year` (review Z6)."""
+    assert read_rates_csv(_write(tmp_path, "\ufeff" + CSV_TEXT)) == ROWS
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "1e999"])
+def test_a_non_finite_cell_is_named(tmp_path, bad):
+    with pytest.raises(ValueError, match="row 2029, column 'S&P 500' is not a finite number"):
+        read_rates_csv(_write(tmp_path, CSV_TEXT + f"2029,{bad},1.0,1.0,1.0\n"))
+
+
+def test_a_non_finite_cell_somewhere_else_is_named(tmp_path):
+    with pytest.raises(ValueError, match="row 2029, column 'T-Notes' is not a finite number"):
+        read_rates_csv(_write(tmp_path, CSV_TEXT + "2029,1.0,1.0,inf,1.0\n"))
+
+
 def test_unknown_parameters_are_rejected():
     with pytest.raises(ValueError, match="Unknown parameter"):
         TableRateModel(config={"method": "table", "rates_file": "r.csv", "seeds": 1})
@@ -174,11 +215,11 @@ def test_config_round_trip_keeps_only_the_file_name():
 CASE = str(__import__("pathlib").Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml")
 
 
-def _long_csv(tmp_path, first=2026, last=2070):
+def _long_csv(tmp_path, first=2026, last=2070, crash=-30.0):
     """A table that covers any plan horizon this file's plans can ask for."""
     lines = ["year,S&P 500,Bonds Baa,T-Notes,Inflation"]
     for year in range(first, last + 1):
-        rates = [-30.0, 2.0, 1.0, 2.0] if year == 2027 else [7.0, 4.5, 3.0, 2.5]
+        rates = [crash, 2.0, 1.0, 2.0] if year == 2027 else [7.0, 4.5, 3.0, 2.5]
         lines.append(",".join(str(v) for v in [year, *rates]))
     _write(tmp_path, "\n".join(lines) + "\n")
 
@@ -208,6 +249,19 @@ def test_a_plan_that_cannot_re_read_the_file_reuses_its_rows(tmp_path):
     plan._config_dir = str(tmp_path / "gone")  # the run folder moved away
     plan.setRates("table", rates_file="rates.csv")
     assert plan.tau_kn[0, 1] == pytest.approx(-0.30)
+
+
+def test_a_changed_file_is_re_read(tmp_path):
+    """That test's twin (review Z1): the file wins whenever it can be read, so a hand-edited
+    `rates.csv` reaches a plan that has already read the table (the interface's re-solve)."""
+    _long_csv(tmp_path)
+    plan = _plan()
+    plan._config_dir = str(tmp_path)
+    plan.setRates("table", rates_file="rates.csv")
+    assert plan.tau_kn[0, 1] == pytest.approx(-0.30)
+    _long_csv(tmp_path, crash=-55.0)  # the user edits rates.csv
+    plan.setRates("table", rates_file="rates.csv")
+    assert plan.tau_kn[0, 1] == pytest.approx(-0.55)
 
 
 def test_a_clone_with_a_new_expectancy_keeps_the_table(tmp_path):

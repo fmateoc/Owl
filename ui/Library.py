@@ -82,7 +82,7 @@ def _save_uploaded_run(name, notes, tags, uploaded):
             paths[key] = path
         try:
             scenario = import_case(paths["case"], hfp_path=paths.get("hfp"),
-                                   budget_path=paths.get("budget"))
+                                   budget_path=paths.get("budget"), rates_path=paths.get("rates"))
             result = lib.save_run(name=name or Path(paths["case"]).stem, scenario=scenario,
                                   notes=notes, tags=tuple(t for t in tags if t.strip()))
         except Exception as exc:  # noqa: BLE001 - shown to the user, not raised
@@ -146,6 +146,8 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                                       key="lib_hfp_up")
             budget_up = st.file_uploader("Budget file (optional)", type=["json"],
                                          key="lib_budget_up")
+            rates_up = st.file_uploader("Rates table (optional, CSV)", type=["csv"],
+                                        key="lib_rates_up")
         with col2:
             name = st.text_input("Run name", key="lib_import_name",
                                  placeholder="from the file name when empty")
@@ -153,7 +155,8 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
             tags = st.text_input("Tags (optional, comma separated)", key="lib_import_tags")
         if st.button("Import as a new run", type="primary", disabled=case_up is None):
             _save_uploaded_run(name.strip(), notes.strip(), tags.split(","),
-                               {"case": case_up, "hfp": hfp_up, "budget": budget_up})
+                               {"case": case_up, "hfp": hfp_up, "budget": budget_up,
+                                "rates": rates_up})
             st.rerun()
     with tab2:
         if not kz.has_current_case():

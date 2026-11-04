@@ -8,7 +8,10 @@ Covers:
   anchors), the baseline kept outside it, the generated case fields marked with the event,
   and the refusal to mix a sequence with a hand table;
 - the schema's two consistency rules between the table and the case dictionary;
-- a pages save: the table and the events survive it untouched (the pages edit neither).
+- a pages save: the table and the events survive it untouched (the pages edit neither);
+- the review's fixes (Z2-Z7, `run-library-step5b-review.md`): one table per export, a seedless
+  stochastic baseline refused, the two workflows the pages recommend, a placement outside the
+  plan refused, hostile CSV input, and the sequence windows in the inputs hash.
 """
 
 import copy
@@ -64,6 +67,24 @@ def _stub_plan(first=2026, years=45, stocks=6.0, cpi=2.0):
     return types.SimpleNamespace(
         year_n=list(range(first, first + years)),
         tau_kn=np.array([[stocks / 100] * years, [0.045] * years, [0.03] * years, [cpi / 100] * years]),
+    )
+
+
+def _downturn(start, sequence="three-negative-years"):
+    """A scenario with one downturn event at a plain year (no other case content)."""
+    return {"schema_version": 3, "plan_year": 2026, "case": {"case_name": "x"}, "hfp": {},
+            "events": [{"id": "s", "kind": "downturn", "sequence": sequence, "start": start}]}
+
+
+def _sequence_file(path, window):
+    """A downturn_sequences.toml with one named sequence at `window` (a one-row table)."""
+    rows = "".join(f"[{', '.join(str(v) for v in row)}],\n" for row in window)
+    path.write_text(
+        "[sequences.test-seq]\n"
+        'description = "a test sequence"\n'
+        'source = "invented for the test"\n'
+        f"window = [\n{rows}]\n",
+        encoding="utf-8",
     )
 
 
@@ -277,3 +298,141 @@ class TestScenarioFromCase:
         with pytest.raises(ScenarioError, match="must name method = 'table'"):
             scenario_from_case({"case_name": "x", "rates_selection": {"method": "user"}}, {},
                                rates_table=_rows(2026, 2027))
+
+
+class TestReviewFixesZ:
+    """`fork-notes/run-library-step5b-review.md` Z2-Z4, Z6-Z7 (Z1's twin, Z5 and Z6's reader
+    live in `tests/rate_models/test_rate_model_table.py`). Each test was checked to fail
+    before the fix it names."""
+
+    @staticmethod
+    def _stochastic(**extra):
+        """A downturn run whose baseline rate method draws at every build (the case
+        `test_builder.py`'s `_histochastic` makes, with this file's downturn event)."""
+        scenario = import_case(CASE)
+        rates = scenario["case"]["rates_selection"]
+        rates.clear()
+        rates.update({"method": "histochastic", "from": 1970, "to": 2000, **extra})
+        return canonicalize(dict(scenario, events=[{"id": "s", "kind": "downturn",
+                                                    "sequence": "crash-30", "start": 2030}]))
+
+    # -- Z2: one export freezes one table --------------------------------
+
+    def test_z2_a_seeded_baseline_exports_byte_identical_rates(self, tmp_path):
+        scenario = self._stochastic(reproducible_rates=True, rate_seed=1234)
+        export_case(scenario, tmp_path / "one")
+        export_case(scenario, tmp_path / "two")
+        assert ((tmp_path / "one" / "rates.csv").read_bytes()
+                == (tmp_path / "two" / "rates.csv").read_bytes())
+
+    def test_z2_a_seedless_baseline_is_refused(self):
+        scenario = self._stochastic(reproducible_rates=True)  # `rate_seed` absent
+        with pytest.raises(ScenarioError, match="the case must fix its seed"):
+            b.build(scenario)
+
+    def test_z2_one_export_computes_one_table(self, tmp_path, monkeypatch):
+        """The `probe_review_z2.py` scenario: the written rates.csv is the very table build()
+        priced the nominal amounts with (one `rates_table()` call per export)."""
+        import csv
+
+        scenario = self._stochastic(reproducible_rates=True, rate_seed=1234)
+        calls = []
+        real = b.rates_table
+
+        def spy(doc, events=None):
+            out = real(doc, events=events)
+            calls.append(out)
+            return out
+
+        monkeypatch.setattr(b, "rates_table", spy)
+        export_case(scenario, tmp_path / "out")
+        assert len(calls) == 1
+        with open(tmp_path / "out" / "rates.csv", newline="", encoding="utf-8") as f:
+            written = [[float(x) for x in row] for row in list(csv.reader(f))[1:]]
+        assert written == [[float(x) for x in row] for row in calls[0]["rows"]]
+
+    # -- Z3: the two workflows the pages recommend ------------------------
+
+    def test_z3_a_no_base_save_stores_the_table_the_plan_holds(self, tmp_path):
+        _table_case(tmp_path)
+        case, dirname, _ = load_toml(str(tmp_path / "Case_table.toml"))
+        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=True)
+        uidic = config_to_ui(copy.deepcopy(case))
+        scenario = scenario_from_ui(uidic, plan, case_dir=str(tmp_path))
+        assert scenario["rates_table"]["rows"][4] == [2030] + CRASH
+        out = tmp_path / "inputs"
+        export_case(scenario, out)  # the old "holds none" refusal is gone
+        assert (out / "rates.csv").read_text(encoding="utf-8").splitlines()[5] == "2030,-30,2,1,2"
+
+    def test_z3_an_explicit_rates_path_feeds_the_import(self, tmp_path):
+        """The Import page's uploader: the CSV arrives with the case, not beside it."""
+        case_file = _table_case(tmp_path)
+        uploaded = tmp_path / "uploaded.csv"
+        (tmp_path / "rates.csv").rename(uploaded)
+        scenario = import_case(case_file, hfp_path=HFP, rates_path=uploaded)
+        assert scenario["rates_table"]["rows"][4] == [2030] + CRASH
+
+    # -- Z4: a placement that misses the plan must not look applied -------
+
+    def test_z4_a_placement_in_no_plan_year_is_refused(self, stub_baseline):
+        for start in (2020, 2075):  # the window before the plan, and one after it
+            with pytest.raises(ScenarioError, match="lands in the plan") as exc:
+                b.rates_table(_downturn(start))
+            assert f"({start}-" in str(exc.value) and "(2026-2070)" in str(exc.value)
+
+    def test_z4_a_window_cut_by_the_plan_start_is_refused(self, stub_baseline):
+        with pytest.raises(ScenarioError, match="before the plan") as exc:
+            b.rates_table(_downturn(2024))  # a three-year window, one year in the plan
+        assert "2024" in str(exc.value) and "(2026-2070)" in str(exc.value)
+
+    def test_z4_an_anchor_before_the_plan_is_refused(self, stub_baseline):
+        scenario = import_case(CASE)
+        scenario["events"] = [{"id": "s", "kind": "downturn", "sequence": "crash-30",
+                               "start": {"anchor": "age", "person": "Jack", "age": 60}}]
+        with pytest.raises(ScenarioError, match="lands in the plan"):
+            b.rates_table(scenario)
+
+    # -- Z6: hostile CSV input on the library path ------------------------
+
+    def test_z6_an_excel_bom_is_read(self, tmp_path):
+        case_file = _table_case(tmp_path)
+        text = (tmp_path / "rates.csv").read_text(encoding="utf-8")
+        (tmp_path / "rates.csv").write_text("\ufeff" + text, encoding="utf-8")
+        scenario = import_case(case_file, hfp_path=HFP)
+        assert scenario["rates_table"]["rows"][4] == [2030] + CRASH
+
+    def test_z6_a_non_finite_cell_is_refused_on_import(self, tmp_path):
+        case_file = _table_case(tmp_path)
+        text = (tmp_path / "rates.csv").read_text(encoding="utf-8")
+        (tmp_path / "rates.csv").write_text(text.replace("2027,6.0,4.5,3.0,2.0",
+                                                         "2027,nan,4.5,3.0,2.0"), encoding="utf-8")
+        with pytest.raises(ValueError, match="row 2027, column 'S&P 500' is not a finite number"):
+            import_case(case_file, hfp_path=HFP)
+
+    # -- Z7: the sequence window is builder input -------------------------
+
+    def test_z7_an_edited_window_changes_the_hash_of_a_downturn_run_only(self, tmp_path, monkeypatch):
+        from owlplanner.library import sequences as seq
+
+        data = tmp_path / "downturn_sequences.toml"
+        monkeypatch.setattr(seq, "SEQUENCES_FILE", data)
+        _sequence_file(data, [[-30.0, 2.0, 1.0, 2.0]])
+        downturn = import_case(CASE)
+        downturn = canonicalize(dict(downturn, events=[{"id": "s", "kind": "downturn",
+                                                        "sequence": "test-seq", "start": 2030}]))
+        plain = import_case(CASE)
+        before = scenario_hash(downturn), scenario_hash(plain)
+
+        _sequence_file(data, [[-45.0, 2.0, 1.0, 2.0]])  # the window edited in place
+        after = scenario_hash(downturn), scenario_hash(plain)
+        assert after[0] != before[0]  # the hash sees the window the frozen rates.csv comes from
+        assert after[1] == before[1]  # a run without a downturn keeps its hash
+
+    def test_z7_sequences_see_an_edited_file_without_a_restart(self, tmp_path):
+        from owlplanner.library.sequences import load_sequences
+
+        data = tmp_path / "downturn_sequences.toml"
+        _sequence_file(data, [[-30.0, 2.0, 1.0, 2.0]])
+        assert load_sequences(path=data)["test-seq"]["window"] == [[-30.0, 2.0, 1.0, 2.0]]
+        _sequence_file(data, [[-45.0, 2.0, 1.0, 2.0]])
+        assert load_sequences(path=data)["test-seq"]["window"] == [[-45.0, 2.0, 1.0, 2.0]]

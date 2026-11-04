@@ -518,8 +518,13 @@ def _throwaway_plan(case: dict, rates_rows=None):
     A stochastic rate model draws a new inflation path at every plan build unless the case
     fixes its seed: the purchase price and the rent's flat rows would then be a random draw,
     frozen into the run and unrelated to the path the solve draws (review X3), and a generated
-    rates table would describe a market that the run does not use. `rates_rows` carries a rate
-    table held in memory (method 'table' only; `config_to_plan`'s parameter).
+    rates table would describe a market that the run does not use. So the case must fix its
+    seed (`reproducible_rates` **and** `rate_seed`): `setReproducible(True, None)` mints a
+    fresh time-based seed per plan build, so `reproducible_rates` alone is no seed at all and
+    one export would freeze two different tables (review Z2). The check reads the case, which
+    is what a run stores; the plan cannot tell a minted seed from a fixed one.
+    `rates_rows` carries a rate table held in memory (method 'table' only; `config_to_plan`'s
+    parameter).
     """
     import tempfile
 
@@ -528,14 +533,16 @@ def _throwaway_plan(case: dict, rates_rows=None):
     plan = config_to_plan(copy.deepcopy(case), tempfile.gettempdir(), logstreams=[io.StringIO()],
                           loadHFP=False, rates_rows=rates_rows)
     model = getattr(plan, "rateModel", None)
-    if model is not None and not getattr(model, "deterministic", False) and not plan.reproducibleRates:
-        method = (case.get("rates_selection") or {}).get("method")
-        raise ScenarioError(
-            f"the case's rates ({method!r}) draw a new inflation path at every build, so a purchase "
-            "price or a rent in nominal dollars cannot be built from it: set reproducible rates "
-            "with a seed (rates_selection.reproducible_rates and rate_seed), or use a "
-            "deterministic rate method"
-        )
+    if model is not None and not getattr(model, "deterministic", False):
+        selection = case.get("rates_selection") or {}
+        if not selection.get("reproducible_rates") or selection.get("rate_seed") is None:
+            method = selection.get("method")
+            raise ScenarioError(
+                f"the case's rates ({method!r}) draw a new inflation path at every build, so a purchase "
+                "price or a rent in nominal dollars cannot be built from it: the case must fix its "
+                "seed (rates_selection.reproducible_rates = true and rate_seed = <an integer>), or "
+                "the rates must use a deterministic rate method"
+            )
     return plan
 
 
@@ -560,6 +567,11 @@ def rates_table(scenario: dict, events=None) -> dict | None:
     method and the stress question is "the same plan, but the market does this". `events` is
     the validated events, when the caller already has them.
     """
+    return _rates_table(scenario, events=events)
+
+
+def _rates_table(scenario: dict, events=None) -> dict | None:
+    """`rates_table`'s implementation (the name `build`'s `rates_table=` keyword shadows)."""
     case = scenario.get("case") or {}
     hand = scenario.get("rates_table")
     if events is None:
@@ -581,7 +593,10 @@ def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> d
     """The rates table the downturn events generate: the case's own rate path, overlaid.
 
     The path is read through a plan build (as `_gamma` reads the inflation path), so it is the
-    run's own method with its own window and seed; the overlay replaces the window's years.
+    run's own method with its own window and seed; the overlay replaces the window's years. A
+    window that reaches past the plan's end is simply not used there (documented); a window
+    that lands in no plan year, or that starts before the plan and would be cut, is refused --
+    a placement outside the plan must not look applied (review Z4).
     """
     from owlplanner.rate_models.table import RATE_TABLE_COLUMNS
     from .sequences import sequences
@@ -600,10 +615,22 @@ def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> d
     ]
     years = resolve_years(events, case)
     by_year = {row[0]: row for row in rows}
+    first, last = min(by_year), max(by_year)
     known = sequences()
     for event in downs:
         window = known[event["sequence"]]["window"]
         start = years[event["id"]]["start"]
+        if not any(start + i in by_year for i in range(len(window))):
+            raise ScenarioError(
+                f"{event['id']}: no year of the {event['sequence']!r} window "
+                f"({start}-{start + len(window) - 1}) lands in the plan ({first}-{last}): "
+                "the downturn would not be applied"
+            )
+        if start < first:
+            raise ScenarioError(
+                f"{event['id']}: the {event['sequence']!r} window starts at {start}, before the "
+                f"plan ({first}-{last}), and would be cut: place it inside the plan"
+            )
         for i, values in enumerate(window):
             row = by_year.get(start + i)
             if row is not None:  # a window reaching past the plan's end is simply not used
@@ -611,13 +638,22 @@ def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> d
     return {"columns": list(RATE_TABLE_COLUMNS), "rows": rows}
 
 
-def build(scenario: dict) -> tuple[dict, dict, dict]:
+# `build`'s `rates_table=` keyword: its "the caller did not pass one" value (None is a real
+# value -- a run with no table; review Z2).
+_TABLE_UNSET = object()
+
+
+def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict]:
     """(case, hfp tables, provenance) for a scenario: its hand rows plus what its events generate.
 
     Deterministic and without side effects (design section 6.2). With no events this is the
     hand document unchanged. `hfp` maps a sheet name to {"columns": [...], "rows": [[...]]};
     the provenance marks every generated row, cell and case field with the id of the event
     that produced it (section 6.3).
+
+    `rates_table` is the run's rates table when the caller has computed it already
+    (`export_case` computes the table once and passes it in, so one export builds and writes
+    one and the same table, review Z2); by default it is computed here.
     """
     hand_case = copy.deepcopy(scenario.get("case") or {})
     hand_hfp = copy.deepcopy(scenario.get("hfp") or {})
@@ -626,7 +662,7 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
     # The run's rates table (step 5b): hand rows, or generated by the downturn events (I11).
     # Either way the generated case names it (rates_selection.method 'table' and the file name),
     # marked with the event when one generates it, so a pages save keeps the hand case's values.
-    table = rates_table(scenario, events=events)
+    table = _rates_table(scenario, events=events) if rates_table is _TABLE_UNSET else rates_table
     if table is not None:
         _set_path(hand_case, "rates_selection.method", "table")
         _set_path(hand_case, "rates_selection.rates_file", RATES_CSV)

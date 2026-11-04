@@ -124,7 +124,12 @@ Rules:
   hash the same; number *types* count in the case dictionary, because the generated TOML keeps an
   int and a float apart, review V3, but not in the HFP tables, whose cells are doubles in the
   workbook: there an integral float is stored as an int, T1) and the
-  builder version. The scenario is canonicalized once, before hashing *and* before generating
+  builder version. The named downturn sequences' windows are builder input too (step 5b,
+  `data/downturn_sequences.toml`): a hash of the sequences the scenario's downturn events use
+  (name + window) is folded in when there is such an event (review Z7), so editing a window
+  changes the hash of the runs that use it and two runs with different frozen `rates.csv`
+  files never share one; runs without a downturn event keep the hash they had. The scenario
+  is canonicalized once, before hashing *and* before generating
   (T1: the library's own file names, and the case read back through `save_toml`'s encoder), so
   `scenario.json` is exactly the document the frozen files were built from and read back as
   (V3, T1): re-importing a run's own files gives the same hash. Saving from the pages applies only

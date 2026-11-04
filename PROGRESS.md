@@ -6224,3 +6224,24 @@ none folded (the user's call):
   called the order "not a finding" (the HFP's order).
 - **AB4 (nit):** Create Case's upload cannot open a table case (no rates uploader there, and the
   error does not point to the Library's Import).
+
+
+## Run-library step 5b: review 3, AB1-AB4 folded (2026-11-04)
+
+The user's call on `fork-notes/run-library-step5b-review-3.md`: fold all four. Dispositions
+(details in the review's "Dispositions"):
+- **AB1:** a downturn run's case resets the hand case's `reverse_sequence` / `roll_sequence`
+  (marked with the event; a pages save puts the hand values back): its table is the plan's
+  path already transformed. `BUILDER_VERSION` 5, so every run's inputs hash moves (R9).
+- **AB2:** the Rates page's `_setRates` passes the case's `in_percent` and sequence options.
+- **AB3:** a relative `rates_file` is looked up beside the case first, then in the working
+  directory (the import too); `HFP.xlsx` and the budget sidecar keep upstream's order.
+- **AB4:** an uploaded table case that cannot find its CSV names the Run Library's Import and
+  `owlcli run`.
+
+Tests +11 (`tests/library/test_rates_table.py` +5, `tests/rate_models/test_rate_model_table.py`
++2, new `tests/ui/test_rates_page_table.py` 4). **9 of the 11 were checked to fail before their
+fix** (`src/` and `ui/owlbridge.py` stashed, the tests re-run: 9 failed / 2 passed); the two
+that pass pin behavior the fixes keep (a case without the options builds as before; other
+upload errors carry no hint). `test_ab3_the_working_directory_is_the_fallback` failed before
+only on the new error wording. Lint: only upstream's known items.

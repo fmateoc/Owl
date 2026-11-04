@@ -965,8 +965,18 @@ def _setRates(plan):
     if rateType == "table":
         # The run's rates table (step 5b): read-only on the Rates page. The plan re-reads the
         # frozen file beside its case, or reuses the rows it already holds (plan.setRates).
+        # The units and the sequence options are the case's, as `apply_config_to_plan` applies
+        # them before a solve (review AB2: a decimal table was re-priced 100x smaller here).
+        reverse_seq = kz.getCaseKey("reverse_sequence")
+        roll_seq = kz.getCaseKey("roll_sequence")
         try:
-            plan.setRates("table", rates_file=str(kz.getCaseKey("ratesFile") or "rates.csv"))
+            plan.setRates(
+                "table",
+                rates_file=str(kz.getCaseKey("ratesFile") or "rates.csv"),
+                in_percent=kz.getCaseKey("inPercent") is not False,
+                reverse=False if reverse_seq is None else bool(reverse_seq),
+                roll=0 if roll_seq is None else int(roll_seq),
+            )
         except (OSError, ValueError) as e:
             st.error(str(e), icon=":material/error:")
             return False
@@ -2017,6 +2027,7 @@ def createCaseFromFile(strio):
 
     logstrio = StringIO()
     mylog = Logger(verbose=True, logstreams=[logstrio, logstrio])
+    diconf = None
     try:
         diconf, dirname, _ = load_toml(strio, mylog=mylog)
         plan = config_to_plan(
@@ -2027,7 +2038,17 @@ def createCaseFromFile(strio):
             loadHFP=False,
         )
     except Exception as e:
-        st.error(f"Failed to parse case file: {e}", icon=":material/error:")
+        hint = ""
+        if isinstance(e, FileNotFoundError) and isinstance(diconf, dict) \
+                and (diconf.get("rates_selection") or {}).get("method") == "table":
+            # An uploaded case has no folder to find its rates table in (review AB4).
+            hint = (
+                " This case reads its annual rates from a table file, which an uploaded case "
+                "file cannot bring along: import the case with its rates CSV under the Run "
+                "Library's **Import a case**, or run the case file where its rates CSV sits "
+                "beside it (`owlcli run`)."
+            )
+        st.error(f"Failed to parse case file: {e}{hint}", icon=":material/error:")
         return "", {}
 
     mydic = config_to_ui(diconf, mylog=mylog)

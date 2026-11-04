@@ -180,3 +180,29 @@ the Library's Import), or accept a rates upload there.
   between a Rates visit and a solve (AB2's reach is from reading `owlbridge`, not a page sweep).
 - A stochastic seeded baseline with `reverse_sequence` (AB1 shown on `historical` only; the
   mechanism -- transform in `setRates`, keys kept in the case -- is the same by reading).
+
+## Dispositions (2026-11-04, the user's call: fold AB1-AB4)
+
+- **AB1 folded:** `build` resets `rates_selection.reverse_sequence` / `roll_sequence` in a
+  downturn run's case where the hand case sets them, marked with the event in
+  `provenance["case_fields"]` (a pages save puts the hand values back through
+  `_drop_generated_case`); `gamma` is read after the reset. Cases without the options build as
+  before. `BUILDER_VERSION` 5 (R9: the builder's output changed for these runs). Tests:
+  `TestThirdReview::test_ab1_the_frozen_run_sees_the_window_at_its_placement` (reverse and
+  roll), `test_ab1_the_reset_is_generated_and_a_pages_save_puts_the_hand_value_back`,
+  `test_ab1_a_case_without_the_options_is_built_as_before`.
+- **AB2 folded:** `owlbridge._setRates`'s table branch passes `in_percent` (from `inPercent`)
+  and `reverse` / `roll` (from the case keys, as the varying branch does). Tests:
+  `tests/ui/test_rates_page_table.py` (`test_ab2_*`, AppTest of the Rates page: the shown row
+  and the session plan after a visit).
+- **AB3 folded:** `resolve_rates_csv` tries beside the case file first, then the working
+  directory (only the working directory with no case directory); `import_case` resolves a
+  rates CSV the same way (an explicit `rates_path` still wins). Docs: `table.py`,
+  `info/PARAMETERS.md`, `info/RATE_MODELS.md` (regenerated). `HFP.xlsx` and the budget
+  sidecar keep upstream's working-directory-first order. Tests:
+  `test_ab3_the_file_beside_the_case_beats_one_in_the_working_directory`,
+  `test_ab3_the_working_directory_is_the_fallback`,
+  `TestThirdReview::test_ab3_a_frozen_run_reads_its_own_table_from_any_working_directory`.
+- **AB4 folded:** `owlbridge.createCaseFromFile` adds a hint to a table case's
+  `FileNotFoundError` (the Run Library's **Import a case** takes the rates CSV; or `owlcli run`
+  beside the CSV); other upload errors are unchanged. Tests: `test_ab4_*`.

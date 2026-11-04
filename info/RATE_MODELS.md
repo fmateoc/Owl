@@ -118,7 +118,7 @@ Year-by-year rates read from a CSV file named in the case file (a `year` column 
 | Parameter | Required | Type | Description |
 |-----------|----------|------|-------------|
 | `method` | Yes | str | model name (`"table"`) |
-| `rates_file` | Yes | str | The rates CSV, resolved beside the case file (as the HFP workbook is). |
+| `rates_file` | Yes | str | The rates CSV, resolved beside the case file first, then in the working directory. |
 | `base_dir` | No | str | Directory the file name is resolved against (set when the case is loaded, not stored). |
 | `start_year` | No | int | The plan's first calendar year (set by Plan.setRates, not stored). |
 | `in_percent` | No | bool | If True (default), table values are in percent (7.0 = 7%) and are divided by 100. |

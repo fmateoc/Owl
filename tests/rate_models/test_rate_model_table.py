@@ -27,6 +27,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 ###########################################################################
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -298,3 +300,36 @@ def test_a_clone_with_no_file_keeps_the_source_rows(tmp_path):
     (tmp_path / "rates.csv").unlink()  # the run folder moved away
     longer = clone(plan, expectancy=[83, 83])
     assert longer.tau_kn[0, 1] == pytest.approx(-0.30)
+
+
+# ---- AB3: beside the case first ----------------------------------------
+
+
+def test_ab3_the_file_beside_the_case_beats_one_in_the_working_directory(tmp_path, monkeypatch):
+    """Every library run names its table rates.csv: a stray one in the working directory must
+    not replace the run's own (the third review's probe read 99.0 for -30.0)."""
+    from owlplanner.rate_models.table import resolve_rates_csv
+
+    case_dir, cwd = tmp_path / "inputs", tmp_path / "elsewhere"
+    case_dir.mkdir()
+    cwd.mkdir()
+    _write(case_dir)
+    _write(cwd, CSV_TEXT.replace("-30.0", "99.0"))
+    monkeypatch.chdir(cwd)
+    assert Path(resolve_rates_csv("rates.csv", str(case_dir))) == case_dir / "rates.csv"
+    model = TableRateModel(config={"method": "table", "rates_file": "rates.csv",
+                                   "base_dir": str(case_dir), "start_year": 2026})
+    assert model.generate(3)[1][0] == pytest.approx(-0.30)
+
+
+def test_ab3_the_working_directory_is_the_fallback(tmp_path, monkeypatch):
+    """With no file beside the case (or no case directory at all) the working directory is
+    still tried."""
+    from owlplanner.rate_models.table import resolve_rates_csv
+
+    _write(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert resolve_rates_csv("rates.csv", str(tmp_path / "empty")) == "rates.csv"
+    assert resolve_rates_csv("rates.csv") == "rates.csv"
+    with pytest.raises(FileNotFoundError, match="beside the case file .* or in the working directory"):
+        resolve_rates_csv("other.csv", str(tmp_path / "empty"))

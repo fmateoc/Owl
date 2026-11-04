@@ -714,8 +714,8 @@ def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> 
     Without a workbook the scenario holds the plan's zero-filled tables (the same route
     `scenario_from_ui` takes), so both entry paths agree (V9). A case whose rates come from
     a CSV (`rates_selection.method = "table"`, step 5b) brings that table in too, resolved
-    as the workbook is (an explicit `rates_path`, then the name as given, then beside the
-    case file); it is read first and its rows passed to the plan build, so an explicit
+    as the plan resolves it (an explicit `rates_path`, then beside the case file, then the
+    working directory; review AB3); it is read first and its rows passed to the plan build, so an explicit
     `rates_path` can name a file that is not beside the case (the Import page's uploader)
     and the plan reads the very table the scenario stores (review Z3).
     """
@@ -764,11 +764,18 @@ def _rates_reference(case: dict) -> str:
 
 def _read_rates_table(ref: str, *, base=None, explicit=None):
     """The rates table {"columns", "rows"} (numbers in percent) of a 'table' case's CSV, or None."""
-    from owlplanner.rate_models.table import RATE_TABLE_COLUMNS, read_rates_csv
+    from owlplanner.rate_models.table import RATE_TABLE_COLUMNS, read_rates_csv, resolve_rates_csv
 
     if not ref and explicit is None:
         return None
-    path = _resolve_ref(ref, explicit=explicit, base=base)
+    if explicit is not None:
+        path = _resolve_ref(ref, explicit=explicit, base=base)
+    else:
+        # Beside the case first, as the plan resolves it (`resolve_rates_csv`, review AB3).
+        try:
+            path = Path(resolve_rates_csv(ref, str(base) if base is not None else ""))
+        except FileNotFoundError:
+            path = None
     if path is None:
         where = f" (sought in {base})" if base is not None else ""
         raise ScenarioError(

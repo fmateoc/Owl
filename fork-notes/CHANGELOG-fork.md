@@ -14,8 +14,8 @@ rates CSV the case file names, and the named downturn sequences placed at a year
 - **The `table` rate method** (`rate_models/table.py`): `[rates_selection] method = "table"`
   with a `rates_file` reads returns from that CSV instead of generating them -- a `year` column
   and the four rate columns of `data/rates.csv` (extra columns ignored, so that history file
-  itself can be named), values in percent. The file is resolved beside the case file as the
-  HFP workbook is (`Plan._config_dir`), rows are matched to the plan's calendar years, and the
+  itself can be named), values in percent. The file is resolved beside the case file
+  (`Plan._config_dir`; first since review AB3), rows are matched to the plan's calendar years, and the
   file is re-read at every `Plan.setRates` (review Z1) -- a plan falls back to the rows it
   already holds only when the file cannot be resolved or read (the paths that have no case
   directory in reach). `to_config` writes only the file name back.
@@ -68,6 +68,15 @@ rates CSV the case file names, and the named downturn sequences placed at a year
   a changed `rates.csv` like every other path (AA2); `build` enforces the table/event
   refusals however it is given the table, and refuses `rates_table=None` for a downturn run
   (AA3).
+- **Third review, AB1-AB4 folded** (`fork-notes/run-library-step5b-review-3.md`): a downturn
+  run's generated case resets the hand case's `reverse_sequence` / `roll_sequence` (marked with
+  the event, so a pages save keeps the hand values), because its table is the plan's rate path
+  already reversed or rolled -- the frozen run used to transform it again, moving the window
+  off its placement and every other year off the parent's path (AB1; `BUILDER_VERSION` 5); the
+  Rates page re-applies a table with the case's `in_percent` and sequence options (AB2); a
+  relative `rates_file` is looked up beside the case file first, then in the working directory,
+  so a stray `rates.csv` cannot replace a run's own (AB3; the import reads it the same way); an
+  uploaded table case that cannot find its CSV says where to open it instead (AB4).
 
 ### Run library, build step 5: the Budget editor and the missing fork widgets (2026-11-03)
 

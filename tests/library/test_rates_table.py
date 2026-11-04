@@ -509,3 +509,76 @@ class TestReview2Fixes:
     def test_aa3_build_refuses_no_table_for_a_downturn_run(self):
         with pytest.raises(ScenarioError, match="generates its rates table"):
             b.build(_downturn(2030), rates_table=None)
+
+
+class TestThirdReview:
+    """The third review's AB1 and AB3 (`run-library-step5b-review-3.md`); AB2 and AB4 are page
+    tests (`tests/ui/test_rates_page_table.py`)."""
+
+    # -- AB1: a downturn over a reversed or rolled baseline -----------------
+
+    @staticmethod
+    def _transformed(extra):
+        """jack+jill's `historical` case with a sequence option, its plan, and a crash at 2030."""
+        case, dirname, _ = load_toml(CASE)
+        case["rates_selection"].update(extra)
+        parent = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=False)
+        scenario = canonicalize({"schema_version": 3, "plan_year": 2026, "case": case, "hfp": {},
+                                 "events": [{"id": "dn", "kind": "downturn", "sequence": "crash-30",
+                                             "start": 2030}]})
+        return case, parent, scenario
+
+    @pytest.mark.parametrize("extra", [{"reverse_sequence": True}, {"roll_sequence": 5}])
+    def test_ab1_the_frozen_run_sees_the_window_at_its_placement(self, tmp_path, extra):
+        """Without the fix the frozen case transforms the table again: the reversed crash lands
+        in 2054 and 31 of the 32 other years leave the parent's path."""
+        _case, parent, scenario = self._transformed(extra)
+        export_case(scenario, tmp_path)
+        frozen, frozen_dir, _ = load_toml(str(tmp_path / "Case.toml"))
+        run = config_to_plan(copy.deepcopy(frozen), frozen_dir, verbose=False, loadHFP=False)
+        n = list(run.year_n).index(2030)
+        assert float(run.tau_kn[0][n]) == pytest.approx(-0.30)
+        others = [k for k in range(run.N_n) if k != n]
+        assert np.allclose(run.tau_kn[:, others], parent.tau_kn[:, others], atol=1e-6)
+
+    def test_ab1_the_reset_is_generated_and_a_pages_save_puts_the_hand_value_back(self):
+        from owlplanner.library.casefiles import _drop_generated_case
+
+        case, _parent, scenario = self._transformed({"reverse_sequence": True, "roll_sequence": 3})
+        built, _tables, provenance = b.build(scenario)
+        assert built["rates_selection"]["reverse_sequence"] is False
+        assert built["rates_selection"]["roll_sequence"] == 0
+        for field in ("rates_selection.reverse_sequence", "rates_selection.roll_sequence"):
+            assert provenance["case_fields"][field] == "dn"
+        saved = _drop_generated_case(built, provenance, scenario["case"])
+        assert saved["rates_selection"]["reverse_sequence"] is True
+        assert saved["rates_selection"]["roll_sequence"] == 3
+
+    def test_ab1_a_case_without_the_options_is_built_as_before(self):
+        _case, _parent, scenario = self._transformed({})
+        built, _tables, provenance = b.build(scenario)
+        assert "reverse_sequence" not in built["rates_selection"]
+        assert "roll_sequence" not in built["rates_selection"]
+        assert set(provenance["case_fields"]) == {"rates_selection.method", "rates_selection.rates_file"}
+
+    # -- AB3: a stray rates.csv in the working directory --------------------
+
+    def test_ab3_a_frozen_run_reads_its_own_table_from_any_working_directory(self, tmp_path, monkeypatch):
+        """The third review's probe: a run's inputs loaded as the worker loads them, from a
+        directory holding another rates.csv."""
+        _case, _parent, scenario = self._transformed({})
+        inputs = tmp_path / "inputs"
+        export_case(scenario, inputs)
+        cwd = tmp_path / "elsewhere"
+        cwd.mkdir()
+        (cwd / "rates.csv").write_text(
+            "year,S&P 500,Bonds Baa,T-Notes,Inflation\n"
+            + "".join(f"{y},99.0,0,0,0\n" for y in range(2000, 2100)), encoding="utf-8")
+        monkeypatch.chdir(cwd)
+        frozen, frozen_dir, _ = load_toml(str(inputs / "Case.toml"))
+        run = config_to_plan(copy.deepcopy(frozen), frozen_dir, verbose=False, loadHFP=False)
+        assert float(run.tau_kn[0][list(run.year_n).index(2030)]) == pytest.approx(-0.30)
+        # The import reads the same file the plan reads.
+        again = import_case(inputs / "Case.toml")
+        assert again["rates_table"]["rows"] == scenario_from_case(
+            frozen, rates_table=b.rates_table(scenario))["rates_table"]["rows"]

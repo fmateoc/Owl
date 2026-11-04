@@ -212,7 +212,7 @@ Rates use standard financial conventions:
 #### :orange[For method = "table"]
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `rates_file` | string | A year-by-year rates CSV beside the case file (as the HFP workbook is): a `year` column and the columns `S&P 500`, `Bonds Baa`, `T-Notes`, `Inflation`, values in percent. Extra columns are ignored (Owl's own `data/rates.csv` can be named). Its rows are matched to the plan's calendar years; a plan year with no row is an error |
+| `rates_file` | string | A year-by-year rates CSV, looked up beside the case file first, then in the working directory (unlike the HFP workbook, so a stray `rates.csv` cannot replace a run's own): a `year` column and the columns `S&P 500`, `Bonds Baa`, `T-Notes`, `Inflation`, values in percent. Extra columns are ignored (Owl's own `data/rates.csv` can be named). Its rows are matched to the plan's calendar years; a plan year with no row is an error |
 | `in_percent` | boolean | *(Optional)* When `false`, the table's values are decimals (e.g., `0.07` for 7%) instead of percent. Default is `true` |
 
 #### :orange[For method = "gaussian" or "lognormal"]

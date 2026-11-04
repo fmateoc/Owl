@@ -687,9 +687,22 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
     if table is not None:
         _set_path(hand_case, "rates_selection.method", "table")
         _set_path(hand_case, "rates_selection.rates_file", RATES_CSV)
-        if any(e["kind"] == "downturn" for e in events):
-            for field in ("rates_selection.method", "rates_selection.rates_file"):
-                provenance["case_fields"][field] = next(e["id"] for e in events if e["kind"] == "downturn")
+        if downs:
+            generated = ["rates_selection.method", "rates_selection.rates_file"]
+            # The generated table is the hand case's rate path as the plan uses it, reversed or
+            # rolled already (`Plan.setRates` transforms every non-constant model, `table`
+            # included): the frozen case must not transform it again, or the window leaves its
+            # placement and every other year leaves the parent's path (review AB1). The keys
+            # are reset only where the hand case sets them, so other runs' cases are unchanged.
+            selection = hand_case.get("rates_selection") or {}
+            if selection.get("reverse_sequence"):
+                selection["reverse_sequence"] = False
+                generated.append("rates_selection.reverse_sequence")
+            if int(selection.get("roll_sequence") or 0) != 0:
+                selection["roll_sequence"] = 0
+                generated.append("rates_selection.roll_sequence")
+            for field in generated:
+                provenance["case_fields"][field] = downs[0]["id"]
     if not events:
         return hand_case, hand_hfp, provenance
 

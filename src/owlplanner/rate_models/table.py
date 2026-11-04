@@ -82,15 +82,26 @@ def read_rates_csv(path):
 
 
 def resolve_rates_csv(name, base_dir=""):
-    """The file to read for `name`: the name as given (a path, or relative to the working
-    directory), then beside the case file (`base_dir`); the order the HFP workbook and the
-    budget file use. FileNotFoundError when neither candidate exists."""
+    """The file to read for `name`: an absolute path as given; a relative name beside the case
+    file (`base_dir`) first, then relative to the working directory. FileNotFoundError when no
+    candidate exists.
+
+    Beside the case first (review AB3), unlike the HFP workbook's order: every library run
+    names its table `rates.csv`, and the worker and `owlcli run` inherit whatever working
+    directory they were started in, so a working-directory-first lookup let any stray
+    `rates.csv` there replace a frozen run's own table. With no `base_dir` (a case uploaded
+    to the interface) only the working directory is tried."""
     name = str(name or "").strip()
-    candidates = [name] if os.path.isabs(name) else [name, os.path.join(base_dir or "", name)]
+    if os.path.isabs(name):
+        candidates = [name]
+    elif base_dir:
+        candidates = [os.path.join(base_dir, name), name]
+    else:
+        candidates = [name]
     path = next((c for c in candidates if c and os.path.exists(c)), None)
     if path is None:
-        where = f" or beside the case file ({base_dir})" if base_dir else ""
-        raise FileNotFoundError(f"Rates table {name!r} not found{where}.")
+        where = f"beside the case file ({base_dir}) or " if base_dir else ""
+        raise FileNotFoundError(f"Rates table {name!r} not found {where}in the working directory.")
     return path
 
 
@@ -128,7 +139,7 @@ class TableRateModel(BaseRateModel):
     required_parameters = {
         "rates_file": {
             "type": "str",
-            "description": "The rates CSV, resolved beside the case file (as the HFP workbook is).",
+            "description": "The rates CSV, resolved beside the case file first, then in the working directory.",
             "example": '"rates.csv"',
         },
     }
@@ -227,7 +238,6 @@ class TableRateModel(BaseRateModel):
         return data
 
     def _read_rows(self):
-        """The table from `rates_file`, resolved as the HFP workbook and budget_file are:
-        the name as given (a path, or relative to the working directory), then beside the
-        case file (`base_dir`)."""
+        """The table from `rates_file`, resolved by `resolve_rates_csv`: beside the case file
+        (`base_dir`) first, then relative to the working directory."""
         return read_rates_csv(resolve_rates_csv(self.get_param("rates_file"), self.get_param("base_dir") or ""))

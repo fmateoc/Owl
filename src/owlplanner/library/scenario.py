@@ -35,7 +35,9 @@ SCHEMA_VERSION = 3
 # 3 (step 4, second review): a person with no claim event keeps the hand case's withSSAges
 # choice (X7), and a purchase's keys at the builder's defaults leave the canonical form (X4).
 # 4 (step 5b): the run's rates.csv (a downturn sequence generates it; D11).
-BUILDER_VERSION = 4
+# 5 (step 5b, third review AB1): a downturn run's case resets the hand case's reverse_sequence /
+# roll_sequence, which its generated table already carries.
+BUILDER_VERSION = 5
 
 
 class ScenarioError(ValueError):

@@ -5975,3 +5975,10 @@ Tests (+8, each checked to fail on `4aefd31`'s `src/` and `ui/`): `test_create_c
 (Y3; the round-trip test now expects the untouched `withSTAR` absent), `test_budget_editor.py` +1
 (Y4). The four touched files: 103 passed. Full suite (Linux, -n 4): **4052 passed, 1 skipped**
 (8:48). flake8/ruff: only upstream's known items.
+
+## `main` fast-forwarded to run-library step 5 (2026-11-04)
+
+The user's call. `main` moved from `64244f8` to the head of `claude/run-library-step5`: step 5
+(`26054d5`), the first review's W1-W5, W7-W8 (`4aefd31`), the second review Y1-Y5 (`1812604`),
+its Y1-Y4 fixes (`25f42b3`, `ed94733`), and this note. Full suite on `25f42b3` (Linux): 4052
+passed, 1 skipped. Next: step 5b (D11's rate table), then 6 (collections).

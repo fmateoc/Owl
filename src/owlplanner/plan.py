@@ -1821,11 +1821,12 @@ class Plan:
 
         if method == "table":
             # A rates CSV named in the case file: resolved beside the case (self._config_dir,
-            # set by config_to_plan), matched to the plan's own calendar years. The file is
-            # tried first at every setRates (it may have changed on disk, review Z1); the rows
-            # this plan already holds are reused only when the file cannot be resolved or read
-            # (the interface's path: no case directory in reach), as the budget file's are
-            # (plan_bridge).
+            # set by config_to_plan), matched to the plan's own calendar years. The file wins
+            # whenever it can be read (it may have changed on disk, review Z1) -- tried here,
+            # and by the callers that pass rows of their own (`clone`, `import_case`, review
+            # AA2); the rows this plan already holds are reused only when the file cannot be
+            # resolved or read (the interface's path: no case directory in reach), as the
+            # budget file's are (plan_bridge).
             model_config.setdefault("base_dir", getattr(self, "_config_dir", ""))
             model_config.setdefault("start_year", int(self.year_n[0]))
             old = getattr(self, "rateModel", None)

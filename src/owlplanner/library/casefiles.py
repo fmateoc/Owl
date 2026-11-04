@@ -490,9 +490,19 @@ def scenario_from_ui(
             base=Path(case_dir) if case_dir is not None else None,
             explicit=budget_path,
         )
+    if base is not None:
+        rates_table = base.get("rates_table")
+    else:
+        rates_table = _rates_table_from_plan(plan)
+        if rates_table is not None:
+            # The rows are stored as the file holds them and `in_percent` says what they mean
+            # (review AA1): the case keys carry the units only through the two case builders
+            # (`config_to_ui`, `genDic`), so the plan's own model supplies them here too --
+            # a decimal table must not freeze a run that re-reads it as percent.
+            if not bool(getattr(plan.rateModel, "params", {}).get("in_percent", True)):
+                case.setdefault("rates_selection", {})["in_percent"] = False
     scenario = scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file,
-                                  rates_table=base.get("rates_table") if base is not None
-                                  else _rates_table_from_plan(plan))
+                                  rates_table=rates_table)
     if base is not None and base.get("events"):
         # The pages edit hand rows only: the base's events stay the run's (review X1: they
         # were dropped, and with them everything they generate).

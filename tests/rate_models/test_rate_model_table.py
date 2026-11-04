@@ -273,3 +273,28 @@ def test_a_clone_with_a_new_expectancy_keeps_the_table(tmp_path):
     plan.setRates("table", rates_file="rates.csv")
     longer = clone(plan, expectancy=[83, 83])
     assert np.allclose(longer.tau_kn[:, :3], plan.tau_kn[:, :3])
+
+
+def test_a_clone_re_reads_a_changed_file(tmp_path):
+    """Review AA2: the file wins in `clone` too (its own comment's promise, Z1's rule)."""
+    from owlplanner.config.plan_bridge import clone
+
+    _long_csv(tmp_path)
+    plan = _plan()
+    plan._config_dir = str(tmp_path)
+    plan.setRates("table", rates_file="rates.csv")
+    _long_csv(tmp_path, crash=-77.0)  # the user edits rates.csv
+    longer = clone(plan, expectancy=[83, 83])
+    assert longer.tau_kn[0, 1] == pytest.approx(-0.77)
+
+
+def test_a_clone_with_no_file_keeps_the_source_rows(tmp_path):
+    from owlplanner.config.plan_bridge import clone
+
+    _long_csv(tmp_path)
+    plan = _plan()
+    plan._config_dir = str(tmp_path)
+    plan.setRates("table", rates_file="rates.csv")
+    (tmp_path / "rates.csv").unlink()  # the run folder moved away
+    longer = clone(plan, expectancy=[83, 83])
+    assert longer.tau_kn[0, 1] == pytest.approx(-0.30)

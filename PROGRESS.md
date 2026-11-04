@@ -6161,3 +6161,45 @@ either way. The four touched suites (`tests\library tests\rate_models tests\conf
 (12:20; 4094 + 21). The acceptance check reruns at **11/11** (its docstring and the record
 above scoped per Z8). flake8/ruff: only upstream's known items.
 
+
+## Run-library step 5b: review 2, AA1-AA3 folded (2026-11-04)
+
+A second independent review of the step (`fork-notes/run-library-step5b-review-2.md`, findings
+AA1-AA6, prefix AA as U-Z are taken) went over the branch head at `365b72c5` -- the Z1-Z9 fold
+included -- with 11 fresh probes in the session's temp dir. The user's call: fold **AA1-AA3**
+(AA4-AA6 not folded). Dispositions (each named test checked to fail before its fix):
+- **AA1 (medium): a decimal table (`in_percent = false`) drifted 100x through the pages.** A
+  no-base "Save the current case" stored the plan's raw rows while `ui_to_config`'s table
+  branch kept only `rates_file`, so the frozen run re-read the decimals as percent; the same
+  loss re-priced the **session** plan at the next solve too (every solve re-applies the rates
+  from the case keys: `prepareRun` -> `apply_config_to_plan`). Fixed at the root and at the
+  save: `in_percent` rides with `ratesFile` through `config_to_ui`, `genDic` and
+  `_ui_rates_to_config` (kept only when it is not the default, as `to_config` keeps it, so no
+  hash changes), and `scenario_from_ui` supplies it from `plan.rateModel.params` when there is
+  no base -- immune to which builder made the case keys. The review's (f3) end to end is
+  `test_aa1_a_no_base_save_keeps_the_table_units` (the frozen plan prices the session's rates);
+  `test_aa1_the_pages_round_trip_keeps_the_table_units` pins the key's round trip.
+- **AA2 (low): `clone(plan, expectancy=)` skipped Z1's file-first re-read.** It passed the
+  source plan's rows unconditionally (so `Plan.setRates` never tried the file), keeping stale
+  rows after a `rates.csv` edit while its comment promised the file is re-read. `clone` now
+  tries `try_read_rates_csv` and keeps the source rows only when the file cannot be resolved
+  or read; `plan.py`'s comment names the rows-carrying callers (`clone`, `import_case`).
+- **AA3 (low): `build(rates_table=)` trusted the caller**, skipping the "drop one" and "edit
+  the table itself" refusals (and generating no table at all for a downturn run given `None`).
+  The rules are `_check_table_events` now, enforced in `build` however the table arrives, plus
+  a named refusal for `rates_table=None` on a downturn run (the contract is in `build`'s
+  docstring).
+- **AA4-AA6 not folded** (this round's call): AA4 is a product call (where the Rates page's
+  `st.stop()` belongs -- the heirs-tax/OBBBA/dividend/liquidation widgets are unreachable for
+  every table case today); AA5 (the export test spies only `builder.rates_table`; two name
+  shadows in `build`) and AA6 (a directory as `rates_file`, an "optional" rates upload for a
+  non-table case, a `nan` window in `downturn_sequences.toml`) stand as written.
+
+Tests (+6: `tests/library/test_rates_table.py` +4, `tests/rate_models/test_rate_model_table.py`
++2; the two files now 38 + 31 = 69). **5 of the 6 were checked to fail before their fix** (the
+fixes under `src/` and `ui/` stashed, the tests re-run: 5 failed / 1 passed); the sixth
+(`test_a_clone_with_no_file_keeps_the_source_rows`) pins the fallback the fix preserves. The
+four touched suites (`tests\library tests\rate_models tests\config tests\ui`): **1231 passed,
+1 skipped** (2:12). Full suite (Windows, -n 4): **4121 passed, 2 skipped** (11:32; 4115 + 6).
+The acceptance check reruns at **11/11**. flake8/ruff: only upstream's known items.
+

@@ -570,6 +570,26 @@ def rates_table(scenario: dict, events=None) -> dict | None:
     return _rates_table(scenario, events=events)
 
 
+def _check_table_events(scenario: dict, downs: list[dict]) -> None:
+    """The two ways a rates table contradicts a downturn event (the recorded decisions),
+    enforced however the table reaches `build` (review AA3): the event generates the table,
+    so a hand table and a downturn refuse to coexist ("drop one"), and a downturn over a
+    `table` case has no baseline to overlay."""
+    if not downs:
+        return
+    case = scenario.get("case") or {}
+    if scenario.get("rates_table") is not None:
+        raise ScenarioError(
+            "the run has both a hand-entered rates table and a downturn event, and the event "
+            "generates the table: drop one of them"
+        )
+    if (case.get("rates_selection") or {}).get("method") == "table":
+        raise ScenarioError(
+            "a downturn sequence overlays the case's own rate method, and this case reads a "
+            "rates table (rates_selection.method = 'table'): edit the table itself instead"
+        )
+
+
 def _rates_table(scenario: dict, events=None) -> dict | None:
     """`rates_table`'s implementation (the name `build`'s `rates_table=` keyword shadows)."""
     case = scenario.get("case") or {}
@@ -577,11 +597,7 @@ def _rates_table(scenario: dict, events=None) -> dict | None:
     if events is None:
         events = validate_events(scenario.get("events"), list((case.get("basic_info") or {}).get("names") or []))
     downs = [e for e in events if e["kind"] == "downturn"]
-    if hand is not None and downs:
-        raise ScenarioError(
-            "the run has both a hand-entered rates table and a downturn event, and the event "
-            "generates the table: drop one of them"
-        )
+    _check_table_events(scenario, downs)
     if not downs:
         if hand is None:
             return None
@@ -602,12 +618,7 @@ def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> d
     from .sequences import sequences
 
     case = scenario.get("case") or {}
-    method = (case.get("rates_selection") or {}).get("method")
-    if method == "table":
-        raise ScenarioError(
-            "a downturn sequence overlays the case's own rate method, and this case reads a "
-            "rates table (rates_selection.method = 'table'): edit the table itself instead"
-        )
+    _check_table_events(scenario, downs)
     plan = _throwaway_plan(case)
     rows = [
         [int(year)] + [round(100.0 * float(plan.tau_kn[k][n]), 4) for k in range(4)]
@@ -653,7 +664,10 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
 
     `rates_table` is the run's rates table when the caller has computed it already
     (`export_case` computes the table once and passes it in, so one export builds and writes
-    one and the same table, review Z2); by default it is computed here.
+    one and the same table, review Z2); by default it is computed here. Whatever the caller
+    passes, the consistency rules between the table and the events are enforced here (review
+    AA3): a hand table and a downturn refuse to coexist, a downturn over a `table` case is
+    refused, and a downturn run must have a table (`rates_table=None` is refused).
     """
     hand_case = copy.deepcopy(scenario.get("case") or {})
     hand_hfp = copy.deepcopy(scenario.get("hfp") or {})
@@ -663,6 +677,13 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
     # Either way the generated case names it (rates_selection.method 'table' and the file name),
     # marked with the event when one generates it, so a pages save keeps the hand case's values.
     table = _rates_table(scenario, events=events) if rates_table is _TABLE_UNSET else rates_table
+    downs = [e for e in events if e["kind"] == "downturn"]
+    _check_table_events(scenario, downs)  # however the table arrived (review AA3)
+    if downs and table is None:
+        raise ScenarioError(
+            "the run's downturn event generates its rates table, so there must be one: call "
+            "build() with no rates_table= (it is computed here) or pass builder.rates_table(scenario)"
+        )
     if table is not None:
         _set_path(hand_case, "rates_selection.method", "table")
         _set_path(hand_case, "rates_selection.rates_file", RATES_CSV)

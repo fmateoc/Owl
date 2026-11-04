@@ -447,9 +447,14 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
         rate_method = "user"
     if rate_method == "table":
         # A rates table the case file names (step 5b): the pages show it read-only (Rates.py)
-        # and keep its file name; the rows live in the run's rates.csv.
+        # and keep its file name; the rows live in the run's rates.csv. The units ride along
+        # (review AA1): the rows are stored as the file holds them and `in_percent` says what
+        # they mean, so the key crosses the `ui_to_config` round trip beside the file name
+        # (kept only when it is not the default, as `to_config` keeps it).
         dic["rateType"] = "table"
         dic["ratesFile"] = rs.get("rates_file", "rates.csv")
+        if not bool(rs.get("in_percent", True)):
+            dic["inPercent"] = False
     elif rate_method in FIXED_TYPE_UI:
         dic["rateType"] = "constant"
         dic["fixedType"] = rate_method
@@ -788,9 +793,13 @@ def _ui_rates_to_config(diconf: dict, uidic: dict, ni: int) -> None:
     method = rs["method"]
 
     if method == "table":
-        # A rates table the case file names (step 5b): only the file name is the pages' to
-        # carry; its years are the table's own, so no historical window is forced on it.
+        # A rates table the case file names (step 5b): the file name and the units are the
+        # pages' to carry (review AA1 -- dropping `in_percent` re-scales a decimal table 100x
+        # at the next apply); its years are the table's own, so no historical window is forced
+        # on it.
         rs["rates_file"] = str(uidic.get("ratesFile") or "rates.csv")
+        if not bool(uidic.get("inPercent", True)):
+            rs["in_percent"] = False
         return
 
     if method in HISTORICAL_RANGE_METHODS:

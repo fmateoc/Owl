@@ -2229,10 +2229,13 @@ def genDic(plan):
         dic["rateType"] = "constant"
         dic["fixedType"] = "user"
     elif plan.rateMethod == "table":
-        # The run's rates table (step 5b): shown read-only on the Rates page.
+        # The run's rates table (step 5b): shown read-only on the Rates page. The units ride
+        # along (review AA1): `in_percent` says what the rows mean and no page edits it.
         dic["rateType"] = "table"
         model = getattr(plan, "rateModel", None)
         dic["ratesFile"] = (model.params.get("rates_file") if model is not None else None) or "rates.csv"
+        if model is not None and not bool(model.params.get("in_percent", True)):
+            dic["inPercent"] = False
     elif plan.rateMethod in VARYING_TYPE_UI:
         dic["rateType"] = "varying"
         dic["varyingType"] = plan.rateMethod

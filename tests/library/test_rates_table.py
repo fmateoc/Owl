@@ -43,13 +43,13 @@ def _rows(first=2026, last=2070):
     }
 
 
-def _table_case(tmp_path, table=None):
+def _table_case(tmp_path, table=None, selection=None):
     """A case file whose rates come from a rates.csv beside it (as a run's inputs hold it)."""
     import shutil
 
     table = _rows() if table is None else table
     case, _, _ = load_toml(CASE)
-    case["rates_selection"] = {"method": "table", "rates_file": "rates.csv"}
+    case["rates_selection"] = selection or {"method": "table", "rates_file": "rates.csv"}
     shutil.copy(HFP, tmp_path / "HFP_jack+jill.xlsx")
     path = tmp_path / "Case_table.toml"
     save_toml(case, str(path))
@@ -436,3 +436,76 @@ class TestReviewFixesZ:
         assert load_sequences(path=data)["test-seq"]["window"] == [[-30.0, 2.0, 1.0, 2.0]]
         _sequence_file(data, [[-45.0, 2.0, 1.0, 2.0]])
         assert load_sequences(path=data)["test-seq"]["window"] == [[-45.0, 2.0, 1.0, 2.0]]
+
+
+class TestReview2Fixes:
+    """`fork-notes/run-library-step5b-review-2.md` AA1-AA3 (AA4-AA6 not folded). Each test was
+    checked to fail before the fix it names."""
+
+    DECIMALS = {"method": "table", "rates_file": "rates.csv", "in_percent": False}
+
+    @staticmethod
+    def _decimal_table(first=2026, last=2070):
+        """A table in decimals (`in_percent = false`): -0.30 is one year's -30%."""
+        return {
+            "columns": ["year", "S&P 500", "Bonds Baa", "T-Notes", "Inflation"],
+            "rows": [[year, -0.30 if year == 2027 else 0.06, 0.045, 0.03, 0.025]
+                     for year in range(first, last + 1)],
+        }
+
+    # -- AA1: the table's units must not drift 100x ------------------------
+
+    def test_aa1_a_no_base_save_keeps_the_table_units(self, tmp_path):
+        """The review's probe2_f_import.py (f3): without the fix the frozen run re-reads the
+        decimal rows as percent and its solve runs on rates 100x smaller."""
+        case_file = _table_case(tmp_path, table=self._decimal_table(), selection=self.DECIMALS)
+        case, dirname, _ = load_toml(str(case_file))
+        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=True)
+        assert float(plan.tau_kn[0, 1]) == pytest.approx(-0.30)  # decimals in, decimals out
+
+        uidic = config_to_ui(copy.deepcopy(case))
+        uidic.pop("inPercent", None)  # a case-key builder that never learned the key
+        scenario = scenario_from_ui(uidic, plan, case_dir=str(tmp_path))
+        assert scenario["case"]["rates_selection"]["in_percent"] is False
+        assert scenario["rates_table"]["rows"][1] == [2027, -0.30, 0.045, 0.03, 0.025]
+
+        out = tmp_path / "inputs"
+        export_case(scenario, out)
+        frozen, frozen_dir, _ = load_toml(str(out / "Case.toml"))
+        assert frozen["rates_selection"]["in_percent"] is False
+        again = config_to_plan(copy.deepcopy(frozen), frozen_dir, verbose=False, loadHFP=True)
+        assert float(again.tau_kn[0, 1]) == pytest.approx(-0.30)  # what the solve would use
+
+    def test_aa1_the_pages_round_trip_keeps_the_table_units(self, tmp_path):
+        """The ui keys carry `in_percent`, so the pages' pre-solve `apply_config_to_plan`
+        re-prices the table in its own units (every solve re-applies the rates)."""
+        from owlplanner.config.plan_bridge import apply_config_to_plan
+        from owlplanner.config.ui_bridge import ui_to_config
+
+        case_file = _table_case(tmp_path, table=self._decimal_table(), selection=self.DECIMALS)
+        case, dirname, _ = load_toml(str(case_file))
+        plan = config_to_plan(copy.deepcopy(case), dirname, verbose=False, loadHFP=True)
+        uidic = config_to_ui(copy.deepcopy(case))
+        assert uidic["inPercent"] is False  # the key crosses config_to_ui
+        apply_config_to_plan(plan, ui_to_config(dict(uidic)))
+        assert float(plan.tau_kn[0, 1]) == pytest.approx(-0.30)
+
+    # -- AA3: the refusals hold however build() gets the table ------------
+
+    def test_aa3_build_enforces_the_refusals_however_it_gets_the_table(self):
+        table = _rows(2026, 2070)
+        events = [{"id": "s", "kind": "downturn", "sequence": "crash-30", "start": 2030}]
+        hand = {"schema_version": 3, "plan_year": 2026, "case": {"case_name": "x",
+                "rates_selection": {"method": "table"}}, "hfp": {}, "rates_table": _rows(2026, 2027),
+                "events": copy.deepcopy(events)}
+        with pytest.raises(ScenarioError, match="drop one"):
+            b.build(hand, rates_table=table)
+        over_table = {"schema_version": 3, "plan_year": 2026,
+                      "case": {"case_name": "x", "rates_selection": {"method": "table"}}, "hfp": {},
+                      "events": copy.deepcopy(events)}
+        with pytest.raises(ScenarioError, match="edit the table itself"):
+            b.build(over_table, rates_table=table)
+
+    def test_aa3_build_refuses_no_table_for_a_downturn_run(self):
+        with pytest.raises(ScenarioError, match="generates its rates table"):
+            b.build(_downturn(2030), rates_table=None)

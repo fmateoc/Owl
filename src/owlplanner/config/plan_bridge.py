@@ -676,15 +676,24 @@ def clone(plan: "Plan", newname=None, *, expectancy=None, verbose=True, logstrea
             eff_logstreams = logstreams
         diconf = plan_to_config(plan)
         diconf["basic_info"]["life_expectancy"] = [int(e) for e in expectancy]
-        # The rates table of a 'table' case is re-read beside the case file, or taken from the
-        # rows the source plan already holds when its file cannot be found.
+        # The rates table of a 'table' case: the file is re-read whenever it can be read (a
+        # changed `rates.csv` must reach the clone, as it reaches every `setRates`, review
+        # AA2), and the rows the source plan already holds are the fallback when its file
+        # cannot be resolved or read (the interface's path: no case directory in reach).
+        model = getattr(plan, "rateModel", None)
+        rates_rows = getattr(model, "rows", None)
+        if getattr(model, "model_name", None) == "table":
+            from owlplanner.rate_models.table import try_read_rates_csv
+
+            fresh = try_read_rates_csv(model.params.get("rates_file"), getattr(plan, "_config_dir", "") or "")
+            rates_rows = fresh if fresh is not None else rates_rows
         newplan = config_to_plan(
             diconf,
             getattr(plan, "_config_dir", ""),
             verbose=verbose,
             logstreams=eff_logstreams,
             loadHFP=False,
-            rates_rows=getattr(getattr(plan, "rateModel", None), "rows", None),
+            rates_rows=rates_rows,
         )
         # Re-apply HFP from in-memory raw data (no file I/O; HFP timeLists re-conditioned for new horizon)
         if getattr(plan, "rawHFP", None):

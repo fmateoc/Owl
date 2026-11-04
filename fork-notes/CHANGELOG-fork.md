@@ -60,6 +60,14 @@ rates CSV the case file names, and the named downturn sequences placed at a year
   input, in the inputs hash (only runs with a downturn change hash), and `sequences()` is no
   longer cached (Z7); the acceptance record is scoped (T1 is the hand-table run's; the
   summary metrics compared are `plan.json`'s) (Z8); a comment's schema number (Z9).
+- **Second review, AA1-AA3 folded** (`fork-notes/run-library-step5b-review-2.md`): the table's
+  units survive the pages (`in_percent` rides with `ratesFile` through `config_to_ui` /
+  `genDic` / `ui_to_config`, and `scenario_from_ui` takes it from the plan when there is no
+  base), so a decimal table (`in_percent = false`) neither freezes nor solves a run with rates
+  100x off (AA1 -- the same loss re-priced the session plan at every solve); `clone` re-reads
+  a changed `rates.csv` like every other path (AA2); `build` enforces the table/event
+  refusals however it is given the table, and refuses `rates_table=None` for a downturn run
+  (AA3).
 
 ### Run library, build step 5: the Budget editor and the missing fork widgets (2026-11-03)
 

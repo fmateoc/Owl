@@ -2,7 +2,8 @@
 Scenario page: a run's events and what they generate (design sections 6.1-6.3, step 4).
 
 The scenario is the source of truth of a run (D2): events in plain terms -- work, claiming,
-rent, a home purchase and care (D6) -- beside the hand rows. A year field may name a calendar
+rent, a home purchase and care (D6), and a named downturn sequence (step 5b, I11) -- beside
+the hand rows. A year field may name a calendar
 year or anchor to another event: "the year after Noa's last work year" (`after:Noa`), "at age
 86" (`age:Ari:86`), "the purchase year" (`purchase`), or another event's year (`event:care`,
 `event:care+2`) (I1). The builder (library.builder) turns the events into Owl's coupled edits
@@ -49,6 +50,7 @@ import libraryjobs
 import sskeys as kz
 from owlplanner.library import SCHEMA_VERSION, ScenarioError, canonicalize, diff_summaries
 from owlplanner.library import builder
+from owlplanner.library.sequences import sequences as _sequences
 
 st.markdown("# :material/edit_note: Scenario")
 kz.divider("orange")
@@ -101,6 +103,7 @@ claim_rows = [{"id": e.get("id"), "person": e.get("person"), "age": e.get("age")
 rent = next((e for e in events if e.get("kind") == "rent"), None)
 buy = next((e for e in events if e.get("kind") == "purchase"), None)
 care = next((e for e in events if e.get("kind") == "care"), None)
+down = next((e for e in events if e.get("kind") == "downturn"), None)
 
 
 def _blank_rows(rows, columns):
@@ -217,6 +220,28 @@ with st.expander("Care", expanded=care is not None):
     care_essential = st.checkbox("Essential (paid whatever the spending level)",
                                  value=bool((care or {}).get("essential", True)), key=f"scn_care_ess_{key}")
 
+with st.expander("Downturn sequence", expanded=down is not None):
+    st.caption(
+        "A named stress sequence overlaid on the run's own rate method at a chosen year "
+        "(design 14.1, I11): the years inside the window take the sequence's returns, the "
+        "years outside keep the case's own method. The overlay becomes the run's `rates.csv` "
+        "(step 5b); a run that already reads a rates table cannot take one."
+    )
+    down_on = st.checkbox("Overlay a named downturn sequence", value=down is not None,
+                          key=f"scn_down_on_{key}")
+    _seq_names = sorted(_sequences())
+    d1, d2, d3 = st.columns(3)
+    down_id = d1.text_input("Event id", value=(down or {}).get("id", "downturn"), key=f"scn_down_id_{key}")
+    _chosen = (down or {}).get("sequence", _seq_names[0]) if _seq_names else None
+    down_seq = d2.selectbox("Sequence", _seq_names,
+                            index=max(0, _seq_names.index(_chosen)) if _chosen in _seq_names else 0,
+                            key=f"scn_down_seq_{key}")
+    down_start = d3.text_input("From", value=builder.year_ref_text((down or {}).get("start") or plan_year),
+                               key=f"scn_down_start_{key}")
+    if down_seq:
+        _meta = _sequences()[down_seq]
+        st.caption(f"{_meta['description']} *(source: {_meta['source']})*")
+
 
 def _present(value):
     return value is not None and not (isinstance(value, float) and pd.isna(value)) and value != ""
@@ -231,6 +256,7 @@ _MANAGED = {
     "purchase": {"id", "kind", "name", "price", "year", "pay_on", "growth", "commission", "place",
                  "costs", "sale", "financing"},
     "care": {"id", "kind", "name", "amount", "year", "end", "essential"},
+    "downturn": {"id", "kind", "sequence", "start"},
 }
 
 
@@ -281,7 +307,7 @@ def _assemble():
     events += _claim_events(claim_df.to_dict("records"))
     ids = [e["id"] for e in events]
     ids += [i.strip() or d for on, i, d in ((rent_on, rent_id, "rent"), (buy_on, buy_id, "buy"),
-                                            (care_on, care_id, "care")) if on]
+                                            (care_on, care_id, "care"), (down_on, down_id, "downturn")) if on]
 
     def _year(text, where):
         return _year_ref(text, where, ids)
@@ -320,6 +346,10 @@ def _assemble():
         if _present(care_end):
             event["end"] = _year(care_end, "care.to")
         events.append(event)
+    if down_on:
+        events.append({**_kept(down, "downturn"),
+                       "id": down_id.strip() or "downturn", "kind": "downturn",
+                       "sequence": down_seq, "start": _year(down_start, "downturn.from")})
     return events
 
 
@@ -403,8 +433,9 @@ if scenario.get("schema_version") != SCHEMA_VERSION:
                f"saving it here stores a schema-{SCHEMA_VERSION} copy as a new run, even with no edit "
                "(its generated files are built by the current builder, section 5 R9).")
 st.caption(
-    "Saving makes a new run whose parent is this one (a run is immutable, D3); its Case.toml "
-    "and HFP.xlsx are generated from these events and frozen (section 5). Balances, PIAs, the "
+    "Saving makes a new run whose parent is this one (a run is immutable, D3); its Case.toml, "
+    "HFP.xlsx and (with a downturn sequence) rates.csv are generated from these events and "
+    "frozen (section 5). Balances, PIAs, the "
     "goal and the assumptions are edited in the case pages ('Edit as new run' on the Run page)."
 )
 n1, n2 = st.columns([2, 3])

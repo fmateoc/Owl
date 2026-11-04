@@ -1,0 +1,47 @@
+# Named downturn sequences (run-library design, section 14.1 I11 and decision D11;
+# build step 5b). A run's scenario names one of these and a placement year; the builder
+# writes the run's rates.csv as the case's own rate path with this window overlaid on the
+# placement year, so the stress question is "the same plan, but the market does this".
+#
+# window rows are annual returns in percent [S&P 500 (incl. div.), Bonds Baa, T-Notes,
+# Inflation] -- the four columns of the case file's rates table (rate_models.RATE_TABLE_COLUMNS).
+#
+# Sources (checked 2026-11-04):
+# - crash-30 is an invented stress year ("a 30% fall in year 1"), the custom downturn of
+#   Boldin's Market Risk Explorer as described on boldin.com (read 2026-11-01). Its bond,
+#   note and inflation figures are invented too; it is not a measured episode.
+# - three-negative-years and poor-decade replay rows of Owl's own rate history,
+#   src/owlplanner/data/rates.csv (1928-2025 series; the columns S&P 500, Bonds Baa,
+#   T-Notes and Inflation of the years named in their `source` line). Replaying an episode
+#   at a chosen year is what the design calls "a named downturn sequence placed at a
+#   chosen year"; a run that replays it in order has the `historical` method instead.
+
+[sequences.crash-30]
+description = "One invented stress year: stocks fall 30%, bonds and notes stay positive, mild inflation."
+source = "invented (Boldin's 'custom downturns', boldin.com 2026-11-01); not a measured episode"
+window = [[-30.0, 2.0, 1.0, 2.0]]
+
+[sequences.three-negative-years]
+description = "Three losing stock years in a row (the dot-com slide), with bonds positive throughout."
+source = "data/rates.csv 2000-2002"
+window = [
+    [-9.03, 9.38, 16.66, 3.39],
+    [-11.85, 8.6, 5.57, 1.55],
+    [-21.97, 12.06, 15.12, 2.38],
+]
+
+[sequences.poor-decade]
+description = "A poor decade for stocks in real terms: high inflation (7-13%) and two deep losing years first."
+source = "data/rates.csv 1973-1982"
+window = [
+    [-14.31, 4.32, 3.66, 8.71],
+    [-25.9, -4.38, 1.99, 12.34],
+    [37.0, 11.05, 3.61, 6.94],
+    [23.83, 19.75, 15.98, 4.86],
+    [-6.98, 9.95, 1.29, 6.7],
+    [6.51, 3.14, -0.78, 9.02],
+    [18.52, -2.01, 0.67, 13.29],
+    [31.74, -3.32, -2.99, 12.52],
+    [-4.7, 8.46, 8.2, 8.92],
+    [20.42, 29.05, 32.81, 3.83],
+]

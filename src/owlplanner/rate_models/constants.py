@@ -41,6 +41,7 @@ RATE_METHODS_NO_REGEN = (
     "user",
     "historical_average",
     "historical",
+    "table",
 )
 
 # Methods requiring frm/to year range.

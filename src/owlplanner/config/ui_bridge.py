@@ -445,7 +445,12 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
         if mylog:
             mylog.print("Dataframe rate method is not supported in UI; mapping to 'user'.", tag="WARNING")
         rate_method = "user"
-    if rate_method in FIXED_TYPE_UI:
+    if rate_method == "table":
+        # A rates table the case file names (step 5b): the pages show it read-only (Rates.py)
+        # and keep its file name; the rows live in the run's rates.csv.
+        dic["rateType"] = "table"
+        dic["ratesFile"] = rs.get("rates_file", "rates.csv")
+    elif rate_method in FIXED_TYPE_UI:
         dic["rateType"] = "constant"
         dic["fixedType"] = rate_method
     else:
@@ -768,6 +773,8 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
 def _ui_rate_method_to_config(uidic: dict) -> str:
     """Map UI rate type to config method name. Resolve deprecated aliases."""
     rate_type = uidic.get("rateType", "constant")
+    if rate_type == "table":
+        return "table"
     if rate_type == "constant":
         method = uidic.get("fixedType", "historical_average")
     else:
@@ -779,6 +786,12 @@ def _ui_rates_to_config(diconf: dict, uidic: dict, ni: int) -> None:
     """Populate rates_selection from UI keys."""
     rs = diconf["rates_selection"]
     method = rs["method"]
+
+    if method == "table":
+        # A rates table the case file names (step 5b): only the file name is the pages' to
+        # carry; its years are the table's own, so no historical window is forced on it.
+        rs["rates_file"] = str(uidic.get("ratesFile") or "rates.csv")
+        return
 
     if method in HISTORICAL_RANGE_METHODS:
         rs["from"] = _get_ui(uidic, "yfrm", 1969, int)

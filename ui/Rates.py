@@ -21,6 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import streamlit as st
+import pandas as pd
 from datetime import date
 
 from owlplanner.rate_models.constants import (
@@ -102,6 +103,30 @@ if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
     kz.runOncePerCase(initRates)
+    if kz.getCaseKey("rateType") == "table":
+        # A rates table the case file names (step 5b, D11): read-only here. Its rows are the
+        # run's `rates.csv`, frozen with its inputs; they change with the scenario's downturn
+        # event or with the file that was imported, never with this page.
+        plan = kz.getCaseKey("plan")
+        model = getattr(plan, "rateModel", None)
+        name = ((model.params.get("rates_file") if model is not None else None)
+                or kz.getCaseKey("ratesFile") or "rates.csv")
+        st.markdown("#### :orange[Rates from a Table]")
+        st.caption(
+            f"This run reads its annual rates from `{name}` (the year-by-year table the case "
+            "file names). Edit the scenario's downturn event on the **Scenario** page, or "
+            "import a case with another table, to change them."
+        )
+        years = [int(y) for y in plan.year_n]
+        st.dataframe(
+            pd.DataFrame(
+                [[year] + [round(100 * float(plan.tau_kn[k][n]), 4) for k in range(4)]
+                 for n, year in enumerate(years)],
+                columns=["year", "S&P 500", "Bonds Baa", "T-Notes", "Inflation"],
+            ),
+            hide_index=True,
+        )
+        st.stop()
     kz.initCaseKey("yfrm", owb.FROM)
     kz.initCaseKey("yto", owb.TO)
     kz.initCaseKey("reverse_sequence", False)

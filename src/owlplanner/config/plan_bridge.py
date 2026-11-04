@@ -177,7 +177,7 @@ def _apply_fixed_income_to_plan(plan: "Plan", known: dict, icount: int) -> None:
         )
 
 
-def _apply_rates_to_plan(plan: "Plan", known: dict) -> None:
+def _apply_rates_to_plan(plan: "Plan", known: dict, rates_rows=None) -> None:
     """Apply rates selection from config to plan (metadata-driven)."""
     rates_section = dict(known["rates_selection"])
 
@@ -208,6 +208,8 @@ def _apply_rates_to_plan(plan: "Plan", known: dict) -> None:
 
     ModelClass = load_rate_model(rate_method)
     clean_rate_section = ModelClass.from_config(rates_section)
+    if rate_method == "table" and rates_rows is not None:
+        clean_rate_section["rows"] = rates_rows
 
     if rate_method in HISTORICAL_RANGE_METHODS:
         if "frm" not in clean_rate_section:
@@ -346,6 +348,7 @@ def config_to_plan(
     verbose: bool = True,
     logstreams=None,
     loadHFP: bool = True,
+    rates_rows=None,
 ) -> "Plan":
     """
     Build a Plan from a configuration dict.
@@ -359,6 +362,8 @@ def config_to_plan(
         verbose: Logger verbosity
         logstreams: Logger streams
         loadHFP: Whether to load the Household Financial Profile file
+        rates_rows: A rates table held in memory by the caller (method 'table' only):
+            the library builder passes one; a case file never carries it
     """
     from owlplanner import plan
 
@@ -377,6 +382,7 @@ def config_to_plan(
     s = ["", "s"][icount - 1]
     mylog.vprint(f"Plan for {icount} individual{s}: {inames}.")
     p = plan.Plan(inames, dobs, expectancy, name, verbose=True, logstreams=logstreams)
+    p._config_dir = dirname or ""
     p._description = known.get("description", "")
     p._config_extra = extra
     sexes = known["basic_info"].get("sexes") or (["M", "F"] if icount == 2 else ["F"])
@@ -403,7 +409,7 @@ def config_to_plan(
     _load_budget_file(p, known, dirname, load=loadHFP)
 
     _apply_fixed_income_to_plan(p, known, icount)
-    _apply_rates_to_plan(p, known)
+    _apply_rates_to_plan(p, known, rates_rows=rates_rows)
     _apply_asset_allocation_to_plan(p, known)
     _apply_optimization_to_plan(p, known)
     _apply_solver_options_to_plan(p, known)
@@ -670,7 +676,16 @@ def clone(plan: "Plan", newname=None, *, expectancy=None, verbose=True, logstrea
             eff_logstreams = logstreams
         diconf = plan_to_config(plan)
         diconf["basic_info"]["life_expectancy"] = [int(e) for e in expectancy]
-        newplan = config_to_plan(diconf, verbose=verbose, logstreams=eff_logstreams, loadHFP=False)
+        # The rates table of a 'table' case is re-read beside the case file, or taken from the
+        # rows the source plan already holds when its file cannot be found.
+        newplan = config_to_plan(
+            diconf,
+            getattr(plan, "_config_dir", ""),
+            verbose=verbose,
+            logstreams=eff_logstreams,
+            loadHFP=False,
+            rates_rows=getattr(getattr(plan, "rateModel", None), "rows", None),
+        )
         # Re-apply HFP from in-memory raw data (no file I/O; HFP timeLists re-conditioned for new horizon)
         if getattr(plan, "rawHFP", None):
             newplan.readHFP(plan.rawHFP, filename_for_logging=plan.hfpFileName, houseTables=False)

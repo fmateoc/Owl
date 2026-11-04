@@ -1819,6 +1819,18 @@ class Plan:
         if method == "dataframe":
             model_config["n_years"] = self.N_n
 
+        if method == "table":
+            # A rates CSV named in the case file: resolved beside the case (self._config_dir,
+            # set by config_to_plan), matched to the plan's own calendar years. When this plan
+            # has already read that table and cannot re-read it (the interface's path: no case
+            # directory), the rows in memory are reused (as the budget file's are, plan_bridge).
+            model_config.setdefault("base_dir", getattr(self, "_config_dir", ""))
+            model_config.setdefault("start_year", int(self.year_n[0]))
+            old = getattr(self, "rateModel", None)
+            if getattr(old, "model_name", None) == "table" and "rows" not in model_config \
+                    and old.params.get("rates_file") == model_config.get("rates_file"):
+                model_config["rows"] = getattr(old, "rows", None)
+
         # --------------------------------------------------
         # Load rate model class
         # --------------------------------------------------

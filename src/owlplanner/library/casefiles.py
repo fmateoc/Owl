@@ -46,8 +46,11 @@ Known limits of this step (from `fork-notes/run-library-step1-review.md`):
 - For a case with no workbook both entry paths record the plan's zero-filled tables and export
   an `HFP.xlsx` (V9); with `base=` the two paths give the same scenario for an unedited case.
 
-Not here: `rates.csv` (the downturn rate table, D11) arrives with build step 5b. Events and the
-builder (scenario schema version 2) are `library.builder` (step 4): export runs `build()`, so
+Rates table (step 5b, D11): a case whose `rates_selection` names `method = "table"` brings its
+CSV in as the scenario's `rates_table` (read as `rate_models.table` reads it), and export writes
+the run's `rates.csv` beside the generated files -- the hand table, or the one the downturn
+events generate (`library.builder.rates_table`, I11). Events and the builder (scenario schema
+version 3) are `library.builder` (step 4 onward): export runs `build()`, so
 the generated rows and case fields of a scenario's events land in the frozen files with
 provenance markers, and hand rows are untouched. A pages-save against a run with events keeps
 the hand rows and the hand case values alone (`_drop_generated`, `_drop_generated_case`):
@@ -125,12 +128,15 @@ def _plan_year_of(case: dict):
     return None
 
 
-def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=None, budget_file=None) -> dict:
+def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=None, budget_file=None,
+                       rates_table=None) -> dict:
     """A scenario of hand rows from a case dictionary and the HFP tables (section 6.4).
 
     `time_lists` maps a person's name to their year table (DataFrame or {columns, rows});
     `house_lists` holds "Debts", "Fixed Assets" and "Budget". `budget_file` is
     {"ref": <the case dict's name>, "text": <the JSON file's text>} for a budget_file case.
+    `rates_table` is the run's rates table ({"columns": [...], "rows": [[...]]}, step 5b) for
+    a case whose rates come from a CSV (`rates_selection.method = "table"`).
     """
     hfp = {}
     for name, table in (time_lists or {}).items():
@@ -146,6 +152,11 @@ def scenario_from_case(case, time_lists=None, house_lists=None, *, plan_year=Non
     }
     if budget_file:
         scenario["budget_file"] = {"ref": str(budget_file["ref"]), "text": str(budget_file["text"])}
+    if rates_table is not None:
+        scenario["rates_table"] = {
+            "columns": list(rates_table["columns"]),
+            "rows": [list(row) for row in rates_table["rows"]],
+        }
     # Normalized and canonicalized before hashing and before generating, so scenario.json is
     # exactly the document the frozen files are built from and read back as (V3, T1).
     return canonicalize(scenario)
@@ -169,8 +180,11 @@ def canonicalize(scenario: dict) -> dict:
         scenario["events"] = _canonical_events(builder.validate_events(scenario["events"], names))
     validate(scenario)  # rejects None and non-finite values before the encoder sees them (V4)
     scenario["hfp"] = {name: _canonical_table(table) for name, table in scenario["hfp"].items()}
+    if scenario.get("rates_table") is not None:
+        scenario["rates_table"] = _canonical_table(scenario["rates_table"])
     scenario["case"], sidecar = canonical_case(
-        scenario["case"], has_tables=bool(scenario["hfp"]), sidecar=scenario.get("budget_file")
+        scenario["case"], has_tables=bool(scenario["hfp"]), sidecar=scenario.get("budget_file"),
+        has_rates=scenario.get("rates_table") is not None,
     )
     if sidecar is not None:
         scenario["budget_file"] = sidecar
@@ -277,13 +291,18 @@ def _canonical_events(events: list) -> list:
     return out
 
 
-def canonical_case(case: dict, *, has_tables: bool, sidecar=None):
+def canonical_case(case: dict, *, has_tables: bool, sidecar=None, has_rates: bool = False):
     """(case, sidecar) with the library's file names, read back through the TOML encoder."""
     import toml
     from owlplanner.config.toml_io import _CleanFloatEncoder
 
     case = copy.deepcopy(case)
     case.setdefault("household_financial_profile", {})["HFP_file_name"] = HFP_XLSX if has_tables else "None"
+    if has_rates:
+        # The generated rates.csv of this run (step 5b), whatever name the case file came with.
+        from .builder import RATES_CSV
+
+        case.setdefault("rates_selection", {})["rates_file"] = RATES_CSV
     if sidecar:
         target, _ = _sidecar_target(sidecar.get("ref", ""))
         sidecar = {"ref": target.as_posix(), "text": str(sidecar["text"])}
@@ -467,7 +486,8 @@ def scenario_from_ui(
             base=Path(case_dir) if case_dir is not None else None,
             explicit=budget_path,
         )
-    scenario = scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file)
+    scenario = scenario_from_case(case, time_lists, house_lists, plan_year=year, budget_file=budget_file,
+                                  rates_table=base.get("rates_table") if base is not None else None)
     if base is not None and base.get("events"):
         # The pages edit hand rows only: the base's events stay the run's (review X1: they
         # were dropped, and with them everything they generate).
@@ -656,11 +676,14 @@ def _read_budget_text(ref: str, *, base=None, explicit=None):
     return {"ref": ref, "text": path.read_text(encoding="utf-8")}
 
 
-def import_case(case_path, hfp_path=None, budget_path=None) -> dict:
+def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> dict:
     """Read a case file and its HFP workbook into a scenario (section 6.4: hand rows only).
 
     Without a workbook the scenario holds the plan's zero-filled tables (the same route
-    `scenario_from_ui` takes), so both entry paths agree (V9).
+    `scenario_from_ui` takes), so both entry paths agree (V9). A case whose rates come from
+    a CSV (`rates_selection.method = "table"`, step 5b) brings that table in too, resolved
+    as the workbook is (an explicit `rates_path`, then the name as given, then beside the
+    case file).
     """
     from owlplanner import hfp_io
     from owlplanner.config.plan_bridge import config_to_plan
@@ -689,7 +712,46 @@ def import_case(case_path, hfp_path=None, budget_path=None) -> dict:
             time_lists, house_lists = _tables_from_plan(plan, Path(tmp))
 
     budget_file = _read_budget_text(_budget_reference(case), base=case_path.parent, explicit=budget_path)
-    return scenario_from_case(case, time_lists, house_lists, budget_file=budget_file)
+    rates_table = _read_rates_table(_rates_reference(case), base=case_path.parent, explicit=rates_path)
+    return scenario_from_case(case, time_lists, house_lists, budget_file=budget_file, rates_table=rates_table)
+
+
+def _rates_reference(case: dict) -> str:
+    """The case dict's rates table name ('' when the case reads no table)."""
+    rs = case.get("rates_selection") or {}
+    if rs.get("method") != "table":
+        return ""
+    ref = str(rs.get("rates_file") or "").strip()
+    if not ref:
+        raise ScenarioError("rates_selection.method is 'table' but the case names no rates_file")
+    return ref
+
+
+def _read_rates_table(ref: str, *, base=None, explicit=None):
+    """The rates table {"columns", "rows"} (numbers in percent) of a 'table' case's CSV, or None."""
+    from owlplanner.rate_models.table import RATE_TABLE_COLUMNS, read_rates_csv
+
+    if not ref and explicit is None:
+        return None
+    path = _resolve_ref(ref, explicit=explicit, base=base)
+    if path is None:
+        where = f" (sought in {base})" if base is not None else ""
+        raise ScenarioError(
+            f"rates table {ref!r} not found{where}; pass rates_path= to the caller"
+        )
+    rows = read_rates_csv(path)
+    return {"columns": list(RATE_TABLE_COLUMNS), "rows": rows}
+
+
+def _write_rates_csv(path, table) -> None:
+    """The table as the CSV the case names (header, then one row per year)."""
+    import csv
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(table["columns"])
+        for row in table["rows"]:
+            writer.writerow(row)
 
 
 def _sidecar_target(ref: str):
@@ -702,10 +764,12 @@ def _sidecar_target(ref: str):
 
 
 def export_case(scenario: dict, out_dir) -> list:
-    """Write the generated files (Case.toml, HFP.xlsx, the budget sidecar) into out_dir.
+    """Write the generated files (Case.toml, HFP.xlsx, the budget sidecar, rates.csv) into out_dir.
 
     The frozen files of a run (section 5, R9): the hand rows plus what the scenario's events
-    generate (`library.builder.build`, step 4). Returns the paths written.
+    generate (`library.builder.build`, step 4). `rates.csv` (step 5b) is written when the run
+    has a rates table: the hand one, or the one its downturn events generate. Returns the
+    paths written.
     """
     import pandas as pd
     from owlplanner.config.toml_io import save_toml
@@ -743,6 +807,13 @@ def export_case(scenario: dict, out_dir) -> list:
     else:
         # No tables, no workbook: Owl's canonical no-HFP sentinel (plan_bridge).
         case.setdefault("household_financial_profile", {})["HFP_file_name"] = "None"
+
+    rates = builder.rates_table(scenario)
+    if rates is not None:
+        rates_file = out / builder.RATES_CSV
+        _write_rates_csv(rates_file, rates)
+        written.append(rates_file)
+        case.setdefault("rates_selection", {})["rates_file"] = builder.RATES_CSV
 
     buf = io.StringIO()
     save_toml(case, buf)

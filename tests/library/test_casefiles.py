@@ -18,6 +18,7 @@ from owlplanner.config.ui_bridge import config_to_ui
 from owlplanner.library import (
     Library,
     ScenarioError,
+    SCHEMA_VERSION,
     canonicalize,
     diff_summaries,
     export_case,
@@ -60,7 +61,7 @@ class TestTables:
 class TestRoundTrip:
     def test_import_export_import_gives_the_same_inputs(self, tmp_path):
         scenario = import_case(CASE)
-        assert scenario["schema_version"] == 2
+        assert scenario["schema_version"] == SCHEMA_VERSION
         assert scenario["plan_year"] == 2026
         assert set(scenario["hfp"]) >= {"Debts", "Fixed Assets", "Budget"}
 
@@ -345,7 +346,7 @@ class TestDropGenerated:
     def _base(self, monkeypatch):
         from owlplanner.library import builder
 
-        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02])
+        monkeypatch.setattr(builder, "_gamma", lambda case, rates_rows=None: [1.0, 1.02])
         base = import_case(CASE)
         return dict(base, events=[
             {"id": "w", "kind": "work", "person": "Jack", "start": 2026, "end": 2026, "wages": 5000},
@@ -484,7 +485,7 @@ class TestPagesSaveWithEvents:
         from owlplanner.library import builder
         from owlplanner.library.casefiles import _drop_generated
 
-        monkeypatch.setattr(builder, "_gamma", lambda case: [1.0, 1.02, 1.0404])
+        monkeypatch.setattr(builder, "_gamma", lambda case, rates_rows=None: [1.0, 1.02, 1.0404])
         base = self._base()
         _case, tables, provenance = builder.build(base)
         clean_time, _clean_house = _drop_generated({"Jack": tables["Jack"]}, {}, provenance, base["hfp"])

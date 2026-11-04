@@ -34,7 +34,7 @@ def _scenario(events, case=None, hfp=None):
 def flat_gamma(monkeypatch):
     """The nominal amounts against a known inflation path (the real path is checked by
     check_library_builder.py and TestRealGamma below)."""
-    monkeypatch.setattr(b, "_gamma", lambda case: list(GAMMA))
+    monkeypatch.setattr(b, "_gamma", lambda case, rates_rows=None: list(GAMMA))
 
 
 WORK_ARI = {"id": "work-ari", "kind": "work", "person": "Ari", "start": 2026, "end": 2026,

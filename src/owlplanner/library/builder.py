@@ -85,7 +85,11 @@ BUDGET_COLUMNS = (
 )
 HOUSE_TABLES = ("Debts", "Fixed Assets", "Budget")
 
-EVENT_KINDS = ("work", "claim", "rent", "purchase", "care")
+# The run's rates table file (design section 5): the case names it (`rates_selection.rates_file`)
+# and `casefiles.export_case` writes it beside Case.toml.
+RATES_CSV = "rates.csv"
+
+EVENT_KINDS = ("work", "claim", "rent", "purchase", "care", "downturn")
 
 # Plain event fields to person-sheet columns (the rest of the sheet stays hand cells).
 PAY_COLUMNS = {
@@ -106,8 +110,9 @@ FINANCING_DEFAULTS = {
 PLACE_DEFAULTS = {"state": "NY", "locality": "", "school_district": "", "move": False}
 
 # "That event's year" for an `event:` anchor, by the target's kind (review X6): a work span's
-# end, a rent's start, a purchase's or care span's year. A claim has no year.
-EVENT_YEAR_FIELD = {"work": "end", "rent": "start", "purchase": "year", "care": "year"}
+# end, a rent's start, a purchase's or care span's year, a downturn's placement. A claim has no
+# year.
+EVENT_YEAR_FIELD = {"work": "end", "rent": "start", "purchase": "year", "care": "year", "downturn": "start"}
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +240,8 @@ def _year_fields(event: dict) -> list[str]:
         return ["year"] + (["sale"] if "sale" in event else [])
     if kind == "care":
         return ["year"] + (["end"] if "end" in event else [])
+    if kind == "downturn":
+        return ["start"]
     return []
 
 
@@ -377,6 +384,16 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
             amount = event.get("amount")
             if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
                 raise ScenarioError(f"{where}.amount must be a positive number (today's dollars)")
+        elif kind == "downturn":
+            from .sequences import SequenceError, sequences  # lazy: reads the data file
+
+            sequence = event.get("sequence")
+            try:
+                known = sequences()
+            except SequenceError as e:
+                raise ScenarioError(str(e)) from e
+            if sequence not in known:
+                raise ScenarioError(f"{where}.sequence {sequence!r} is not one of {sorted(known)}")
         if kind != "work":  # work takes plain calendar years (checked above), the rest anchors
             for field in _year_fields(event):
                 if field not in event:
@@ -399,8 +416,9 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
                     f"events[{i}].{field}: {ref['id']!r} is a {target} event, which has no year to anchor to"
                 )
     # One home purchase, one rent and one care span for now (design D6: "moves without a
-    # purchase, sale and re-buy later" is a later increment; their rows carry fixed names).
-    for kind in ("purchase", "rent", "care"):
+    # purchase, sale and re-buy later" is a later increment; their rows carry fixed names), and
+    # one downturn sequence (step 5b: the variant dimension of I11 comes with step 6).
+    for kind in ("purchase", "rent", "care", "downturn"):
         if sum(1 for e in out if e["kind"] == kind) > 1:
             raise ScenarioError(f"at most one {kind} event per scenario (a sale and re-buy later)")
     return out
@@ -494,18 +512,21 @@ def _set_path(case: dict, path: str, value) -> None:
     node[keys[-1]] = value
 
 
-def _gamma(case: dict) -> list[float]:
-    """The case's own inflation path (gamma_n): the price level of each plan year relative to
-    the plan's first year (gamma[0] == 1). Read through a plan build with no HFP and no solve;
-    the logs go to a string (make_cases.py reads the same array for nominal amounts)."""
+def _throwaway_plan(case: dict, rates_rows=None):
+    """A plan built from the case with no HFP and no solve; the logs go to a string.
+
+    A stochastic rate model draws a new inflation path at every plan build unless the case
+    fixes its seed: the purchase price and the rent's flat rows would then be a random draw,
+    frozen into the run and unrelated to the path the solve draws (review X3), and a generated
+    rates table would describe a market that the run does not use. `rates_rows` carries a rate
+    table held in memory (method 'table' only; `config_to_plan`'s parameter).
+    """
     import tempfile
 
     from owlplanner.config import config_to_plan
 
-    plan = config_to_plan(copy.deepcopy(case), tempfile.gettempdir(), logstreams=[io.StringIO()], loadHFP=False)
-    # A stochastic rate model draws a new inflation path at every plan build unless the case
-    # fixes its seed: the purchase price and the rent's flat rows would then be a random draw,
-    # frozen into the run and unrelated to the path the solve draws (review X3).
+    plan = config_to_plan(copy.deepcopy(case), tempfile.gettempdir(), logstreams=[io.StringIO()],
+                          loadHFP=False, rates_rows=rates_rows)
     model = getattr(plan, "rateModel", None)
     if model is not None and not getattr(model, "deterministic", False) and not plan.reproducibleRates:
         method = (case.get("rates_selection") or {}).get("method")
@@ -515,10 +536,79 @@ def _gamma(case: dict) -> list[float]:
             "with a seed (rates_selection.reproducible_rates and rate_seed), or use a "
             "deterministic rate method"
         )
+    return plan
+
+
+def _gamma(case: dict, rates_rows=None) -> list[float]:
+    """The case's own inflation path (gamma_n): the price level of each plan year relative to
+    the plan's first year (gamma[0] == 1). Read through a plan build with no HFP and no solve;
+    the logs go to a string (make_cases.py reads the same array for nominal amounts)."""
+    plan = _throwaway_plan(case, rates_rows)
     gamma = [float(g) for g in plan.gamma_n]
     if gamma and gamma[0] != 1.0:
         raise ScenarioError(f"the case's inflation path does not start at 1: gamma[0] = {gamma[0]}")
     return gamma
+
+
+def rates_table(scenario: dict, events=None) -> dict | None:
+    """The run's rates table ({'columns': [...], 'rows': [[year, S&P 500, Bonds Baa, T-Notes,
+    Inflation], ...]} in percent), or None when the run uses no table (step 5b, D11).
+
+    The hand table (`scenario["rates_table"]`) when there is one. Otherwise generated from the
+    scenario's downturn events (I11): the case's own rate path with each named sequence's window
+    overlaid at its placement year, so the years outside the window keep the run's own rate
+    method and the stress question is "the same plan, but the market does this". `events` is
+    the validated events, when the caller already has them.
+    """
+    case = scenario.get("case") or {}
+    hand = scenario.get("rates_table")
+    if events is None:
+        events = validate_events(scenario.get("events"), list((case.get("basic_info") or {}).get("names") or []))
+    downs = [e for e in events if e["kind"] == "downturn"]
+    if hand is not None and downs:
+        raise ScenarioError(
+            "the run has both a hand-entered rates table and a downturn event, and the event "
+            "generates the table: drop one of them"
+        )
+    if not downs:
+        if hand is None:
+            return None
+        return {"columns": list(hand["columns"]), "rows": [list(row) for row in hand["rows"]]}
+    return _generated_rates(scenario, events, downs)
+
+
+def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> dict:
+    """The rates table the downturn events generate: the case's own rate path, overlaid.
+
+    The path is read through a plan build (as `_gamma` reads the inflation path), so it is the
+    run's own method with its own window and seed; the overlay replaces the window's years.
+    """
+    from owlplanner.rate_models.table import RATE_TABLE_COLUMNS
+    from .sequences import sequences
+
+    case = scenario.get("case") or {}
+    method = (case.get("rates_selection") or {}).get("method")
+    if method == "table":
+        raise ScenarioError(
+            "a downturn sequence overlays the case's own rate method, and this case reads a "
+            "rates table (rates_selection.method = 'table'): edit the table itself instead"
+        )
+    plan = _throwaway_plan(case)
+    rows = [
+        [int(year)] + [round(100.0 * float(plan.tau_kn[k][n]), 4) for k in range(4)]
+        for n, year in enumerate(plan.year_n)
+    ]
+    years = resolve_years(events, case)
+    by_year = {row[0]: row for row in rows}
+    known = sequences()
+    for event in downs:
+        window = known[event["sequence"]]["window"]
+        start = years[event["id"]]["start"]
+        for i, values in enumerate(window):
+            row = by_year.get(start + i)
+            if row is not None:  # a window reaching past the plan's end is simply not used
+                row[1:5] = [round(float(v), 4) for v in values]
+    return {"columns": list(RATE_TABLE_COLUMNS), "rows": rows}
 
 
 def build(scenario: dict) -> tuple[dict, dict, dict]:
@@ -533,6 +623,16 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
     hand_hfp = copy.deepcopy(scenario.get("hfp") or {})
     events = validate_events(scenario.get("events"), list((hand_case.get("basic_info") or {}).get("names") or []))
     provenance: dict[str, Any] = {"case_fields": {}, "rows": {}, "cells": []}
+    # The run's rates table (step 5b): hand rows, or generated by the downturn events (I11).
+    # Either way the generated case names it (rates_selection.method 'table' and the file name),
+    # marked with the event when one generates it, so a pages save keeps the hand case's values.
+    table = rates_table(scenario, events=events)
+    if table is not None:
+        _set_path(hand_case, "rates_selection.method", "table")
+        _set_path(hand_case, "rates_selection.rates_file", RATES_CSV)
+        if any(e["kind"] == "downturn" for e in events):
+            for field in ("rates_selection.method", "rates_selection.rates_file"):
+                provenance["case_fields"][field] = next(e["id"] for e in events if e["kind"] == "downturn")
     if not events:
         return hand_case, hand_hfp, provenance
 
@@ -567,7 +667,11 @@ def build(scenario: dict) -> tuple[dict, dict, dict]:
 
     purchase = next((e for e in events if e["kind"] == "purchase"), None)
     purchase_year = years[purchase["id"]]["year"] if purchase else None
-    gamma = _gamma(hand_case) if purchase or any(e["kind"] == "rent" for e in events) else None
+    # The inflation path the nominal amounts are built from is the one the solve will use: the
+    # run's rates table when there is one (a downturn overlay moves the plan's own prices), else
+    # the case's own method (step 5b).
+    gamma = (_gamma(case, rates_rows=table["rows"] if table is not None else None)
+             if purchase or any(e["kind"] == "rent" for e in events) else None)
 
     def nominal(amount, year):
         k = year - plan_start

@@ -42,6 +42,7 @@ from owlplanner.rate_models.builtin import (
 )
 from owlplanner.rate_models.copula import HistoCopulaRateModel
 from owlplanner.rate_models.dataframe import DataFrameRateModel
+from owlplanner.rate_models.table import TableRateModel
 from owlplanner.rate_models.historical_bootstrap import BootstrapSORRateModel
 from owlplanner.rate_models.vector_ar import VARRateModel
 from owlplanner.rate_models.garch_dcc import GARCHDCCRateModel
@@ -80,6 +81,7 @@ _RATE_MODEL_REGISTRY = {
     "historical_gaussian": HistogaussianRateModel,
     "historical_copula": HistoCopulaRateModel,
     "dataframe": DataFrameRateModel,
+    "table": TableRateModel,
     "historical_bootstrap": BootstrapSORRateModel,
     "vector_ar": VARRateModel,
     "garch_dcc": GARCHDCCRateModel,

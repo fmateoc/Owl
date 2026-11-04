@@ -6,8 +6,11 @@ as JSON and nothing else: every row is a row the user entered or imported ("hand
 Version 2 (build step 4) adds `events` (work, claiming, rent, a home purchase, care; D6) whose
 coupled edits the builder generates (`library.builder.build`), with provenance markers: a
 generated row or cell is marked with the event that produced it and regenerated wholesale,
-hand rows are untouched (section 6.3, markers first per S11). Each format change ships a
-migration (`migrate`).
+hand rows are untouched (section 6.3, markers first per S11). Version 3 (build step 5b, D11)
+adds the optional `rates_table` (a year-by-year rates table the run's `rates.csv` is written
+from) and the `downturn` event kind (a named sequence placed at a year, I11); an older reader
+would silently drop the table and reject the event, so they get their own version. Each
+format change ships a migration (`migrate`).
 
 Canonical form (the inputs hash, section 5, S10): keys sorted, compact separators, and every
 number kept as entered: an int stays an int and a float stays a float (V3), because the generated
@@ -24,14 +27,15 @@ import json
 import math
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
-# Version of the generation code that turns a scenario into Case.toml / HFP.xlsx
+# Version of the generation code that turns a scenario into Case.toml / HFP.xlsx / rates.csv
 # (library.casefiles and library.builder). Part of the inputs hash: a change here makes old runs
 # "built with an older builder" instead of aliasing two different outputs (section 5, R9).
 # 3 (step 4, second review): a person with no claim event keeps the hand case's withSSAges
 # choice (X7), and a purchase's keys at the builder's defaults leave the canonical form (X4).
-BUILDER_VERSION = 3
+# 4 (step 5b): the run's rates.csv (a downturn sequence generates it; D11).
+BUILDER_VERSION = 4
 
 
 class ScenarioError(ValueError):
@@ -96,13 +100,13 @@ def _check_case_values(obj: Any, where: str) -> None:
 
 
 def validate(scenario: Any) -> dict:
-    """Check a scenario against its schema version (1: hand rows; 2: + events) and return it."""
+    """Check a scenario against its schema version (1: hand rows; 2: + events; 3: + rates table)."""
     if not isinstance(scenario, dict):
         raise ScenarioError(f"scenario must be a dict, got {type(scenario).__name__}")
     version = scenario.get("schema_version")
-    if version not in (1, SCHEMA_VERSION):
+    if version not in (1, 2, SCHEMA_VERSION):
         raise ScenarioError(
-            f"schema_version {version!r} cannot be read (this build handles 1 and {SCHEMA_VERSION}); "
+            f"schema_version {version!r} cannot be read (this build handles 1-{SCHEMA_VERSION}); "
             "the run stays readable from its generated files (design section 6.3a)"
         )
     case = scenario.get("case")
@@ -122,10 +126,11 @@ def validate(scenario: Any) -> dict:
         for i, row in enumerate(table["rows"]):
             if not isinstance(row, list) or len(row) != width:
                 raise ScenarioError(f"hfp table {name!r}, row {i}: expected {width} values")
+    _check_rates_table(scenario, case)
     plan_year = scenario.get("plan_year")
     if plan_year is not None and not isinstance(plan_year, int):
         raise ScenarioError(f"plan_year must be an int, got {plan_year!r}")
-    if version == SCHEMA_VERSION:
+    if version >= 2:
         events = scenario.get("events", [])
         if not isinstance(events, list):
             raise ScenarioError("scenario.events must be a list of events")
@@ -135,20 +140,51 @@ def validate(scenario: Any) -> dict:
     return scenario
 
 
+def _check_rates_table(scenario: dict, case: dict) -> None:
+    """The optional `rates_table` (step 5b): its shape, and the two ways it can contradict the
+    case dictionary (the generated `Case.toml` must name the table it is written with)."""
+    table = scenario.get("rates_table")
+    method = (case.get("rates_selection") or {}).get("method")
+    if table is None:
+        if method == "table":
+            raise ScenarioError(
+                "the case names a rate table (rates_selection.method = 'table') but the scenario "
+                "holds none: import the CSV beside the case file"
+            )
+        return
+    if not isinstance(table, dict) or not isinstance(table.get("columns"), list) \
+            or not isinstance(table.get("rows"), list):
+        raise ScenarioError("scenario.rates_table must be {'columns': [...], 'rows': [[...]]}")
+    width = len(table["columns"])
+    for i, row in enumerate(table["rows"]):
+        if not isinstance(row, list) or len(row) != width:
+            raise ScenarioError(f"rates_table row {i}: expected {width} values")
+        for value in row:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ScenarioError(f"rates_table row {i}: not a number: {value!r}")
+    if method != "table":
+        raise ScenarioError(
+            f"the scenario holds a rate table but the case's rates_selection.method is {method!r}: "
+            "a table run's case must name method = 'table'"
+        )
+
+
 def migrate(scenario: dict) -> dict:
     """Bring a scenario up to SCHEMA_VERSION and return it (a copy; the input is untouched).
 
-    Version 1 (hand rows) becomes version 2 with no events: every row stays a hand row.
+    Version 1 (hand rows) and version 2 (events) become version 3 with what they had: every
+    row stays a hand row, and an old scenario may hold no rates table (step 5b).
     """
     version = scenario.get("schema_version")
     if version == SCHEMA_VERSION:
         out = dict(scenario)
         out.setdefault("events", [])
         return out
-    if version == 1:
-        out = {k: v for k, v in scenario.items() if k not in ("events", "provenance")}
+    if version in (1, 2):
+        out = ({k: v for k, v in scenario.items() if k not in ("events", "provenance")}
+               if version == 1 else dict(scenario))
         out["schema_version"] = SCHEMA_VERSION
-        out["events"] = []
+        out.setdefault("events", [])
         return out
     raise ScenarioError(f"no migration from schema_version {version!r}")
 

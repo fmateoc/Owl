@@ -192,6 +192,10 @@ class RatesSelection(BaseModel):
     # Conditional fields (present based on method)
     from_: Optional[int] = Field(default=None, alias="from", description="Historical start year")
     to: Optional[int] = Field(default=None, description="Historical end year")
+    rates_file: Optional[str] = Field(
+        default=None,
+        description="Rates CSV beside the case file for method 'table' (a year column and the four rate columns)",
+    )
     values: Optional[List[float]] = None  # user, gaussian, lognormal
     standard_deviations: Optional[List[float]] = None  # gaussian, lognormal
     correlations: Optional[List[float]] = None  # gaussian, lognormal

@@ -962,6 +962,16 @@ def _setRates(plan):
         st.info("Rate type not selected yet.")
         return False
 
+    if rateType == "table":
+        # The run's rates table (step 5b): read-only on the Rates page. The plan re-reads the
+        # frozen file beside its case, or reuses the rows it already holds (plan.setRates).
+        try:
+            plan.setRates("table", rates_file=str(kz.getCaseKey("ratesFile") or "rates.csv"))
+        except (OSError, ValueError) as e:
+            st.error(str(e), icon=":material/error:")
+            return False
+        return True
+
     if rateType == "constant":
         fixedType = kz.getCaseKey("fixedType")
         if fixedType == "historical_average":
@@ -2218,6 +2228,11 @@ def genDic(plan):
     elif plan.rateMethod == "dataframe":
         dic["rateType"] = "constant"
         dic["fixedType"] = "user"
+    elif plan.rateMethod == "table":
+        # The run's rates table (step 5b): shown read-only on the Rates page.
+        dic["rateType"] = "table"
+        model = getattr(plan, "rateModel", None)
+        dic["ratesFile"] = (model.params.get("rates_file") if model is not None else None) or "rates.csv"
     elif plan.rateMethod in VARYING_TYPE_UI:
         dic["rateType"] = "varying"
         dic["varyingType"] = plan.rateMethod

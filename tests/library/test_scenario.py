@@ -67,10 +67,13 @@ class TestValidate:
     def test_minimal_is_valid(self):
         assert sc.validate(_minimal()) is not None
 
-    @pytest.mark.parametrize("version", [0, 3, None, "1"])
+    @pytest.mark.parametrize("version", [0, 4, None, "1"])
     def test_other_schema_versions_are_rejected(self, version):
         with pytest.raises(sc.ScenarioError, match="schema_version"):
             sc.validate(_minimal(schema_version=version))
+
+    def test_v2_stays_readable(self):
+        assert sc.validate(_minimal(schema_version=2)) is not None
 
     def test_v2_events_are_validated(self):
         doc = _minimal(schema_version=2, events=[{"id": "x", "kind": "tour", "person": "Joe"}])
@@ -102,10 +105,10 @@ class TestValidate:
 
 
 class TestMigrate:
-    def test_v1_becomes_v2_with_no_events(self):
+    def test_v1_becomes_current_with_no_events(self):
         doc = _minimal()
         out = sc.migrate(doc)
-        assert out["schema_version"] == 2
+        assert out["schema_version"] == sc.SCHEMA_VERSION
         assert out["events"] == []
         assert out["case"] == doc["case"] and out["hfp"] == doc["hfp"]
         assert "schema_version" in doc and doc["schema_version"] == 1  # the input is untouched
@@ -113,6 +116,7 @@ class TestMigrate:
     def test_v2_keeps_its_events(self):
         doc = _minimal(schema_version=2, events=[{"id": "w", "kind": "work", "person": "Joe"}])
         out = sc.migrate(doc)
+        assert out["schema_version"] == sc.SCHEMA_VERSION
         assert out["events"] == doc["events"]
         assert sc.migrate(out)["events"] == doc["events"]  # idempotent
 

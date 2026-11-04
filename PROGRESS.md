@@ -6248,3 +6248,6 @@ only on the new error wording. Full suite (Linux, -n 4): **4133 passed, 1 skippe
 Windows' 4121 / 2 skipped + 11, the skip count is the platform's). The acceptance check
 (`check_library_rates.py`, after `make_cases.py`) reruns at **11/11**. Lint: only upstream's
 known items.
+
+`main` fast-forwarded to `claude/tender-bardeen-x1qyc5` on 2026-11-04 (the user's call): run-library
+step 5b with the three reviews' folds (Z1-Z9, AA1-AA3, AB1-AB4). Next: step 6 (collections).

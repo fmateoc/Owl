@@ -5936,3 +5936,24 @@ Tests (17 new): the parity grid 10 and the toggle-off note (`test_create_case_mo
 (`test_casefiles.py`). `tests/ui tests/config tests/library` **816 passed, 1 skipped**. Full suite
 (Windows, -n 4): **4044 passed, 2 skipped** (11:02). flake8/ruff: only upstream's known items. The
 review's disposition table is filled in `fork-notes/run-library-step5-review.md`.
+
+## Run-library step 5: second review, Y1-Y5 (2026-11-04)
+
+A second independent review of `claude/run-library-step5` at `4aefd31`
+(`fork-notes/run-library-step5-review-2.md`). Re-checked: `tests/ui tests/config tests/library`
+817 passed (Linux); lint only upstream's items; W1's "not kept" report gives no false positive on
+any of the 46 synthetic event scenarios (probe through the real export / workbook round trip).
+Findings, each reproduced by a probe (not committed), nothing fixed (the user's call):
+
+- **Y1 (medium):** a further move whose district or city is written in a spelling residency
+  accepts (the district alone, "Yonkers"; a lower-case city) loses it on the first render of
+  Create Case: `config_to_ui` canonicalizes only the first move, and `_renderMoreMoves` drops any
+  value not literally in the select's choices (and marks the case modified).
+- **Y2 (medium):** a further move dated this year or earlier stops the whole Create Case page
+  (`StreamlitValueBelowMinError` from the year widget's `min_value`); the first move does not.
+- **Y3 (low):** the two new `initCaseKey` defaults on Run Options make an unchanged case saved
+  against its base show `withItemized` / `withSTAR` "added" and a different scenario hash.
+- **Y4 (low):** the Library save ignores `syncContributions()` returning `False` and saves the
+  plan's previous tables; the rerun wipes the error (reach through the editor not established).
+- **Y5 (nit):** the STAR help omits Basic's own income limit; `seedProfileTables`' zeroing
+  fallback is unreachable (every `Plan` holds tables from `__init__`).

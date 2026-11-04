@@ -6052,3 +6052,33 @@ the POSIX-only `test_jobs.py` tzset test and `test_solver_status.py`'s unlicense
 `info/PARAMETERS.md` gained the `table` method and its `rates_file` / `in_percent` keys, and
 `ui/Documentation.py`'s method table its `table` row. flake8/ruff: only upstream's known items.
 
+
+## Run-library step 5b: the independent review (Z1-Z9) (2026-11-04)
+
+A fresh-eyes review of the two step-5b commits (`c99d3551`, `44676043`) is at
+`fork-notes/run-library-step5b-review.md`: findings **Z1-Z9** (2 medium, 6 low, 1 nit), each
+reproduced by a probe (`probe_review_z1..z7.py` in the session's temp dir), plus a "claims
+checked" section that verifies the acceptance at 11/11, the pages keeping a table case intact
+on a real AppTest render, the overlay semantics, the migrations and the docs' accuracy. The
+step's main promises hold; the findings are the edges:
+- **Z1 (medium):** the in-memory-rows fallback in `Plan.setRates` is unconditional, so a
+  changed `rates.csv` is silently replaced by the plan's stale rows (the pages' re-solve and a
+  fresh `owlcli`/worker solve of the same inputs disagree).
+- **Z2 (medium):** `reproducible_rates = true` without `rate_seed` passes the determinism
+  guard (which checks the plan's flag, not the case's seed), so `build()` and `export_case`
+  can freeze different tables within one export and two exports differ at equal hash.
+- Z3-Z8 (low): the two table workflows the pages' text recommends dead-end; a downturn
+  placement outside the plan silently does nothing or is truncated; `method = "table"` without
+  `rates_file` raises a bare `KeyError`; an Excel BOM is refused misleadingly and `nan`/`inf`
+  cells reach `tau_kn`; the sequence window is invisible to the inputs hash (and `lru_cache`
+  pins it); the acceptance record overstates (T1 holds for the hand-table run only; the
+  `summary.json` metrics are not compared).
+- Z9 (nit): a comment still says schema "2".
+
+**The user's call: fold all nine, in a new session.** The work order is
+`fork-notes/run-library-step5b-handoff.md` (per-finding fix + verification, the agreed
+variants: Z7 folds a hash of the used sequences' windows into `scenario_hash` only for runs
+with a downturn event; Z3 adds the Import uploader and takes the no-base save's table from the
+plan's rows). Nothing of it is folded yet; the review's "unverified / to check" items are
+listed there as optional.
+

@@ -6203,3 +6203,24 @@ four touched suites (`tests\library tests\rate_models tests\config tests\ui`): *
 1 skipped** (2:12). Full suite (Windows, -n 4): **4121 passed, 2 skipped** (11:32; 4115 + 6).
 The acceptance check reruns at **11/11**. flake8/ruff: only upstream's known items.
 
+
+
+## Run-library step 5b: a third review, AB1-AB4 (2026-11-04)
+
+A third independent review (`fork-notes/run-library-step5b-review-3.md`, prefix AB) at the
+branch head `3b15dd97`, on Linux: the four touched suites **1232 passed**, `check_library_rates.py`
+**11/11** (after `make_cases.py`), lint only upstream's items; full suite not re-run. Findings,
+none folded (the user's call):
+- **AB1 (medium):** a downturn run applies the hand case's `reverse_sequence` / `roll_sequence`
+  twice -- `rates.csv` is written from the already-transformed `tau_kn` and the generated case
+  keeps the keys, so the solve re-transforms the table (probe: the `crash-30` window placed at
+  2030 lands in 2054, 31 of 32 other years leave the parent's path). Hand-table runs are
+  consistent.
+- **AB2 (low):** `owlbridge._setRates`'s table branch drops `in_percent` (missed by AA1) and
+  reverse/roll: a Rates visit re-prices a decimal table 100x smaller in the session plan and
+  shows it so; solves and saves are unaffected (they read the case keys).
+- **AB3 (low):** `resolve_rates_csv` tries the working directory first, so a stray `rates.csv`
+  there replaces a frozen run's own table (probe: 99.0 read for -30.0); the first review had
+  called the order "not a finding" (the HFP's order).
+- **AB4 (nit):** Create Case's upload cannot open a table case (no rates uploader there, and the
+  error does not point to the Library's Import).

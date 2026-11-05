@@ -303,6 +303,12 @@ Open a run ──edit──▶ unsaved changes (banner: "3 changes since wp-2029
 | Ages, thorough | `work_sweep.py`: every whole-year pair scored by branch-and-bound at gap 1e-5 (29-51 min per variant on the chris+pat dry run) | the final claiming decision |
 | Custom | the existing Run Options page, for anything else | advanced |
 
+*(Built 2026-11-04, step 6: the `ages` preset runs `owlplanner.library.agesearch`, which is
+`run_suite.py`'s `two_stage_ages` shared by both (stage 1 under the exact LP, stage 2 at
+fixed ages under the case's own model, the best score winning; `record.json` keeps the pick
+and every candidate's score in its `age_search` block). "Ages, thorough" is not built yet:
+the claiming-age map reads `work_sweep.py`'s own output.)*
+
 The preset is part of the scenario, so it is in the inputs hash and in the change summary.
 Every preset except the two Ages presets fixes the claiming ages (R4). The template's
 `withSSAges = "optimize"` with `withMedicare = "optimize"` would make every age candidate a
@@ -433,6 +439,26 @@ So (D4, revised again 2026-11-02, the user's call):
 - **The collection's question and rule are written on it**, for example "Maximize first-year
   discretionary spending, condo kept; reference: Yonkers 2027 cash". The page then shows the
   variants no other variant beats on both numbers, and whether each lead is resolved (R3).
+
+*(Built 2026-11-04, step 6: `store.Collection` in `library.json` -- question, rule, reference
+run, members with their variant values, and the grid layout (which values' dimensions are
+rows and columns); `library.variants.plan_variants` makes the children; `library.grid` draws
+the pivot and `front()` the leads; `ui/Collections.py` is the page. The calls made while
+building it:)*
+
+- *Several dimensions give their **product** (one child per combination), so a grid of
+  place x year x financing is one "make variants" action; one dimension is this section's
+  case.*
+- *A **single-valued dimension holds every child**: the claiming-ages dimension with one
+  value pins the whole grid at those ages -- `run_suite.py`'s own rule ("every group but
+  main runs at the baseline's ages"), which is what makes a housing grid one question.*
+- *The **reference is shown as the caption's number**, not forced into a cell: a run's
+  variant values are what place it in the grid, and a member with no values (added by hand)
+  is listed beside it. The grid therefore holds the reference only when the user gives it
+  values too (as "make variants" naturally does when one combination is the parent's own).*
+- *The acceptance is a **reduced grid** now (one place x three purchase years x cash/mortgage
+  through both routes, same day) and the full 42-cell grid as an offline/overnight run
+  (the user's call, 2026-11-04; `check_library_variants.py --full`).*
 
 ## 10. Privacy and safety
 
@@ -611,8 +637,11 @@ Corrections to the first pass (2026-11-01):
   the Ages presets wait for step 6. The scored pairs shade into tie groups at the larger of
   the two cells' tolerances (R2's rule per cell).)*
 - **I4** comes after step 6.
-- **I8 and I9** come with step 6.
-- **I11** is build step 5b (D11), then the variant dimension with step 6.
+- **I8 and I9** come with step 6 *(its second increment: the core -- collections, "make
+  variants", the grid view and the Ages preset -- was built 2026-11-04, and I2's longevity
+  and I11's downturn-sequence variant dimensions wait with I8/I9, the user's call)*.
+- **I11** is build step 5b (D11), then the variant dimension with step 6 *(second
+  increment, as above)*.
 - **I5** is a separate backend project, measured before it is designed (D9).
 - **I10** is declined (D10).
 

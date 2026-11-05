@@ -87,9 +87,10 @@ from owlplanner.config import config_to_plan, load_toml  # noqa: E402
 from owlplanner.config.schema import parse_solver_options  # noqa: E402
 from owlplanner.export import build_summary_string, plan_metrics  # noqa: E402
 # The two-stage claiming-age search is one implementation, shared with the run library's
-# "Ages" preset (run-library-design.md section 8.1; owlplanner.library.agesearch).
-from owlplanner.library.agesearch import (EXACT_GROUP_SETS as EXACT_GROUP,  # noqa: E402
-                                          EXACT_SETS as EXACT, fixed_ages, two_stage_ages)
+# "Ages" preset (run-library-design.md section 8.1; owlplanner.library.agesearch), and so
+# are the exact-model option lists it names (EXACT_GROUP here is run_suite's condo-exact
+# and rates-exact model).
+from owlplanner.library.agesearch import EXACT_GROUP_SETS as EXACT_GROUP, fixed_ages, two_stage_ages  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("work_sweep", ROOT / "fork-notes" / "phase5" / "work_sweep.py")
 work_sweep = importlib.util.module_from_spec(_spec)

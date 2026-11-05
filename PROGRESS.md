@@ -6251,3 +6251,109 @@ known items.
 
 `main` fast-forwarded to `claude/tender-bardeen-x1qyc5` on 2026-11-04 (the user's call): run-library
 step 5b with the three reviews' folds (Z1-Z9, AA1-AA3, AB1-AB4). Next: step 6 (collections).
+
+
+## Run-library step 6: collections, make variants, the grid view, the Ages preset (2026-11-04)
+
+Branch `claude/run-library-step6` (from `main` `e898f699`): build step 6's core
+(`fork-notes/run-library-design.md` sections 8.1, 9.3, 11). The user's calls at the start:
+**core first** -- collections, "make variants", the grid view and the `ages` preset -- with
+I8 (conversion view), I9 (tornado) and the I2/I11 variant dimensions as the step's second
+increment; the variant dimensions of this increment are **the condo trio (place, purchase
+year, financing) plus the last work year and the claiming ages**; only the `ages` preset now
+(`work_sweep.py`'s "Ages, thorough" later); and the acceptance is a **reduced grid** (one
+place x three purchase years x cash/mortgage through both routes, the same day), the full
+42-cell grid documented as an offline/overnight run.
+
+**The `ages` preset** (design 8.1). `src/owlplanner/library/agesearch.py` is
+`run_suite.py`'s `two_stage_ages`, one implementation shared by the suite and the interface
+(the fork's rule): stage 1 searches the claiming ages under the exact LP (Medicare off, SS
+taxability 0.85; ACA stays on the loop -- a candidate must stay a pure LP), stage 2 scores
+the pick and each searched person's pick +-1 year (clipped to 62-70) at fixed ages under the
+case's own model and the best score wins (`score_plan`, run_suite's `_score_plan`). The
+worker runs it before the final solve when the case says "let Owl choose", then pins the
+pick (`fixed_ages`); `record.json` gains `age_search` = {"chosen", "candidates"} and the
+run page says "Claiming ages searched ... from N candidate(s)". The stages' logs go to
+`solve.log` but their warnings stay out of the record (`_LogTee.quiet`, run_suite's "their
+warnings are not in the report"). `presets.py`: `PRESETS = (quick, decision, ages, custom)`;
+`ages` forces **nothing** (R4's exception -- the case's own model and its own ages choice).
+The exact-model option lists moved to `agesearch` (`EXACT_MODEL`, `EXACT_GROUP`;
+`presets._FORCED["decision_exact"]` and `run_suite.py` read them), and `run_suite.py` lost
+its own `two_stage_ages` / `_score_plan` / `fixed_ages` (imported now). Its single-name
+`withSSAges` reading was fixed in the shared `searched_names` (a name searched only that
+person; run_suite's `for n in sel` walked a string's characters).
+
+**Collections** (`store.Collection` / `store.Member`, in `library.json` under
+`library.lock`, `collection_order` for the order shown): question, rule, reference run,
+members with their variant values ({dimension: label}), and the grid layout. CRUD on
+`Library` (`create_collection`, `update_collection`, `set_reference`, `delete_collection`,
+`add_member` -- idempotent, `remove_member`); a deleted run leaves every collection
+(`delete_run`), a deleted collection deletes no runs. A malformed entry is skipped, never
+fatal (V7's rule).
+
+**"Make variants"** (`library.variants.plan_variants`): one child scenario per value of a
+chosen dimension -- `place`, `year`, `financing`, `work` (one person's full-time end),
+`claim` ({person: age or None}) -- and **several dimensions give their product** (the grid
+of design section 4; one dimension is 9.3's case). Each value is a small edit to the
+scenario's events; the children are scenarios like any other (`validate` at the door) and
+freeze through `save_run` with their parent and change summary. A **single-valued dimension
+holds every child** -- the claiming-ages dimension with one value pins the whole grid at
+those ages, which is exactly `run_suite.py`'s rule ("every group but main runs at the
+baseline's ages") and what makes a housing grid one question. A financing value's `name`
+takes `{place}` (make_cases names the loan "yonkers mortgage"). Not in this increment: the
+downturn-sequence and longevity dimensions (I11/I2, second increment).
+
+**The grid view** (`library.grid`): the pivot of `run_suite.py`'s `condo_pivot` -- rows of
+the row dimensions against the column dimension, each cell the score's difference from the
+reference and the home at the end below it, coloured by the comparison rule (R3: leads /
+trade-off / the reference leads; grey inside the 1% noise band), the best score per row
+marked by score only. `lead_between` judges a pair on the two numbers without the
+year-by-year pass; `front()` lists the variants no other variant beats on both numbers, each
+with the entries it leads and its score's verdict against the reference. The reference is
+the caption's number, not forced into a cell (a member with no values is listed beside the
+grid); `latest_result` picks a run's newest non-exact solved result (R2: the exact companion
+is a check, not the headline).
+
+**The page**: `ui/Collections.py` (registered in `ui/main.py`'s Run Library section) --
+create/edit collections (name, question, rule, grid layout), make variants (the dimensions'
+editors: purchase years, places and financings as editable tables, one person's last work
+years, per-person claiming age lists with "fill from the run's last solve"), the grid with
+its leads and flags, the members (add a run, set the reference, remove), and "Queue every
+member" (design 8.2's "run the whole collection again today"). `ui/Run.py` shows the search
+on an ages result and its preset help names `ages`.
+
+The acceptance `fork-notes/synthetic/check_library_variants.py`: the synthetic condo grid
+through the interface -- the reference scenario from `scenarios.json` saved as a run and
+solved with the `ages` preset through the worker, the children made by `plan_variants`
+(place x year x financing, claiming ages held at the baseline's pick) and solved with
+`decision` -- matches `run_suite.py`'s own `report.md` (its reduced `--only` run, same day).
+**5/5 checks** (about 45 minutes beside the full-suite run: make_cases, one `--only`
+run_suite run -- the baseline's age search plus 6 local-search solves -- the interface's
+ages search and 6 `decision` solves):
+
+1. the children are `make_cases.py`'s grid scenarios -- **6/6** (events, hand rows and hand
+   case; the hand case differs only in `HFP_file_name`, which names make_cases' per-variant
+   workbook where the library writes one `HFP.xlsx` per run -- inert in the stored case);
+2. the `ages` preset picks the suite's baseline ages -- **[70.0, 70.0] on both sides** (the
+   same two-stage search on the same inputs, the same day);
+3. the reference's score matches the report -- **112,862 on both sides**, to the dollar;
+4. the grid cells match the report -- **6/6** cells (deltas and homes; the tolerance was
+   the 1% noise rule, the actual differences were zero: both routes are deterministic here);
+5. the report's cells parse as whole dollars -- 6/6 (the parse is faithful).
+
+The user's call: the reduced grid is the recorded check (one place x three purchase years x
+cash/mortgage); `--full` runs the whole condo grid (30 cells, hours of local-search solves
+on this machine -- an offline/overnight run). The synthetic cases are plan-year 2026, so the
+check only runs in 2026 (R1).
+
+Tests (63 new: `tests/library/test_agesearch.py` 10, `test_collections.py` 13,
+`test_variants.py` 21, `test_grid.py` 13, `tests/ui/test_collections_page.py` 6; plus the
+`test_presets.py` update, whose "unknown preset" case used to name `ages`). Full suite
+(Windows, -n 4): **4196 passed, 2 skipped** (12:36; the branch's base 4133 / 1 skipped on
+Linux + 63, the skip difference is the platform's). flake8/ruff: only upstream's known
+items.
+
+Left for the next increment (as called): I8/I9, the I2/I11 variant dimensions, "Ages,
+thorough" (`work_sweep.py` as a preset), member values for hand-added runs (the grid places
+them only through "make variants" today), and the save dialog's "Collection" field (design
+section 7; adding to a collection is on the Collections page).

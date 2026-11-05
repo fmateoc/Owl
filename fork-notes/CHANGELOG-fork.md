@@ -7,6 +7,55 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6: collections, "make variants", the grid view and the Ages preset (2026-11-04)
+
+`fork-notes/run-library-design.md` sections 8.1, 9.3 and 11, step 6 (the core; the user's
+call: I8/I9 and the I2/I11 variant dimensions are this step's second increment, the check is
+a reduced grid). First increment:
+- **The `ages` preset** (section 8.1): `owlplanner.library.agesearch` is `run_suite.py`'s
+  `two_stage_ages`, one implementation shared by the suite and the interface -- stage 1
+  searches the claiming ages under the exact LP (Medicare off, SS taxability 0.85; ACA stays
+  on the loop), stage 2 scores the pick and each searched person's pick +-1 year at fixed
+  ages under the case's own model and the best score wins. The worker runs it before the
+  final solve at the chosen ages when the case says "let Owl choose", and `record.json` gains
+  the `age_search` block (the pick and every candidate's score; the stages' warnings stay out
+  of the record, run_suite's rule). The preset forces nothing (R4's exception);
+  "Ages, thorough" (`work_sweep.py`) is a later increment. The exact-model option lists
+  (`EXACT_MODEL` / `EXACT_GROUP`) moved to `agesearch`, and `presets` and `run_suite.py` read
+  them.
+- **Collections** (`store.Collection` / `store.Member`, in `library.json` under
+  `library.lock`): a named set of runs answering one question, with the question and the
+  comparison rule written on it (section 9.3), a reference run, members carrying their
+  variant values and a grid layout (the values' dimensions as rows and columns). A deleted
+  run leaves every collection; a collection deletes no runs.
+- **"Make variants"** (`library.variants`): one child scenario per value of a chosen
+  dimension -- place, purchase year, financing, the last work year, the claiming ages -- and
+  several dimensions give their product (the grid of section 4). Each value is a small edit
+  to the scenario's events (a place value carries the home's name, price, locality and
+  yearly costs; a financing value the loan's terms, its `name` taking `{place}`); the
+  children are scenarios like any other and freeze through `save_run` with their parent and
+  change summary. A single-valued dimension holds every child (the suite's rule: the condo
+  grid runs at the baseline's claiming ages). The UI is a section of the new Collections
+  page, and each child can be queued when created.
+- **The grid view** (`library.grid`): the pivot of `run_suite.py`'s `condo_pivot` -- rows of
+  the row dimensions against the column dimension, each cell the score's difference from the
+  reference and the home at the end below it, coloured by the comparison rule (R3: leads /
+  trade-off / the reference leads, grey inside the 1% noise band), the best score per row
+  marked by score only. `front()` lists the variants no other variant beats on both numbers
+  (the score and the home, never added), each with whether its lead is resolved. The
+  reference is shown as the caption's number, not a cell (a run's variant values are what
+  place it; a member with none is listed beside the grid).
+- The step's check is `fork-notes/synthetic/check_library_variants.py`: the synthetic condo
+  grid through the interface -- the reference scenario solved with the `ages` preset, the
+  children made by `plan_variants` at the baseline's ages and solved through the worker with
+  `decision` -- matches `run_suite.py`'s own `report.md` cell for cell within the noise
+  rule, and the children's events are `make_cases.py`'s grid scenarios. The user's call: a
+  reduced grid (one place x three purchase years x cash/mortgage) is the recorded check; the
+  full 42-cell grid is an offline/overnight run (`--full`).
+- Tests: `tests/library/test_agesearch.py`, `test_collections.py`, `test_variants.py`,
+  `test_grid.py`, `tests/ui/test_collections_page.py`, plus the `test_presets.py` update
+  (`PRESETS` now offers `ages`).
+
 ### Run library, build step 5b: the rates table and the named downturn sequences (2026-11-04)
 
 `fork-notes/run-library-design.md` section 11, step 5b (D11, I11, review R13): a year-by-year

@@ -82,6 +82,13 @@ FULL = {"place": ["yonkers", "whiteplains", "queens"],
         "years": [2027, 2029, 2031, 2034, 2038],
         "financing": ["cash", "mortgage"]}  # the ARM rows are their own financing values
 
+# The suite's own pool (its --jobs). Unbounded it is `os.cpu_count()` -- 16 concurrent
+# local-search solves here -- and the full grid's run died with BrokenProcessPool ~15 min
+# in (2026-11-05, 32 GB machine with ~12 GB free: a worker terminated abruptly mid-solve).
+# Six concurrent solves is the proven count (the reduced grid's); scores do not depend on
+# --jobs (time-capped local search within the noise rule).
+SUITE_JOBS = 6
+
 NOISE = 0.01  # the loop-noise band (view.NOISE_FRACTION, R2)
 HOME_TOL = 1.0  # the home at the end is set by the inputs (compare's fifty-cent rule)
 
@@ -254,7 +261,8 @@ def main():
         print(f"run_suite.py on {len(suite_only)} condo row(s) ...", flush=True)
         proc = subprocess.run(
             [sys.executable, str(RUN_SUITE), str(CASE), str(CONDO_CASE), str(GRID_JSON),
-             "--out-dir", str(suite_dir), "--only", *suite_only],
+             "--out-dir", str(suite_dir), "--only", *suite_only,
+             "--jobs", str(SUITE_JOBS)],
             capture_output=True, text=True)
         if proc.returncode != 0:
             print(proc.stdout[-4000:])

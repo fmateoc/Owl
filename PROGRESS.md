@@ -6586,3 +6586,20 @@ Checks: `pytest tests/library tests/ui` **825 passed, 1 skipped** (3:40), the th
 touched test files 40/40 with the new pin; `python -m owlplanner.work_sweep --help` and
 `fork-notes/synthetic/run_suite.py --help` green; the probe imports green; flake8/ruff
 clean on the touched files (`ws_parttime_bb_check.py`'s three pre-existing items stand).
+
+
+## Run-library step 6: the full-grid check's suite pool bounded (2026-11-05)
+
+The overnight `check_library_variants.py --full` (the "Next:" item above) died on its first
+attempt after ~15 minutes of solving: `run_suite.py`'s own pool -- its `--jobs` default is
+`os.cpu_count()`, **16** here -- ran the 30 condo rows and then raised `BrokenProcessPool`
+(a worker terminated abruptly mid-solve; 32 GB machine with ~12 GB free, 16 concurrent
+local-search solves). Not the increment and not the move: a 2-row `run_suite.py --jobs 2`
+probe solved both rows and wrote the report (`main/base` 200.9 s, `condo/reference`
+371.9 s, "every run outside the rate groups solved, its loop settled"), and the reduced
+grid's 6 concurrent solves are the recorded 5/5. The check now passes `--jobs 6`
+(`SUITE_JOBS`) to the suite's subprocess: the same solves at the proven concurrency
+(the reduced grid's); scores do not depend on the job count (time-capped local search,
+within the noise rule). Re-run launched 2026-11-05 15:45
+(`check_library_variants_full_2026-11-05_run2.log` in the session's temp); the result
+joins this entry when it lands.

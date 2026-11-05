@@ -306,8 +306,10 @@ Open a run ──edit──▶ unsaved changes (banner: "3 changes since wp-2029
 *(Built 2026-11-04, step 6: the `ages` preset runs `owlplanner.library.agesearch`, which is
 `run_suite.py`'s `two_stage_ages` shared by both (stage 1 under the exact LP, stage 2 at
 fixed ages under the case's own model, the best score winning; `record.json` keeps the pick
-and every candidate's score in its `age_search` block). "Ages, thorough" is not built yet:
-the claiming-age map reads `work_sweep.py`'s own output.)*
+and every candidate's score in its `age_search` block). "Ages, thorough" is the
+`ages_thorough` preset (step 6's second increment, 2026-11-05): `work_sweep.py`'s own
+whole-year sweep decides the ages, the final solve runs at them, and the sweep's
+`scores.json` lands in the results folder -- which the claiming-age map (I7) reads.)*
 
 The preset is part of the scenario, so it is in the inputs hash and in the change summary.
 Every preset except the two Ages presets fixes the claiming ages (R4). The template's
@@ -459,6 +461,9 @@ building it:)*
 - *The acceptance is a **reduced grid** now (one place x three purchase years x cash/mortgage
   through both routes, same day) and the full 42-cell grid as an offline/overnight run
   (the user's call, 2026-11-04; `check_library_variants.py --full`).*
+- *Step 6's second increment (2026-11-05) adds the `death` (I2) and `sequence` (I11)
+  dimensions, member values for a hand-added run ("Values" beside it in Members) and the
+  save dialog's "Collection" field (section 7).*
 
 ## 10. Privacy and safety
 
@@ -637,9 +642,9 @@ Corrections to the first pass (2026-11-01):
   the Ages presets wait for step 6. The scored pairs shade into tie groups at the larger of
   the two cells' tolerances (R2's rule per cell).)*
 - **I4** comes after step 6.
-- **I8 and I9** come with step 6 *(its second increment: the core -- collections, "make
-  variants", the grid view and the Ages preset -- was built 2026-11-04, and I2's longevity
-  and I11's downturn-sequence variant dimensions wait with I8/I9, the user's call)*.
+- **I8 and I9** come with step 6 *(built in its second increment, 2026-11-05, together with
+  I2's longevity and I11's downturn-sequence variant dimensions; the core -- collections,
+  "make variants", the grid view and the Ages preset -- was built 2026-11-04)*.
 - **I11** is build step 5b (D11), then the variant dimension with step 6 *(second
   increment, as above)*.
 - **I5** is a separate backend project, measured before it is designed (D9).

@@ -7,6 +7,60 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6, second increment: I8, I9, the I2/I11 dimensions and the leftovers (2026-11-05)
+
+The second increment of step 6 (`fork-notes/run-library-design.md` 8.1, 9.3, 14.1, 14.3):
+the core's "left for the next increment" list -- I8, I9, the I2/I11 variant dimensions,
+"Ages, thorough", member values for hand-added runs and the save dialog's "Collection"
+field. The user's calls: the full list, this agent's build order; "the 2027 marketplace
+benchmark" mover is **both** the ACA-rules mover and a benchmark-premium mover, and "the
+2032 reversion" mover is **both** directions.
+- **The `death` (I2) and `sequence` (I11) variant dimensions** (`library.variants`):
+  `death` is {"person", "age"} -- one child per value ("Ari dies at 75", each spouse in
+  turn) -- and a `death` event kind in the builder gives `basic_info.life_expectancy` (a
+  generated case field, provenance marked; one per person, a whole age 1-120 and not before
+  the plan start). `sequence` is {"sequence", "start"}: the named downturn overlay placed at
+  a year or an anchor (step 5b's `downturn` event, one per scenario; `sequence: None` takes
+  the overlay off, the grid's "no downturn" cell). The Collections page edits both, the
+  Scenario page keeps a run's death events (a table, as claims).
+- **Member values by hand** and the save dialogs' **"Collection"** field (design section 7):
+  a hand-added member's `{dimension: label}` pairs are set in its "Values" popover
+  (`ui/variant_tables.member_values`), and the Library and Scenario save dialogs can put the
+  saved run into a collection as it is.
+- **The sensitivity tornado (I9)** (`library.tornado`, one button on the run page): one
+  child per key input moved by a set step -- returns -1 point, inflation +1 point, medical
+  inflation +2 points, condo price +10%, the marketplace benchmark premium +10% / -10%,
+  the 2027 marketplace rules, the 2032 reversion and no reversion, and the first death at 80
+  per person -- each queued under the exact LP ("for speed") into a "Sensitivity: <run>"
+  collection, and bars sorted by the size of the effect, each with its tolerance (R2). A
+  mover that does not fit the scenario is skipped with its reason. The rate movers write the
+  run's own rate path out as a shifted `rates_table` (a downturn overlay baked in; AB1's
+  transform reset); the marketplace-rules mover pins `aca_settings.aca_table_year`, a small
+  generic model knob (`tax_federal._aca_table`'s `table_year` through `acaCosts`/`acaVals`,
+  `plan.aca_table_year`, the config bridges).
+- **The conversion and bracket view (I8)** (`owlplanner.brackets`, in `plan.json`'s
+  `brackets` block; D7): per year, the ordinary taxable income, the Roth conversion layer
+  and MAGI against the ordinary bracket edges (the bracket it fills, the room to the next),
+  the 0% gains edge, the IRMAA tier edges (the premium year m+2's, in the tax year's
+  dollars) and the ACA lines (the Medicaid limit, where the credit starts, the 400% FPL
+  cliff). The run page draws it (bars + the lines stepped over them, and a table) and its
+  **regret sweep** button queues one `regret` job per request: the base solve, then
+  `stresstests.run_conversion_regret_sweep` at "Quick look" size (18 historical scenarios,
+  a 7-point grid), `regret.json` beside the artifacts and the summary in `record.json` (a
+  failed sweep keeps the solve).
+- **The `ages_thorough` preset** (section 8.1's "Ages, thorough"): `work_sweep.py`'s own
+  `run_variant` (stage (a)'s exact-LP search plus stage (c)'s sweep of every whole-year
+  pair, each scored by branch-and-bound at gap 1e-5; the loop search and the deposit-split
+  check off) decides the ages, the solve runs at them (`record.json`'s `age_search`, as
+  `ages`), and the sweep's row lands in `scores.json` in the results folder -- which the
+  claiming-age map (I7) reads. The sweep stays phase 5's, shared with `run_suite.py` by
+  loading `fork-notes/phase5/work_sweep.py` (moving it into `src/owlplanner` stays open).
+- Tests: `tests/library/test_tornado.py`, `tests/plan/test_brackets.py` and additions across
+  `test_variants.py`, `test_builder.py`, `test_scenario.py`, `test_worker.py`,
+  `test_presets.py`, `tests/tax/test_aca.py`, `tests/ui/test_variant_tables.py`,
+  `test_collections_page.py`, `test_scenario_page.py`, `test_library_pages.py`. Checked:
+  `check_library_builder.py` 46/46 after the `death` event.
+
 ### Run library, build step 6: collections, "make variants", the grid view and the Ages preset (2026-11-04)
 
 `fork-notes/run-library-design.md` sections 8.1, 9.3 and 11, step 6 (the core; the user's

@@ -1,4 +1,4 @@
-﻿"""The sensitivity tornado (design 14.1, I9): one child per key input moved by a set step,
+"""The sensitivity tornado (design 14.1, I9): one child per key input moved by a set step,
 and the effects sorted into bars with their tolerances -- `library.tornado`.
 
 The children are ordinary runs (`variants.Variant`); these tests pin each mover's edit, the

@@ -6455,3 +6455,105 @@ skipped on Windows is 4204 / 1 here, + 47).
 
 `main` fast-forwarded to `claude/review-step6-core-abwxbs` on 2026-11-05 (the user's call): step 6's
 core with both reviews' folds (AC1-AC7, AD1-AD6).
+
+
+## Run-library step 6: the second increment -- the I2/I11 dimensions, I9, I8, "Ages, thorough" (2026-11-05)
+
+Branch `claude/run-library-step6-inc2` (from `main` `92daa09`): the core's "left for the next
+increment" list, in four commits. The user's calls at the start: the **full list** (I8, I9,
+the I2/I11 variant dimensions, "Ages, thorough", member values for hand-added runs, the save
+dialog's "Collection" field) with this agent's build order (dimensions and collection items,
+then I9, I8, the preset); and on the tornado's two policy movers: "the 2027 marketplace
+benchmark" is **both** the ACA-rules mover and a benchmark-premium mover, and "the 2032
+reversion" mover is **both** directions (the reversion as scheduled, and none).
+
+**The `death` (I2) and `sequence` (I11) dimensions** (`library.variants`, commit 1/4).
+`death` is {"person", "age", "label"?} -- one child per value, "Ari dies at 75", each spouse
+in turn (I2's grid) -- and gets a **`death` event kind** in the builder (the design's
+"Builder and collections"): `basic_info.life_expectancy` is a generated case field (whole
+list, provenance marked as the claiming ages are), one death per person, a whole age 1-120
+(`DEATH_AGE_MAX`) and not before the plan start (`check_death_age`: a horizon of zero years
+would give the plan nothing to solve). The window (U7) shrinks with the last death, so an
+event past it is refused -- for a couple the max horizon usually stands (the other spouse),
+for a single person moving the only death earlier refuses the runs whose events reach past
+it, with the window in the message. `sequence` is {"label"?, "sequence", "start"}: the named
+downturn overlay of step 5b's `downturn` event placed at a year or an anchor (one per
+scenario: a value moves it, `sequence: None` takes it off -- the grid's "no downturn" cell);
+a run that reads a rates table refuses an overlay, at the door as at build time. The
+Collections page edits both (a first-death person + ages field; the sequence table with
+`start` as text and `-` to clear), and the Scenario page keeps a run's death events (a
+table beside claims -- `_assemble` would otherwise drop them on every edited save). Member
+values for hand-added runs (the grid places a member through its values, however set): a
+"Values" popover per member reads `dimension: label` pairs (`variant_tables.member_values`;
+the year's label is stored as a year, so one cell holds both routes). The save dialogs'
+**"Collection"** field (design section 7): the Library page's two tabs and the Scenario
+page's save put the run into a collection as it is (values set later on the Collections
+page); re-adding a member from the Add button keeps its values (`add_member` replaces them).
+
+**The sensitivity tornado (I9)** (`library.tornado`, commit 2/4). One button on the run page
+makes one child per key input moved by a set step -- returns -1 point, inflation +1 point
+(both the run's own rate path written out as a shifted `rates_table`: `builder.
+plan_rates_table`, a downturn overlay baked in and AB1's reverse/roll reset -- a hand table
+keeps its case's transforms, shifting commutes with them), medical inflation +2 points
+(`medical_inflation_excess`, the schema's 10% cap), condo price +10% (the purchase event),
+the marketplace benchmark premium +10% and -10% (`aca_settings.slcsp_annual`), **the 2027
+marketplace rules** (`aca_settings.aca_table_year = 2027`, the knob below), **the 2032
+reversion and no reversion** (`rates_selection.obbba_expiration_year` at 2032 and 2100, each
+skipped when the case already assumes it), and the first death at 80 per person (the `death`
+event; skipped when the death is already past). Each child is an ordinary run in a
+"Sensitivity: <run>" collection, queued under the exact LP ("for speed"); the bars are
+sorted by the size of the effect, each with its tolerance (`compare.pair_tolerance`, now
+public), against the run's newest exact-LP result when it has one. A mover that does not fit
+the scenario is skipped with its reason (no home purchase, no benchmark premium). The
+marketplace-rules mover is a small generic model knob: `aca_settings.aca_table_year` pins
+one year's applicable-percentages table in every plan year (`tax_federal._aca_table`'s
+`table_year`, through `acaCosts`/`acaVals`, `plan.aca_table_year` and both config bridges --
+the round-trip suite caught the missing UI mapping; a None never enters the case dict).
+
+**The conversion and bracket view (I8)** (`owlplanner.brackets`, commit 3/4). Per year
+(today's $): the ordinary taxable income (`Plan.G_n`, the bracket base), the Roth conversion
+layer within it and MAGI, against the ordinary bracket edges (`tx.taxBrackets`; the bracket
+the income fills and the room to the next), the 0% capital-gains edge, the IRMAA tier edges
+-- the *premium* year m+2's tiers in the tax year's dollars, as `thresholds` reads them --
+and the ACA lines (the Medicaid limit of the year's tax household, where the credit starts,
+the 400% FPL cliff). `plan_to_dict` writes it into `plan.json` (`brackets`; D7), the run
+page draws it (stacked bars with the lines stepped over them, and the per-year table) and
+its **regret sweep** button queues one `regret` job per request: the case's own model with
+the ages fixed (R4), the base solve, then `stresstests.run_conversion_regret_sweep` at
+"Quick look" size (18 historical scenarios, a 7-point grid, milp downgrade; `worker`'s
+constants) over the windows whose starts fit a full horizon (`owlplanner.rates.FROM` to
+`year_n[0] - N_n`). `regret.json` joins the artifacts, the summary is in `record.json`
+(`regret`), and a failed sweep keeps the base results. The page shows the mean-regret curve
+and the valley.
+
+**The `ages_thorough` preset** (design 8.1's "Ages, thorough", commit 4/4).
+`fork-notes/phase5/work_sweep.py`'s own `run_variant` decides the ages -- stage (a)'s
+exact-LP search plus stage (c)'s sweep of every whole-year pair of the searched people,
+each scored by branch-and-bound at gap 1e-5 (local search kept where it does not prove;
+the loop search (b) and the deposit-split check `--eta` are off, both sensitivities rather
+than the decision) -- then the final solve runs at them (`record.json`'s `age_search`, as
+`ages`; R4's exception, it forces nothing) and the sweep's row is `scores.json` in the
+results folder, which the claiming-age map (I7) reads (it also still reads a `scores.json`
+at the run root or a picked file). The sweep stays phase 5's, one implementation shared
+with `run_suite.py` by loading the fork-notes file (the fork's rule; a spawned pool would
+need `score` picklable across a dynamically loaded module, so the worker runs its own
+serial pool -- the CLI's `--jobs 1` default is serial too). **Moving `work_sweep.py` into
+`src/owlplanner` stays open.**
+
+Tests +77 (`tests/library/test_tornado.py` 18, `tests/plan/test_brackets.py` 5,
+`test_variants.py` +18, `test_builder.py` +7, `test_scenario.py` +1, `test_worker.py` +4,
+`test_presets.py` re-pinned, `tests/tax/test_aca.py` +2 (the `table_year` knob),
+`tests/ui/test_variant_tables.py` +15, `test_collections_page.py` +6,
+`test_scenario_page.py` +3, `test_library_pages.py` +5) across 12 files. Checked:
+`check_library_builder.py` **46/46** after the `death` event (the generated case fields and
+workbooks unchanged where no death event runs). flake8 clean on the touched files, ruff only
+upstream's known items. Full suite (Windows, -n 4): **4345 passed, 2 skipped** (11:17; the
+reviewed core's last full run was 4251 / 1 skipped on Linux -- this run is Windows, and the
+new tests are counted with their parametrized cases). The first run of the suite caught a
+BOM the file writer left in `tests/library/test_tornado.py`
+(`tests/utils/test_text_encoding.py`); stripped, and the suite re-run.
+
+Next: an independent review of the second increment (the pattern of the core: two reviews,
+the folds decided by the user); moving `work_sweep.py` into `src/owlplanner`; and the full
+42-cell condo grid through the interface as the overnight run
+(`check_library_variants.py --full`).

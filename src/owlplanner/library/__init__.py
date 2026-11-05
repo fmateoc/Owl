@@ -6,7 +6,9 @@ year its balances and year rows were entered for, R1). Build step 2 adds the job
 queues solves in detached workers (`worker.py`), each in its own results folder (`results.py`);
 a run is solved only in its plan year (`check_plan_year`). Build step 3 adds the reading side:
 `view` (one result as the pages show it) and `compare` (two results, judged against the noise
-rule).
+rule). Build step 6 adds the collections (`store.Collection`, section 9.3), the variant
+dimensions ("make variants", `variants`), the grid view (`grid`) and the "Ages" preset's
+two-stage claiming-age search (`agesearch`, shared with `fork-notes/synthetic/run_suite.py`).
 """
 
 from .scenario import (  # noqa: F401
@@ -46,5 +48,14 @@ from .results import (  # noqa: F401
     load_plan,
     save_plan,
 )
-from .store import Library, LibraryError, LibraryLocked, RunInfo, SaveResult, run_zip  # noqa: F401
+from .store import (  # noqa: F401
+    Collection,
+    Library,
+    LibraryError,
+    LibraryLocked,
+    Member,
+    RunInfo,
+    SaveResult,
+    run_zip,
+)
 from .view import Result, load_result  # noqa: F401

@@ -2,7 +2,7 @@
 
 Layout (all paths relative to the library root):
 
-    library.json            collections, pins, the order shown (build step 6 fills them)
+    library.json            collections, pins, the order shown (collections since step 6)
     library.lock            an OS file lock held around every read-modify-write (S5, T5)
     runs/<date>_<slug>/     one folder per run; the folder name is fixed at creation (S4)
         run.json            id, name, parent, created, notes, tags, plan year, inputs hash,
@@ -12,8 +12,10 @@ Layout (all paths relative to the library root):
 
 Rules implemented here: atomic writes (a run's whole folder is staged outside `runs/` and
 published with one rename, so a save never appears half-written), the inputs hash dedupe,
-save-as only (a run is never edited in place), and lineage. The lock (`library.lock`) is held
-only for the fast metadata work (V6): `generate` runs before it, into the staging folder.
+save-as only (a run is never edited in place), lineage, and the collections (section 4: a
+named set of runs answering one question, with a comparison rule; section 9.3). The lock
+(`library.lock`) is held only for the fast metadata work (V6): `generate` runs before it,
+into the staging folder.
 """
 
 from __future__ import annotations
@@ -198,6 +200,47 @@ class SaveResult:
     dropped: Optional[dict] = None
 
 
+@dataclass(frozen=True)
+class Member:
+    """One collection member: a run and the variant values its grid reads (section 9.3).
+
+    `values` maps a variant dimension (`library.variants`: "place", "year", "financing",
+    "work", "claim") to its label for this run ("yonkers", 2027, "cash"): the grid's row and
+    column keys. A member added by hand may hold no values: it is listed with the others but
+    sits in no grid cell.
+    """
+
+    run: str
+    values: dict
+
+
+@dataclass(frozen=True)
+class Collection:
+    """A named set of runs answering one question, with a comparison rule (section 4).
+
+    The question and the rule are written on it (section 9.3, for example "Maximize
+    first-year discretionary spending, condo kept; reference: Yonkers 2027 cash"). The
+    grid's cells are differences from `reference` (a run id; None until one is chosen), laid
+    out by `grid` -- {"rows": [dimension, ...], "columns": [dimension]} of the members'
+    values (section 9.3's grid view).
+    """
+
+    id: str
+    name: str
+    question: str
+    rule: str
+    created: str
+    reference: Optional[str]
+    members: tuple
+    grid: dict
+
+    def member(self, run_id: str) -> Optional[Member]:
+        for member in self.members:
+            if member.run == run_id:
+                return member
+        return None
+
+
 class Library:
     """The library folder: runs, collections, and the rules around them."""
 
@@ -243,7 +286,8 @@ class Library:
         (self.root / TRASH_DIR).mkdir(exist_ok=True)
         self._write_json(
             self.root / LIBRARY_JSON,
-            {"library_format": LIBRARY_FORMAT, "collections": {}, "pins": [], "order": []},
+            {"library_format": LIBRARY_FORMAT, "collections": {}, "collection_order": [],
+             "pins": [], "order": []},
         )
 
     def _library_doc(self) -> dict:
@@ -254,6 +298,7 @@ class Library:
         if not isinstance(doc, dict) or doc.get("library_format") != LIBRARY_FORMAT:
             raise LibraryError(f"{self.root / LIBRARY_JSON} is not library format {LIBRARY_FORMAT}")
         doc.setdefault("collections", {})
+        doc.setdefault("collection_order", [])
         doc.setdefault("pins", [])
         doc.setdefault("order", [])
         return doc
@@ -498,7 +543,11 @@ class Library:
         return self._info_from_dir(info.path)
 
     def delete_run(self, run: "RunInfo | str") -> Path:
-        """Move a run to trash/ (section 10). Children keep their parent id."""
+        """Move a run to trash/ (section 10). Children keep their parent id.
+
+        A deleted run leaves every collection it was a member of (a collection keeps no
+        reference to a folder that is gone; the runs keep their own lineage).
+        """
         info = run if isinstance(run, RunInfo) else self.get(run)
         with self._lock():
             trash = self.root / TRASH_DIR
@@ -512,8 +561,163 @@ class Library:
             doc = self._library_doc()
             doc["order"] = [rid for rid in doc["order"] if rid != info.id]
             doc["pins"] = [rid for rid in doc["pins"] if rid != info.id]
+            for coll in (doc.get("collections") or {}).values():
+                if not isinstance(coll, dict):
+                    continue
+                coll["members"] = [m for m in coll.get("members") or []
+                                   if isinstance(m, dict) and m.get("run") != info.id]
+                if coll.get("reference") == info.id:
+                    coll["reference"] = None
             self._write_json(self.root / LIBRARY_JSON, doc)
         return target
+
+    # -- collections ---------------------------------------------------
+
+    @staticmethod
+    def _collection_from(cid: str, doc: Any) -> Optional[Collection]:
+        """One collection from its library.json entry; None for a malformed one (V7's rule:
+        shown as damaged, never fatal)."""
+        if not isinstance(doc, dict):
+            return None
+        members = []
+        for member in doc.get("members") or []:
+            if isinstance(member, dict) and isinstance(member.get("run"), str):
+                values = member.get("values")
+                members.append(Member(run=member["run"],
+                                      values=dict(values) if isinstance(values, dict) else {}))
+        grid = doc.get("grid")
+        return Collection(
+            id=cid,
+            name=str(doc.get("name") or "untitled"),
+            question=str(doc.get("question") or ""),
+            rule=str(doc.get("rule") or ""),
+            created=str(doc.get("created") or ""),
+            reference=doc.get("reference") if isinstance(doc.get("reference"), str) else None,
+            members=tuple(members),
+            grid=dict(grid) if isinstance(grid, dict) else {},
+        )
+
+    def collections(self) -> list:
+        """Every collection, in the order shown (`library.json`'s `collection_order`)."""
+        doc = self._library_doc()
+        known = doc.get("collections") or {}
+        rank = {cid: i for i, cid in enumerate(doc.get("collection_order") or [])}
+        out = []
+        for cid in sorted(known, key=lambda c: (rank.get(c, len(rank)), c)):
+            coll = self._collection_from(cid, known[cid])
+            if coll is not None:
+                out.append(coll)
+        return out
+
+    def collection(self, cid: str) -> Collection:
+        doc = self._library_doc()
+        entry = (doc.get("collections") or {}).get(cid)
+        coll = self._collection_from(cid, entry) if entry is not None else None
+        if coll is None:
+            raise LibraryError(f"no collection with id {cid!r}")
+        return coll
+
+    def create_collection(self, name: str, *, question: str = "", rule: str = "") -> Collection:
+        """A new, empty collection (section 4). The id is its folder-free identity."""
+        if not name.strip():
+            raise LibraryError("a collection needs a name")
+        cid = uuid.uuid4().hex
+        with self._lock():
+            doc = self._library_doc()
+            doc["collections"][cid] = {
+                "id": cid,
+                "name": name,
+                "question": question,
+                "rule": rule,
+                "created": datetime.now().isoformat(timespec="seconds"),
+                "reference": None,
+                "members": [],
+                "grid": {},
+            }
+            doc["collection_order"].append(cid)
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
+
+    def update_collection(self, cid: str, *, name: Optional[str] = None,
+                          question: Optional[str] = None, rule: Optional[str] = None,
+                          grid: Optional[dict] = None) -> Collection:
+        """Edit a collection's own fields (name, question, rule, grid layout). The
+        reference is set with `set_reference`, the members with add/remove_member."""
+        with self._lock():
+            doc = self._library_doc()
+            entry = (doc.get("collections") or {}).get(cid)
+            if not isinstance(entry, dict):
+                raise LibraryError(f"no collection with id {cid!r}")
+            if name is not None:
+                if not name.strip():
+                    raise LibraryError("a collection needs a name")
+                entry["name"] = name
+            if question is not None:
+                entry["question"] = question
+            if rule is not None:
+                entry["rule"] = rule
+            if grid is not None:
+                entry["grid"] = dict(grid)
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
+
+    def set_reference(self, cid: str, run: "RunInfo | str | None") -> Collection:
+        """The run the collection's grid measures from (None: no reference yet)."""
+        with self._lock():
+            doc = self._library_doc()
+            entry = (doc.get("collections") or {}).get(cid)
+            if not isinstance(entry, dict):
+                raise LibraryError(f"no collection with id {cid!r}")
+            if run is None:
+                entry["reference"] = None
+            else:
+                info = run if isinstance(run, RunInfo) else self.get(run)
+                entry["reference"] = info.id
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
+
+    def delete_collection(self, cid: str) -> None:
+        """Drop the collection. The runs stay (deleting a question deletes no answers)."""
+        with self._lock():
+            doc = self._library_doc()
+            if cid not in (doc.get("collections") or {}):
+                raise LibraryError(f"no collection with id {cid!r}")
+            del doc["collections"][cid]
+            doc["collection_order"] = [c for c in doc["collection_order"] if c != cid]
+            self._write_json(self.root / LIBRARY_JSON, doc)
+
+    def add_member(self, cid: str, run: "RunInfo | str", values: Optional[dict] = None) -> Collection:
+        """Put a run in a collection (idempotent: a second add updates its values).
+
+        `values` is the run's variant labels ({dimension: label}, `library.variants`); it
+        replaces the member's previous values, so "make variants" can fill them in one pass.
+        """
+        info = run if isinstance(run, RunInfo) else self.get(run)
+        with self._lock():
+            doc = self._library_doc()
+            entry = (doc.get("collections") or {}).get(cid)
+            if not isinstance(entry, dict):
+                raise LibraryError(f"no collection with id {cid!r}")
+            members = [m for m in entry.get("members") or []
+                       if isinstance(m, dict) and m.get("run") != info.id]
+            members.append({"run": info.id, "values": dict(values or {})})
+            entry["members"] = members
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
+
+    def remove_member(self, cid: str, run: "RunInfo | str") -> Collection:
+        info = run if isinstance(run, RunInfo) else self.get(run)
+        with self._lock():
+            doc = self._library_doc()
+            entry = (doc.get("collections") or {}).get(cid)
+            if not isinstance(entry, dict):
+                raise LibraryError(f"no collection with id {cid!r}")
+            entry["members"] = [m for m in entry.get("members") or []
+                                if not (isinstance(m, dict) and m.get("run") == info.id)]
+            if entry.get("reference") == info.id:
+                entry["reference"] = None
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
 
 
 def run_zip(run: "RunInfo | Path") -> bytes:

@@ -309,6 +309,15 @@ class TestDeath:
             v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"death": [{"person": "Ari", "age": 55}]})
         v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"death": [{"person": "Ari", "age": 62}]})
 
+    def test_a_value_that_leaves_the_plan_one_year_is_refused(self):
+        # The parent carries Noa's death at 62 (her age in the plan year, born 1964); Ari's
+        # at 62 leaves the plan one year -- `Plan` refuses that ("Plan needs more than 1
+        # years"), so the door refuses it (review AE1).
+        doc = _scenario([WORK_ARI, WORK_NOA,
+                         {"id": "d1", "kind": "death", "person": "Noa", "age": 62}])
+        with pytest.raises(ScenarioError, match="not more than one year"):
+            v.plan_variants(doc, {"death": [{"person": "Ari", "age": 62}]})
+
     def test_one_death_event_per_person(self):
         doc = _scenario([WORK_ARI, WORK_NOA,
                          {"id": "d1", "kind": "death", "person": "Ari", "age": 80},

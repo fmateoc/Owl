@@ -545,6 +545,14 @@ class TestDeathEvents:
         with pytest.raises(ScenarioError, match="before the plan"):
             b.build(_scenario([dict(self.DEATH, age=55)]))
 
+    def test_a_death_that_leaves_the_plan_one_year_is_refused(self):
+        # Both are 62 in 2026 (born 1964): each death alone leaves the other's horizon, and
+        # together the plan would run one year -- `Plan` refuses that ("Plan needs more than
+        # 1 years"), so the door refuses it with the window (review AE1).
+        events = [dict(self.DEATH, age=62), {"id": "d2", "kind": "death", "person": "Noa", "age": 62}]
+        with pytest.raises(ScenarioError, match="not more than one year"):
+            b.build(_scenario(events))
+
     def test_the_window_shrinks_with_the_last_death(self):
         # Both people die young: a care line past the window is refused (U7).
         events = [dict(self.DEATH), {"id": "d2", "kind": "death", "person": "Noa", "age": 63},

@@ -6614,6 +6614,31 @@ Folds (AE1-AE3) are the user's call; the core's pattern then gives the folded st
 second review.
 
 
+## Run-library step 6: the second increment review's AE1-AE3 folded (2026-11-05)
+
+The user's call: fold all three.
+
+- **AE1**: `builder.check_death_window` (I2, U7's door check) refuses the plan window the
+  deaths leave when it is not more than one year -- `Plan`'s own "Plan needs more than 1
+  years" as a `ScenarioError` with the window in the message. It runs in `build` (the door
+  every route passes) and at the two tables (`variants._check_value`, `tornado._death`),
+  where a death not in the events yet (a variant value, a mover) is checked over the
+  events' own deaths -- so a combination that collapses the window is refused or skipped
+  where it is entered (the tornado's mover is skipped with the reason).
+- **AE2**: `variant_tables.member_values` refuses a dimension that is not one of
+  `variants.DIMENSIONS` (AD6's rule: a typo is refused, not a phantom grid dimension).
+- **AE3**: `regret.json` is the sweep itself (the per-scenario curves
+  `summarize_conversion_regret` reads) and `record.json` keeps the summary -- the split
+  `build_record`'s docstring, the run page's caption and the entry above already describe.
+
+Tests +5, **all five checked to fail before their fix** (the source stashed, the tests
+run against it): `test_builder.py`'s "leaves the plan one year is refused",
+`test_variants.py`'s combined-window refusal at the door, `test_tornado.py`'s mover skip,
+`test_variant_tables.py`'s unknown dimension, `test_worker.py`'s regret artifact re-pinned
+(`regret.json` the canned sweep, the record the summary). The five touched test files:
+**218 passed** (24 s). flake8/ruff clean on the touched files.
+
+
 ## Run-library step 6: the full-grid check's suite pool bounded (2026-11-05)
 
 The overnight `check_library_variants.py --full` (the "Next:" item above) died on its first

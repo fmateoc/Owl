@@ -174,6 +174,8 @@ def _obbba(year: int) -> Callable[[dict], None]:
 def _death(person: str, scenario: dict) -> None:
     builder.check_death_age(person, DEATH_AGE, scenario.get("case") or {}, scenario,
                             where=f"{person!r} dies at {DEATH_AGE}")
+    builder.check_death_window(scenario, person, DEATH_AGE,
+                               where=f"{person!r} dies at {DEATH_AGE}")
     event = next((e for e in (scenario.get("events") or [])
                   if isinstance(e, dict) and e.get("kind") == "death" and e.get("person") == person),
                  None)

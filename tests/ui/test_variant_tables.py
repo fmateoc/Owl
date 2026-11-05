@@ -257,6 +257,11 @@ class TestMemberValues:
         with pytest.raises(ScenarioError, match="years"):
             vt.member_values("year: soon")
 
+    def test_an_unknown_dimension_is_refused(self, vt):
+        # AD6's rule: a typo is refused, not stored as a phantom grid dimension (review AE2).
+        with pytest.raises(ScenarioError, match="not one of the dimensions"):
+            vt.member_values("yaer: 2027; place: yonkers")
+
     def test_values_text_round_trips(self, vt):
         values = {"year": 2027, "place": "yonkers"}
         assert vt.member_values(vt.values_text(values)) == values

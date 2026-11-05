@@ -139,6 +139,17 @@ class TestTheMovers:
         assert any("Ari dies at 80" in s and "before the plan" in s for s in skipped)
         assert not any(v.values.get("mover") == "Ari dies at 80" for v in made)
 
+    def test_a_death_that_leaves_the_plan_one_year_is_skipped(self, stub_plan):
+        # Ari is 80 at the plan start (born 1946) and Noa's death event already sets her
+        # horizon to the start (born 1964, dies at 62): "Ari dies at 80" would leave the
+        # plan one year, so the mover is skipped with the reason (review AE1).
+        scenario = _scenario([WORK_ARI, WORK_NOA,
+                              {"id": "d1", "kind": "death", "person": "Noa", "age": 62}])
+        scenario["case"]["basic_info"]["date_of_birth"] = ["1946-04-17", "1964-12-09"]
+        made, skipped = tornado.tornado_variants(scenario)
+        assert any("Ari dies at 80" in s and "one year" in s for s in skipped)
+        assert not any(v.values.get("mover") == "Ari dies at 80" for v in made)
+
     def test_a_scenario_without_a_home_or_a_marketplace_says_why(self, stub_plan):
         scenario = _scenario([WORK_ARI, WORK_NOA], slcsp=0.0)
         made, skipped = tornado.tornado_variants(scenario)

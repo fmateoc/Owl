@@ -483,6 +483,39 @@ def check_death_age(person: str, age, case: dict, scenario: dict, where: str = "
         )
 
 
+def check_death_window(scenario: dict, person: str = None, age=None, where: str = "") -> None:
+    """The plan window the deaths leave (I2, U7's door check; review AE1).
+
+    A death at the age one is now is fine for that person (one year of horizon), but
+    `Plan` refuses to build a plan of one year ("Plan needs more than 1 years"), so the
+    *last* death must leave the plan more than one year past its start. `person`/`age` is
+    a death not in the events yet -- a variant value or a mover, checked at the door
+    before it applies (the events' own deaths are applied here too, so a combination that
+    collapses the window is refused where it is entered).
+    """
+    case = scenario.get("case") or {}
+    info = case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    births = [int(str(d)[:4]) for d in info.get("date_of_birth") or []]
+    start = _plan_start(case, scenario)
+    from owlplanner.config.defaults import DEFAULT_LIFE_EXPECTANCY
+
+    life = [int(expect) for expect in info.get("life_expectancy") or []]
+    life += [DEFAULT_LIFE_EXPECTANCY] * (len(names) - len(life))
+    for event in scenario.get("events") or []:
+        if isinstance(event, dict) and event.get("kind") == "death" \
+                and event.get("person") in names and event.get("age") is not None:
+            life[names.index(event["person"])] = int(event["age"])
+    if person is not None and person in names:
+        life[names.index(person)] = int(age)
+    end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
+    if end_year is not None and end_year <= start:
+        prefix = f"{where}: " if where else ""
+        raise ScenarioError(
+            f"{prefix}the plan would run {start}-{end_year}: not more than one year, and a "
+            "plan needs more than one (the last life horizon is at the plan start)")
+
+
 def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
     """The calendar year of every event's year field (the I1 anchors resolved).
 
@@ -805,6 +838,7 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
         _set_path(case, "basic_info.life_expectancy", list(life))
         provenance["case_fields"]["basic_info.life_expectancy"] = deaths[0]["id"]
     end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
+    check_death_window(scenario)
     for eid, fields in years.items():
         for field, year in fields.items():
             if year < plan_start or (end_year is not None and year > end_year):

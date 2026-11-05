@@ -339,7 +339,7 @@ class TestTheRegretSweep:
         state = run_job(job.results_dir, job.token)
         assert state == R.DONE
         written = json.loads((job.results_dir / R.REGRET_JSON).read_text(encoding="utf-8"))
-        assert written == summary
+        assert written == {"canned": True}  # regret.json is the sweep itself (review AE3)
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
         assert record["status"] == "solved" and record["regret"] == summary
 

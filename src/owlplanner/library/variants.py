@@ -223,6 +223,7 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
                 f"1-{builder.DEATH_AGE_MAX}, got {age!r}")
         builder.check_death_age(person, age, scenario.get("case") or {}, scenario,
                                 where=f"death: {person!r}")
+        builder.check_death_window(scenario, person, age, where=f"death: {person!r}")
     elif dimension == "sequence":
         sequence = value.get("sequence")
         if sequence is None:

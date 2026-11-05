@@ -392,9 +392,10 @@ class Worker:
 
         `stresstests.run_conversion_regret_sweep` at "Quick look" size (its cheapest), over
         the historical windows whose starts fit a full horizon of data. `regret.json` joins
-        the artifacts (published atomically, as the others) and the summary goes into
-        record.json; the sweep re-solves the plan per scenario, so it can run a while (the
-        job's heartbeat and cancel checks run between scenarios).
+        the artifacts (published atomically, as the others) and holds the sweep itself -- the
+        per-scenario curves `summarize_conversion_regret` reads (review AE3) -- while its
+        summary goes into record.json; the sweep re-solves the plan per scenario, so it can
+        run a while (the job's heartbeat and cancel checks run between scenarios).
         """
         from owlplanner import summarize_conversion_regret
         from owlplanner.rates import FROM
@@ -411,7 +412,7 @@ class Worker:
         staging = self.results_dir / f".attempt-{self.token[:8]}"
         staging.mkdir(exist_ok=True)
         try:
-            self._write_json(staging, R.REGRET_JSON, summary)
+            self._write_json(staging, R.REGRET_JSON, result)
             try:
                 self.job.publish(self.token, staging, (R.REGRET_JSON,))
             except R.TokenChanged as exc:

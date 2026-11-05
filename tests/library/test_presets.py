@@ -101,11 +101,14 @@ def test_ages_is_the_case_s_own_model_with_its_own_ages_choice():
 
 def test_the_presets_the_interface_offers_and_the_solves_it_records():
     assert PRESETS == ("quick", "decision", "ages", "custom")
-    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "ages", "custom")
+    # "decision_exact" and "regret" are solve presets, not queue-time choices: one is the
+    # decision's exact companion, the other I8's per-request sweep (its button queues it).
+    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "ages", "regret", "custom")
     for preset in PRESETS:
         for solve in preset_solves(preset):
             assert solve in SOLVE_PRESETS
             assert isinstance(preset_options(solve), dict)  # every solve has its forced options
+    assert preset_options("regret") == {"withSSAges": "fixed"}  # R4: the ages are fixed
 
 
 def test_an_unknown_preset_is_refused():

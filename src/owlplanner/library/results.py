@@ -46,6 +46,7 @@ RECORD_JSON = "record.json"
 SUMMARY_JSON = "summary.json"
 PLAN_JSON = "plan.json"
 RESULTS_XLSX = "Results.xlsx"
+REGRET_JSON = "regret.json"
 SOLVE_LOG = "solve.log"
 PLAN_PKL = "plan.pkl"
 PREV_RECORD_JSON = "record.prev.json"  # the previous attempt's record, kept by "run again"
@@ -540,7 +541,8 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
                  warnings: list, iterations: Optional[int], inputs_hash: Optional[str] = None,
                  solver: Optional[str] = None, gap: Optional[float] = None,
                  rates: Optional[dict] = None, plan_pkl_sha256: Optional[str] = None,
-                 age_search: Optional[dict] = None, error: Optional[str] = None) -> dict:
+                 age_search: Optional[dict] = None, regret: Optional[dict] = None,
+                 error: Optional[str] = None) -> dict:
     """The record.json of one solve (design section 5).
 
     `plan_doc` is `cli.formatters.plan_to_dict`'s output (None when the solve produced no
@@ -548,7 +550,9 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
     "MOSEK", as `export._mip_node_limit` names it), `gap` the reported MIP gap
     (`plan.solverGap`, -1 when none), `rates` the rate method and seed. `age_search` is the
     "Ages" preset's two-stage search (`library.agesearch`): {"chosen": [...], "candidates":
-    [[ages, score or None], ...]} (step 6).
+    [[ages, score or None], ...]} (step 6). `regret` is the "regret" preset's sweep summary
+    (`stresstests.summarize_conversion_regret`, I8), or {"error": ...} when the sweep failed
+    and the base results stand; its full curve is `regret.json` beside the record.
     """
     from owlplanner.version import engine_provenance
 
@@ -595,6 +599,9 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
         # The "Ages" preset's two-stage search (step 6): what it picked and what each
         # candidate scored. None for every other preset.
         "age_search": age_search,
+        # The "regret" preset's sweep summary (I8): what a different first-year Roth
+        # conversion would have cost. None for every other preset.
+        "regret": regret,
         "environment": environment(),
         "plan_pkl_sha256": plan_pkl_sha256,
         # The code the cache was pickled by (H6): load_plan drops it under any other code.

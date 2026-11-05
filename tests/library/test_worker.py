@@ -316,3 +316,42 @@ class TestInTheBackground:
         assert job.doc["pid"] and job.doc["heartbeat"]  # it was a real process
         assert (job.results_dir / R.RECORD_JSON).exists()
         assert (job.results_dir / R.PLAN_PKL).exists()
+
+
+class TestTheRegretSweep:
+    """I8's per-request job (the "regret" preset): the base solve, then the conversion
+    regret sweep (`stresstests.run_conversion_regret_sweep`, canned here -- the sweep
+    itself is tested in tests/stochastic). What the worker writes around it is checked:
+    `regret.json` beside the artifacts and the summary in record.json; a failed sweep
+    keeps the solve."""
+
+    @staticmethod
+    def _canned(monkeypatch, summary):
+        monkeypatch.setattr("owlplanner.Plan.runConversionRegret",
+                            lambda self, *args, **kw: {"canned": True})
+        monkeypatch.setattr("owlplanner.summarize_conversion_regret", lambda result: summary)
+
+    def test_the_preset_solves_then_sweeps(self, run, monkeypatch):
+        summary = {"by_grid": [{"x": 0.0, "mean": 100.0}],
+                   "valley": {"x": 0.0, "mean": 100.0}, "n_scenarios": 3}
+        self._canned(monkeypatch, summary)
+        job = make_job(run, name="2026-01-01T00-00-00_regret", preset="regret")
+        state = run_job(job.results_dir, job.token)
+        assert state == R.DONE
+        written = json.loads((job.results_dir / R.REGRET_JSON).read_text(encoding="utf-8"))
+        assert written == summary
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert record["status"] == "solved" and record["regret"] == summary
+
+    def test_a_failed_sweep_keeps_the_solve(self, run, monkeypatch):
+        def boom(*args, **kw):
+            raise RuntimeError("the sweep died")
+
+        monkeypatch.setattr("owlplanner.Plan.runConversionRegret", boom)
+        job = make_job(run, name="2026-01-01T00-00-01_regret", preset="regret")
+        state = run_job(job.results_dir, job.token)
+        assert state == R.DONE  # the base solve stands
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert record["regret"] == {"error": "the sweep died"}
+        assert (job.results_dir / R.PLAN_JSON).exists()
+        assert not (job.results_dir / R.REGRET_JSON).exists()

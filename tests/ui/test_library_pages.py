@@ -53,6 +53,19 @@ def _write_result(run, name, *, preset="decision", score=82_000.0, home=150_000.
     plan = {
         "objective": "maxSpending", "individuals": ["Noa", "Avi"],
         "claiming_ages": [66.1667, 70.0],
+        "brackets": {
+            "units": "today's dollars",
+            "years": [{"year": y, "ages": [60, 62], "ordinary_taxable_income": 90_000.0,
+                       "conversion": 15_000.0, "magi": 110_000.0, "fills_bracket": "22/25%",
+                       "room_to_next_edge": 25_000.0,
+                       "ordinary_edges": [{"label": "22/25%", "amount": 115_000.0}],
+                       "gains_edge_0": 49_450.0,
+                       "irmaa_edges": [{"label": "IRMAA tier 1", "amount": 110_000.0,
+                                        "premium_year": y + 2}],
+                       "aca_lines": [{"label": "400% FPL (the subsidy cliff)",
+                                      "amount": 100_000.0}]}
+                      for y in (2027, 2028)],
+        },
         "thresholds": {
             "near_band_fraction": 0.05,
             "entries": [{"year": 2027, "kind": "irmaa", "label": "IRMAA tier 1", "side": "over",
@@ -509,3 +522,27 @@ class TestTheSensitivityTornado:
         table = next(str(m.value) for m in at.markdown
                      if str(m.value).startswith("| mover | difference |"))
         assert "returns -1 point" in table and "±" in table
+
+
+class TestConversionsAndBrackets:
+    """I8 on the run page: the income, the conversion layer and the lines it fills
+    (plan.json's `brackets` block), and the per-request regret sweep button."""
+
+    def test_the_view_shows_the_income_the_conversions_and_the_lines(self, library):
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Conversions and brackets" in text
+        assert "of which conversions" in text  # the table's column
+        assert "Run the regret sweep" in [b.label for b in at.button]
+
+    def test_the_regret_button_queues_one_job(self, library, monkeypatch):
+        from owlplanner.library import JobManager
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)  # no real worker
+        before = {j.id for j in JobManager(library).jobs()}
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Run the regret sweep").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        queued = [j for j in JobManager(library).jobs() if j.id not in before]
+        assert [j.doc["preset"] for j in queued] == ["regret"]

@@ -7,7 +7,9 @@ and method, status, and a plain-language quality line), the headline numbers (th
 added, R3 -- total taxes, the claiming ages, SS withheld), "Things to look at" (the years
 whose income sits just below or just over a threshold, design 14.1 I3), charts drawn from
 `plan.json` (durable; D7) including the one-year cash-flow Sankey (I6), the Results
-workbook's sheets, the sensitivity tornado (I9: one child per key input moved by a set
+workbook's sheets, the conversion and bracket view (I8: taxable income, the Roth
+conversion layer and the bracket, IRMAA and ACA lines, with the per-request regret
+sweep), the sensitivity tornado (I9: one child per key input moved by a set
 step, solved under the exact LP, the effects sorted into bars with their tolerances), the
 claiming-age map over a work_sweep scores file (I7), and the
 buttons: "Open in Owl" (the existing pages from the cached `plan.pkl`, no solve),
@@ -240,6 +242,110 @@ if not runs:
     st.info("The library has no runs yet.")
     st.stop()
 
+# -- the conversion and bracket view (design 14.1, I8) -----------------
+
+
+def _conversions_and_brackets(run, result):
+    """Per year: taxable income, the Roth conversion layer, and the lines it fills (I8).
+
+    Reads `plan.json`'s `brackets` block (`owlplanner.brackets`, durable: D7). The chart
+    stacks the conversion on the ordinary taxable income and steps the lines the year is
+    measured against: the next ordinary bracket edge (income), the IRMAA tier 1 line and
+    the marketplace's 400% FPL cliff (both against MAGI). Below it, the per-request regret
+    sweep: what a different first-year conversion would have cost
+    (`stresstests.run_conversion_regret_sweep`, one "regret" job per request).
+    """
+    doc = result.plan.get("brackets") or {}
+    years = doc.get("years") or []
+    if not years:
+        return
+    st.markdown("### Conversions and brackets")
+    st.caption(
+        "Ordinary taxable income per year with the Roth conversion as the layer that fills "
+        "the bracket (today's \\$). The dotted lines are what the year is measured against: "
+        "the next ordinary bracket edge (taxable income), the IRMAA tier 1 line and the "
+        "marketplace's 400% FPL cliff (both MAGI; the MAGI of a year sets the Medicare "
+        "premiums two years later). The conversions are optimized in the model -- IRMAA, "
+        "ACA, SS taxability and state tax priced together -- so this view explains them "
+        "(design 14.1, I8).")
+    xs = [row["year"] for row in years]
+    income = [row.get("ordinary_taxable_income") for row in years]
+    conv = [row.get("conversion") or 0.0 for row in years]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=xs, y=[max(0.0, i - c) for i, c in zip(income, conv, strict=True)],
+                         name="taxable income, ex conversions"))
+    fig.add_trace(go.Bar(x=xs, y=conv, name="Roth conversions"))
+    fig.add_trace(go.Scatter(
+        x=xs, name="next bracket edge", line=dict(dash="dot"),
+        y=[None if row.get("room_to_next_edge") is None
+           else row["ordinary_taxable_income"] + row["room_to_next_edge"] for row in years]))
+    fig.add_trace(go.Scatter(
+        x=xs, name="IRMAA tier 1", line=dict(dash="dot"),
+        y=[(row.get("irmaa_edges") or [{}])[0].get("amount") for row in years]))
+    fig.add_trace(go.Scatter(
+        x=xs, name="400% FPL (the cliff)", line=dict(dash="dot"),
+        y=[next((line["amount"] for line in row.get("aca_lines") or []
+                 if "cliff" in line["label"]), None) for row in years]))
+    fig.update_layout(barmode="stack", yaxis_title="$ per year (today's $)",
+                      xaxis_title="Year", height=420)
+    st.plotly_chart(fig, width="stretch")
+
+    def _usd2(value):
+        return "-" if value is None else f"{value:,.0f}"
+
+    lines = ["| year | taxable income | of which conversions | MAGI | bracket filled | "
+             "room to the next edge | IRMAA tier 1 | 400% FPL |",
+             "|---|---:|---:|---:|---|---:|---:|---:|"]
+    for row in years:
+        tier = (row.get("irmaa_edges") or [{}])[0].get("amount")
+        cliff = next((line["amount"] for line in row.get("aca_lines") or []
+                      if "cliff" in line["label"]), None)
+        lines.append(
+            f"| {row['year']} | {_usd2(row.get('ordinary_taxable_income'))} | "
+            f"{_usd2(row.get('conversion'))} | {_usd2(row.get('magi'))} | "
+            f"{row.get('fills_bracket') or '-'} | {_usd2(row.get('room_to_next_edge'))} | "
+            f"{_usd2(tier)} | {_usd2(cliff)} |")
+    st.markdown("\n".join(lines))
+
+    # -- the regret sweep (I8: "what a different conversion would have cost") -----
+    regret = result.record.get("regret")
+    if regret is None:
+        st.markdown("**What would a different conversion have cost?** A regret sweep "
+                    "(design 14.1, I8) re-solves historical scenarios with this year's "
+                    "conversion pinned on a grid and reports the regret of each commitment.")
+        if st.button("Run the regret sweep", key="run_page_regret",
+                     help="One solve per request (a background job, its own results): "
+                          "\"Quick look\" size -- 18 historical scenarios, a 7-point grid."):
+            try:
+                manager.enqueue(run, preset="regret")
+            except (ScenarioError, JobsError) as exc:  # another plan year (R1)
+                libraryjobs.flash("error", f"Not queued: {exc}")
+            else:
+                libraryjobs.flash("success", "The regret sweep is queued (one solve per request).")
+            st.rerun()
+    elif regret.get("error"):
+        st.warning(f"The regret sweep did not finish: {regret['error']}", icon=":material/warning:")
+    else:
+        st.markdown("**What a different conversion would have cost** "
+                    f"({regret.get('n_scenarios')} historical scenario(s))")
+        by_grid = regret.get("by_grid") or []
+        if by_grid:
+            fig = go.Figure(go.Scatter(
+                x=[g["x"] / 1000.0 for g in by_grid],
+                y=[g.get("mean") for g in by_grid],
+                name="mean regret", line=dict(width=3)))
+            fig.update_layout(xaxis_title="committed first-year conversion ($k)",
+                              yaxis_title="mean regret (today's $)", height=320)
+            st.plotly_chart(fig, width="stretch")
+        valley = regret.get("valley") or {}
+        if valley:
+            st.caption(f"Least regret: commit {valley.get('x', 0):,.0f} "
+                       f"(mean regret {valley.get('mean', 0):,.0f}); the curves and the "
+                       "per-scenario spread are in `regret.json` in this results folder.")
+        with st.expander("The full summary"):
+            st.json(regret)
+
+
 # -- pick a run and one of its solves ----------------------------------
 
 labels = {f"{r.name}  ({r.folder_name})": r for r in runs}
@@ -376,6 +482,9 @@ if entries:
             st.plotly_chart(fig, width="stretch")
         with tabs[4]:
             _cash_flow_sankey(result, by_year)
+
+    # -- conversions and brackets (design 14.1, I8) ----------------------
+    _conversions_and_brackets(run, result)
 
     # -- the workbook's sheets -----------------------------------------
     xlsx = job.results_dir / R.RESULTS_XLSX

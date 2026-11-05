@@ -12,6 +12,7 @@ import json
 import numpy as np
 
 from owlplanner.export import plan_metrics, balance_sheet_arrays, cash_flow_split, fixedIncomeStreams
+from owlplanner.brackets import bracket_view
 from owlplanner.thresholds import threshold_proximity
 from owlplanner.version import engine_provenance
 
@@ -276,6 +277,9 @@ def plan_to_dict(plan) -> dict:
         # "Things to look at" (I3): the years whose income sits just below or just over a
         # threshold the model knows, with the distance and the price of the crossing.
         "thresholds": threshold_proximity(plan),
+        # The conversion and bracket view (I8): per year, taxable income, the conversion
+        # layer, and the bracket, IRMAA and ACA lines it is measured against.
+        "brackets": bracket_view(plan),
         "by_year": by_year,
     }
 

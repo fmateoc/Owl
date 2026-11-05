@@ -41,6 +41,11 @@ whole-year pair by branch-and-bound) is a later increment and stays
   and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
   model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
   "fixed"`` just solves, under its own model.
+- ``regret`` (I8, one per request from the run page) solves as ``custom`` with the ages
+  fixed, then runs the conversion regret sweep (`stresstests.run_conversion_regret_sweep`,
+  its "Quick look" size) and writes `regret.json`: what a different first-year Roth
+  conversion would have cost. It is a solve preset, not a queue-time choice (as
+  ``decision_exact``); the interface offers it through the run page's own button.
 - ``custom`` runs the case's own `[solver_options]`, with the caller's options on top (as
   `owlcli --solver-opt` does).
 """
@@ -53,7 +58,7 @@ from .agesearch import EXACT_GROUP
 PRESETS = ("quick", "decision", "ages", "custom")
 
 # What one solve is recorded as (its results folder is <stamp>_<solve preset>).
-SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "custom")
+SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "regret", "custom")
 
 # The families whose "optimize" mode makes the solve a MIP (or a local search); "quick" puts
 # each on the loop.
@@ -69,6 +74,10 @@ _FORCED = {
     "decision_exact": {"withSSAges": "fixed", **EXACT_GROUP},
     # The Ages preset forces nothing: the case's own model, its own ages choice (section 8.1).
     "ages": {},
+    # I8's "regret" job: the case's own model with the ages fixed (R4), then the conversion
+    # regret sweep over its historical scenarios ("what would a different conversion have
+    # cost?"). One per request, from the run page; not one of section 8.1's rows.
+    "regret": {"withSSAges": "fixed"},
     "custom": {},
 }
 

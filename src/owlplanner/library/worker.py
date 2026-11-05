@@ -40,6 +40,14 @@ HEARTBEAT_SECONDS = 30.0
 # The wake/cancel check during a long solve runs at most this often (each log line asks).
 CHECK_SECONDS = 2.0
 
+# The "regret" preset's sweep size (I8): "Quick look" of `ui/owlbridge.REGRET_PRESETS`, its
+# cheapest -- 18 historical scenarios x (7 grid points + 2) full-horizon solves. Cutting the
+# grid is far cheaper than cutting the scenarios (stresstests.run_conversion_regret_sweep).
+REGRET_N_SCENARIOS = 18
+REGRET_N_GRID = 7
+REGRET_GRID_PAD = 45_000.0
+REGRET_SEED = 1
+
 _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
 _WARN_RE = re.compile(r"WARNING|ERROR")
 
@@ -272,6 +280,20 @@ class Worker:
         else:
             self.job.update(self.token, error=plan.solverMessage or status)
 
+        # I8's "regret" preset, one per request (design 14.1): the sweep runs after the base
+        # results are published, so a failed sweep keeps them (record.json says what failed).
+        regret = None
+        if status == "solved" and preset == "regret":
+            try:
+                self.job.touch(self.token, step="the conversion regret sweep")
+                self.check()
+                regret = self._regret_sweep(plan, options)
+            except JobCancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001 - the sweep failed; the solve stands
+                traceback.print_exc(file=self.tee)
+                regret = {"error": str(exc)}
+
         self._write_record(
             status=status,
             plan_year=plan_year,
@@ -292,6 +314,7 @@ class Worker:
             },
             plan_pkl_sha256=plan_sha,
             age_search=age_search,
+            regret=regret,
         )
         return R.DONE if status == "solved" else R.FAILED
 
@@ -323,6 +346,39 @@ class Worker:
             shutil.rmtree(staging, ignore_errors=True)
         return plan_sha
 
+    def _regret_sweep(self, plan, options) -> dict:
+        """I8's per-request run: "what a different conversion would have cost".
+
+        `stresstests.run_conversion_regret_sweep` at "Quick look" size (its cheapest), over
+        the historical windows whose starts fit a full horizon of data. `regret.json` joins
+        the artifacts (published atomically, as the others) and the summary goes into
+        record.json; the sweep re-solves the plan per scenario, so it can run a while (the
+        job's heartbeat and cancel checks run between scenarios).
+        """
+        from owlplanner import summarize_conversion_regret
+        from owlplanner.rates import FROM
+
+        yend = int(plan.year_n[0]) - plan.N_n  # the last start with a full horizon (histYendMax)
+        result = plan.runConversionRegret(
+            plan.objective, options, FROM, yend,
+            person=0,
+            n_grid=REGRET_N_GRID, grid_pad=REGRET_GRID_PAD,
+            n_scenarios=REGRET_N_SCENARIOS, seed=REGRET_SEED, milp_downgrade=True,
+            on_scenario=lambda *args: self.check(),
+        )
+        summary = summarize_conversion_regret(result)
+        staging = self.results_dir / f".attempt-{self.token[:8]}"
+        staging.mkdir(exist_ok=True)
+        try:
+            self._write_json(staging, R.REGRET_JSON, summary)
+            try:
+                self.job.publish(self.token, staging, (R.REGRET_JSON,))
+            except R.TokenChanged as exc:
+                raise JobCancelled(str(exc)) from exc
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+        return summary
+
     def _write_json(self, folder, name, doc):
         from owlplanner.cli.formatters import _NumpyEncoder
 
@@ -331,7 +387,8 @@ class Worker:
 
     def _write_record(self, *, status, plan_year=None, plan_doc=None, options=None, started=None,
                       finished=None, wall_time_seconds=None, solver=None, gap=None,
-                      iterations=None, rates=None, plan_pkl_sha256=None, age_search=None, error=None):
+                      iterations=None, rates=None, plan_pkl_sha256=None, age_search=None,
+                      regret=None, error=None):
         doc = R.build_record(
             run_id=str(self.job.doc.get("run_id") or ""),
             results_id=self.job.id,
@@ -351,6 +408,7 @@ class Worker:
             rates=rates,
             plan_pkl_sha256=plan_pkl_sha256,
             age_search=age_search,
+            regret=regret,
             error=error,
         )
         # Under the job's lock, token checked inside it (H4): a stale worker that woke after

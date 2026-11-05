@@ -100,7 +100,7 @@ bequest = 0                             # savings spent by 89 (read here, not un
                                         # counts savings only: a home is kept and reported in the final bequest
 withSSAges = "optimize"                 # co-optimize claiming ages (the full model; with withMedicare
                                         # "optimize" every candidate is a MIP: decide ages with
-                                        # fork-notes/phase5/work_sweep.py, phase0-scenarios.md section 4)
+                                        # owlplanner.work_sweep, phase0-scenarios.md section 4)
 withMedicare = "optimize"               # IRMAA as endogenous cost
 withACA = "loop"                        # pre-65 marketplace (2027 until each turns 65)
 withItemized = "loop"                   # itemized deductions (federal and NY IT-196); "none" = standard only

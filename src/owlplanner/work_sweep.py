@@ -96,7 +96,7 @@ report says where its default caps (300 s per solve, 60 s per restricted solve) 
 
 Plans start today: compare variants run the same day. Run from the repository root:
 
-    .venv/bin/python fork-notes/phase5/work_sweep.py CASE.toml VARIANTS.json [--out-dir DIR]
+    .venv/bin/python -m owlplanner.work_sweep CASE.toml VARIANTS.json [--out-dir DIR]
         [--jobs N] [--json FILE]
 """
 
@@ -105,24 +105,21 @@ import copy
 import io
 import json
 import os
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 import multiprocessing as mp
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+import numpy as np
+import openpyxl
 
-import numpy as np  # noqa: E402
-import openpyxl  # noqa: E402
-
-import owlplanner as owl  # noqa: E402
-from owlplanner import hfp_io, localsearch  # noqa: E402
-from owlplanner.cli.set_override import apply_overrides  # noqa: E402
-from owlplanner.config import load_toml, save_toml  # noqa: E402
-from owlplanner.config.plan_bridge import config_to_plan  # noqa: E402
-from owlplanner.export import plan_metrics  # noqa: E402
-from owlplanner.plan import TIME_LIMIT, Plan  # noqa: E402
+import owlplanner as owl
+from owlplanner import hfp_io, localsearch
+from owlplanner.cli.set_override import apply_overrides
+from owlplanner.config import load_toml, save_toml
+from owlplanner.config.plan_bridge import config_to_plan
+from owlplanner.export import plan_metrics
+from owlplanner.plan import TIME_LIMIT, Plan
 
 EXACT = {"withMedicare": "none", "withSSTaxability": 0.85}
 FAMILIES = ("withSSTaxability", "withLTCG", "withNIIT", "withACA", "withSeniorBonus", "withMedicare")

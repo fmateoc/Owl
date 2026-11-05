@@ -2,9 +2,9 @@
 import json
 import sys
 H = sys.argv[1]
-sys.path.insert(0, f"{H}/fork-notes/phase5")
-import work_sweep as ws
-import owlplanner as owl
+sys.path.insert(0, f"{H}/src")
+from owlplanner import work_sweep as ws  # noqa: E402
+import owlplanner as owl  # noqa: E402
 spec = json.load(open(f"{H}/fork-notes/phase5/work_sweep_chris+pat.json"))
 by = {v[0]: v for v in ws.build_variants(f"{H}/examples/Case_chris+pat.toml", spec, sys.argv[2])}
 _, diconf, dirname, _ = by["pat-part-time-2029-30"]

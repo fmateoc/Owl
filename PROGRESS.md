@@ -6557,3 +6557,32 @@ Next: an independent review of the second increment (the pattern of the core: tw
 the folds decided by the user); moving `work_sweep.py` into `src/owlplanner`; and the full
 42-cell condo grid through the interface as the overnight run
 (`check_library_variants.py --full`).
+
+
+## Run-library step 6: `work_sweep.py` moved into `src/owlplanner` (2026-11-05)
+
+The second increment's open item (above). `fork-notes/phase5/work_sweep.py` is now
+`src/owlplanner/work_sweep.py` (`owlplanner.work_sweep`, `git mv`), still the one
+implementation (the fork's rule), shared by `library/worker.py`'s `_load_work_sweep` and
+`fork-notes/synthetic/run_suite.py` -- both loaders are plain imports now. The move fixes
+the loader's layout assumption (`Path(__file__).parents[3] / "fork-notes"` exists only in
+a checkout of this fork: an installed `owlplanner` could not run "Ages, thorough" at all,
+and the preset had to say so), drops the file's own `sys.path` hack and `# noqa: E402`
+markers, and makes `score` picklable across spawned processes (the dynamically loaded
+module was not) -- the worker keeps its own serial pool anyway (one job at a time; the
+CLI's `--jobs 1` default is serial too). Phase 5's six probes that imported the sweep as a
+sibling re-point at the package module (`highs_gap_probe.py`, `reltol_probe.py`,
+`reltol_check.py`, `ws_bb_check.py`, `ws_parttime_a_check.py`, `ws_parttime_bb_check.py`;
+the three importers share one module object, checked); the recorded outputs and data files
+stay in `fork-notes/phase5/` (`work_sweep_chris+pat*.json/txt`). Live references updated:
+the design's 8.1 table/`built` note, CHANGELOG-fork.md's entry, `run_suite.py` and
+`make_cases.py` docstrings, `phase0-scenarios.md` and `Case_us.template.toml`'s command
+examples, `running-locally.md`, the synthetic README, `issue-run-library.md`, the
+`library/` docstrings (`agesearch`, `agemap`, `presets`, `worker`) and two test comments;
+PROGRESS's dated entries and the phase-5 record docs keep their paths as written. One test
+pins the move (`test_worker.py::TestAgesThorough::test_the_sweep_lives_in_the_package`).
+
+Checks: `pytest tests/library tests/ui` **825 passed, 1 skipped** (3:40), the three
+touched test files 40/40 with the new pin; `python -m owlplanner.work_sweep --help` and
+`fork-notes/synthetic/run_suite.py --help` green; the probe imports green; flake8/ruff
+clean on the touched files (`ws_parttime_bb_check.py`'s three pre-existing items stand).

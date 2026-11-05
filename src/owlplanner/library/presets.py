@@ -16,7 +16,7 @@ the variants the same way?), not as a tolerance (R2)"):
 Built in step 2: ``quick`` and ``custom``. ``decision`` / ``decision_exact`` come with the
 comparison (step 3). ``ages`` (section 8.1's "Ages": `run_suite.py`'s two-stage claiming-age
 search, `library.agesearch`) and ``ages_thorough`` (its "Ages, thorough":
-`fork-notes/phase5/work_sweep.py`'s every whole-year pair by branch-and-bound) come with
+`owlplanner.work_sweep`'s every whole-year pair by branch-and-bound) come with
 step 6.
 
 - ``quick`` is section 8.1's "the default loop, claiming ages held": every tax family that
@@ -41,7 +41,7 @@ step 6.
   and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
   model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
   "fixed"`` just solves, under its own model.
-- ``ages_thorough`` (section 8.1's "Ages, thorough") runs `fork-notes/phase5/work_sweep.py`'s
+- ``ages_thorough`` (section 8.1's "Ages, thorough") runs `owlplanner.work_sweep`'s
   own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
   gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
   skipped) -- writes its `scores.json` (the claiming-age map reads it, I7) and solves at the

@@ -23,9 +23,9 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-import work_sweep as ws  # noqa: E402
+from owlplanner import work_sweep as ws  # noqa: E402
 
 import owlplanner as owl  # noqa: E402
 

@@ -8,7 +8,7 @@ import pytest
 from owlplanner.library import agemap
 from owlplanner.library.view import NOISE_FRACTION
 
-# work_sweep.py's shape (fork-notes/phase5/work_sweep.py, summarize): one row per work
+# work_sweep.py's shape (owlplanner.work_sweep, summarize): one row per work
 # variant; `results` keyed by the claiming ages, each cell with value/tolerance/proved/ages.
 SCORES = [
     {

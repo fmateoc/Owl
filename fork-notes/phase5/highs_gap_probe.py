@@ -18,11 +18,11 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import highspy  # noqa: E402
 
-import work_sweep as ws  # noqa: E402
+from owlplanner import work_sweep as ws  # noqa: E402
 
 HERE = os.path.dirname(__file__)
 CASE = os.path.join(HERE, "..", "..", "examples", "Case_chris+pat.toml")

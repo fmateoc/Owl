@@ -50,32 +50,26 @@ REGRET_SEED = 1
 
 
 def _load_work_sweep():
-    """`fork-notes/phase5/work_sweep.py`, the phase-5 claiming-age sweep.
+    """`owlplanner.work_sweep`, the phase-5 claiming-age sweep.
 
     The "Ages, thorough" preset shares that one implementation with
     `fork-notes/synthetic/run_suite.py` (the fork's rule; `library.agesearch` is the same
-    sharing for the two-stage search). Loaded by path: `fork-notes/` is not a package and
-    may not be beside an installed `owlplanner` at all, in which case the preset says so
-    instead of failing obscurely. Moving the sweep into `src/owlplanner` stays open.
+    sharing for the two-stage search). Imported lazily: it pulls in the solver stack and
+    only this preset runs it. (It used to be loaded from `fork-notes/phase5/work_sweep.py`
+    by path; the sweep moved into `src/owlplanner`, 2026-11-05.)
     """
-    import importlib.util
+    from owlplanner import work_sweep
 
-    path = Path(__file__).resolve().parents[3] / "fork-notes" / "phase5" / "work_sweep.py"
-    if not path.is_file():
-        raise ScenarioError(
-            "the 'Ages, thorough' preset runs fork-notes/phase5/work_sweep.py and cannot "
-            "find it: run it from a checkout of this fork (or use the 'ages' preset)")
-    spec = importlib.util.spec_from_file_location("owl_work_sweep", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return work_sweep
 
 
 class _SerialPool:
     """`work_sweep`'s pool interface (`pool.map`), run in this process.
 
-    The CLI's default is `--jobs 1`, which is serial too; a spawned pool would need
-    `score` picklable across a dynamically loaded module (it is not).
+    The CLI's default is `--jobs 1`, which is serial too. (`score` is picklable across
+    processes now that the sweep lives in `owlplanner.work_sweep`, so a pool would work;
+    the worker keeps the sweep serial -- one job at a time, and the plans inside it are
+    the expensive part.)
     """
 
     @staticmethod
@@ -429,7 +423,7 @@ class Worker:
     def _ages_thorough(self, diconf, dirname) -> tuple:
         """(ages in years, candidates, scores.json's row): section 8.1's "Ages, thorough".
 
-        `fork-notes/phase5/work_sweep.py`'s own `run_variant`: stage (a)'s exact-LP search
+        `owlplanner.work_sweep`'s own `run_variant`: stage (a)'s exact-LP search
         and stage (c)'s sweep of every whole-year pair of the searched people, each scored
         by branch-and-bound at gap 1e-5 (local search kept for a plan it does not prove);
         the loop search (b) is skipped and the deposit-split check (`--eta`) is off -- both

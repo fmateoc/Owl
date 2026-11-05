@@ -92,7 +92,7 @@ The work sweep (claiming ages decided by branch-and-bound at fixed ages; hours p
 separate:
 
 ```bash
-.venv/bin/python fork-notes/phase5/work_sweep.py fork-notes/synthetic/cases/Case_ari+noa.toml \
+.venv/bin/python -m owlplanner.work_sweep fork-notes/synthetic/cases/Case_ari+noa.toml \
     fork-notes/synthetic/cases/work_variants.json --out-dir fork-notes/synthetic/runs/sweep --jobs 4
 ```
 

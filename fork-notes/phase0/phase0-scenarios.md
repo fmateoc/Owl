@@ -125,7 +125,7 @@ before, it stayed the text "0.85" and silently ran the loop.)
 
 Owl applies the SSA earnings test to every claim before FRA (upstream `6ea43a9`) and charges the
 employee payroll tax on wages (upstream `3a2dfc33`), so work variants compare directly. Decide them
-with `fork-notes/phase5/work_sweep.py`, not with `owlcli compare`: claiming ages need the
+with `owlplanner.work_sweep`, not with `owlcli compare`: claiming ages need the
 two-stage method of `fork-notes/plan-review-2026-10-22.md` §3.2 (decision R1). The script runs a
 `withSSAges` search under the exact LP (ACA optimized when `slcsp_annual > 0`) and under the loop,
 then scores the whole-year ages 62-70 and both picks at fixed ages by branch-and-bound at gap
@@ -151,7 +151,7 @@ in `otherFiles/`:
 ```
 
 ```bash
-.venv/bin/python fork-notes/phase5/work_sweep.py otherFiles/Case_us.toml otherFiles/work_variants.json \
+.venv/bin/python -m owlplanner.work_sweep otherFiles/Case_us.toml otherFiles/work_variants.json \
   --out-dir otherFiles/sweep --jobs 4 --json otherFiles/sweep/scores.json | tee otherFiles/sweep/report.txt
 ```
 

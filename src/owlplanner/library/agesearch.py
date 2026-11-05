@@ -8,7 +8,7 @@ two stages, as `fork-notes/synthetic/run_suite.py` runs it:
 - **Stage 1** is the case's own ``withSSAges`` search under the **exact LP** (the loop with
   Medicare off and the SS taxable fraction pinned at 0.85 -- `EXACT_MODEL`): a pure LP per
   candidate (about 0.5 s on the synthetic case). ACA stays on the loop, unlike
-  `fork-notes/phase5/work_sweep.py`'s stage (a): ``withACA = "optimize"`` makes each
+  `owlplanner.work_sweep`'s stage (a): ``withACA = "optimize"`` makes each
   candidate a MIP (9 s there, about 10 minutes for the search's ~270 candidates), and the
   exact LP mis-prices the ACA years even then (`plan-review-2026-10-22.md` 3.2).
 - **Stage 2** solves the pick and each searched person's pick +-1 year (clipped to 62-70,

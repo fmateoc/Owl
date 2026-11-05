@@ -13,9 +13,10 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import reltol_probe as rp  # noqa: E402
-import work_sweep as ws  # noqa: E402
+from owlplanner import work_sweep as ws  # noqa: E402
 
 PLANS = [("pat-stops-2027", (68 * 12 + 3, 62 * 12 + 1)), ("base", (67 * 12, 63 * 12))]
 

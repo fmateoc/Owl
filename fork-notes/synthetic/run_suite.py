@@ -7,7 +7,8 @@ where, when and how to buy a condo (renting to the end is not an option: user, 2
 what a late-life care cost does to keeping it. Each scenario is solved the way `owlcli run` solves
 a case (load_toml, the --set overrides, config_to_plan, the case's own [solver_options]), so a run
 that works here works with owlcli too. The work sweep (claiming ages decided by branch-and-bound
-at fixed ages, hours per variant) stays fork-notes/phase5/work_sweep.py.
+at fixed ages, hours per variant) is `owlplanner.work_sweep` (moved out of fork-notes/phase5,
+2026-11-05).
 
 Two uses, the same command:
 
@@ -62,7 +63,6 @@ Plans start today: compare only runs made the same day.
 
 import argparse
 import copy
-import importlib.util
 import io
 import json
 import multiprocessing as mp
@@ -89,12 +89,11 @@ from owlplanner.export import build_summary_string, plan_metrics  # noqa: E402
 # The two-stage claiming-age search is one implementation, shared with the run library's
 # "Ages" preset (run-library-design.md section 8.1; owlplanner.library.agesearch), and so
 # are the exact-model option lists it names (EXACT_GROUP here is run_suite's condo-exact
-# and rates-exact model).
+# and rates-exact model). The work sweep is one implementation too -- `owlplanner.work_sweep`
+# (it lived in fork-notes/phase5 until 2026-11-05), shared with the library's "Ages,
+# thorough" preset.
+from owlplanner import work_sweep  # noqa: E402
 from owlplanner.library.agesearch import EXACT_GROUP_SETS as EXACT_GROUP, fixed_ages, two_stage_ages  # noqa: E402
-
-_spec = importlib.util.spec_from_file_location("work_sweep", ROOT / "fork-notes" / "phase5" / "work_sweep.py")
-work_sweep = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(work_sweep)
 
 _NUM = re.compile(r"\$?\d[\d,]*(?:\.\d+)?(?![\d.,%])")  # amounts and counts; a percentage stays
 

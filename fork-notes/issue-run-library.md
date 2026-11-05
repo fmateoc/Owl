@@ -128,7 +128,7 @@ not merged here):
 **Fork-only, kept out of the proposal:** the score rule's first branch (first-year discretionary
 spending, which needs the fork's essential budget lines); the NY recapture and Enhanced STAR
 entries of `thresholds.py`; the budget sidecar handling in `casefiles.py`; the claiming-age map
-(`library/agemap.py` reads `fork-notes/phase5/work_sweep.py --json`, which upstream has no
+(`library/agemap.py` reads `owlplanner.work_sweep --json`, which upstream has no
 producer for); `housing_costs_nominal`, `locality` and the `state_moves` shape in `plan_to_dict`.
 The generic score is the objective (spending basis under `maxSpending`, the bequest under
 `maxBequest`), which is what the fork falls back to.

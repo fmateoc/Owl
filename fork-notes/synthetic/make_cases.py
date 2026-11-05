@@ -35,7 +35,7 @@ Files written to --out-dir (default fork-notes/synthetic/cases, gitignored):
                                 hfp edits as in work_sweep.py), "extra" (more main scenarios, same
                                 format: the earnings-test case), "grid" (also place, year,
                                 financing), "ltc", and "reference" (the grid entry equal to the baseline)
-    work_variants.json          the same work variants for fork-notes/phase5/work_sweep.py
+    work_variants.json          the same work variants for owlplanner.work_sweep
     scenarios.json              the same cases as schema-v2 scenarios for the run library's builder
                                 (run-library-design.md section 6, step 4): events plus the hand
                                 rows, with "expected_case" (the case its `set` builds) and the

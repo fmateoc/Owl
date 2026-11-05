@@ -3,8 +3,8 @@ import json, sys
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing as mp
 H = "/home/user/Owl"
-sys.path.insert(0, f"{H}/fork-notes/phase5")
-import work_sweep as ws
+sys.path.insert(0, f"{H}/src")
+from owlplanner import work_sweep as ws  # noqa: E402
 cfg = {"decider": "bb", "gap": 1e-5, "max_time": ws.TIME_LIMIT, "ls_time": 7200.0, "ls_step": 1800.0}
 AGES = [[68 + 5 / 12, 65.0], [68 + 5 / 12, 64 + 7 / 12], [68.25, 64 + 7 / 12]]
 if __name__ == "__main__":

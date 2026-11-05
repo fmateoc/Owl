@@ -359,9 +359,9 @@ class TestTheRegretSweep:
 
 class TestAgesThorough:
     """Section 8.1's "Ages, thorough": `work_sweep.py`'s whole-year sweep decides the ages
-    (the sweep itself is phase 5's, pinned there; canned here -- it runs 29-51 min per
-    variant), the solve runs at them, and the sweep lands in scores.json (I7's claiming-age
-    map reads it)."""
+    (the sweep itself is phase 5's, now `owlplanner.work_sweep`; canned here -- it runs
+    29-51 min per variant), the solve runs at them, and the sweep lands in scores.json
+    (I7's claiming-age map reads it)."""
 
     ROW = {
         "name": "base", "free": ["Bill"], "best": [804],
@@ -396,6 +396,15 @@ class TestAgesThorough:
 
         monkeypatch.setattr(W, "_load_work_sweep",
                             lambda: types.SimpleNamespace(TIME_LIMIT=900.0, run_variant=run_variant))
+
+    def test_the_sweep_lives_in_the_package(self):
+        """The move (2026-11-05): `_load_work_sweep` is a plain import of `owlplanner.work_sweep`,
+        one implementation shared with `run_suite.py` by name (and picklable across processes
+        now, which the dynamically loaded file was not)."""
+        from owlplanner import work_sweep
+        from owlplanner.library import worker as W
+
+        assert W._load_work_sweep() is work_sweep
 
     def test_the_sweep_decides_the_ages_and_the_solve_runs_at_them(self, searching_run, monkeypatch):
         seen = []

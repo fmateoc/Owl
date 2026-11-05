@@ -1,6 +1,6 @@
 """The claiming-age map over `work_sweep.py`'s scores output (run-library-design.md, 14.1, I7).
 
-`fork-notes/phase5/work_sweep.py --json scores.json` scores a case at fixed claiming ages and
+`owlplanner.work_sweep --json scores.json` scores a case at fixed claiming ages and
 writes one row per work variant: the ages it swept, the decided ages and every scored plan
 (`results`, keyed by the ages in "68y3m/63y0m" form, each cell with `value`, `tolerance` and
 `proved`). This module reads that file and turns one variant into an `AgeMap` for the run

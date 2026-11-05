@@ -115,7 +115,7 @@ This writes `otherFiles/Case_us_results.xlsx` next to the case.
   rent against buy, the 2032 reversion, the 2027 ACA benchmark).
 - `fork-notes/synthetic/run_suite.py` runs the whole scenario set at once and writes a `report.md`
   (`fork-notes/synthetic/README.md`).
-- `fork-notes/phase5/work_sweep.py` decides the work and claiming-age variants
+- `owlplanner.work_sweep` decides the work and claiming-age variants
   (`phase0-scenarios.md`, section 4).
 
 Expect minutes per solve. The template's `withSSAges = "optimize"` with

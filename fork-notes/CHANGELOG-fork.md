@@ -54,7 +54,8 @@ benchmark" mover is **both** the ACA-rules mover and a benchmark-premium mover, 
   check off) decides the ages, the solve runs at them (`record.json`'s `age_search`, as
   `ages`), and the sweep's row lands in `scores.json` in the results folder -- which the
   claiming-age map (I7) reads. The sweep stays phase 5's, shared with `run_suite.py` by
-  loading `fork-notes/phase5/work_sweep.py` (moving it into `src/owlplanner` stays open).
+  loading `fork-notes/phase5/work_sweep.py` (moved into `src/owlplanner` as
+  `owlplanner.work_sweep` on 2026-11-05; the loaders are plain imports since).
 - Tests: `tests/library/test_tornado.py`, `tests/plan/test_brackets.py` and additions across
   `test_variants.py`, `test_builder.py`, `test_scenario.py`, `test_worker.py`,
   `test_presets.py`, `tests/tax/test_aca.py`, `tests/ui/test_variant_tables.py`,

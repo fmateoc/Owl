@@ -6588,6 +6588,32 @@ touched test files 40/40 with the new pin; `python -m owlplanner.work_sweep --he
 clean on the touched files (`ws_parttime_bb_check.py`'s three pre-existing items stand).
 
 
+## Run-library step 6: the second increment reviewed, AE1-AE3 (2026-11-05)
+
+The independent review (`fork-notes/run-library-step6-inc2-review.md`, the core's pattern;
+prefix AE after AC/AD) of `0bc64ca0..0964e351` read against the design's sections 6-9, 11,
+14.1/14.3 and section 8.1's "Ages, thorough". **AE1** (medium): a death at the person's age
+today passes `check_death_age`, and when it is the last horizon the plan is one year and
+`config_to_plan` raises a raw `ValueError: Plan needs more than 1 years.` instead of the
+designed named refusal (probe; the fold is a window check at the door).
+**AE2** (low): `member_values` accepts a dimension name it does not know -- a typo places
+the member in a phantom grid dimension (AD6's rule says refuse).
+**AE3** (low): `regret.json` is a second copy of `record.json`'s summary while
+`build_record`'s docstring, the run page's caption and the entry above all say the full
+curve is there; the per-scenario sweep data is discarded. Checked and not a finding: the
+rate movers' transforms (a hand table keeps them, a generated path resets them -- both
+shift the effective path exactly once), the `deaths[0]` provenance (the established
+pattern), `_sequence_value`'s empty cells (`records()` normalizes them),
+`aca_table_year`'s round-trip and all five `acaCosts`/`acaVals` call sites, the
+claiming-age map's sources, `pair_tolerance`'s call shape. Probes in the session's temp
+only; the review changed nothing in `src/`, `ui/` or `tests/`. Tests: the increment's own
+files **308 passed** (3:32); the full suite (Windows, -n 4) **4346 passed, 2 skipped**
+(14:39; the increment's 4345 + the move's one pin). flake8/ruff clean on the touched files.
+
+Folds (AE1-AE3) are the user's call; the core's pattern then gives the folded state its
+second review.
+
+
 ## Run-library step 6: the full-grid check's suite pool bounded (2026-11-05)
 
 The overnight `check_library_variants.py --full` (the "Next:" item above) died on its first

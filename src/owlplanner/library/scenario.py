@@ -276,6 +276,8 @@ def _event_words(event: dict) -> str:
         age = event.get("age")
         return (f"{event.get('person')} claims at {age}" if age is not None
                 else f"{event.get('person')}: let Owl choose")
+    if kind == "death":
+        return f"{event.get('person')} dies at {event.get('age')}"
     if kind == "rent":
         end = f" to {_ref_words(event['end'])}" if "end" in event else ""
         return (f"{event.get('monthly')}/mo from {_ref_words(event.get('start'))}, "

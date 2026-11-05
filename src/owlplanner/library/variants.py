@@ -20,16 +20,21 @@ value is a small edit to the scenario's events:
 - ``work``: {"person", "end", "label"?} -- the person's full-time work event's last year.
 - ``claim``: {person: age or None} -- each named person's claiming age (None: let Owl
   choose); a person with no claim event gets one.
+- ``death`` (I2): {"person", "age", "label"?} -- when that person dies (their life horizon;
+  Owl's own death mechanics do the rest). A person with no death event gets one.
+- ``sequence`` (I11): {"label"?, "sequence", "start"} -- the named downturn sequence overlaid
+  on the run's own rate path from a year or anchor ("the purchase year", `after:Ari`), the
+  single `downturn` event of the scenario (step 5b); ``sequence: None`` drops the overlay
+  (a "no downturn" cell in a grid).
 
 The variant's `values` ({dimension: label}) is what a collection member stores and the grid
 view keys its rows and columns on (`store.Member`). The children are scenarios like any
 other: `Library.save_run` freezes them (canonicalized; the change summary against the
 parent is computed there).
 
-Not covered here (the design's later increments): the downturn-sequence dimension (I11) and
-the longevity dimension (I2, first death at 75 / 80 / 85). A purchase is at most one per
-scenario (D6), so a "place" value that implies a different home is an edit of the same
-event, never a second purchase.
+A purchase is at most one per scenario (D6), so a "place" value that implies a different home
+is an edit of the same event, never a second purchase; the same holds for the downturn event
+(one overlay per scenario) and one death per person.
 """
 
 from __future__ import annotations
@@ -40,9 +45,10 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from . import builder
 from .scenario import ScenarioError, validate
 
-DIMENSIONS = ("place", "year", "financing", "work", "claim")
+DIMENSIONS = ("place", "year", "financing", "work", "claim", "death", "sequence")
 
 # The dimensions that edit the one purchase event (D6: one purchase per scenario).
 _PURCHASE_DIMENSIONS = ("place", "year", "financing")
@@ -62,8 +68,16 @@ def _names(scenario: dict) -> list:
 
 
 def _events(scenario: dict) -> list:
-    events = scenario.get("events")
+    events = scenario.get("events") or []
     return [e for e in events if isinstance(e, dict)]
+
+
+def _start_ref(value: Any, where: str) -> dict:
+    """A downturn's placement: a year field ({"year"/anchor}), a bare year, or its editable
+    text form ("purchase", "after:Ari", "age:Ari:86"; `builder.parse_year_ref`)."""
+    if isinstance(value, str):
+        return builder.parse_year_ref(value, where)
+    return builder._year_ref(value, where)
 
 
 def _one_event(scenario: dict, kind: str, dimension: str, person: str = None) -> dict:
@@ -111,6 +125,13 @@ def _value_label(dimension: str, value: Any) -> str:
         return _label_text(value["label"])
     if dimension == "work":
         return f"{value.get('person')} to {value.get('end')}"
+    if dimension == "death":
+        return f"{value.get('person')} dies at {int(value.get('age'))}"
+    if dimension == "sequence":
+        if value.get("sequence") is None:
+            return "no downturn"
+        where = builder.year_ref_text(_start_ref(value.get("start"), "sequence.start"))
+        return f"{value.get('sequence')} at {where}"
     raise ScenarioError(f"{dimension}: value {value!r} needs a 'label'")
 
 
@@ -191,6 +212,42 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
                 raise ScenarioError(f"claim: {person!r} is not one of the case's people {names}")
             if age is not None and (not isinstance(age, (int, float)) or isinstance(age, bool) or age <= 0):
                 raise ScenarioError(f"claim: {person!r}'s age must be a positive number or None")
+    elif dimension == "death":
+        names = _names(scenario)
+        person, age = value.get("person"), value.get("age")
+        if not isinstance(person, str) or person not in names:
+            raise ScenarioError(f"death: {person!r} is not one of the case's people {names}")
+        if not isinstance(age, int) or isinstance(age, bool) or not 1 <= age <= builder.DEATH_AGE_MAX:
+            raise ScenarioError(
+                f"death: {person!r}'s age must be a whole number of years "
+                f"1-{builder.DEATH_AGE_MAX}, got {age!r}")
+        builder.check_death_age(person, age, scenario.get("case") or {}, scenario,
+                                where=f"death: {person!r}")
+    elif dimension == "sequence":
+        sequence = value.get("sequence")
+        if sequence is None:
+            return
+        from .sequences import SequenceError, sequences  # lazy: reads the data file
+
+        try:
+            known = sequences()
+        except SequenceError as exc:
+            raise ScenarioError(str(exc)) from exc
+        if sequence not in known:
+            raise ScenarioError(f"sequence: {sequence!r} is not one of {sorted(known)}")
+        if "start" not in value:
+            raise ScenarioError("sequence: each value needs a 'start' (a year or an anchor)")
+        _start_ref(value["start"], "sequence: start")
+        # A downturn generates the run's rates table (step 5b); one that already reads a table
+        # cannot take an overlay (`builder._check_table_events` says the same at build time).
+        if scenario.get("rates_table") is not None:
+            raise ScenarioError(
+                "sequence: this run holds a hand-entered rates table, and a downturn sequence "
+                "generates its own: edit the table instead")
+        if ((scenario.get("case") or {}).get("rates_selection") or {}).get("method") == "table":
+            raise ScenarioError(
+                "sequence: this case reads a rates table (rates_selection.method = 'table') "
+                "and a downturn overlays the case's own rate method: edit the table instead")
 
 
 def _apply_value(dimension: str, value: Any, scenario: dict, place_label) -> None:
@@ -239,6 +296,29 @@ def _apply_value(dimension: str, value: Any, scenario: dict, place_label) -> Non
                 event = {"id": f"claim-{person.lower()}", "kind": "claim", "person": person}
                 scenario.setdefault("events", []).append(event)
             event["age"] = None if age is None else float(age)
+        return
+    if dimension == "death":
+        person, age = value["person"], int(value["age"])
+        event = next((e for e in _events(scenario)
+                      if e.get("kind") == "death" and e.get("person") == person), None)
+        if event is None:
+            event = {"id": f"death-{person.lower()}", "kind": "death", "person": person}
+            scenario.setdefault("events", []).append(event)
+        event["age"] = age
+        return
+    if dimension == "sequence":
+        downs = [e for e in _events(scenario) if e.get("kind") == "downturn"]
+        if value.get("sequence") is None:  # "no downturn": the overlay is taken off
+            if downs:
+                scenario["events"] = [e for e in scenario.get("events") or []
+                                      if not (isinstance(e, dict) and e.get("kind") == "downturn")]
+            return
+        event = downs[0] if downs else None
+        if event is None:
+            event = {"id": "downturn", "kind": "downturn"}
+            scenario.setdefault("events", []).append(event)
+        event["sequence"] = value["sequence"]
+        event["start"] = _start_ref(value["start"], "sequence: start")
         return
 
 

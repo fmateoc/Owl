@@ -502,3 +502,52 @@ class TestSecondReviewFixes:
         events = [{"id": f"c-{name}", "kind": "claim", "person": name, "age": age} for name, age in claims]
         built, _hfp, _provenance = b.build(_scenario(events, case=case))
         assert built["solver_options"]["withSSAges"] == expected
+
+
+class TestDeathEvents:
+    """I2's death events: the life horizon (`basic_info.life_expectancy`, a generated case
+    field like the claiming ages) and the window it sets."""
+
+    DEATH = {"id": "d", "kind": "death", "person": "Ari", "age": 75}
+
+    def test_the_kind_passes_and_sets_the_horizon(self):
+        events = b.validate_events([WORK_ARI, dict(self.DEATH)], ["Ari", "Noa"])
+        assert [e["kind"] for e in events] == ["work", "death"]
+        built, _hfp, provenance = b.build(_scenario([WORK_ARI, dict(self.DEATH)]))
+        assert built["basic_info"]["life_expectancy"] == [75, 89]
+        assert provenance["case_fields"]["basic_info.life_expectancy"] == "d"
+
+    def test_the_horizon_list_is_padded_from_the_default(self):
+        case = _case()
+        case["basic_info"]["life_expectancy"] = [89]  # a hand case that names one person only
+        built, _hfp, _provenance = b.build(
+            _scenario([{"id": "d2", "kind": "death", "person": "Noa", "age": 80}], case=case))
+        assert built["basic_info"]["life_expectancy"] == [89, 80]
+
+    @pytest.mark.parametrize("event, match", [
+        ({"id": "d", "kind": "death", "person": "Zoe", "age": 75}, "person"),
+        ({"id": "d", "kind": "death", "person": "Ari"}, "age"),
+        ({"id": "d", "kind": "death", "person": "Ari", "age": 0}, "whole number"),
+        ({"id": "d", "kind": "death", "person": "Ari", "age": 121}, "whole number"),
+        ({"id": "d", "kind": "death", "person": "Ari", "age": 75.5}, "whole number"),
+    ])
+    def test_bad_death_events_are_refused(self, event, match):
+        with pytest.raises(ScenarioError, match=match):
+            b.validate_events([event], ["Ari", "Noa"])
+
+    def test_one_death_event_per_person(self):
+        with pytest.raises(ScenarioError, match="already has a death event"):
+            b.validate_events([dict(self.DEATH), dict(self.DEATH, id="d2", age=80)],
+                              ["Ari", "Noa"])
+
+    def test_a_death_before_the_plan_start_is_refused(self):
+        # Ari is 62 in 2026 (born 1964): the horizon would run no year at all.
+        with pytest.raises(ScenarioError, match="before the plan"):
+            b.build(_scenario([dict(self.DEATH, age=55)]))
+
+    def test_the_window_shrinks_with_the_last_death(self):
+        # Both people die young: a care line past the window is refused (U7).
+        events = [dict(self.DEATH), {"id": "d2", "kind": "death", "person": "Noa", "age": 63},
+                  {"id": "k", "kind": "care", "amount": 1, "year": 2045}]
+        with pytest.raises(ScenarioError, match="outside the plan"):
+            b.build(_scenario(events))

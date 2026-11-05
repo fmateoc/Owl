@@ -34,9 +34,13 @@ from owlplanner.library.variants import DIMENSIONS
 PLACE_COLUMNS = ["label", "name", "price", "state", "locality", "school_district", "move",
                  "property tax", "hoa", "insurance"]
 FINANCING_COLUMNS = ["label", "kind", "term", "rate", "down", "closing", "extra", "name"]
+SEQUENCE_COLUMNS = ["label", "sequence", "start"]
 # A place's text fields: an empty cell keeps the parent's; "-" clears it (a place with no
 # local income tax, from a parent that has one: White Plains from Yonkers).
 CLEAR = "-"
+# A sequence cell that clears the downturn overlay instead of naming one ("no downturn"):
+# empty, or typed as none.
+NO_SEQUENCE = ("", "-", "none", "no", "no downturn")
 
 
 def places_table():
@@ -45,6 +49,12 @@ def places_table():
 
 def financing_table():
     return pd.DataFrame(columns=FINANCING_COLUMNS)
+
+
+def sequences_table():
+    """The downturn-sequence dimension (I11): one row per value, `start` a year or an anchor
+    ("purchase", "after:Ari"); a sequence of `-` is the "no downturn" value."""
+    return pd.DataFrame(columns=SEQUENCE_COLUMNS)
 
 
 def _missing(value) -> bool:
@@ -117,6 +127,32 @@ def _years(text, what):
         raise ScenarioError(f"not a list of years ({what}): {text!r}") from None
 
 
+def death_values(person, text):
+    """[{"person", "age"}, ...] for one person's death ages (the I2 dimension)."""
+    return [{"person": person, "age": age} for age in _years(text, "death ages")]
+
+
+def _sequence_value(row) -> dict:
+    label = row.get("label")
+    raw = row.get("sequence")
+    text = "" if raw is None else str(raw).strip().lower()
+    if text in NO_SEQUENCE:  # "" is the empty cell: the "no downturn" value
+        if row.get("start") is not None:
+            raise ScenarioError(
+                f"sequence row {label!r} names no sequence but a placement: name a sequence, "
+                f"or use {CLEAR!r} for no downturn")
+        return {"label": label, "sequence": None} if label is not None else {"sequence": None}
+    value = {"sequence": str(raw).strip()}
+    if label is not None:
+        value["label"] = str(label)
+    if row.get("start") is None:
+        raise ScenarioError(
+            f"sequence {value['sequence']!r}: give its placement (a year, or an anchor "
+            "like 'purchase')")
+    value["start"] = str(row["start"]).strip()
+    return value
+
+
 def _place_value(row) -> dict:
     label = row["label"]
     value = {"label": label}
@@ -159,7 +195,8 @@ def _financing_value(row) -> dict:
     return {"label": label, "financing": financing}
 
 
-def dimensions(names, years_text, places, fins, work_person, work_years, claim_texts):
+def dimensions(names, years_text, places, fins, work_person, work_years, claim_texts,
+               death_person="(none)", death_ages="", seqs=None):
     """The make-variants dimensions from the editors' raw values (reviews AC6, AD1, AD6).
 
     Returns ``(dimensions, skipped)``. Raises ScenarioError on a cell that is not a number,
@@ -184,7 +221,46 @@ def dimensions(names, years_text, places, fins, work_person, work_years, claim_t
     combos = claim_combos(names, claim_texts)
     if combos:
         out["claim"] = combos
+    if death_person != "(none)" and (death_ages or "").strip():
+        out["death"] = death_values(death_person, death_ages)
+    for row in records(seqs) if seqs is not None else []:
+        if not any(v is not None for v in row.values()):
+            continue  # the empty row the editor adds
+        out.setdefault("sequence", []).append(_sequence_value(row))
     return out, skipped
+
+
+def member_values(text):
+    """A hand-added member's variant values from "dimension: label" pairs (section 9.3: a
+    member with no values is listed beside the grid; values place it).
+
+    Pairs are separated by `;` or newlines ("year: 2027; place: yonkers"). The year's label
+    is stored as a calendar year (int, what "make variants" stores, so one grid cell holds
+    both routes); every other label stays text. Raises ScenarioError on a part that is not a
+    pair or on a year that is not one calendar year.
+    """
+    out = {}
+    for part in (text or "").replace("\n", ";").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        dim, _, label = part.partition(":")
+        dim, label = dim.strip(), label.strip()
+        if not dim or not label:
+            raise ScenarioError(f"not a 'dimension: label' pair: {part!r}")
+        if dim == "year":
+            years = _years(label, "the year's label")
+            if len(years) != 1:
+                raise ScenarioError(f"year: give one calendar year, got {label!r}")
+            out[dim] = years[0]
+        else:
+            out[dim] = label
+    return out
+
+
+def values_text(values) -> str:
+    """A member's values as `member_values`' editable text ("year: 2027; place: yonkers")."""
+    return "; ".join(f"{dim}: {label}" for dim, label in (values or {}).items())
 
 
 def grid_layout(dims, saved=None):
@@ -193,7 +269,8 @@ def grid_layout(dims, saved=None):
     A saved layout with at least one column is used as saved (its rows may be empty: one
     row). Otherwise the columns are the purchase year when the members vary it (else the
     last dimension), and the rows are every other dimension, in the variant order (place,
-    financing, work, claim) -- section 9.3's pivot, with no dimension dropped.
+    financing, work, claim, death, sequence) -- section 9.3's pivot, with no dimension
+    dropped.
     """
     dims = list(dims)
     saved = saved or {}

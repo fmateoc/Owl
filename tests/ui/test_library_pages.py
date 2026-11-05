@@ -150,6 +150,21 @@ class TestLibraryPage:
         text = _text(at)
         assert "No case is open in the session" in text
 
+    def test_the_save_dialogs_offer_the_collections(self, library):
+        # Design section 7's "Collection" field, in both save dialogs (the run joins with no
+        # variant values; the Collections page sets them).
+        from streamlit.testing.v1 import AppTest
+
+        library.create_collection("Where to live")
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=90)
+        at.session_state["cases"] = {"draft": {"name": "draft"}}  # an open case: tab 2 shows
+        at.session_state["currentCase"] = "draft"
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        boxes = [s for s in at.selectbox if s.label == "Collection (optional)"]
+        assert len(boxes) == 2  # the import tab and "save the current case"
+        assert all(b.options[0] == "(none)" and "Where to live" in b.options for b in boxes)
+
     def test_open_switches_to_the_run_page(self, library, monkeypatch):
         opened = []
         monkeypatch.setattr("streamlit.switch_page", lambda page: opened.append(page))

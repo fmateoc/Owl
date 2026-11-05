@@ -144,6 +144,12 @@ class TestDiffSummaries:
             "rent: 4000/mo from 2026, flat through 2027 (removed)",
         ]
 
+    def test_a_death_event_is_worded(self):
+        # I2: the longevity dimension's change summary ("Ari dies at 75 (added)").
+        old = {"events": []}
+        new = {"events": [{"id": "d", "kind": "death", "person": "Ari", "age": 75}]}
+        assert sc.diff_summaries(old, new) == ["death: Ari dies at 75 (added)"]
+
     def test_anchors_are_worded(self):
         assert sc._ref_words({"anchor": "age", "person": "Ari", "age": 86}) == "Ari at 86"
         assert sc._ref_words({"anchor": "work_end", "person": "Noa", "after": True}) == \

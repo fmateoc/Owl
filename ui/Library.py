@@ -70,7 +70,18 @@ def _report_saved(result):
             libraryjobs.flash("caption", f"Not applied: {result.dropped}")
 
 
-def _save_uploaded_run(name, notes, tags, uploaded):
+def _add_to_collection(collection, result):
+    """The save dialog's "Collection" field (design section 7): the saved run joins the
+    collection as it is -- no variant values, so the grid lists it beside the cells until
+    they are set (the Members section, "Values"). An identical save joins the run it is."""
+    if collection is None:
+        return
+    run = result.run if result.created else result.identical_to
+    if run is not None:
+        lib.add_member(collection.id, run)
+
+
+def _save_uploaded_run(name, notes, tags, uploaded, collection=None):
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         paths = {}
@@ -89,9 +100,10 @@ def _save_uploaded_run(name, notes, tags, uploaded):
             libraryjobs.flash("error", f"Cannot import this case: {exc}")
             return
         _report_saved(result)
+        _add_to_collection(collection, result)
 
 
-def _save_current_case(name, notes, tags):
+def _save_current_case(name, notes, tags, collection=None):
     dic = kz.currentCaseDic()
     plan = dic.get("plan")
     base_run_id = kz.runBase()
@@ -123,6 +135,7 @@ def _save_current_case(name, notes, tags):
         libraryjobs.flash("error", f"Cannot save this case yet: {exc}")
         return
     _report_saved(result)
+    _add_to_collection(collection, result)
     if dropped:
         # Review W1: a value the run's events generate is regenerated from its event (section
         # 6.3, markers first), so an edit to one in the case pages does not survive the save.
@@ -153,10 +166,16 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                                  placeholder="from the file name when empty")
             notes = st.text_area("Notes (optional)", key="lib_import_notes")
             tags = st.text_input("Tags (optional, comma separated)", key="lib_import_tags")
+            collection = st.selectbox(
+                "Collection (optional)", [None] + list(lib.collections()),
+                format_func=lambda c: "(none)" if c is None else c.name,
+                key="lib_import_collection",
+                help="The run joins this collection as it is (design section 7); its variant "
+                     "values are set on the Collections page.")
         if st.button("Import as a new run", type="primary", disabled=case_up is None):
             _save_uploaded_run(name.strip(), notes.strip(), tags.split(","),
                                {"case": case_up, "hfp": hfp_up, "budget": budget_up,
-                                "rates": rates_up})
+                                "rates": rates_up}, collection)
             st.rerun()
     with tab2:
         if not kz.has_current_case():
@@ -175,8 +194,14 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                                      value=kz.currentCaseName() or "")
                 notes = st.text_area("Notes (optional)", key="lib_save_notes")
                 tags = st.text_input("Tags (optional, comma separated)", key="lib_save_tags")
+            collection = st.selectbox(
+                "Collection (optional)", [None] + list(lib.collections()),
+                format_func=lambda c: "(none)" if c is None else c.name,
+                key="lib_save_collection",
+                help="The run joins this collection as it is (design section 7); its variant "
+                     "values are set on the Collections page.")
             if st.button("Save as a new run", type="primary"):
-                _save_current_case(name.strip(), notes.strip(), tags.split(","))
+                _save_current_case(name.strip(), notes.strip(), tags.split(","), collection)
                 st.rerun()
 
 

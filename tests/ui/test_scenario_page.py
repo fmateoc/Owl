@@ -203,3 +203,46 @@ class TestSecondReview:
         text = _text(at)
         assert "Changes against this run: none yet" in text
         assert "saved in scenario schema 1" in text
+
+
+class TestDeathEventsAndTheCollectionField:
+    """I2's death events on the Scenario page, and the save dialog's "Collection" field
+    (design section 7)."""
+
+    DEATH = [{"id": "d", "kind": "death", "person": "Bill", "age": 88}]
+
+    def test_the_death_editor_is_on_the_page(self, tmp_path, monkeypatch):
+        _library_with(tmp_path, monkeypatch, EVENTS + self.DEATH)
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "*Death*" in _text(at)
+
+    def test_a_death_event_survives_an_edited_save(self, tmp_path, monkeypatch):
+        # The page rebuilds the events list from its widgets (`_assemble`): a death event it
+        # does not assemble would be dropped by every edited save.
+        lib = _library_with(tmp_path, monkeypatch, EVENTS + self.DEATH)
+        at = _page()
+        price = next(n for n in at.number_input if n.label.startswith("Price"))
+        price.set_value(800000.0)
+        at.run()
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        child = next(r for r in lib.runs() if r.name != "bill")
+        assert [e for e in lib.scenario(child.id)["events"] if e["kind"] == "death"] == [
+            {"id": "d", "kind": "death", "person": "Bill", "age": 88}]
+
+    def test_the_save_dialog_s_collection_field_adds_the_run(self, library):
+        coll = library.create_collection("Where to live")
+        at = _page()
+        at.selectbox(key="scenario_page_collection").select("Where to live")
+        price = next(n for n in at.number_input if n.label.startswith("Price"))
+        price.set_value(800000.0)
+        at.run()
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        child = next(r for r in library.runs() if r.name != "bill")
+        assert library.collection(coll.id).member(child.id).values == {}

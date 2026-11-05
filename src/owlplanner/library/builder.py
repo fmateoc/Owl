@@ -11,7 +11,10 @@ section 6.2 in one place:
   outflow, the owner's Budget lines from that year, and rent lines ending the year before;
 - the last work year gives the marketplace start year, `months worked`, and the wages and
   contributions in the person sheets;
-- the claiming events give `social_security_ages` and the `withSSAges` switch.
+- the claiming events give `social_security_ages` and the `withSSAges` switch;
+- the death events give `basic_info.life_expectancy` (I2's longevity variants: "first death at
+  75, 80, 85, each spouse in turn", one horizon per person; Owl already models the death
+  mechanics).
 
 `build(scenario) -> (case, hfp, provenance)` is deterministic and has no side effects; a case
 whose rate model draws a new inflation path at every build (a stochastic method without a fixed
@@ -90,7 +93,7 @@ HOUSE_TABLES = ("Debts", "Fixed Assets", "Budget")
 # and `casefiles.export_case` writes it beside Case.toml.
 RATES_CSV = "rates.csv"
 
-EVENT_KINDS = ("work", "claim", "rent", "purchase", "care", "downturn")
+EVENT_KINDS = ("work", "claim", "rent", "purchase", "care", "downturn", "death")
 
 # Plain event fields to person-sheet columns (the rest of the sheet stays hand cells).
 PAY_COLUMNS = {
@@ -111,9 +114,13 @@ FINANCING_DEFAULTS = {
 PLACE_DEFAULTS = {"state": "NY", "locality": "", "school_district": "", "move": False}
 
 # "That event's year" for an `event:` anchor, by the target's kind (review X6): a work span's
-# end, a rent's start, a purchase's or care span's year, a downturn's placement. A claim has no
-# year.
+# end, a rent's start, a purchase's or care span's year, a downturn's placement. A claim or a
+# death has no year.
 EVENT_YEAR_FIELD = {"work": "end", "rent": "start", "purchase": "year", "care": "year", "downturn": "start"}
+
+# A death age (I2's longevity dimension): whole years of age at death, at least 1 and at most
+# what Owl's own tables handle (`tax_federal`: "Unsupported life expectancy over 120 years").
+DEATH_AGE_MAX = 120
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +330,7 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
     if not isinstance(events, list):
         raise ScenarioError("scenario.events must be a list of events")
     seen: set[str] = set()
+    death_persons: set[str] = set()
     out: list[dict] = []
     for i, event in enumerate(events):
         where = f"events[{i}]"
@@ -338,7 +346,7 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
             raise ScenarioError(f"{where}.id {eid!r} is used twice")
         seen.add(eid)
         event = dict(event)
-        if kind in ("work", "claim"):
+        if kind in ("work", "claim", "death"):
             person = event.get("person")
             if person not in names:
                 raise ScenarioError(f"{where}.person {person!r} is not one of the case's people {names}")
@@ -366,6 +374,16 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
             age = event["age"]
             if age is not None and (not isinstance(age, (int, float)) or isinstance(age, bool) or age <= 0):
                 raise ScenarioError(f"{where}.age must be a positive number or None (let Owl choose)")
+        elif kind == "death":
+            age = event.get("age")
+            if not isinstance(age, (int, float)) or isinstance(age, bool) \
+                    or not 1 <= float(age) <= DEATH_AGE_MAX or float(age) != int(age):
+                raise ScenarioError(
+                    f"{where}.age must be a whole number of years 1-{DEATH_AGE_MAX}, got {age!r}")
+            if event["person"] in death_persons:
+                raise ScenarioError(
+                    f"{where}: {event['person']!r} already has a death event (one per person)")
+            death_persons.add(event["person"])
         elif kind == "rent":
             monthly = event.get("monthly")
             if not isinstance(monthly, (int, float)) or isinstance(monthly, bool) or monthly <= 0:
@@ -443,6 +461,26 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
         if sum(1 for e in out if e["kind"] == kind) > 1:
             raise ScenarioError(f"at most one {kind} event per scenario (a sale and re-buy later)")
     return out
+
+
+def check_death_age(person: str, age, case: dict, scenario: dict, where: str = "death") -> None:
+    """A death age against the person's age at the plan start (I2): a death in the past would
+    give the plan a horizon of zero years (or fewer) for that person."""
+    info = case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    births = [int(str(d)[:4]) for d in info.get("date_of_birth") or []]
+    start = _plan_start(case, scenario)
+    try:
+        birth = births[names.index(person)]
+    except (ValueError, IndexError):
+        raise ScenarioError(
+            f"{where}: no date of birth for {person!r}: its death age cannot be placed"
+        ) from None
+    if int(age) < start - birth:
+        raise ScenarioError(
+            f"{where}: {person!r} is {start - birth} in {start} and would die at "
+            f"{int(age)}: a death before the plan starts"
+        )
 
 
 def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
@@ -737,6 +775,20 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
     # reaches their life horizon): every resolved year must sit inside it (U7).
     births = [int(str(d)[:4]) for d in info.get("date_of_birth") or []]
     life = [int(expect) for expect in info.get("life_expectancy") or []]
+    # Death events (I2) give their person's horizon (`basic_info.life_expectancy`, a generated
+    # case field like the claiming ages): "first death at 75, each spouse in turn" as a variant
+    # dimension, with Owl's own death mechanics below. The horizon a death sets must cover the
+    # plan's start, or the plan would run zero years for that person.
+    deaths = [e for e in events if e["kind"] == "death"]
+    if deaths:
+        from owlplanner.config.defaults import DEFAULT_LIFE_EXPECTANCY
+
+        life += [DEFAULT_LIFE_EXPECTANCY] * (len(names) - len(life))
+        for event in deaths:
+            check_death_age(event["person"], event["age"], case, scenario, where=event["id"])
+            life[names.index(event["person"])] = int(event["age"])
+        _set_path(case, "basic_info.life_expectancy", list(life))
+        provenance["case_fields"]["basic_info.life_expectancy"] = deaths[0]["id"]
     end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
     for eid, fields in years.items():
         for field, year in fields.items():

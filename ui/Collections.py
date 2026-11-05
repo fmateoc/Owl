@@ -5,10 +5,10 @@ A collection is a named set of runs answering one question, with a comparison ru
 on it ("Maximize first-year discretionary spending, condo kept; reference: Yonkers 2027
 cash"). This page creates and edits collections, makes variants ("choose a dimension ...
 and get one child draft per value, all in one collection, queued together": place, purchase
-year, financing, last work year, claiming ages), and shows the grid: the score's difference
-from the reference and the home at the end per cell, coloured by the comparison rule (R3),
-and the variants no other variant beats on both numbers, with whether each lead is
-resolved.
+year, financing, last work year, claiming ages, first death (I2) and the named downturn
+sequence (I11)), and shows the grid: the score's difference from the reference and the home
+at the end per cell, coloured by the comparison rule (R3), and the variants no other variant
+beats on both numbers, with whether each lead is resolved.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -33,6 +33,7 @@ import sskeys as kz
 import variant_tables as vt
 from owlplanner.library import JobsError, PRESETS, ScenarioError, grid, preset_solves, variants
 from owlplanner.library import view
+from owlplanner.library.sequences import sequences as _sequences
 
 st.markdown("# :material/grid_view: Collections")
 kz.divider("orange")
@@ -41,7 +42,7 @@ libraryjobs.show_flashes()  # what the last action said before its rerun (review
 manager = libraryjobs.get_manager()
 lib = manager.library
 
-_DIMENSIONS = ("place", "year", "financing", "work", "claim")
+_DIMENSIONS = variants.DIMENSIONS
 
 
 # -- pick a collection, or make one -----------------------------------
@@ -189,6 +190,20 @@ if runs:
                        f"({view.claiming_ages_text(parent_result)}). With the boxes empty the "
                        "variants keep the case's own ages under quick/decision: fill the boxes from "
                        "its last solve to hold the whole grid at those ages.", icon=":material/flag:")
+        st.markdown("**First death** (I2: one person's life horizon, comma separated ages)")
+        d1, d2 = st.columns(2)
+        death_person = d1.selectbox("dies early, for", ["(none)"] + names, key="col_variant_death_person",
+                                    help="One child per age: 'Ari dies at 75'. Owl's own death "
+                                         "mechanics (the survivor's share, single filing) do the rest.")
+        death_ages = d2.text_input("their death age(s)", key="col_variant_death_ages",
+                                   placeholder="75, 80, 85")
+        st.markdown("**Downturn sequence** (I11: one row per value; `start` a year or an anchor "
+                    "like `purchase`; `-` removes the overlay)")
+        seqs = st.data_editor(
+            vt.sequences_table(), num_rows="dynamic", key="col_variant_seqs",
+            column_config={"sequence": st.column_config.SelectboxColumn(
+                "sequence", options=[vt.CLEAR] + sorted(_sequences()), required=False),
+                "start": st.column_config.TextColumn("start")})
         coll_target = st.selectbox("Into collection", colls, format_func=lambda c: c.name,
                                    index=list(c.id for c in colls).index(coll.id),
                                    key="col_variant_collection")
@@ -203,7 +218,8 @@ if runs:
         if st.button("Create the variants", type="primary", key="col_variant_go"):
             try:
                 dimensions, notes = vt.dimensions(names, years_text, places, fins,
-                                                  work_person, work_years, claim_texts)
+                                                  work_person, work_years, claim_texts,
+                                                  death_person, death_ages, seqs)
             except ScenarioError as exc:  # a bad cell: flash it and make nothing (AC6)
                 libraryjobs.flash("error", f"No variants: {exc}")
                 st.rerun()
@@ -351,6 +367,10 @@ else:
 # -- the members -------------------------------------------------------
 
 st.markdown("### Members")
+st.caption("A member with variant values is placed in the grid; one without is listed beside "
+           "it (section 9.3). *Values* sets them by hand for a run added here -- the same "
+           "{dimension: label} pairs \"make variants\" fills, for example "
+           "`year: 2027; place: yonkers`.")
 member_runs = []
 for member in coll.members:
     try:
@@ -362,7 +382,10 @@ add_run = c1.selectbox("Add a run", [None] + list(lib.runs()),
                        format_func=lambda r: "(choose)" if r is None else r.name,
                        key="col_add_run")
 if c2.button("Add to the collection", disabled=add_run is None):
-    lib.add_member(coll.id, add_run)
+    existing = coll.member(add_run.id)
+    # Idempotent and `values` replaces (store.add_member): a run already in the collection
+    # keeps the values it has when re-added from here.
+    lib.add_member(coll.id, add_run, values=existing.values if existing else None)
     st.rerun()
 ref_options = [None] + member_runs
 ref_index = next((i for i, r in enumerate(ref_options) if r is not None and r.id == coll.reference), 0)
@@ -385,13 +408,25 @@ for member in coll.members:
         line += f"  \nscore {entry.score:,.0f} · home {home} · {view.method_text(entry.result)}"
     else:
         line += "  \nno solved result yet"
-    cols = st.columns([8, 1, 1])
+    cols = st.columns([7, 1, 1, 1])
     cols[0].markdown(line)
     if cols[1].button("Open", key=f"col_open_{coll.id}_{member.run}",
                       help="The run's page (numbers, charts, its solves)."):
         st.session_state["library_selected_run"] = member.run
         st.switch_page("Run.py")
-    if cols[2].button("Remove", key=f"col_rm_{coll.id}_{member.run}"):
+    with cols[2].popover("Values"):
+        text = st.text_area("Values", value=vt.values_text(member.values),
+                            key=f"col_values_{coll.id}_{member.run}",
+                            help="dimension: label pairs, separated by ';' or newlines.")
+        if st.button("Save", key=f"col_values_save_{coll.id}_{member.run}"):
+            try:
+                values = vt.member_values(text)
+            except ScenarioError as exc:  # a bad pair: flash it, keep the old values
+                libraryjobs.flash("error", f"Values not saved: {exc}")
+            else:
+                lib.add_member(coll.id, member.run, values=values)
+            st.rerun()
+    if cols[3].button("Remove", key=f"col_rm_{coll.id}_{member.run}"):
         lib.remove_member(coll.id, member.run)
         st.rerun()
     st.divider()

@@ -177,3 +177,87 @@ class TestGridLayout:
 
     def test_a_saved_layout_without_columns_falls_back(self, vt):
         assert vt.grid_layout(["place", "year"], {"rows": ["place"], "columns": []}) == (["place"], ["year"])
+
+
+class TestDeathAndSequence:
+    """The I2/I11 editors (first death ages; the downturn-sequence table)."""
+
+    def _dims(self, vt, **kw):
+        return vt.dimensions(["Ari", "Noa"], "", vt.places_table(), vt.financing_table(),
+                             "(none)", "", {}, kw.get("death_person", "(none)"),
+                             kw.get("death_ages", ""), kw.get("seqs"))
+
+    def test_the_death_fields_give_one_value_per_age(self, vt):
+        dims, skipped = self._dims(vt, death_person="Ari", death_ages="75, 80, 85")
+        assert dims == {"death": [{"person": "Ari", "age": 75}, {"person": "Ari", "age": 80},
+                                  {"person": "Ari", "age": 85}]}
+        assert skipped == []
+
+    def test_death_ages_with_no_person_are_ignored(self, vt):
+        dims, _ = self._dims(vt, death_person="(none)", death_ages="75")
+        assert "death" not in dims
+
+    @pytest.mark.parametrize("text", ["75.5", "75x"])
+    def test_a_death_age_that_is_not_a_whole_year_is_refused(self, vt, text):
+        with pytest.raises(ScenarioError, match="death ages"):
+            self._dims(vt, death_person="Ari", death_ages=text)
+
+    def test_the_sequences_table_gives_one_value_per_row(self, vt):
+        seqs = _edited(vt.sequences_table(), [
+            {"label": "crash at retirement", "sequence": "crash-30", "start": "after:Ari"},
+            {"sequence": "poor-decade", "start": "2029"}])
+        dims, skipped = self._dims(vt, seqs=seqs)
+        assert dims["sequence"] == [
+            {"label": "crash at retirement", "sequence": "crash-30", "start": "after:Ari"},
+            {"sequence": "poor-decade", "start": "2029"}]
+        assert skipped == []
+
+    @pytest.mark.parametrize("typed", ["-", "none", "No downturn", None])
+    def test_a_cleared_sequence_cell_is_the_no_downturn_value(self, vt, typed):
+        row = {"label": "baseline"} if typed is None else {"label": "baseline", "sequence": typed}
+        seqs = _edited(vt.sequences_table(), [row])
+        dims, _ = self._dims(vt, seqs=seqs)
+        assert dims["sequence"] == [{"label": "baseline", "sequence": None}]
+
+    def test_a_sequence_row_without_a_placement_is_refused(self, vt):
+        seqs = _edited(vt.sequences_table(), [{"sequence": "crash-30"}])
+        with pytest.raises(ScenarioError, match="placement"):
+            self._dims(vt, seqs=seqs)
+
+    def test_a_placement_without_a_sequence_is_refused(self, vt):
+        seqs = _edited(vt.sequences_table(), [{"start": "2029"}])
+        with pytest.raises(ScenarioError, match="names no sequence"):
+            self._dims(vt, seqs=seqs)
+
+    def test_an_empty_row_is_skipped_silently(self, vt):
+        seqs = _edited(vt.sequences_table(), [{}])
+        dims, skipped = self._dims(vt, seqs=seqs)
+        assert "sequence" not in dims and skipped == []
+
+
+class TestMemberValues:
+    """A hand-added member's values (the grid places a member through them, however they
+    were set)."""
+
+    def test_pairs_are_read_with_the_year_as_a_year(self, vt):
+        assert vt.member_values("year: 2027; place: yonkers") == {"year": 2027, "place": "yonkers"}
+        assert vt.member_values("year: 2027\nplace: yonkers") == {"year": 2027, "place": "yonkers"}
+        assert vt.member_values("claim: Ari 67y0m / Noa 70y0m") == \
+            {"claim": "Ari 67y0m / Noa 70y0m"}
+        assert vt.member_values("") == {} and vt.member_values(None) == {}
+
+    @pytest.mark.parametrize("text", ["yonkers", "year:", ": 2027"])
+    def test_a_part_that_is_not_a_pair_is_refused(self, vt, text):
+        with pytest.raises(ScenarioError, match="pair"):
+            vt.member_values(text)
+
+    def test_the_year_label_must_be_one_year(self, vt):
+        with pytest.raises(ScenarioError, match="one calendar year"):
+            vt.member_values("year: 2027, 2029")
+        with pytest.raises(ScenarioError, match="years"):
+            vt.member_values("year: soon")
+
+    def test_values_text_round_trips(self, vt):
+        values = {"year": 2027, "place": "yonkers"}
+        assert vt.member_values(vt.values_text(values)) == values
+        assert vt.values_text({}) == ""

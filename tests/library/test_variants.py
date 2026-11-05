@@ -256,3 +256,138 @@ class TestAD1NonFiniteValues:
         buy["financing"] = {"kind": "loan", "term": 30, "rate": 5.9, "down": None}
         with pytest.raises(ScenarioError, match="financing.down"):
             v.validate(doc)
+
+
+class TestDeath:
+    """I2's longevity dimension ("first death at 75, 80, 85, each spouse in turn"): one
+    child per value, the value moving one person's life horizon (`death` event)."""
+
+    def test_one_child_per_value_and_the_label(self):
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"death": [{"person": "Ari", "age": 75},
+                                         {"person": "Ari", "age": 80},
+                                         {"person": "Noa", "age": 85}]})
+        assert [x.label for x in out] == ["ari-dies-at-75", "ari-dies-at-80", "noa-dies-at-85"]
+        assert out[0].values == {"death": "Ari dies at 75"}
+
+    def test_the_death_event_is_created_and_build_gives_the_horizon(self):
+        child = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                                {"death": [{"person": "Ari", "age": 75}]})[0].scenario
+        assert [e for e in child["events"] if e["kind"] == "death"] == [
+            {"id": "death-ari", "kind": "death", "person": "Ari", "age": 75}]
+        case, _tables, provenance = b.build(child)
+        assert case["basic_info"]["life_expectancy"] == [75, 89]
+        assert provenance["case_fields"]["basic_info.life_expectancy"] == "death-ari"
+
+    def test_an_existing_death_event_is_moved_not_duplicated(self):
+        doc = _scenario([WORK_ARI, WORK_NOA,
+                         {"id": "d1", "kind": "death", "person": "Ari", "age": 80}])
+        child = v.plan_variants(doc, {"death": [{"person": "Ari", "age": 75}]})[0].scenario
+        assert [e for e in child["events"] if e["kind"] == "death"] == [
+            {"id": "d1", "kind": "death", "person": "Ari", "age": 75}]
+
+    def test_a_label_is_used_as_written(self):
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"death": [{"label": "early death", "person": "Noa", "age": 70}]})
+        assert out[0].label == "early-death" and out[0].values == {"death": "early death"}
+
+    @pytest.mark.parametrize("value, match", [
+        ({"person": "Zeke", "age": 70}, "people"),
+        ({"person": "Ari", "age": 75.5}, "whole number"),
+        ({"person": "Ari", "age": 200}, "whole number"),
+        ({"person": "Ari", "age": "75"}, "whole number"),
+        ({"person": "Ari"}, "whole number"),
+    ])
+    def test_a_value_that_does_not_fit_is_refused(self, value, match):
+        with pytest.raises(ScenarioError, match=match):
+            v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"death": [value]})
+
+    def test_a_death_before_the_plan_start_is_refused(self):
+        # Ari is 62 in the plan year (born 1964): a death at 55 would leave the plan no year
+        # of life for them (`check_death_age`).
+        with pytest.raises(ScenarioError, match="before the plan"):
+            v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"death": [{"person": "Ari", "age": 55}]})
+        v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"death": [{"person": "Ari", "age": 62}]})
+
+    def test_one_death_event_per_person(self):
+        doc = _scenario([WORK_ARI, WORK_NOA,
+                         {"id": "d1", "kind": "death", "person": "Ari", "age": 80},
+                         {"id": "d2", "kind": "death", "person": "Ari", "age": 75}])
+        with pytest.raises(ScenarioError, match="already has a death event"):
+            v.validate(doc)
+
+
+class TestSequence:
+    """I11's named downturn sequences as a dimension (step 5b's `downturn` event: one
+    overlay per scenario, placed at a year or an anchor)."""
+
+    DOWNTURN = {"id": "stress", "kind": "downturn", "sequence": "crash-30", "start": 2030}
+
+    def test_the_event_is_created_with_its_placement(self):
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"sequence": [{"label": "crash at retirement",
+                                             "sequence": "crash-30", "start": "after:Ari"}]})
+        assert out[0].label == "crash-at-retirement"
+        assert [e for e in out[0].scenario["events"] if e["kind"] == "downturn"] == [
+            {"id": "downturn", "kind": "downturn", "sequence": "crash-30",
+             "start": {"anchor": "work_end", "person": "Ari", "after": True}}]
+
+    def test_the_label_names_the_sequence_and_the_placement(self):
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"sequence": [{"sequence": "poor-decade", "start": 2029}]})
+        assert out[0].values == {"sequence": "poor-decade at 2029"}
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"sequence": [{"sequence": "three-negative-years", "start": "purchase"}]})
+        assert out[0].values == {"sequence": "three-negative-years at purchase"}
+
+    def test_an_existing_overlay_is_moved_not_duplicated(self):
+        doc = _scenario([WORK_ARI, WORK_NOA, dict(self.DOWNTURN)])
+        child = v.plan_variants(doc, {"sequence": [
+            {"sequence": "three-negative-years", "start": 2031}]})[0].scenario
+        assert [e for e in child["events"] if e["kind"] == "downturn"] == [
+            {"id": "stress", "kind": "downturn", "sequence": "three-negative-years",
+             "start": {"year": 2031}}]
+
+    def test_no_downturn_removes_the_overlay(self):
+        doc = _scenario([WORK_ARI, WORK_NOA, dict(self.DOWNTURN)])
+        out = v.plan_variants(doc, {"sequence": [{"sequence": None}]})
+        assert out[0].values == {"sequence": "no downturn"}
+        assert not [e for e in out[0].scenario["events"] if e["kind"] == "downturn"]
+
+    @pytest.mark.parametrize("value, match", [
+        ({"sequence": "nope", "start": 2029}, "is not one of"),
+        ({"sequence": "crash-30"}, "start"),
+        ({"sequence": "crash-30", "start": "someday"}, "start"),
+    ])
+    def test_a_value_that_does_not_fit_is_refused(self, value, match):
+        with pytest.raises(ScenarioError, match=match):
+            v.plan_variants(_scenario([WORK_ARI, WORK_NOA]), {"sequence": [value]})
+
+    def test_a_run_with_a_rates_table_refuses_an_overlay(self):
+        # `builder._check_table_events` at build time; the door says it too (the table the
+        # overlay would generate is already there, hand-entered).
+        doc = _scenario([WORK_ARI, WORK_NOA])
+        doc["case"]["rates_selection"] = {"method": "table"}
+        doc["rates_table"] = {"columns": ["year", "Inflation"], "rows": [[2026, 2.0]]}
+        with pytest.raises(ScenarioError, match="hand-entered rates table"):
+            v.plan_variants(doc, {"sequence": [{"sequence": "crash-30", "start": 2029}]})
+
+    def test_a_table_case_refuses_an_overlay(self):
+        doc = _scenario([WORK_ARI, WORK_NOA])
+        doc["case"]["rates_selection"] = {"method": "table"}
+        with pytest.raises(ScenarioError, match="reads a rates table"):
+            v.plan_variants(doc, {"sequence": [{"sequence": "crash-30", "start": 2029}]})
+
+    def test_the_child_is_a_scenario_like_any_other(self, monkeypatch):
+        import types
+
+        import numpy as np
+
+        monkeypatch.setattr(b, "_throwaway_plan", lambda case, rates_rows=None: types.SimpleNamespace(
+            year_n=list(range(2026, 2046)),
+            tau_kn=np.array([[0.06] * 20, [0.045] * 20, [0.03] * 20, [0.02] * 20])))
+        child = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                                {"sequence": [{"sequence": "crash-30", "start": 2030}]})[0].scenario
+        case, _tables, _provenance = b.build(child)  # the overlay generates the rates table
+        assert case["rates_selection"]["method"] == "table"
+        assert case["rates_selection"]["rates_file"] == "rates.csv"

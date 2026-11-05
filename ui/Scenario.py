@@ -2,8 +2,8 @@
 Scenario page: a run's events and what they generate (design sections 6.1-6.3, step 4).
 
 The scenario is the source of truth of a run (D2): events in plain terms -- work, claiming,
-rent, a home purchase and care (D6), and a named downturn sequence (step 5b, I11) -- beside
-the hand rows. A year field may name a calendar
+rent, a home purchase, care (D6), a named downturn sequence (step 5b, I11) and the death
+ages (I2's longevity) -- beside the hand rows. A year field may name a calendar
 year or anchor to another event: "the year after Noa's last work year" (`after:Noa`), "at age
 86" (`age:Ari:86`), "the purchase year" (`purchase`), or another event's year (`event:care`,
 `event:care+2`) (I1). The builder (library.builder) turns the events into Owl's coupled edits
@@ -100,6 +100,8 @@ work_rows = [{
 } for e in events if e.get("kind") == "work"]
 claim_rows = [{"id": e.get("id"), "person": e.get("person"), "age": e.get("age")}
               for e in events if e.get("kind") == "claim"]
+death_rows = [{"id": e.get("id"), "person": e.get("person"), "age": e.get("age")}
+              for e in events if e.get("kind") == "death"]
 rent = next((e for e in events if e.get("kind") == "rent"), None)
 buy = next((e for e in events if e.get("kind") == "purchase"), None)
 care = next((e for e in events if e.get("kind") == "care"), None)
@@ -125,6 +127,12 @@ st.markdown("*Claiming* (an empty age lets Owl choose)")
 claim_df = st.data_editor(
     _blank_rows(claim_rows, ["id", "person", "age"]),
     num_rows="dynamic", hide_index=True, key=f"scn_claim_{key}",
+)
+st.markdown("*Death* (a person's life horizon in whole years of age, I2: \"first death at 75\"; "
+            "Owl's own death mechanics -- the survivor's share, single filing -- do the rest)")
+death_df = st.data_editor(
+    _blank_rows(death_rows, ["id", "person", "age"]),
+    num_rows="dynamic", hide_index=True, key=f"scn_death_{key}",
 )
 
 with st.expander("Rent", expanded=rent is not None):
@@ -257,6 +265,7 @@ _MANAGED = {
                  "costs", "sale", "financing"},
     "care": {"id", "kind", "name", "amount", "year", "end", "essential"},
     "downturn": {"id", "kind", "sequence", "start"},
+    "death": {"id", "kind", "person", "age"},
 }
 
 
@@ -296,6 +305,24 @@ def _claim_events(rows):
     return out
 
 
+def _death_events(rows):
+    out = []
+    for row in rows:
+        if not any(_present(v) for v in row.values()):
+            continue
+        age = row.get("age")
+        if not _present(age):
+            raise ScenarioError(f"death {row.get('id')!r}: give the age (whole years) at death")
+        try:
+            years = float(age)
+        except (TypeError, ValueError):
+            raise ScenarioError(f"death {row.get('id')!r}: the age is not a number: {age!r}") from None
+        if years != int(years):
+            raise ScenarioError(f"death {row.get('id')!r}: the age must be whole years, got {age!r}")
+        out.append({"id": row["id"], "kind": "death", "person": row["person"], "age": int(years)})
+    return out
+
+
 def _year_ref(text, where, ids=()):
     # The scenario's ids settle `event:<id>-<n>` for an id that ends in -<digits> (review X5).
     return builder.parse_year_ref(text, where, ids=ids) if _present(text) else None
@@ -305,6 +332,7 @@ def _assemble():
     """The events list from the widgets above (ScenarioError with the field that is wrong)."""
     events = _work_events(work_df.to_dict("records"))
     events += _claim_events(claim_df.to_dict("records"))
+    events += _death_events(death_df.to_dict("records"))
     ids = [e["id"] for e in events]
     ids += [i.strip() or d for on, i, d in ((rent_on, rent_id, "rent"), (buy_on, buy_id, "buy"),
                                             (care_on, care_id, "care"), (down_on, down_id, "downturn")) if on]
@@ -438,9 +466,15 @@ st.caption(
     "frozen (section 5). Balances, PIAs, the "
     "goal and the assumptions are edited in the case pages ('Edit as new run' on the Run page)."
 )
-n1, n2 = st.columns([2, 3])
+n1, n2, n3 = st.columns([2, 3, 2])
 name = n1.text_input("Name", value=f"{run.name} variant", key="scenario_page_name")
 notes = n2.text_area("Notes (optional)", key="scenario_page_notes")
+collection = n3.selectbox(
+    "Collection (optional)", [None] + list(lib.collections()),
+    format_func=lambda c: "(none)" if c is None else c.name,
+    key="scenario_page_collection",
+    help="The new run joins this collection as it is (design section 7); its variant values "
+         "are set on the Collections page.")
 if st.button("Save as a new run", type="primary", disabled=built is None):
     try:
         result = lib.save_run(name=name.strip() or f"{run.name} variant", scenario=edited,
@@ -457,4 +491,8 @@ if st.button("Save as a new run", type="primary", disabled=built is None):
                 f"Identical to *{other.name}* ({other.folder_name}): not saved again."
                 if other else "Not saved: identical inputs already in the library.",
             )
+        if collection is not None:
+            saved = result.run if result.created else result.identical_to
+            if saved is not None:
+                lib.add_member(collection.id, saved)
     st.rerun()

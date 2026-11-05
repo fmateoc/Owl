@@ -190,6 +190,79 @@ class TestMakeVariants:
         assert sorted(r.name for r in library.runs()) == ["bill", "bill later"]
 
 
+class TestTheNewDimensions:
+    """The I2 first-death dimension and the I11 downturn-sequence table on the page (the
+    table's parsing is unit-tested in test_variant_tables.py; AppTest cannot drive it)."""
+
+    def test_the_editors_are_on_the_form(self, library):
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "First death" in text and "Downturn sequence" in text
+        assert at.text_input(key="col_variant_death_ages") is not None
+
+    def test_the_first_death_fields_make_a_death_variant(self, library):
+        at = _page()
+        at.selectbox(key="col_variant_death_person").select("Bill")
+        at.text_input(key="col_variant_death_ages").set_value("80")
+        at.run()
+        next(b for b in at.button if b.label == "Create the variants").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        child = next(r for r in library.runs() if "dies-at-80" in r.name)
+        events = library.scenario(child.id)["events"]
+        assert [e for e in events if e["kind"] == "death"] == [
+            {"id": "death-bill", "kind": "death", "person": "Bill", "age": 80}]
+        coll = library.collections()[0]
+        assert coll.member(child.id).values == {"death": "Bill dies at 80"}
+
+
+class TestMemberValues:
+    """The hand-added member's values (the grid places a member through them)."""
+
+    def _hand_added(self, tmp_path, monkeypatch):
+        members = [({"year": 2027}, 80_000.0, 150_000.0), ({"year": 2029}, 82_000.0, 150_000.0)]
+        lib = _grid_library(tmp_path, monkeypatch, members)
+        coll = lib.collections()[0]
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = "v2b"
+        run = lib.save_run(name="v2b", scenario=scenario).run
+        _write_result(run, "2026-11-03T10-00-02_decision", score=90_000.0, home=200_000.0)
+        lib.add_member(coll.id, run)  # no values: listed beside the grid
+        return lib, coll, run
+
+    def test_values_set_by_hand_place_the_member(self, tmp_path, monkeypatch):
+        lib, coll, run = self._hand_added(tmp_path, monkeypatch)
+        at = _page()
+        assert "Beside the grid" in _text(at)
+        at.text_area(key=f"col_values_{coll.id}_{run.id}").set_value("year: 2031")
+        at.run()
+        at.button(key=f"col_values_save_{coll.id}_{run.id}").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert lib.collection(coll.id).member(run.id).values == {"year": 2031}
+        assert "Beside the grid" not in _text(at)  # a cell of its own now
+
+    def test_a_pair_that_is_not_a_pair_is_flashed_and_keeps_the_values(self, tmp_path, monkeypatch):
+        lib, coll, run = self._hand_added(tmp_path, monkeypatch)
+        at = _page()
+        at.text_area(key=f"col_values_{coll.id}_{run.id}").set_value("yonkers")
+        at.run()
+        at.button(key=f"col_values_save_{coll.id}_{run.id}").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "not a 'dimension: label' pair" in _text(at)
+        assert lib.collection(coll.id).member(run.id).values == {}
+
+    def test_re_adding_a_member_keeps_its_values(self, library):
+        # `add_member` replaces the values (store): the Add button must not wipe them.
+        coll = library.collections()[0]
+        bill = next(r for r in library.runs() if r.name == "bill")
+        at = _page()
+        at.selectbox(key="col_add_run").select("bill")
+        at.run()
+        next(b for b in at.button if b.label == "Add to the collection").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert library.collection(coll.id).member(bill.id).values == {"year": 2027}
+
+
 class TestNoRuns:
     def test_ac7_a_collection_with_no_runs_renders(self, tmp_path, monkeypatch):
         # Make variants used to read `lib.scenario(None)` ("no run with id None") on every

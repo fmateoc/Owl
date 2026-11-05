@@ -213,8 +213,9 @@ if runs:
                                    "folder, section 8.2).")
         preset = c4.selectbox("Preset", list(PRESETS), key="col_variant_preset",
                               help="quick: the loop, ages held. decision: local search + its exact "
-                                   "companion. ages: the two-stage claiming-age search. custom: the "
-                                   "case's own options.")
+                                   "companion. ages: the two-stage claiming-age search. "
+                                   "ages_thorough: work_sweep.py's whole-year sweep (slow). "
+                                   "custom: the case's own options.")
         if st.button("Create the variants", type="primary", key="col_variant_go"):
             try:
                 dimensions, notes = vt.dimensions(names, years_text, places, fins,

@@ -355,3 +355,69 @@ class TestTheRegretSweep:
         assert record["regret"] == {"error": "the sweep died"}
         assert (job.results_dir / R.PLAN_JSON).exists()
         assert not (job.results_dir / R.REGRET_JSON).exists()
+
+
+class TestAgesThorough:
+    """Section 8.1's "Ages, thorough": `work_sweep.py`'s whole-year sweep decides the ages
+    (the sweep itself is phase 5's, pinned there; canned here -- it runs 29-51 min per
+    variant), the solve runs at them, and the sweep lands in scores.json (I7's claiming-age
+    map reads it)."""
+
+    ROW = {
+        "name": "base", "free": ["Bill"], "best": [804],
+        "result": {"status": "solved", "value": 82_000.0, "ages": [804], "tolerance": 1.0},
+        "spread": None, "close": [], "ref": None, "loop": None,
+        "ref_value": None, "loop_value": None, "eta": [],
+        "sweeps": [{"pass": 0, "person": "Bill", "index": 0, "held": [804],
+                    "points": [[792, 81_000.0], [804, 82_000.0]], "dips": []}],
+        "results": {
+            "66y0m": {"status": "solved", "value": 81_000.0, "ages": [792], "tolerance": 1.0},
+            "67y0m": {"status": "solved", "value": 82_000.0, "ages": [804], "tolerance": 1.0},
+        },
+    }
+
+    @pytest.fixture
+    def searching_run(self, library, scenario):
+        import copy
+
+        doc = copy.deepcopy(scenario)  # the case says "let Owl choose" (R4's exception)
+        doc["case"]["solver_options"]["withSSAges"] = "optimize"
+        return library.save_run(name="bill searches", scenario=doc).run
+
+    def _stub_sweep(self, monkeypatch, seen=None):
+        import types
+
+        from owlplanner.library import worker as W
+
+        def run_variant(name, diconf, dirname, args, pool, log):
+            if seen is not None:
+                seen.append(args)
+            return dict(self.ROW)
+
+        monkeypatch.setattr(W, "_load_work_sweep",
+                            lambda: types.SimpleNamespace(TIME_LIMIT=900.0, run_variant=run_variant))
+
+    def test_the_sweep_decides_the_ages_and_the_solve_runs_at_them(self, searching_run, monkeypatch):
+        seen = []
+        self._stub_sweep(monkeypatch, seen)
+        job = make_job(searching_run, name="2026-01-01T00-00-02_ages_thorough",
+                       preset="ages_thorough")
+        state = run_job(job.results_dir, job.token)
+        assert state == R.DONE
+        # The design's row: every whole-year pair scored by branch-and-bound at gap 1e-5.
+        assert seen and seen[0].decider == "bb" and seen[0].gap == 1e-5
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert record["age_search"]["chosen"] == [67.0]  # 804 months
+        assert record["age_search"]["candidates"] == [[[66.0], 81_000.0], [[67.0], 82_000.0]]
+        assert record["method"]["options"]["withSSAges"] == "fixed"  # the solve pins them
+        scores = json.loads((job.results_dir / R.SCORES_JSON).read_text(encoding="utf-8"))
+        assert scores[0]["best"] == [804] and scores[0]["results"]
+
+    def test_a_case_that_fixes_the_ages_just_solves(self, run, monkeypatch):
+        self._stub_sweep(monkeypatch)
+        job = make_job(run, name="2026-01-01T00-00-03_ages_thorough", preset="ages_thorough")
+        state = run_job(job.results_dir, job.token)
+        assert state == R.DONE
+        assert not (job.results_dir / R.SCORES_JSON).exists()  # no search: no sweep
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert record["age_search"] is None

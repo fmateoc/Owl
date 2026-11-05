@@ -54,7 +54,9 @@ _PRESET_HELP = (
     "claiming ages held at the scenario's values. decision: local search with the ages held, "
     "plus its exact-model companion as a second result (the comparison's agreement check). "
     "ages: the two-stage claiming-age search (run_suite.py's) when the scenario says 'let Owl "
-    "choose', then the final solve at the ages it picked. custom: the case's own options."
+    "choose', then the final solve at the ages it picked. ages_thorough: work_sweep.py's "
+    "whole-year sweep, each pair scored by branch-and-bound at gap 1e-5 (slow: 29-51 min per "
+    "variant on the chris+pat dry run), then the final solve. custom: the case's own options."
 )
 
 
@@ -202,18 +204,30 @@ def _claiming_age_map(run):
     st.caption(
         "The objective over the free claiming ages of one work variant (work_sweep.py output, "
         "its --json file); cells tied within tolerance share a shade, the darkest being the "
-        "best. `fork-notes/phase5/work_sweep.py` writes this file; the Ages preset searches "
-        "only the pick and its neighbours (design 8.1), so a map like this comes from the "
-        "thorough sweep."
+        "best. The `ages_thorough` preset (section 8.1's \"Ages, thorough\") writes this file "
+        "with its solve; the `ages` preset searches only the pick and its neighbours (design "
+        "8.1), so a map like this comes from the thorough sweep."
     )
     maps = None
+    found = None
+    note = ""
     scores_path = run.path / "scores.json"
     if scores_path.exists():
+        found, note = scores_path, "Reading `scores.json` from the run folder."
+    else:
+        # "Ages, thorough" writes its sweep with the solve (its results folder; I7).
+        results = run.path / "results"
+        mine = sorted(results.glob(f"*/{R.SCORES_JSON}"), reverse=True) if results.is_dir() else []
+        if mine:
+            found = mine[0]
+            note = (f"Reading `scores.json` from `{found.parent.name}` (the newest "
+                    "'Ages, thorough' solve).")
+    if found is not None:
         try:
-            maps = agemap.load_scores(scores_path)
-            st.caption("Reading `scores.json` from the run folder.")
+            maps = agemap.load_scores(found)
+            st.caption(note)
         except Exception as exc:  # noqa: BLE001 - shown, not raised
-            st.warning(f"scores.json in the run folder could not be read: {exc}")
+            st.warning(f"{found.name} could not be read: {exc}")
     if maps is None:
         up = st.file_uploader("A work_sweep scores file", type=["json"], key="run_page_scores")
         if up is not None:

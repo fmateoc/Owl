@@ -48,6 +48,41 @@ REGRET_N_GRID = 7
 REGRET_GRID_PAD = 45_000.0
 REGRET_SEED = 1
 
+
+def _load_work_sweep():
+    """`fork-notes/phase5/work_sweep.py`, the phase-5 claiming-age sweep.
+
+    The "Ages, thorough" preset shares that one implementation with
+    `fork-notes/synthetic/run_suite.py` (the fork's rule; `library.agesearch` is the same
+    sharing for the two-stage search). Loaded by path: `fork-notes/` is not a package and
+    may not be beside an installed `owlplanner` at all, in which case the preset says so
+    instead of failing obscurely. Moving the sweep into `src/owlplanner` stays open.
+    """
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[3] / "fork-notes" / "phase5" / "work_sweep.py"
+    if not path.is_file():
+        raise ScenarioError(
+            "the 'Ages, thorough' preset runs fork-notes/phase5/work_sweep.py and cannot "
+            "find it: run it from a checkout of this fork (or use the 'ages' preset)")
+    spec = importlib.util.spec_from_file_location("owl_work_sweep", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _SerialPool:
+    """`work_sweep`'s pool interface (`pool.map`), run in this process.
+
+    The CLI's default is `--jobs 1`, which is serial too; a spawned pool would need
+    `score` picklable across a dynamically loaded module (it is not).
+    """
+
+    @staticmethod
+    def map(fn, items):
+        return [fn(item) for item in items]
+
+
 _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
 _WARN_RE = re.compile(r"WARNING|ERROR")
 
@@ -240,18 +275,26 @@ class Worker:
         self.check()
         diconf, dirname, _ = load_toml(str(self.run_dir / "inputs" / "Case.toml"))
 
-        # The "Ages" preset (design 8.1, step 6): run_suite.py's two-stage claiming-age
-        # search first, then the final solve at the ages it picked. The stages' logs go to
+        # The Ages presets (design 8.1, step 6): the search first, then the final solve at
+        # the ages it picked. "ages" runs run_suite.py's two-stage search
+        # (`library.agesearch`); "ages_thorough" runs work_sweep.py's whole-year sweep
+        # (`_ages_thorough`, section 8.1's "Ages, thorough"). The stages' logs go to
         # solve.log but their warnings stay out of the record (run_suite.py's rule).
         preset = str(self.job.doc.get("preset") or "custom")
         age_search = None
-        if preset == "ages" and str(diconf.get("solver_options", {}).get("withSSAges", "fixed")
-                                    ).strip().lower() != "fixed":
+        scores = None
+        if preset in ("ages", "ages_thorough") and str(
+                diconf.get("solver_options", {}).get("withSSAges", "fixed")
+        ).strip().lower() != "fixed":
             self.job.touch(self.token, step="searching the claiming ages")
             self.check()
             self.tee.quiet = True
             try:
-                ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check)
+                if preset == "ages_thorough":
+                    self.job.touch(self.token, step="the claiming-age sweep (every whole-year pair)")
+                    ages, candidates, scores = self._ages_thorough(diconf, dirname)
+                else:
+                    ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check)
             finally:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
@@ -276,7 +319,7 @@ class Worker:
             self.job.touch(self.token, step="writing the results")
             plan_doc = plan_to_dict(plan)
             summary = plan_metrics(plan)
-            plan_sha = self._publish_results(summary, plan_doc, plan)
+            plan_sha = self._publish_results(summary, plan_doc, plan, scores)
         else:
             self.job.update(self.token, error=plan.solverMessage or status)
 
@@ -320,26 +363,30 @@ class Worker:
 
     # -- helpers -------------------------------------------------------
 
-    def _publish_results(self, summary, plan_doc, plan) -> str:
+    def _publish_results(self, summary, plan_doc, plan, scores=None) -> str:
         """Write the artifacts and publish them atomically with respect to "run again" (G2).
 
         The files are staged in a private folder beside the record and renamed into place
         under the job's lock, the token still owning the job (`JobRecord.publish`): a worker
         that wakes after "run again" publishes nothing, so one results folder never holds two
         attempts' artifacts (the F2 guard covered `status.json` and `record.json` only).
-        Returns the plan cache's sha256 for record.json.
+        `scores` is "Ages, thorough" whole-year sweep (`work_sweep.py`'s --json row, I7's
+        claiming-age map reads it). Returns the plan cache's sha256 for record.json.
         """
         staging = self.results_dir / f".attempt-{self.token[:8]}"
         staging.mkdir(exist_ok=True)
+        published = (R.SUMMARY_JSON, R.PLAN_JSON, R.RESULTS_XLSX, R.PLAN_PKL)
         try:
             self._write_json(staging, R.SUMMARY_JSON, summary)
             self._write_json(staging, R.PLAN_JSON, plan_doc)
+            if scores is not None:
+                self._write_json(staging, R.SCORES_JSON, [scores])
+                published = published + (R.SCORES_JSON,)
             plan.saveWorkbook(basename=str(staging / R.RESULTS_XLSX), overwrite=True,
                               with_config="first")
             plan_sha = R.save_plan(plan, staging)
             try:
-                self.job.publish(self.token, staging,
-                                 (R.SUMMARY_JSON, R.PLAN_JSON, R.RESULTS_XLSX, R.PLAN_PKL))
+                self.job.publish(self.token, staging, published)
             except R.TokenChanged as exc:
                 raise JobCancelled(str(exc)) from exc
         finally:
@@ -378,6 +425,39 @@ class Worker:
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         return summary
+
+    def _ages_thorough(self, diconf, dirname) -> tuple:
+        """(ages in years, candidates, scores.json's row): section 8.1's "Ages, thorough".
+
+        `fork-notes/phase5/work_sweep.py`'s own `run_variant`: stage (a)'s exact-LP search
+        and stage (c)'s sweep of every whole-year pair of the searched people, each scored
+        by branch-and-bound at gap 1e-5 (local search kept for a plan it does not prove);
+        the loop search (b) is skipped and the deposit-split check (`--eta`) is off -- both
+        are sensitivities, not the decision. Decided ages are months in the row (`best`);
+        they come back as years for `fixed_ages`, and the row itself is `scores.json` (the
+        claiming-age map reads it, I7). Runs a while (29-51 min per variant on the chris+pat
+        dry run); the cancel checks run at every sweep message.
+        """
+        import types
+
+        from .agemap import parse_scores
+
+        ws = _load_work_sweep()
+        args = types.SimpleNamespace(
+            no_loop=True, decider="bb", gap=1e-5, max_time=ws.TIME_LIMIT,
+            ls_time=7200.0, ls_step_time=1800.0, passes=2, eta=[])
+
+        def log(message):
+            self.tee.write(str(message) + "\n")
+            self.check()
+
+        row = ws.run_variant("base", diconf, dirname, args, _SerialPool(), log)
+        scores = {k: v for k, v in row.items() if k != "_cache"}
+        chosen = [m / 12.0 for m in row.get("best") or []]
+        amap = parse_scores([scores])[0]
+        candidates = [[[m / 12.0 for m in cell.ages], cell.value]
+                      for cell in sorted(amap.cells, key=lambda c: c.ages)]
+        return chosen, candidates, scores
 
     def _write_json(self, folder, name, doc):
         from owlplanner.cli.formatters import _NumpyEncoder

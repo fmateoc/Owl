@@ -15,9 +15,9 @@ the variants the same way?), not as a tolerance (R2)"):
 
 Built in step 2: ``quick`` and ``custom``. ``decision`` / ``decision_exact`` come with the
 comparison (step 3). ``ages`` (section 8.1's "Ages": `run_suite.py`'s two-stage claiming-age
-search, `library.agesearch`) comes with step 6; "Ages, thorough" (`work_sweep.py`, every
-whole-year pair by branch-and-bound) is a later increment and stays
-`fork-notes/phase5/work_sweep.py` for now.
+search, `library.agesearch`) and ``ages_thorough`` (its "Ages, thorough":
+`fork-notes/phase5/work_sweep.py`'s every whole-year pair by branch-and-bound) come with
+step 6.
 
 - ``quick`` is section 8.1's "the default loop, claiming ages held": every tax family that
   can be solved exactly (`"optimize"`) is solved by the self-consistent loop instead, the
@@ -41,6 +41,13 @@ whole-year pair by branch-and-bound) is a later increment and stays
   and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
   model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
   "fixed"`` just solves, under its own model.
+- ``ages_thorough`` (section 8.1's "Ages, thorough") runs `fork-notes/phase5/work_sweep.py`'s
+  own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
+  gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
+  skipped) -- writes its `scores.json` (the claiming-age map reads it, I7) and solves at the
+  ages it decided. The same implementation `fork-notes/synthetic/run_suite.py` runs; the
+  preset imports it from `fork-notes/` (moving it into `src/owlplanner` stays open). A slow
+  job (29-51 min per variant on the chris+pat dry run), one per request.
 - ``regret`` (I8, one per request from the run page) solves as ``custom`` with the ages
   fixed, then runs the conversion regret sweep (`stresstests.run_conversion_regret_sweep`,
   its "Quick look" size) and writes `regret.json`: what a different first-year Roth
@@ -54,11 +61,11 @@ from __future__ import annotations
 
 from .agesearch import EXACT_GROUP
 
-# What the interface offers (section 8.1's rows, minus "Ages, thorough").
-PRESETS = ("quick", "decision", "ages", "custom")
+# What the interface offers (section 8.1's rows).
+PRESETS = ("quick", "decision", "ages", "ages_thorough", "custom")
 
 # What one solve is recorded as (its results folder is <stamp>_<solve preset>).
-SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "regret", "custom")
+SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "ages_thorough", "regret", "custom")
 
 # The families whose "optimize" mode makes the solve a MIP (or a local search); "quick" puts
 # each on the loop.
@@ -72,8 +79,9 @@ _FORCED = {
     # run_suite.py's EXACT_GROUP: the exact model companion of "decision" (R2's agreement
     # check). Ages fixed like the local-search solve it accompanies.
     "decision_exact": {"withSSAges": "fixed", **EXACT_GROUP},
-    # The Ages preset forces nothing: the case's own model, its own ages choice (section 8.1).
+    # The Ages presets force nothing: the case's own model, its own ages choice (section 8.1).
     "ages": {},
+    "ages_thorough": {},
     # I8's "regret" job: the case's own model with the ages fixed (R4), then the conversion
     # regret sweep over its historical scenarios ("what would a different conversion have
     # cost?"). One per request, from the run page; not one of section 8.1's rows.

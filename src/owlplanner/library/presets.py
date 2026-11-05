@@ -8,14 +8,16 @@ Two levels, because "Decision" is one choice but two solves (section 8.1: "local
 ages held fixed; the exact LP as a second result, read as an agreement check (does it order
 the variants the same way?), not as a tolerance (R2)"):
 
-- ``PRESETS`` is what the interface offers: ``quick``, ``decision``, ``custom``.
+- ``PRESETS`` is what the interface offers: ``quick``, ``decision``, ``ages``, ``custom``.
 - ``SOLVE_PRESETS`` is what one results folder records. ``preset_solves`` expands a choice
   into the solves it queues: "decision" runs ``decision`` (local search) and
   ``decision_exact`` (the exact model companion the comparison's agreement check reads).
 
 Built in step 2: ``quick`` and ``custom``. ``decision`` / ``decision_exact`` come with the
-comparison (step 3). The two Ages presets (``run_suite.py``'s two-stage search) follow with
-step 6 and bring their own machinery.
+comparison (step 3). ``ages`` (section 8.1's "Ages": `run_suite.py`'s two-stage claiming-age
+search, `library.agesearch`) comes with step 6; "Ages, thorough" (`work_sweep.py`, every
+whole-year pair by branch-and-bound) is a later increment and stays
+`fork-notes/phase5/work_sweep.py` for now.
 
 - ``quick`` is section 8.1's "the default loop, claiming ages held": every tax family that
   can be solved exactly (`"optimize"`) is solved by the self-consistent loop instead, the
@@ -34,31 +36,39 @@ step 6 and bring their own machinery.
   capital gains priced exactly (`withLTCG = "optimize"`). A different *model*, so only its
   differences compare (it mis-prices the ACA trade in marketplace years): it is read as
   "does it order the variants the same way?", never as a tolerance (R2).
+- ``ages`` runs `library.agesearch`'s two-stage search when the case searches claiming ages
+  (`withSSAges` not ``fixed``), then solves at the ages it picked: the exact LP searches,
+  and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
+  model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
+  "fixed"`` just solves, under its own model.
 - ``custom`` runs the case's own `[solver_options]`, with the caller's options on top (as
   `owlcli --solver-opt` does).
 """
 
 from __future__ import annotations
 
-# What the interface offers (section 8.1's rows, minus the two Ages presets).
-PRESETS = ("quick", "decision", "custom")
+from .agesearch import EXACT_GROUP
+
+# What the interface offers (section 8.1's rows, minus "Ages, thorough").
+PRESETS = ("quick", "decision", "ages", "custom")
 
 # What one solve is recorded as (its results folder is <stamp>_<solve preset>).
-SOLVE_PRESETS = ("quick", "decision", "decision_exact", "custom")
+SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "custom")
 
 # The families whose "optimize" mode makes the solve a MIP (or a local search); "quick" puts
 # each on the loop.
 LOOP_FAMILIES = ("withMedicare", "withACA", "withLTCG", "withNIIT", "withSSTaxability",
                  "withSeniorBonus", "withSTAR")
 
-# What each solve forces whatever the case says (R4: ages fixed).
+# What each solve forces whatever the case says (R4: ages fixed, except the Ages presets).
 _FORCED = {
     "quick": {"withSSAges": "fixed", "breakpointMethod": "loop"},
     "decision": {"withSSAges": "fixed", "breakpointMethod": "local-search"},
     # run_suite.py's EXACT_GROUP: the exact model companion of "decision" (R2's agreement
     # check). Ages fixed like the local-search solve it accompanies.
-    "decision_exact": {"withSSAges": "fixed", "breakpointMethod": "loop",
-                       "withMedicare": "none", "withSSTaxability": 0.85, "withLTCG": "optimize"},
+    "decision_exact": {"withSSAges": "fixed", **EXACT_GROUP},
+    # The Ages preset forces nothing: the case's own model, its own ages choice (section 8.1).
+    "ages": {},
     "custom": {},
 }
 
@@ -93,8 +103,9 @@ def resolve_options(preset: str, case_options=None, overrides=None) -> dict:
 
     The case's `[solver_options]`, the job's overrides on top, then the preset: for
     ``quick``, every `"optimize"` family on the loop, no MIP strategy, the loop as the
-    breakpoint method and the ages fixed (N5); for ``decision`` and ``decision_exact``, the
-    forced options only (a solve preset, not a queue-time choice).
+    breakpoint method and the ages fixed (N5); for ``decision``, ``decision_exact`` and
+    ``ages``, the forced options only (solve presets, not queue-time choices; ``ages``
+    forces nothing and keeps the case's own model).
     """
     _check(preset)
     options = dict(case_options or {})

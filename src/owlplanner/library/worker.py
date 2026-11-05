@@ -30,6 +30,7 @@ import traceback
 from pathlib import Path
 
 from . import results as R
+from .agesearch import fixed_ages, two_stage_ages
 from .casefiles import check_plan_year
 from .scenario import ScenarioError
 from .presets import resolve_options
@@ -86,6 +87,12 @@ class _LogTee:
     `print()` on a stream needs `write`; Owl's `Logger` writes every message through it. The
     cancellation check rides along (throttled): the solve runs between log lines, and a
     worker that has been marked interrupted stops at the next one (S8).
+
+    While `quiet` is set (the "Ages" preset's search stages, step 6), every line still goes
+    to solve.log and the cancellation check still runs, but the line is not read as the
+    solve's own: run_suite.py keeps the stage warnings out of the record ("their warnings
+    are not in the report"), and an unsettled candidate is not a problem with the final
+    solve.
     """
 
     def __init__(self, path, check=None):
@@ -93,6 +100,7 @@ class _LogTee:
         self._check = check
         self._checked = 0.0
         self._pending = ""
+        self.quiet = False
         self.last_line = ""
         self.iteration = None
         self.warnings = set()
@@ -100,6 +108,11 @@ class _LogTee:
     def write(self, text):
         self._fh.write(text)
         self._fh.flush()
+        if self.quiet:
+            if self._check is not None and time.monotonic() - self._checked > CHECK_SECONDS:
+                self._checked = time.monotonic()
+                self._check()
+            return
         self._pending += text
         *lines, self._pending = self._pending.split("\n")
         for line in lines:
@@ -196,6 +209,7 @@ class Worker:
 
     def _solve(self):
         from owlplanner.cli.formatters import plan_to_dict
+        from owlplanner.cli.set_override import apply_overrides
         from owlplanner.config import config_to_plan, load_toml
         from owlplanner.config.schema import parse_solver_options
         from owlplanner.export import plan_metrics
@@ -217,12 +231,31 @@ class Worker:
         self.job.touch(self.token, step="building the plan")
         self.check()
         diconf, dirname, _ = load_toml(str(self.run_dir / "inputs" / "Case.toml"))
+
+        # The "Ages" preset (design 8.1, step 6): run_suite.py's two-stage claiming-age
+        # search first, then the final solve at the ages it picked. The stages' logs go to
+        # solve.log but their warnings stay out of the record (run_suite.py's rule).
+        preset = str(self.job.doc.get("preset") or "custom")
+        age_search = None
+        if preset == "ages" and str(diconf.get("solver_options", {}).get("withSSAges", "fixed")
+                                    ).strip().lower() != "fixed":
+            self.job.touch(self.token, step="searching the claiming ages")
+            self.check()
+            self.tee.quiet = True
+            try:
+                ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check)
+            finally:
+                self.tee.quiet = False
+            age_search = {"chosen": ages, "candidates": candidates}
+            diconf = apply_overrides(diconf, fixed_ages(ages))
+            self.job.touch(self.token, step="building the plan")
+            self.check()
+
         plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
 
         self.job.touch(self.token, step="solving")
         self.check()
-        options = resolve_options(self.job.doc.get("preset", "custom"), plan.solverOptions,
-                                  self.job.doc.get("options"))
+        options = resolve_options(preset, plan.solverOptions, self.job.doc.get("options"))
         options = parse_solver_options(options)
         plan.solve(plan.objective, options)
         wall = time.time() - t0
@@ -258,6 +291,7 @@ class Worker:
                 "reproducible": getattr(plan, "reproducibleRates", False),
             },
             plan_pkl_sha256=plan_sha,
+            age_search=age_search,
         )
         return R.DONE if status == "solved" else R.FAILED
 
@@ -297,7 +331,7 @@ class Worker:
 
     def _write_record(self, *, status, plan_year=None, plan_doc=None, options=None, started=None,
                       finished=None, wall_time_seconds=None, solver=None, gap=None,
-                      iterations=None, rates=None, plan_pkl_sha256=None, error=None):
+                      iterations=None, rates=None, plan_pkl_sha256=None, age_search=None, error=None):
         doc = R.build_record(
             run_id=str(self.job.doc.get("run_id") or ""),
             results_id=self.job.id,
@@ -316,6 +350,7 @@ class Worker:
             gap=gap,
             rates=rates,
             plan_pkl_sha256=plan_pkl_sha256,
+            age_search=age_search,
             error=error,
         )
         # Under the job's lock, token checked inside it (H4): a stale worker that woke after

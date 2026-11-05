@@ -1,7 +1,8 @@
 """Run presets (design section 8.1; review N5): what each preset solves with.
 
 Step 3 adds "Decision": one queue-time choice, two solves -- local search and its exact-model
-companion (`decision_exact`, the comparison's agreement check, R2).
+companion (`decision_exact`, the comparison's agreement check, R2). Step 6 adds "Ages":
+`library.agesearch`'s two-stage claiming-age search, which forces nothing (R4's exception).
 """
 
 import pytest
@@ -84,12 +85,23 @@ def test_decision_exact_is_run_suite_s_exact_model():
 def test_decision_queues_two_solves_and_the_others_one():
     assert preset_solves("decision") == ("decision", "decision_exact")
     assert preset_solves("quick") == ("quick",)
+    assert preset_solves("ages") == ("ages",)
     assert preset_solves("custom") == ("custom",)
 
 
+def test_ages_is_the_case_s_own_model_with_its_own_ages_choice():
+    """Section 8.1's "Ages": the search and the candidates run under the case's own options
+    (R4's exception: this preset does not fix the claiming ages)."""
+    assert resolve_options("ages", TEMPLATE_LIKE) == TEMPLATE_LIKE
+    assert resolve_options("ages", TEMPLATE_LIKE, {"mipStrategy": None}) == dict(
+        TEMPLATE_LIKE, mipStrategy=None)
+    assert preset_options("ages", {"withSSAges": "optimize"}) == {"withSSAges": "optimize"}
+    assert resolve_options("ages", {"withSSAges": "fixed"})["withSSAges"] == "fixed"
+
+
 def test_the_presets_the_interface_offers_and_the_solves_it_records():
-    assert PRESETS == ("quick", "decision", "custom")
-    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "custom")
+    assert PRESETS == ("quick", "decision", "ages", "custom")
+    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "ages", "custom")
     for preset in PRESETS:
         for solve in preset_solves(preset):
             assert solve in SOLVE_PRESETS
@@ -98,8 +110,8 @@ def test_the_presets_the_interface_offers_and_the_solves_it_records():
 
 def test_an_unknown_preset_is_refused():
     with pytest.raises(ValueError):
-        resolve_options("ages", {})
+        resolve_options("ages_thorough", {})
     with pytest.raises(ValueError):
         preset_options("decision_exact_typo")
     with pytest.raises(ValueError):
-        preset_solves("ages")
+        preset_solves("thorough")

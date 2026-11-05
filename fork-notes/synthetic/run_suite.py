@@ -86,19 +86,16 @@ from owlplanner.cli.set_override import apply_overrides  # noqa: E402
 from owlplanner.config import config_to_plan, load_toml  # noqa: E402
 from owlplanner.config.schema import parse_solver_options  # noqa: E402
 from owlplanner.export import build_summary_string, plan_metrics  # noqa: E402
+# The two-stage claiming-age search is one implementation, shared with the run library's
+# "Ages" preset (run-library-design.md section 8.1; owlplanner.library.agesearch).
+from owlplanner.library.agesearch import (EXACT_GROUP_SETS as EXACT_GROUP,  # noqa: E402
+                                          EXACT_SETS as EXACT, fixed_ages, two_stage_ages)
 
 _spec = importlib.util.spec_from_file_location("work_sweep", ROOT / "fork-notes" / "phase5" / "work_sweep.py")
 work_sweep = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(work_sweep)
 
 _NUM = re.compile(r"\$?\d[\d,]*(?:\.\d+)?(?![\d.,%])")  # amounts and counts; a percentage stays
-EXACT = ["solver_options.breakpointMethod=loop", "solver_options.withMedicare=none",
-         "solver_options.withSSTaxability=0.85"]
-# The exact groups (condo-exact, rates-exact) also price capital gains exactly: with a large brokerage
-# account the LTCG loop did not settle in 138 of 153 unsettled rates-exact runs (error bars up to
-# +-12,856, median +-2,782; synthetic run 2026-10-29-d); withLTCG="optimize" settled the four probed
-# (error bar 0) at 11-15 s per run instead of 0.5-1 s. Stage 1 of the age search keeps the pure LP.
-EXACT_GROUP = EXACT + ["solver_options.withLTCG=optimize"]
 
 # Lifetime amounts in the cost tables, today's dollars (plan_metrics keys, plus the fork's state-tax
 # parts and the STAR credit added in solve_one()).
@@ -123,10 +120,6 @@ COSTS = [
     ("debt_payments_today", "Debt paid"),
     ("housing_costs_today", "Housing"),
 ]
-
-
-def fixed_ages(ages):
-    return ["solver_options.withSSAges=fixed", f"fixed_income.social_security_ages={json.dumps(ages)}"]
 
 
 def scenario_groups(case, condo, scen):
@@ -290,51 +283,9 @@ def _solve(p):
     return p
 
 
-def two_stage_ages(diconf, dirname, buf):
-    """Claiming ages for a case that searches them, without Owl's own search on the full model.
-
-    Stage 1: the case's own withSSAges search under the exact LP (Medicare off, SS taxability 0.85),
-    a pure LP per candidate (about 0.5 s on the synthetic case). Unlike work_sweep.py stage (a), ACA
-    stays on the loop: withACA="optimize" makes each candidate a MIP (9 s there, so about 10 minutes
-    for the search's ~270 candidates), and the exact LP mis-prices the ACA years even then
-    (plan-review-2026-10-22.md §3.2). Stage 2: the pick and each searched person's pick +-1 year (clipped
-    to 62-70, one person at a time), each solved at fixed ages under the case's own model; the best
-    score wins. Owl's search on the full model makes every candidate a branch-and-bound MIP: on the
-    synthetic case with brokerage-heavy balances one search ran past 20 minutes (2026-10-29).
-    Returns (ages, candidates) with candidates = [(ages, score or None)].
-    """
-    p = _solve(_plan(diconf, dirname, buf, EXACT))
-    if p.caseStatus != "solved":
-        raise RuntimeError(f"stage 1 (exact LP age search) did not solve: {p.caseStatus}")
-    pick = [float(a) for a in p.ssecAges]
-    sel = diconf.get("solver_options", {}).get("withSSAges", "optimize")
-    names = list(p.inames)
-    free = range(len(names)) if str(sel).lower() == "optimize" else [names.index(n) for n in sel]
-    trials = [pick]
-    for i in free:
-        for d in (-1.0, 1.0):
-            a = min(70.0, max(62.0, pick[i] + d))  # clipped: a 69y10m pick still tries 70
-            if abs(a - pick[i]) > 1e-6:
-                t = list(pick)
-                t[i] = a
-                trials.append(t)
-    cands = []
-    for t in trials:
-        q = _solve(_plan(diconf, dirname, buf, fixed_ages(t)))
-        cands.append(([round(float(a), 4) for a in q.ssecAges],
-                      _score_plan(q) if q.caseStatus == "solved" else None))
-    good = [c for c in cands if c[1] is not None]
-    if not good:
-        raise RuntimeError("stage 2: no candidate ages solved")
-    return max(good, key=lambda c: c[1])[0], cands
-
-
-def _score_plan(p):
-    m = plan_metrics(p)
-    if p.objective != "maxSpending":
-        return m["final_bequest_today"]
-    k = m.get("discretionary_scale")
-    return k * float(p.budget.discretionary_n[0]) if k is not None else m["spending_basis"]
+# two_stage_ages and the candidate score (`_score_plan`) live in
+# owlplanner.library.agesearch (imported above): the suite and the run library's "Ages"
+# preset share one implementation (run-library-design.md section 8.1).
 
 
 def _arr(p, attr):

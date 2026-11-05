@@ -104,6 +104,7 @@ if os.environ.get("OWL_LIBRARY_DIR"):
             st.Page("Queue.py", icon=":material/schedule:"),
             st.Page("Library.py", icon=":material/database:"),
             st.Page("Run.py", icon=":material/monitoring:"),
+            st.Page("Collections.py", icon=":material/grid_view:"),
             st.Page("Scenario.py", icon=":material/edit_note:"),
             st.Page("Compare.py", icon=":material/compare_arrows:"),
         ]

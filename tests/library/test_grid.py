@@ -88,10 +88,17 @@ class TestLayout:
             row = dict(grid.rows)[key]
             assert [col for col, cell in row.items() if cell.best] == [expected]
 
-    def test_entries_without_a_value_are_listed_not_placed(self):
-        entries = _grid_entries() + [_entry("draft", {"place": "yonkers"}, None)]
+    def test_a_member_with_no_values_is_listed_not_placed(self):
+        entries = _grid_entries() + [_entry("draft", {}, None)]
         grid = grid_view(entries, reference="ref")
         assert [e.run_id for e in grid.unplaced] == ["draft"]
+
+    def test_a_missing_value_sits_in_its_dimension_s_none_bucket(self):
+        entries = [_entry("ref", {"place": "yonkers", "year": 2027, "financing": "cash"}, _result()),
+                   _entry("year only", {"year": 2029}, _result(score_value=REF_SCORE + 4_000.0))]
+        grid = grid_view(entries, reference="ref")
+        assert [key for key, _ in grid.rows] == [("yonkers", "cash"), (None, None)]
+        assert dict(grid.rows)[(None, None)][(2029,)].delta == 4_000.0
 
     def test_the_reference_must_be_one_of_the_entries(self):
         with pytest.raises(ValueError, match="reference"):

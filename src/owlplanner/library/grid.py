@@ -88,11 +88,11 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
               col_dims=("year",)) -> Grid:
     """Lay the entries out by their values (section 9.3's grid view).
 
-    `reference` is the entry (or run id) the cells are differences from. Entries without a
-    value for one of the dimensions are not placed (they are listed in `unplaced`). Cells
-    are judged against the reference's own result (`compare.difference` for the score, the
-    home by the fifty-cent rule alone -- it is set by the inputs), and the lead verdict is
-    R3's two numbers.
+    `reference` is the entry (or run id) the cells are differences from. A member with no
+    values at all is listed in `unplaced` (it has no grid position); a value a placed member
+    lacks is its dimension's None bucket. Cells are judged against the reference's own
+    result (`compare.difference` for the score, the home by the fifty-cent rule alone -- it
+    is set by the inputs), and the lead verdict is R3's two numbers.
     """
     by_id = {e.run_id: e for e in entries}
     ref = by_id.get(reference) if isinstance(reference, str) else reference
@@ -103,7 +103,10 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
     placed, unplaced = [], []
     for entry in entries:
         values = entry.values or {}
-        if any(dim not in values for dim in (*row_dims, *col_dims)):
+        if not values:
+            # A member added by hand with no variant values carries no grid position: it is
+            # listed beside the grid, not placed. A value a placed member lacks is its
+            # dimension's None bucket (a variant that varies only the year sits in one row).
             unplaced.append(entry)
         else:
             placed.append(entry)

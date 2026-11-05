@@ -49,7 +49,8 @@ _PRESET_HELP = (
     "quick: the self-consistent loop for every tax family (no MIP, no local search), "
     "claiming ages held at the scenario's values. decision: local search with the ages held, "
     "plus its exact-model companion as a second result (the comparison's agreement check). "
-    "custom: the case's own options."
+    "ages: the two-stage claiming-age search (run_suite.py's) when the scenario says 'let Owl "
+    "choose', then the final solve at the ages it picked. custom: the case's own options."
 )
 
 
@@ -197,8 +198,9 @@ def _claiming_age_map(run):
     st.caption(
         "The objective over the free claiming ages of one work variant (work_sweep.py output, "
         "its --json file); cells tied within tolerance share a shade, the darkest being the "
-        "best. `fork-notes/phase5/work_sweep.py` writes this file; the Ages presets come with "
-        "step 6."
+        "best. `fork-notes/phase5/work_sweep.py` writes this file; the Ages preset searches "
+        "only the pick and its neighbours (design 8.1), so a map like this comes from the "
+        "thorough sweep."
     )
     maps = None
     scores_path = run.path / "scores.json"
@@ -289,6 +291,12 @@ if entries:
     finished = (record.get("solve_date") or {}).get("finished") or ""
     st.markdown(f"**Solved** {finished[:16].replace('T', ' ') or job.state} · "
                 f"{view.method_text(result)}")
+    search = record.get("age_search")
+    if search:
+        st.caption("Claiming ages searched (the Ages preset): picked "
+                   f"{view.claiming_ages_text(result)} from "
+                   f"{len(search.get('candidates') or [])} candidate(s), scored at fixed ages "
+                   "under the case's own model (design 8.1).")
     if record.get("status") != "solved":
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),

@@ -239,3 +239,48 @@ row's best score its star is dropped. In AD2's probe, `cash / 2027` reads `150,0
   with Streamlit's own edit-application code, not through the frontend).
 - `check_library_variants.py` (reduced or `--full`) and the full suite: no code changed.
 - The "Queue them when created" and "Queue every member" paths against a live job manager.
+
+## Dispositions (2026-11-05, the user's call: fold AD1-AD6; AD7-AD9 stand as written)
+
+- **AD1 folded**, at both doors:
+  - *The page:* the editors' parsing moved to `ui/variant_tables.py` (pure functions, so the
+    tests feed them what the data editor returns). `records` reads each row with every
+    missing cell (`None`, NaN, blank text) as `None`, so an empty cell keeps the parent's
+    value as the caption says: empty costs keep the parent's amounts, an empty price the
+    parent's price, a loan with term and rate only takes the builder's defaults (named
+    "<home> mortgage", not "nan"), and a row with data but no label is skipped and named.
+    A text cell set to `-` clears the parent's value (`CLEAR`): a White Plains row from a
+    Yonkers parent needs locality `-`, or the move would carry Yonkers' local tax.
+  - *The library:* `variants._check_value` refuses NaN or infinity anywhere in a value, a
+    cost that is not a number of 0 or more, a place field of the wrong type (`move` a bool,
+    the rest text), a loan term that is not a number and a loan name that is not text; the
+    builder's `validate_events` refuses a cost or financing term that is not a finite number
+    and a non-finite price. A NaN from any route is a `ScenarioError`, never a \$0 line.
+- **AD2 folded:** `variant_tables.grid_layout` -- a saved layout with columns is used as
+  saved (empty rows: one row); otherwise the purchase year is the columns (else the last
+  dimension) and every other dimension a row, in the variant order (place, financing, work,
+  claim). "Make variants" stores that layout on a collection that has none, and the layout
+  editor shows the layout in use. The collided caption says "the same row and column".
+- **AD3 folded:** `grid_view` stars the best member itself: a cell only when it shows that
+  member; a best member listed beside the grid is in `Grid.best_beside` and its caption says
+  so. AC4's test now pins this (no star on the row; `best_beside == ("dup",)`).
+- **AD4 folded:** `_cell_md` colours by R3's lead verdict (grey only when there is no
+  difference beyond the noise rule or no comparison) and prefixes `~` to a score difference
+  inside the noise band; the caption says so.
+- **AD5 folded:** `grid.claiming_ages_flag` adds one flag listing the cells solved at
+  claiming ages other than the reference's (compared in whole months; members whose values
+  vary the claiming ages are left out: there the ages are the question). Make variants warns
+  when the parent's last solve searched the claiming ages (`age_search` in its record) and
+  every claiming box is empty.
+- **AD6 folded:** `move` is a checkbox column, and typed text is read by `flag` (true/false,
+  yes/no, 1/0; anything else refused); `kind` is a select box, and a kind other than
+  cash/loan/mortgage is refused (a typo used to become cash).
+
+Tests +47: `tests/ui/test_variant_tables.py` 21 (Streamlit's own `_apply_dataframe_edits`
+on the page's tables -- AppTest cannot drive a data editor), `tests/library/test_variants.py`
++14, `tests/library/test_grid.py` +5 (AC4's test re-pinned), `tests/ui/test_collections_page.py`
++7 (AppTest of the grid, the flags and the stored layout). Checked to fail before the fold
+(the `src/` and `ui/` changes stashed): 23 new tests and AC4's re-pinned one failed, and the 21
+table tests errored (their module is new; the old parsing's NaN is the review's probe above);
+the three that passed are guards (no flag where none is due, twice, and a one-row layout
+`grid_view` already handled).

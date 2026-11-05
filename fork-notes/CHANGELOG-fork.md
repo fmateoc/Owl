@@ -55,6 +55,17 @@ a reduced grid). First increment:
 - Tests: `tests/library/test_agesearch.py`, `test_collections.py`, `test_variants.py`,
   `test_grid.py`, `tests/ui/test_collections_page.py`, plus the `test_presets.py` update
   (`PRESETS` now offers `ages`).
+- Reviewed twice (`fork-notes/run-library-step6-review.md` AC1-AC10, AC1-AC7 folded;
+  `run-library-step6-review-2.md` AD1-AD9, AD1-AD6 folded 2026-11-05). The second review's
+  folds: the make-variants tables read an empty cell as "keep the parent's" (it was NaN, and
+  a place's empty costs reached the plan as \$0; parsing in `ui/variant_tables.py`, `-`
+  clears a text cell), and `variants` / the builder refuse a non-finite number from any
+  route; the grid's default layout places every varied dimension (the year as columns) and
+  "make variants" stores it; the row's star marks the best member itself; a cell's colour is
+  R3's verdict on the two numbers (`~` marks a score difference inside the noise band); a
+  flag lists the cells solved at claiming ages other than the reference's, and Make variants
+  warns after an `ages` solve with the claiming boxes empty; `move` is a checkbox and `kind`
+  a select box.
 
 ### Run library, build step 5b: the rates table and the named downturn sequences (2026-11-04)
 

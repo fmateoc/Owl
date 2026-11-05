@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import copy
 import itertools
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -113,7 +114,25 @@ def _value_label(dimension: str, value: Any) -> str:
     raise ScenarioError(f"{dimension}: value {value!r} needs a 'label'")
 
 
+def _non_finite(obj: Any, where: str) -> None:
+    """Refuse NaN or infinity anywhere in a value (review AD1): a NaN from an editor cell
+    passes `<= 0` and type checks alike, and `normalize` then stores it as None."""
+    if isinstance(obj, float) and not math.isfinite(obj):
+        raise ScenarioError(f"{where} is not a number ({obj!r}): an empty or unreadable cell?")
+    if isinstance(obj, dict):
+        for key, item in obj.items():
+            _non_finite(item, f"{where}.{key}")
+    elif isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            _non_finite(item, f"{where}[{i}]")
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def _check_value(dimension: str, value: Any, scenario: dict) -> None:
+    _non_finite(value, dimension)
     if dimension == "year":
         if not isinstance(value, int) or isinstance(value, bool):
             raise ScenarioError(f"year: a value must be a calendar year, got {value!r}")
@@ -138,6 +157,14 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
         if price is not None and (not isinstance(price, (int, float))
                                   or isinstance(price, bool) or price <= 0):
             raise ScenarioError(f"place: price must be a positive number (today's dollars), got {price!r}")
+        for field, amount in (value.get("costs") or {}).items():
+            if not _number(amount) or amount < 0:
+                raise ScenarioError(f"place: cost {field!r} must be a yearly amount of 0 or more, got {amount!r}")
+        for field, item in (value.get("place") or {}).items():
+            ok = isinstance(item, bool) if field == "move" else isinstance(item, str)
+            if not ok:
+                what = "true or false" if field == "move" else "text"
+                raise ScenarioError(f"place: {field!r} must be {what}, got {item!r}")
     elif dimension == "financing":
         if value.get("label") is None:
             raise ScenarioError("financing: each value needs a 'label'")
@@ -146,6 +173,11 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
             raise ScenarioError("financing: each value needs a 'financing' of kind 'cash' or 'loan'")
         if fin.get("kind") == "loan" and ("term" not in fin or "rate" not in fin):
             raise ScenarioError("financing: a loan value needs 'term' and 'rate'")
+        for field in ("term", "rate", "down", "closing", "extra"):
+            if field in fin and not _number(fin[field]):
+                raise ScenarioError(f"financing: {field!r} must be a number, got {fin[field]!r}")
+        if "name" in fin and not isinstance(fin["name"], str):
+            raise ScenarioError(f"financing: 'name' must be text, got {fin['name']!r}")
     elif dimension == "work":
         person, end = value.get("person"), value.get("end")
         if not isinstance(person, str) or not isinstance(end, int) or isinstance(end, bool):

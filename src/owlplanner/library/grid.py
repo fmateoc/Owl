@@ -74,6 +74,7 @@ class Grid:
     unplaced: tuple       # entries with no value for a row or column dimension
     collided: tuple       # (entry, shown) pairs: two members with the same cell key (AC4)
     flags: tuple          # the reference's and the cells' caveats (S13), deduplicated
+    best_beside: tuple = ()  # run ids of collided members that hold their row's best score (AD3)
 
 
 def _key(values: dict, dims) -> tuple:
@@ -146,17 +147,21 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
         else:
             shown[key] = entry
 
-    # Best score in each row, by score only (run_suite's `condo_pivot` bolds the same way):
-    # the mark goes to the cell that holds the row's best score, even when that is a
-    # collided member listed beside the grid.
+    # Best score in each row, by score only (run_suite's `condo_pivot` bolds the same way).
+    # The mark goes to the best member itself (review AD3): a cell is starred only when it
+    # shows that member, and a best member listed beside the grid (collided) is named in
+    # `best_beside` -- the star never sits on a number that is not the row's best.
+    best_beside = []
     for key in row_keys:
         here = [e for e in placed if _key(e.values, row_dims) == key]
         scored = [e for e in here if e.score is not None]
         if scored:
             best = max(scored, key=lambda e: e.score)
-            holder = shown[(key, _key(best.values, col_dims))]
-            cell = cells[holder.run_id]
-            cells[holder.run_id] = Cell(
+            if shown[(key, _key(best.values, col_dims))] is not best:
+                best_beside.append(best.run_id)
+                continue
+            cell = cells[best.run_id]
+            cells[best.run_id] = Cell(
                 entry=cell.entry, delta=cell.delta, verdict=cell.verdict, note=cell.note,
                 home=cell.home, home_delta=cell.home_delta, lead=cell.lead, best=True,
             )
@@ -173,6 +178,9 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
     for entry in placed:
         if entry is not ref and entry.result is not None and ref.result is not None:
             flags.extend(C.flags(ref.result, entry.result))
+    ages_flag = claiming_ages_flag(ref, placed)
+    if ages_flag:
+        flags.append(ages_flag)
     return Grid(
         reference=ref,
         col_dims=col_dims,
@@ -182,7 +190,43 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
         unplaced=tuple(unplaced),
         collided=tuple(collided),
         flags=tuple(dict.fromkeys(flags)),
+        best_beside=tuple(best_beside),
     )
+
+
+def _months(result: Result) -> Optional[tuple]:
+    """The claiming ages a solve used, as (name, months) pairs; None when unknown."""
+    ages = view.claiming_ages(result)
+    return tuple((name, int(round(float(age) * 12))) for name, age in ages) if ages else None
+
+
+def claiming_ages_flag(reference: Entry, entries) -> str:
+    """A caveat for the cells solved at claiming ages other than the reference's (AD5).
+
+    The usual grid solves the reference with the "ages" preset and the variants with
+    "decision", which holds each case's own ages: unless a single-valued claim dimension pins
+    the grid at the reference's pick, every such cell's difference includes the claiming
+    ages. A member whose values vary the claiming ages (a "claim" value) is left out: there
+    the ages are the question. Returns "" when nothing differs or the ages are unknown.
+    """
+    if reference.result is None:
+        return ""
+    ref_ages = _months(reference.result)
+    if ref_ages is None:
+        return ""
+    off = []
+    for entry in entries:
+        if entry is reference or entry.result is None or "claim" in (entry.values or {}):
+            continue
+        ages = _months(entry.result)
+        if ages is not None and ages != ref_ages:
+            off.append(f"{entry.name} ({view.claiming_ages_text(entry.result)})")
+    if not off:
+        return ""
+    return (f"{len(off)} cell(s) solved at claiming ages other than the reference's "
+            f"({view.claiming_ages_text(reference.result)}): {'; '.join(off)}. Their differences "
+            "include the claiming ages; pin the grid at the reference's ages (a single claim "
+            "value) to compare the housing alone")
 
 
 def lead_between(a: Entry, b: Entry) -> dict:

@@ -26,13 +26,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import itertools
-
-import pandas as pd
 import streamlit as st
 
 import libraryjobs
 import sskeys as kz
+import variant_tables as vt
 from owlplanner.library import JobsError, PRESETS, ScenarioError, grid, preset_solves, variants
 from owlplanner.library import view
 
@@ -109,12 +107,14 @@ with st.expander("Question, rule and layout"):
                              "at least as good on the score and the home at the end, better on "
                              "one beyond the noise rule; the two numbers are never added).")
     dims = sorted({key for m in coll.members for key in (m.values or {})})
+    shown_rows, shown_cols = vt.grid_layout(dims, coll.grid)  # AD2: the layout the grid uses
     c3, c4 = st.columns(2)
-    rows = c3.multiselect("Grid rows", dims, default=[d for d in coll.grid.get("rows", []) if d in dims],
-                          key=f"col_rows_{coll.id}")
-    columns = c4.multiselect("Grid columns", dims,
-                             default=[d for d in coll.grid.get("columns", []) if d in dims],
-                             key=f"col_cols_{coll.id}")
+    rows = c3.multiselect("Grid rows", dims, default=shown_rows, key=f"col_rows_{coll.id}",
+                          help="Empty: one row. A dimension in neither list puts its members in "
+                               "one cell (the others listed beside the grid).")
+    columns = c4.multiselect("Grid columns", dims, default=shown_cols, key=f"col_cols_{coll.id}",
+                             help="Empty: the default layout (the purchase year as columns, "
+                                  "every other dimension as rows).")
     c5, c6 = st.columns(2)
     if c5.button("Save", key=f"col_save_{coll.id}"):
         lib.update_collection(coll.id, name=name.strip() or coll.name,
@@ -130,108 +130,6 @@ with st.expander("Question, rule and layout"):
 
 
 # -- make variants (section 9.3) --------------------------------------
-
-
-def _places_table():
-    return pd.DataFrame(columns=["label", "name", "price", "state", "locality",
-                                 "school_district", "move", "property tax", "hoa", "insurance"])
-
-
-def _financing_table():
-    return pd.DataFrame(columns=["label", "kind", "term", "rate", "down", "closing", "extra", "name"])
-
-
-def _row_values(row, keys):
-    return {k: row[k] for k in keys if row.get(k) not in (None, "")}
-
-
-def _claim_combos(names, texts):
-    """[{person: age or None}, ...] over the per-person age lists (the claim dimension)."""
-    per_person = []
-    for person in names:
-        text = (texts.get(person) or "").strip()
-        if not text:
-            per_person.append([None])
-        else:
-            per_person.append([_number(part, f"{person}'s claiming age")
-                               for part in text.replace(";", ",").split(",") if part.strip()])
-    combos = [dict(zip(names, ages, strict=True)) for ages in itertools.product(*per_person)]
-    if all(age is None for combo in combos for age in combo.values()):
-        return []
-    return combos
-
-
-def _number(value, what):
-    """One editor cell as a number (review AC6: a bad cell is a flashed error, never a page
-    crash -- `float()` on an arbitrary cell used to end the page with a raw ValueError)."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        raise ScenarioError(f"{what} is not a number: {value!r}") from None
-
-
-def _dimensions(names, years_text, places, fins, work_person, work_years, claim_texts):
-    """The make-variants dimensions from the editors' raw values (review AC6).
-
-    Raises ScenarioError on a cell that is not a number, or a year field that is not a
-    list of years (the handler flashes it and makes nothing); a table row with data but no
-    label is skipped and named in the returned `skipped` notes.
-    """
-    dimensions = {}
-    skipped = []
-    if years_text.strip():
-        try:
-            dimensions["year"] = [int(part) for part in years_text.replace(";", ",").split(",")
-                                  if part.strip()]
-        except ValueError:
-            raise ScenarioError(f"not a list of years: {years_text!r}") from None
-    for _, row in places.iterrows():
-        label = row.get("label") or ""
-        if not label:
-            if any(row.get(k) not in (None, "") for k in
-                   ("name", "price", "state", "locality", "school_district", "move",
-                    "property tax", "hoa", "insurance")):
-                skipped.append("a places row with no label")
-            continue
-        value = {"label": label}
-        if row.get("name"):
-            value["name"] = str(row["name"])
-        if row.get("price") not in (None, ""):
-            value["price"] = _number(row["price"], f"place {label}: price")
-        place = _row_values(row, ("state", "locality", "school_district"))
-        if row.get("move") not in (None, ""):
-            place["move"] = bool(row["move"])
-        if place:
-            value["place"] = place
-        costs = _row_values(row, ("property tax", "hoa", "insurance"))
-        if costs:
-            value["costs"] = costs
-        dimensions.setdefault("place", []).append(value)
-    for _, row in fins.iterrows():
-        label = row.get("label") or ""
-        if not label:
-            if any(row.get(k) not in (None, "") for k in
-                   ("kind", "term", "rate", "down", "closing", "extra", "name")):
-                skipped.append("a financing row with no label")
-            continue
-        kind = str(row.get("kind") or "cash").strip().lower()
-        financing = {"kind": "loan" if kind.startswith("loan") or kind.startswith("mortgage") else "cash"}
-        for field in ("term", "rate", "down", "closing", "extra"):
-            if row.get(field) not in (None, ""):
-                financing[field] = _number(row[field], f"financing {label}: {field}")
-        if row.get("name"):
-            financing["name"] = str(row["name"])
-        dimensions.setdefault("financing", []).append({"label": label, "financing": financing})
-    if work_person != "(none)" and work_years.strip():
-        try:
-            dimensions["work"] = [{"person": work_person, "end": int(part)}
-                                  for part in work_years.replace(";", ",").split(",") if part.strip()]
-        except ValueError:
-            raise ScenarioError(f"not a list of years: {work_years!r}") from None
-    combos = _claim_combos(names, claim_texts)
-    if combos:
-        dimensions["claim"] = combos
-    return dimensions, skipped
 
 
 def _fill_claim_ages(parent, names):
@@ -260,12 +158,20 @@ if runs:
                                    "several dimensions give their product -- the grid.")
         names = list(((lib.scenario(parent).get("case") or {}).get("basic_info") or {}).get("names") or [])
         st.caption("Each table is one dimension: **one row per value**. Leave a table or field "
-                   "empty to keep the parent's.")
+                   "empty to keep the parent's; in a table, an empty cell keeps the parent's value "
+                   f"and `{vt.CLEAR}` clears a text cell (a place with no local income tax: "
+                   "locality `-`).")
         years_text = st.text_input("Purchase year(s)", key="col_variant_years", placeholder="2027, 2029, 2031")
         st.markdown("**Place(s)**")
-        places = st.data_editor(_places_table(), num_rows="dynamic", key="col_variant_places")
+        places = st.data_editor(
+            vt.places_table(), num_rows="dynamic", key="col_variant_places",
+            column_config={"move": st.column_config.CheckboxColumn(
+                "move", help="A move at the purchase (the place's locality and district from that "
+                             "year); unchecked: the district only (AD6: a checkbox, not text)")})
         st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`)")
-        fins = st.data_editor(_financing_table(), num_rows="dynamic", key="col_variant_fins")
+        fins = st.data_editor(
+            vt.financing_table(), num_rows="dynamic", key="col_variant_fins",
+            column_config={"kind": st.column_config.SelectboxColumn("kind", options=["cash", "loan"])})
         c1, c2 = st.columns(2)
         work_person = c1.selectbox("Last work year, for", ["(none)"] + names, key="col_variant_work_person")
         work_years = c2.text_input("their last year(s)", key="col_variant_work_years", placeholder="2026, 2027")
@@ -274,6 +180,15 @@ if runs:
                        for person in names}
         st.button("Fill the ages from the run's last solve", key="col_variant_fill",
                   on_click=_fill_claim_ages, args=(parent, names))  # AC1: a callback, not an inline handler
+        parent_result = grid.latest_result(parent.path)
+        if (parent_result is not None and parent_result.record.get("age_search")
+                and not any((text or "").strip() for text in claim_texts.values())):
+            # AD5: the children of an "ages" run solve at the case's own ages under the other
+            # presets, so the grid would compare claiming ages as well as the housing.
+            st.warning("This run's last solve searched the claiming ages "
+                       f"({view.claiming_ages_text(parent_result)}). With the boxes empty the "
+                       "variants keep the case's own ages under quick/decision: fill the boxes from "
+                       "its last solve to hold the whole grid at those ages.", icon=":material/flag:")
         coll_target = st.selectbox("Into collection", colls, format_func=lambda c: c.name,
                                    index=list(c.id for c in colls).index(coll.id),
                                    key="col_variant_collection")
@@ -287,8 +202,8 @@ if runs:
                                    "case's own options.")
         if st.button("Create the variants", type="primary", key="col_variant_go"):
             try:
-                dimensions, notes = _dimensions(names, years_text, places, fins,
-                                                work_person, work_years, claim_texts)
+                dimensions, notes = vt.dimensions(names, years_text, places, fins,
+                                                  work_person, work_years, claim_texts)
             except ScenarioError as exc:  # a bad cell: flash it and make nothing (AC6)
                 libraryjobs.flash("error", f"No variants: {exc}")
                 st.rerun()
@@ -326,6 +241,12 @@ if runs:
                         except (ScenarioError, JobsError) as exc:
                             libraryjobs.flash("error", f"{run.name}: not queued ({exc})")
                             break
+            if not (coll_target.grid or {}).get("columns"):
+                # AD2: give the collection a layout with every varied dimension placed (the
+                # page's fallback used to drop one).
+                varied = sorted({key for variant in made for key in variant.values})
+                rows_, cols_ = vt.grid_layout(varied)
+                lib.update_collection(coll_target.id, grid={"rows": rows_, "columns": cols_})
             message = (f"{created} variant(s) created in *{coll_target.name}*"
                        + (f", {skipped} skipped" if skipped else "")
                        + (", queued" if run_now else "."))
@@ -363,10 +284,12 @@ def _cell_md(cell):
     home = f"{cell.home:,.0f}" if cell.home is not None else "-"
     if cell.delta is None:
         return home
-    color = "#757575" if cell.verdict != "resolved" else _LEAD_COLORS.get(
-        cell.lead.get("verdict", ""), "#757575")
+    # AD4: the colour is R3's verdict on the two numbers (a variant whose score is inside the
+    # noise band but whose home is larger leads); "~" marks a score difference inside the band.
+    color = _LEAD_COLORS.get(cell.lead.get("verdict", ""), "#757575")
+    tilde = "~" if cell.verdict == "within noise" else ""
     star = " &#9733;" if cell.best else ""
-    return (f"<span style='color:{color}'><b>{cell.delta:+,.0f}{star}</b></span><br>"
+    return (f"<span style='color:{color}'><b>{tilde}{cell.delta:+,.0f}{star}</b></span><br>"
             f"<span style='color:#757575'>{home}</span>")
 
 
@@ -375,8 +298,7 @@ entries = [_entry(m) for m in coll.members]
 solved = [e for e in entries if e.result is not None and e.result.solved]
 ref_entry = next((e for e in entries if e.run_id == coll.reference), None)
 dims = sorted({key for e in entries for key in (e.values or {})})
-rows = [d for d in coll.grid.get("rows", []) if d in dims] or ([dims[0]] if dims else [])
-columns = [d for d in coll.grid.get("columns", []) if d in dims] or ([dims[-1]] if dims else [])
+rows, columns = vt.grid_layout(dims, coll.grid)  # AD2: no dimension dropped by default
 
 if not solved:
     st.info("No member of this collection has a solved result yet: queue them below (or on "
@@ -387,9 +309,10 @@ else:
     g = grid.grid_view(entries, reference=ref_entry.run_id, row_dims=rows, col_dims=columns)
     st.caption(f"Each cell: the score's difference from the reference (**{ref_entry.name}**, "
                f"{view.score(ref_entry.result):,.0f}), and below it the home at the end "
-               "(today's \\$). &#9733; is the best score in its row, by score only. Colour: "
-               "green leads the reference, red the reference leads, blue a trade-off (R3: more "
-               "spending against more home), grey within the noise band.")
+               "(today's \\$). &#9733; is the best score in its row, by score only. Colour, R3's "
+               "verdict on the two numbers: green leads the reference, red the reference leads, "
+               "blue a trade-off (more spending against more home), grey no difference beyond the "
+               "noise rule; ~ marks a score difference inside the noise band.")
     lines = [f"| {_key_label(rows) if rows else 'variant'} | "
              + " | ".join(_key_label(col) for col in g.col_keys) + " |",
              "|---|" + "---:|" * len(g.col_keys)]
@@ -418,10 +341,11 @@ else:
     for entry in g.unplaced:
         st.caption(f"Beside the grid (no variant values): **{entry.name}**"
                    + (f", score {entry.score:,.0f}" if entry.score is not None else ""))
-    for entry, shares in g.collided:  # AC4: two runs with the same values, both shown
-        st.caption(f"Beside the grid (its cell shows **{shares.name}**, the same values): "
+    for entry, shares in g.collided:  # AC4: two runs in one cell, both shown
+        star = " &#9733; (the best score in its row)" if entry.run_id in g.best_beside else ""
+        st.caption(f"Beside the grid (its cell shows **{shares.name}**, the same row and column): "
                    f"**{entry.name}**"
-                   + (f", score {entry.score:,.0f}" if entry.score is not None else ""))
+                   + (f", score {entry.score:,.0f}" if entry.score is not None else "") + star)
 
 
 # -- the members -------------------------------------------------------

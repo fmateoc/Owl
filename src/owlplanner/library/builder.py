@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import copy
 import io
+import math
 from typing import Any
 
 from .scenario import ScenarioError
@@ -229,6 +230,11 @@ def _year_ref(value, where: str) -> dict:
     raise ScenarioError(f"{where}: unknown year anchor {anchor!r}")
 
 
+def _finite_number(value: Any) -> bool:
+    """A real number: not a bool, not None, not NaN or infinite (review AD1)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def _year_fields(event: dict) -> list[str]:
     """The names of the event's year fields."""
     kind = event["kind"]
@@ -366,7 +372,7 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
                 raise ScenarioError(f"{where}.monthly must be a positive number")
         elif kind == "purchase":
             price = event.get("price")
-            if not isinstance(price, (int, float)) or isinstance(price, bool) or price <= 0:
+            if not _finite_number(price) or price <= 0:
                 raise ScenarioError(f"{where}.price must be a positive number (today's dollars)")
             if not isinstance(event.get("name"), str) or not event["name"]:
                 raise ScenarioError(f"{where}.name must name the home (rows are marked by name)")
@@ -380,6 +386,21 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
                 for field in ("term", "rate"):
                     if field not in financing:
                         raise ScenarioError(f"{where}.financing needs {field!r} for a loan")
+            # A number the builder computes with must be one (review AD1): a NaN from an editor
+            # cell is stored as None by `normalize`, and a None cost became a $0 Budget line
+            # while a None loan term failed in `build` with a bare ValueError.
+            for field in ("term", "rate", "down", "closing", "extra"):
+                if field in financing and not _finite_number(financing[field]):
+                    raise ScenarioError(f"{where}.financing.{field} must be a number, got {financing[field]!r}")
+            costs = event.get("costs")
+            if costs is not None:
+                if not isinstance(costs, dict):
+                    raise ScenarioError(f"{where}.costs must be a dict of yearly amounts")
+                for field, value in costs.items():
+                    if not _finite_number(value) or value < 0:
+                        raise ScenarioError(
+                            f"{where}.costs.{field} must be a yearly amount of 0 or more (today's dollars), "
+                            f"got {value!r}")
         elif kind == "care":
             amount = event.get("amount")
             if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:

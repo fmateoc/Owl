@@ -212,3 +212,47 @@ class TestRefusals:
         child = v.plan_variants(_scenario(), {"year": [3000]})[0].scenario
         with pytest.raises(ScenarioError, match="outside the plan"):
             b.build(child)
+
+
+class TestAD1NonFiniteValues:
+    """Review AD1: a NaN from an editor cell passed `<= 0` and the type checks, `normalize`
+    stored it as None, and a None cost became a $0 Budget line. Every number is refused
+    unless it is one."""
+
+    NAN = float("nan")
+
+    @pytest.mark.parametrize("value", [
+        {"label": "wp", "price": float("nan")},
+        {"label": "wp", "costs": {"hoa": float("nan")}},
+        {"label": "wp", "costs": {"hoa": None}},
+        {"label": "wp", "costs": {"hoa": -1}},
+        {"label": "wp", "place": {"locality": float("nan")}},
+        {"label": "wp", "place": {"move": "False"}},
+        {"label": float("nan")},
+    ])
+    def test_a_place_value_with_a_non_number_is_refused(self, value):
+        with pytest.raises(ScenarioError):
+            v.plan_variants(_scenario(), {"place": [value]})
+
+    @pytest.mark.parametrize("field", ["term", "rate", "down", "closing", "extra"])
+    def test_a_loan_term_that_is_not_a_number_is_refused(self, field):
+        financing = {"kind": "loan", "term": 30, "rate": 5.9, field: float("nan")}
+        with pytest.raises(ScenarioError, match=field):
+            v.plan_variants(_scenario(), {"financing": [{"label": "m", "financing": financing}]})
+
+    def test_a_loan_name_that_is_not_text_is_refused(self):
+        with pytest.raises(ScenarioError, match="name"):
+            v.plan_variants(_scenario(), {"financing": [
+                {"label": "m", "financing": {"kind": "loan", "term": 30, "rate": 5.9, "name": float("nan")}}]})
+
+    def test_the_builder_refuses_a_cost_or_term_left_empty(self):
+        # The library's own door (any route, not only make variants): a stored None.
+        doc = _scenario()
+        buy = next(e for e in doc["events"] if e["kind"] == "purchase")
+        buy["costs"] = {"property tax": None, "hoa": 9600, "insurance": 900}
+        with pytest.raises(ScenarioError, match="costs.property tax"):
+            v.validate(doc)
+        buy["costs"] = {"hoa": 9600}
+        buy["financing"] = {"kind": "loan", "term": 30, "rate": 5.9, "down": None}
+        with pytest.raises(ScenarioError, match="financing.down"):
+            v.validate(doc)

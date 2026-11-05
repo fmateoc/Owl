@@ -6423,3 +6423,31 @@ independent review of step 6's core after the AC1-AC7 folds,
 
 Checks: `tests/library tests/ui` **693 passed** (Linux, 0:30); flake8 clean on the step's
 files.
+
+
+## Run-library step 6: the second review's AD1-AD6 folded (2026-11-05)
+
+The user's call: fold **AD1-AD6** of `fork-notes/run-library-step6-review-2.md` (AD7-AD9
+stand). Dispositions in the review's last section:
+- **AD1 (high):** the make-variants tables are parsed in `ui/variant_tables.py` (pure
+  functions); `records` reads a missing cell (None, NaN, blank) as None, so an empty cell
+  keeps the parent's value (empty costs used to reach the plan as \$0); `-` clears a text
+  cell (White Plains from Yonkers: locality `-`). `variants._check_value` and the builder's
+  `validate_events` refuse non-finite numbers, costs that are not amounts >= 0, and loan
+  terms that are not numbers, from any route.
+- **AD2:** `variant_tables.grid_layout` -- the year as columns, every other varied dimension a
+  row; a saved layout with columns as saved (empty rows: one row); "make variants" stores it.
+- **AD3:** the row's star marks the best member itself (`Grid.best_beside` for one listed
+  beside the grid).
+- **AD4:** the cell colour is R3's verdict; `~` marks a score difference inside the noise band.
+- **AD5:** `grid.claiming_ages_flag` (cells at other claiming ages than the reference's);
+  Make variants warns after an `ages` solve when the claiming boxes are empty.
+- **AD6:** `move` a checkbox column (typed text read by `variant_tables.flag`), `kind` a select
+  box (a typo is refused, not cash).
+
+Tests +47 (`tests/ui/test_variant_tables.py` 21 through Streamlit's own
+`_apply_dataframe_edits`, `test_variants.py` +14, `test_grid.py` +5 with AC4's test re-pinned,
+`test_collections_page.py` +7). Before the fold: 23 new tests + AC4's failed, the 21 table
+tests errored (new module), 3 guards passed. `tests/library tests/ui`, the four touched files
+and `check_library_builder.py` (46/46) green; flake8 clean, ruff only upstream's four known
+items. Full suite (Linux, -n 4): see the next entry.

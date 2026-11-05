@@ -111,11 +111,23 @@ class TestLayout:
                  for cell in row.values() if cell is not None}
         assert "dup" not in shown  # one member per cell...
         assert [(e.run_id, s.run_id) for e, s in grid.collided] == [("dup", "yonkers-2029-cash")]
-        # ...and the star marks the cell that holds the row's best score, here the
-        # collided member's (130,000 over the shown cell's 104,000).
+        # ...and the star goes to the best member itself (review AD3): the collided one
+        # scores 130,000 over the shown cell's 104,000, so no cell of the row is starred (the
+        # star used to sit on the shown cell's +4,000) and the member is named beside the grid.
         row = dict(grid.rows)[("yonkers", "cash")]
-        assert [col for col, cell in row.items() if cell.best] == [(2029,)]
-        assert row[(2029,)].entry.run_id == "yonkers-2029-cash"
+        assert [col for col, cell in row.items() if cell is not None and cell.best] == []
+        assert grid.best_beside == ("dup",)
+
+    def test_ad3_a_shown_best_member_keeps_its_star(self):
+        grid = grid_view(_grid_entries(), reference="ref")
+        row = dict(grid.rows)[("yonkers", "cash")]
+        assert [col for col, cell in row.items() if cell is not None and cell.best] == [(2029,)]
+        assert grid.best_beside == ()
+
+    def test_no_row_dimension_is_one_row(self):
+        # AD2: a layout with columns only (rows []) is one row, not a fallback dimension.
+        grid = grid_view(_grid_entries(), reference="ref", row_dims=(), col_dims=("year",))
+        assert [key for key, _ in grid.rows] == [()]
 
     def test_the_reference_must_be_one_of_the_entries(self):
         with pytest.raises(ValueError, match="reference"):
@@ -170,3 +182,35 @@ class TestLatestResult:
 
     def test_a_run_with_no_solved_result_has_none(self, tmp_path):
         assert latest_result(tmp_path) is None
+
+
+class TestClaimingAgesFlag:
+    """Review AD5: a cell solved at other claiming ages than the reference's is flagged."""
+
+    @staticmethod
+    def _aged(result, ages):
+        result.plan["individuals"] = ["Ari", "Noa"]
+        result.plan["claiming_ages"] = ages
+        return result
+
+    def test_a_cell_at_other_ages_is_flagged(self):
+        ref = _entry("ref", {"year": 2027}, self._aged(_result(), [70.0, 70.0]))
+        same = _entry("same", {"year": 2029}, self._aged(_result(), [70.0, 70.0]))
+        other = _entry("other", {"year": 2031}, self._aged(_result(), [67.0, 70.0]))
+        grid = grid_view([ref, same, other], reference="ref", row_dims=(), col_dims=("year",))
+        [flag] = [f for f in grid.flags if "claiming ages" in f]
+        assert "1 cell(s)" in flag and "other (Ari 67y0m, Noa 70y0m)" in flag
+        assert "same" not in flag.split(":", 1)[1]
+
+    def test_a_claim_variant_is_not_flagged(self):
+        # Where the claiming ages are the varied dimension, they are the question.
+        ref = _entry("ref", {"claim": "Ari 70y0m"}, self._aged(_result(), [70.0, 70.0]))
+        other = _entry("other", {"claim": "Ari 67y0m"}, self._aged(_result(), [67.0, 70.0]))
+        grid = grid_view([ref, other], reference="ref", row_dims=(), col_dims=("claim",))
+        assert not [f for f in grid.flags if "claiming ages" in f]
+
+    def test_the_same_month_is_the_same_age(self):
+        ref = _entry("ref", {"year": 2027}, self._aged(_result(), [67.8333, 70.0]))
+        other = _entry("other", {"year": 2029}, self._aged(_result(), [67.83333333, 70.0]))
+        grid = grid_view([ref, other], reference="ref", row_dims=(), col_dims=("year",))
+        assert not [f for f in grid.flags if "claiming ages" in f]

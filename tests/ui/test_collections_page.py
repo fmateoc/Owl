@@ -200,3 +200,122 @@ class TestNoRuns:
         at = _page()
         assert not at.exception, [e.value for e in at.exception]
         assert "Lonely question" in _text(at)
+
+
+def _grid_library(tmp_path, monkeypatch, members, layout=None):
+    """A library with one collection: each member (values, score, home) a bill run with a
+    solved result; the first is the reference."""
+    root = tmp_path / "grid"
+    monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+    monkeypatch.syspath_prepend(str(UI_DIR))
+    lib = Library.open(root)
+    coll = lib.create_collection("Q")
+    for i, (values, score, home) in enumerate(members):
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = f"v{i}"
+        run = lib.save_run(name=f"v{i}", scenario=scenario).run
+        _write_result(run, f"2026-11-03T10-00-0{i}_decision", score=score, home=home)
+        lib.add_member(coll.id, run, values)
+        if i == 0:
+            lib.set_reference(coll.id, run)
+    if layout is not None:
+        lib.update_collection(coll.id, grid=layout)
+    return lib
+
+
+def _grid_md(at):
+    return next(str(m.value) for m in at.markdown if str(m.value).startswith("| "))
+
+
+class TestTheGridLayoutAndMarks:
+    """Review AD2-AD4 on the real page."""
+
+    def test_ad2_the_condo_grid_places_every_member(self, tmp_path, monkeypatch):
+        # 2 places x 2 years x 2 financings, no saved layout: the page used to take the
+        # alphabetically first and last dimensions (financing x year), dropping place and
+        # listing four members "beside the grid".
+        members, score = [], 80_000.0
+        for place in ("yonkers", "white-plains"):
+            for year in (2027, 2029):
+                for fin in ("cash", "mortgage"):
+                    members.append(({"place": place, "year": year, "financing": fin}, score, 150_000.0))
+                    score += 3_000
+        _grid_library(tmp_path, monkeypatch, members)
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        table = _grid_md(at)
+        assert table.startswith("| place, financing | 2027 | 2029 |")
+        assert "white-plains, mortgage" in table and "yonkers, cash" in table
+        assert "Beside the grid" not in _text(at)
+
+    def test_ad2_one_dimension_is_one_row(self, tmp_path, monkeypatch):
+        members = [({"year": y}, 80_000.0 + 3_000 * i, 150_000.0) for i, y in enumerate((2027, 2029, 2031))]
+        _grid_library(tmp_path, monkeypatch, members)
+        at = _page()
+        lines = _grid_md(at).splitlines()
+        assert len(lines) == 3  # header, rule, one row (it was a 3 x 3 diagonal)
+
+    def test_ad3_the_star_is_never_on_a_number_that_is_not_the_best(self, tmp_path, monkeypatch):
+        # Two members in one cell (a layout with columns only); the second scores more.
+        members = [({"place": "yonkers", "year": 2027}, 80_000.0, 150_000.0),
+                   ({"place": "yonkers", "year": 2029}, 82_000.0, 150_000.0),
+                   ({"place": "queens", "year": 2029}, 95_000.0, 150_000.0)]
+        _grid_library(tmp_path, monkeypatch, members, layout={"rows": [], "columns": ["year"]})
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "&#9733;" not in _grid_md(at)  # the +2,000 cell used to carry the row's star
+        [beside] = [c.value for c in at.caption if "Beside the grid" in c.value]
+        assert "**v2**" in beside and "the best score in its row" in beside
+
+    def test_ad4_a_lead_on_the_home_inside_the_score_band_is_green(self, tmp_path, monkeypatch):
+        # +400 on 80,000 is inside the 1% band; +100,000 of home is resolved: R3 says the
+        # variant leads, and the cell used to be grey.
+        members = [({"place": "yonkers"}, 80_000.0, 150_000.0),
+                   ({"place": "queens"}, 80_400.0, 250_000.0)]
+        _grid_library(tmp_path, monkeypatch, members)
+        at = _page()
+        assert "color:#2e7d32'><b>~+400" in _grid_md(at)
+
+
+class TestTheClaimingAgesWarnings:
+    """Review AD5 on the real page: the grid flags cells at other claiming ages, and Make
+    variants warns when the parent's last solve searched them and the boxes are empty."""
+
+    def test_ad5_a_cell_at_other_ages_is_flagged(self, tmp_path, monkeypatch):
+        members = [({"year": 2027}, 80_000.0, 150_000.0), ({"year": 2029}, 81_000.0, 150_000.0)]
+        lib = _grid_library(tmp_path, monkeypatch, members)
+        coll = lib.collections()[0]
+        other = lib.get(coll.members[1].run)
+        plan_json = next((other.path / "results").iterdir()) / R.PLAN_JSON
+        doc = json.loads(plan_json.read_text(encoding="utf-8"))
+        doc["claiming_ages"] = [70.0]
+        plan_json.write_text(json.dumps(doc), encoding="utf-8")
+        at = _page()
+        warnings = [w.value for w in at.warning]
+        assert any("claiming ages other than the reference's" in w and "v1 (Bill 70y0m)" in w
+                   for w in warnings)
+
+    def test_ad5_make_variants_warns_after_an_ages_solve(self, library):
+        bill = next(r for r in library.runs() if r.name == "bill")
+        record_path = next((bill.path / "results").iterdir()) / R.RECORD_JSON
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        record["age_search"] = {"chosen": [67.0], "candidates": [[[67.0], 82_000.0]]}
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+        at = _page()
+        at.selectbox(key="col_variant_parent").set_value(bill).run()
+        assert any("searched the claiming ages" in w.value for w in at.warning)
+        at.text_input(key="col_variant_claim_Bill").set_value("67").run()
+        assert not any("searched the claiming ages" in w.value for w in at.warning)
+
+    def test_ad2_make_variants_stores_a_layout(self, tmp_path, monkeypatch):
+        root = tmp_path / "fresh"
+        monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+        monkeypatch.syspath_prepend(str(UI_DIR))
+        lib = Library.open(root)
+        lib.save_run(name="bill", scenario=import_case(BILL))
+        lib.create_collection("Claims")
+        at = _page()
+        at.text_input(key="col_variant_claim_Bill").set_value("67, 70").run()
+        next(b for b in at.button if b.label == "Create the variants").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert lib.collections()[0].grid == {"rows": [], "columns": ["claim"]}

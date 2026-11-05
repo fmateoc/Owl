@@ -6639,6 +6639,16 @@ run against it): `test_builder.py`'s "leaves the plan one year is refused",
 **218 passed** (24 s). flake8/ruff clean on the touched files.
 
 
+## Run-library step 6: the full suite after AE1-AE3 (2026-11-05)
+
+Full suite (Windows, -n 4) over the folded second increment: **4350 passed, 2 skipped**
+(14:36; the pre-fold 4346 + the four new tests -- the fifth check re-pins the existing
+regret test, counted in the fold's five). The overnight `check_library_variants.py --full`
+(run 2) is still in flight; its verdict joins the pool entry above. `main` fast-forwarding
+to `claude/run-library-step6-inc2` stays the user's call (the core's pattern: once the
+reviews and their folds are done).
+
+
 ## Run-library step 6: the full-grid check's suite pool bounded (2026-11-05)
 
 The overnight `check_library_variants.py --full` (the "Next:" item above) died on its first

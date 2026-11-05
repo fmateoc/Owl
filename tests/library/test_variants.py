@@ -84,6 +84,12 @@ class TestPlace:
         with pytest.raises(ScenarioError, match="price"):
             v.plan_variants(_scenario(), {"place": [{"label": "x", "price": -1}]})
 
+    def test_ac5_a_price_that_is_not_a_number_is_refused(self):
+        # Review AC5: the shape check takes "a number or a string" and the price is then
+        # compared -- a string price raised TypeError where every refusal is ScenarioError.
+        with pytest.raises(ScenarioError, match="price"):
+            v.plan_variants(_scenario(), {"place": [{"label": "queens", "price": "850000"}]})
+
 
 class TestFinancing:
     def test_the_loan_replaces_the_financing(self):

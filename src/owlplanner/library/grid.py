@@ -72,6 +72,7 @@ class Grid:
     col_keys: tuple       # each a tuple of the column dimensions' values
     rows: tuple           # (row key tuple, {col key: Cell or None})
     unplaced: tuple       # entries with no value for a row or column dimension
+    collided: tuple       # (entry, shown) pairs: two members with the same cell key (AC4)
     flags: tuple          # the reference's and the cells' caveats (S13), deduplicated
 
 
@@ -90,9 +91,12 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
 
     `reference` is the entry (or run id) the cells are differences from. A member with no
     values at all is listed in `unplaced` (it has no grid position); a value a placed member
-    lacks is its dimension's None bucket. Cells are judged against the reference's own
-    result (`compare.difference` for the score, the home by the fifty-cent rule alone -- it
-    is set by the inputs), and the lead verdict is R3's two numbers.
+    lacks is its dimension's None bucket. One cell holds one member: another member with
+    the very same values keeps its own Cell beside the grid (`collided`, review AC4: two
+    runs of one question cell never silently vanish from the pivot). Cells are judged
+    against the reference's own result (`compare.difference` for the score, the home by the
+    fifty-cent rule alone -- it is set by the inputs), and the lead verdict is R3's two
+    numbers.
     """
     by_id = {e.run_id: e for e in entries}
     ref = by_id.get(reference) if isinstance(reference, str) else reference
@@ -131,14 +135,28 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
             lead=lead_between(ref, entry),
         )
 
-    # Best score per row, by score only (run_suite's `condo_pivot` bolds the same way).
+    # One cell per (row key, column key): the first member whose values fit it; another
+    # member with the very same values keeps its own Cell beside the grid (review AC4).
+    shown = {}
+    collided = []
+    for entry in placed:
+        key = (_key(entry.values, row_dims), _key(entry.values, col_dims))
+        if key in shown:
+            collided.append((entry, shown[key]))
+        else:
+            shown[key] = entry
+
+    # Best score in each row, by score only (run_suite's `condo_pivot` bolds the same way):
+    # the mark goes to the cell that holds the row's best score, even when that is a
+    # collided member listed beside the grid.
     for key in row_keys:
         here = [e for e in placed if _key(e.values, row_dims) == key]
         scored = [e for e in here if e.score is not None]
         if scored:
             best = max(scored, key=lambda e: e.score)
-            cell = cells[best.run_id]
-            cells[best.run_id] = Cell(
+            holder = shown[(key, _key(best.values, col_dims))]
+            cell = cells[holder.run_id]
+            cells[holder.run_id] = Cell(
                 entry=cell.entry, delta=cell.delta, verdict=cell.verdict, note=cell.note,
                 home=cell.home, home_delta=cell.home_delta, lead=cell.lead, best=True,
             )
@@ -147,8 +165,7 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
     for key in row_keys:
         row = {}
         for col in col_keys:
-            entry = next((e for e in placed
-                          if _key(e.values, row_dims) == key and _key(e.values, col_dims) == col), None)
+            entry = shown.get((key, col))
             row[col] = cells.get(entry.run_id) if entry is not None else None
         rows.append((key, row))
 
@@ -163,6 +180,7 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
         col_keys=tuple(col_keys),
         rows=tuple(rows),
         unplaced=tuple(unplaced),
+        collided=tuple(collided),
         flags=tuple(dict.fromkeys(flags)),
     )
 

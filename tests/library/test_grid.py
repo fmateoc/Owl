@@ -100,6 +100,23 @@ class TestLayout:
         assert [key for key, _ in grid.rows] == [("yonkers", "cash"), (None, None)]
         assert dict(grid.rows)[(None, None)][(2029,)].delta == 4_000.0
 
+    def test_ac4_two_members_with_the_same_values_never_vanish(self):
+        # Review AC4: a second member with the very same values used to lose the cell to the
+        # first and disappear from the pivot entirely (no cell, not even `unplaced`).
+        entries = _grid_entries() + [
+            _entry("dup", {"place": "yonkers", "year": 2029, "financing": "cash"},
+                   _result(score_value=REF_SCORE + 30_000.0, home=REF_HOME))]
+        grid = grid_view(entries, reference="ref")
+        shown = {cell.entry.run_id for _, row in grid.rows
+                 for cell in row.values() if cell is not None}
+        assert "dup" not in shown  # one member per cell...
+        assert [(e.run_id, s.run_id) for e, s in grid.collided] == [("dup", "yonkers-2029-cash")]
+        # ...and the star marks the cell that holds the row's best score, here the
+        # collided member's (130,000 over the shown cell's 104,000).
+        row = dict(grid.rows)[("yonkers", "cash")]
+        assert [col for col, cell in row.items() if cell.best] == [(2029,)]
+        assert row[(2029,)].entry.run_id == "yonkers-2029-cash"
+
     def test_the_reference_must_be_one_of_the_entries(self):
         with pytest.raises(ValueError, match="reference"):
             grid_view(_grid_entries(), reference="nope")

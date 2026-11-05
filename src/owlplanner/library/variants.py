@@ -123,7 +123,7 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
     if dimension == "place":
         if value.get("label") is None:
             raise ScenarioError("place: each value needs a 'label'")
-        for field in ("name", "price", "place", "costs"):
+        for field in ("name", "place", "costs"):
             if field not in value:
                 continue
             ok = (isinstance(value[field], dict) if field in ("place", "costs")
@@ -131,8 +131,12 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
             if not ok:
                 what = "a dict" if field in ("place", "costs") else "a number or a string"
                 raise ScenarioError(f"place: {field!r} of a value must be {what}, got {value[field]!r}")
+        # The price is typed here too (review AC5): the shape check above takes a string,
+        # and comparing one with `<= 0` raised TypeError where every other refusal is a
+        # ScenarioError (what `ui/Collections.py` flashes).
         price = value.get("price")
-        if price is not None and price <= 0:
+        if price is not None and (not isinstance(price, (int, float))
+                                  or isinstance(price, bool) or price <= 0):
             raise ScenarioError(f"place: price must be a positive number (today's dollars), got {price!r}")
     elif dimension == "financing":
         if value.get("label") is None:

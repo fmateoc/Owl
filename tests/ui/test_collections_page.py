@@ -39,8 +39,8 @@ def _write_result(run, name, *, score=82_000.0, home=150_000.0, savings=350_000.
         "spending_basis": score, "discretionary_year1": score,
         "final_bequest_today": home + savings, "final_bequest_savings_today": savings,
     }
-    plan = {"objective": "maxSpending", "individuals": ["Noa", "Avi"],
-            "claiming_ages": [67.0, 70.0], "by_year": []}
+    plan = {"objective": "maxSpending", "individuals": ["Bill"],
+            "claiming_ages": [67.0], "by_year": []}
     (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
     (folder / R.SUMMARY_JSON).write_text(json.dumps(summary), encoding="utf-8")
     (folder / R.PLAN_JSON).write_text(json.dumps(plan), encoding="utf-8")
@@ -123,6 +123,18 @@ class TestCollections:
         names = [c.name for c in library.collections()]
         assert "A second question" in names
 
+    def test_ac3_create_collection_opens_the_new_collection(self, library):
+        # Review AC3: `_open_collection` stored the collection's id where the picker holds
+        # labels, so the rerun fell back to the first collection instead of opening the new
+        # one (and dropped the previous selection).
+        at = _page()
+        at.text_input(key="col_new_name").set_value("A second question")
+        at.run()
+        next(b for b in at.button if b.label == "Create collection").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        heads = [m.value for m in at.markdown if str(m.value).startswith("## ")]
+        assert heads == ["## A second question"]
+
     def test_the_collection_is_deleted_and_its_runs_kept(self, library):
         at = _page()
         at.button(key=f"col_delete_{library.collections()[0].id}").click().run()
@@ -137,3 +149,54 @@ class TestCollections:
         assert "Create the variants" in labels and "Queue every member" in labels
         assert any(t.label == "Purchase year(s)" for t in at.text_input)
         assert "Claiming ages" in _text(at)
+
+
+class TestMakeVariants:
+    """The make-variants editors end to end (reviews AC1-AC2, AC6)."""
+
+    def test_ac1_fill_the_ages_fills_the_boxes(self, library):
+        # The fill button used to write the claim boxes' widget keys from an inline
+        # handler -- StreamlitWidgetAlreadyInstantiatedError on every click (AC1).
+        at = _page()
+        at.text_input(key="col_variant_claim_Bill").set_value("70")
+        at.run()
+        next(b for b in at.button if b.label == "Fill the ages from the run's last solve").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert at.text_input(key="col_variant_claim_Bill").value == "67"
+
+    def test_ac2_create_the_variants_ends_without_an_exception(self, library):
+        # The handler's tail wrote the collection picker's widget key (AC2): the children
+        # were saved but the page ended in StreamlitWidgetAlreadyInstantiatedError. A claim
+        # value makes one child of the bill run (its scenario has no purchase to vary).
+        at = _page()
+        at.text_input(key="col_variant_claim_Bill").set_value("67")
+        at.run()
+        next(b for b in at.button if b.label == "Create the variants").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        coll = library.collections()[0]
+        assert [m.values for m in coll.members] == [{"year": 2027}, {"year": 2029},
+                                                    {"claim": "Bill 67y0m"}]
+        assert sorted(r.name for r in library.runs()) == ["bill", "bill bill-67y0m", "bill later"]
+
+    def test_ac6_a_bad_cell_flashes_an_error_and_makes_nothing(self, library):
+        # `float()` on the claiming box (and on the places/financing cells) used to end the
+        # page with a raw ValueError (AC6): a bad cell is a flash now, and nothing is made.
+        at = _page()
+        at.text_input(key="col_variant_claim_Bill").set_value("67x")
+        at.run()
+        next(b for b in at.button if b.label == "Create the variants").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "67x" in _text(at)
+        assert sorted(r.name for r in library.runs()) == ["bill", "bill later"]
+
+
+class TestNoRuns:
+    def test_ac7_a_collection_with_no_runs_renders(self, tmp_path, monkeypatch):
+        # Make variants used to read `lib.scenario(None)` ("no run with id None") on every
+        # render of a collection with no runs (AC7).
+        root = tmp_path / "empty"
+        monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+        Library.open(root).create_collection("Lonely question")
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        assert "Lonely question" in _text(at)

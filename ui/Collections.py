@@ -50,7 +50,16 @@ _DIMENSIONS = ("place", "year", "financing", "work", "claim")
 
 
 def _open_collection(cid):
-    st.session_state["col_page_collection"] = cid
+    """Open a collection on the next render (reviews AC2-AC3).
+
+    The picker's own key (`col_page_collection`) cannot be written from a button handler:
+    it is a widget key, already instantiated mid-run, so writing it raises Streamlit's
+    `StreamlitWidgetAlreadyInstantiatedError` (AC2), and it holds the picker's *labels*,
+    not ids (AC3). `library_selected_collection` is a plain key; the block below translates
+    it to the label before the picker is instantiated -- the route a jump from another
+    page already takes.
+    """
+    st.session_state["library_selected_collection"] = cid
 
 
 with st.expander("New collection", expanded=not lib.collections()):
@@ -144,133 +153,185 @@ def _claim_combos(names, texts):
         if not text:
             per_person.append([None])
         else:
-            per_person.append([float(part) for part in text.replace(";", ",").split(",") if part.strip()])
+            per_person.append([_number(part, f"{person}'s claiming age")
+                               for part in text.replace(";", ",").split(",") if part.strip()])
     combos = [dict(zip(names, ages, strict=True)) for ages in itertools.product(*per_person)]
     if all(age is None for combo in combos for age in combo.values()):
         return []
     return combos
 
 
-with st.expander("Make variants", expanded=False):
-    runs = lib.runs()
-    parent = st.selectbox("From run", runs, format_func=lambda r: f"{r.name}  ({r.folder_name})",
-                          key="col_variant_parent",
-                          help="One child draft per value of the dimensions below (section 9.3); "
-                               "several dimensions give their product -- the grid.")
-    names = list(((lib.scenario(parent).get("case") or {}).get("basic_info") or {}).get("names") or [])
-    st.caption("Each table is one dimension: **one row per value**. Leave a table or field "
-               "empty to keep the parent's.")
-    years_text = st.text_input("Purchase year(s)", key="col_variant_years", placeholder="2027, 2029, 2031")
-    st.markdown("**Place(s)**")
-    places = st.data_editor(_places_table(), num_rows="dynamic", key="col_variant_places")
-    st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`)")
-    fins = st.data_editor(_financing_table(), num_rows="dynamic", key="col_variant_fins")
-    c1, c2 = st.columns(2)
-    work_person = c1.selectbox("Last work year, for", ["(none)"] + names, key="col_variant_work_person")
-    work_years = c2.text_input("their last year(s)", key="col_variant_work_years", placeholder="2026, 2027")
-    st.markdown("**Claiming ages** (comma separated per person; empty: let Owl choose)")
-    claim_texts = {person: st.text_input(f"{person}", key=f"col_variant_claim_{person}")
-                   for person in names}
-    if st.button("Fill the ages from the run's last solve", key="col_variant_fill"):
-        result = grid.latest_result(parent.path)
-        ages = dict(view.claiming_ages(result)) if result is not None else {}
-        for person in names:
-            st.session_state[f"col_variant_claim_{person}"] = (
-                "" if person not in ages else f"{ages[person]:g}")
-        st.rerun()
-    coll_target = st.selectbox("Into collection", colls, format_func=lambda c: c.name,
-                               index=list(c.id for c in colls).index(coll.id),
-                               key="col_variant_collection")
-    c3, c4 = st.columns(2)
-    run_now = c3.checkbox("Queue them when created", key="col_variant_run",
-                          help="Each child is solved with the preset below (its own results "
-                               "folder, section 8.2).")
-    preset = c4.selectbox("Preset", list(PRESETS), key="col_variant_preset",
-                          help="quick: the loop, ages held. decision: local search + its exact "
-                               "companion. ages: the two-stage claiming-age search. custom: the "
-                               "case's own options.")
-    if st.button("Create the variants", type="primary", key="col_variant_go"):
-        dimensions = {}
-        if years_text.strip():
-            try:
-                dimensions["year"] = [int(part) for part in years_text.replace(";", ",").split(",") if part.strip()]
-            except ValueError:
-                libraryjobs.flash("error", f"Not a list of years: {years_text!r}")
-        for _, row in places.iterrows():
-            value = {"label": row.get("label") or ""}
-            if row.get("name"):
-                value["name"] = row["name"]
-            if row.get("price") not in (None, ""):
-                value["price"] = float(row["price"])
-            place = _row_values(row, ("state", "locality", "school_district"))
-            if row.get("move") not in (None, ""):
-                place["move"] = bool(row["move"])
-            if place:
-                value["place"] = place
-            costs = _row_values(row, ("property tax", "hoa", "insurance"))
-            if costs:
-                value["costs"] = costs
-            if value["label"]:
-                dimensions.setdefault("place", []).append(value)
-        for _, row in fins.iterrows():
-            label = row.get("label") or ""
-            kind = str(row.get("kind") or "cash").strip().lower()
-            if not label:
-                continue
-            financing = {"kind": "loan" if kind.startswith("loan") or kind.startswith("mortgage") else "cash"}
-            for field in ("term", "rate", "down", "closing", "extra"):
-                if row.get(field) not in (None, ""):
-                    financing[field] = float(row[field])
-            if row.get("name"):
-                financing["name"] = row["name"]
-            dimensions.setdefault("financing", []).append({"label": label, "financing": financing})
-        if work_person != "(none)" and work_years.strip():
-            try:
-                dimensions["work"] = [{"person": work_person, "end": int(part)}
-                                      for part in work_years.replace(";", ",").split(",") if part.strip()]
-            except ValueError:
-                libraryjobs.flash("error", f"Not a list of years: {work_years!r}")
-        combos = _claim_combos(names, claim_texts)
-        if combos:
-            dimensions["claim"] = combos
-        if not dimensions:
-            libraryjobs.flash("error", "No dimension given: fill a table or a field above.")
-            st.rerun()
+def _number(value, what):
+    """One editor cell as a number (review AC6: a bad cell is a flashed error, never a page
+    crash -- `float()` on an arbitrary cell used to end the page with a raw ValueError)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ScenarioError(f"{what} is not a number: {value!r}") from None
+
+
+def _dimensions(names, years_text, places, fins, work_person, work_years, claim_texts):
+    """The make-variants dimensions from the editors' raw values (review AC6).
+
+    Raises ScenarioError on a cell that is not a number, or a year field that is not a
+    list of years (the handler flashes it and makes nothing); a table row with data but no
+    label is skipped and named in the returned `skipped` notes.
+    """
+    dimensions = {}
+    skipped = []
+    if years_text.strip():
         try:
-            made = variants.plan_variants(lib.scenario(parent), dimensions)
-        except ScenarioError as exc:  # a value that does not fit the scenario
-            libraryjobs.flash("error", f"No variants: {exc}")
-            st.rerun()
-        created, skipped = 0, 0
-        for variant in made:
+            dimensions["year"] = [int(part) for part in years_text.replace(";", ",").split(",")
+                                  if part.strip()]
+        except ValueError:
+            raise ScenarioError(f"not a list of years: {years_text!r}") from None
+    for _, row in places.iterrows():
+        label = row.get("label") or ""
+        if not label:
+            if any(row.get(k) not in (None, "") for k in
+                   ("name", "price", "state", "locality", "school_district", "move",
+                    "property tax", "hoa", "insurance")):
+                skipped.append("a places row with no label")
+            continue
+        value = {"label": label}
+        if row.get("name"):
+            value["name"] = str(row["name"])
+        if row.get("price") not in (None, ""):
+            value["price"] = _number(row["price"], f"place {label}: price")
+        place = _row_values(row, ("state", "locality", "school_district"))
+        if row.get("move") not in (None, ""):
+            place["move"] = bool(row["move"])
+        if place:
+            value["place"] = place
+        costs = _row_values(row, ("property tax", "hoa", "insurance"))
+        if costs:
+            value["costs"] = costs
+        dimensions.setdefault("place", []).append(value)
+    for _, row in fins.iterrows():
+        label = row.get("label") or ""
+        if not label:
+            if any(row.get(k) not in (None, "") for k in
+                   ("kind", "term", "rate", "down", "closing", "extra", "name")):
+                skipped.append("a financing row with no label")
+            continue
+        kind = str(row.get("kind") or "cash").strip().lower()
+        financing = {"kind": "loan" if kind.startswith("loan") or kind.startswith("mortgage") else "cash"}
+        for field in ("term", "rate", "down", "closing", "extra"):
+            if row.get(field) not in (None, ""):
+                financing[field] = _number(row[field], f"financing {label}: {field}")
+        if row.get("name"):
+            financing["name"] = str(row["name"])
+        dimensions.setdefault("financing", []).append({"label": label, "financing": financing})
+    if work_person != "(none)" and work_years.strip():
+        try:
+            dimensions["work"] = [{"person": work_person, "end": int(part)}
+                                  for part in work_years.replace(";", ",").split(",") if part.strip()]
+        except ValueError:
+            raise ScenarioError(f"not a list of years: {work_years!r}") from None
+    combos = _claim_combos(names, claim_texts)
+    if combos:
+        dimensions["claim"] = combos
+    return dimensions, skipped
+
+
+def _fill_claim_ages(parent, names):
+    """Fill the claiming boxes from the run's last solve (review AC1).
+
+    An `on_click` callback: it runs before the boxes are instantiated, so writing their
+    keys is legal -- an inline handler raised `StreamlitWidgetAlreadyInstantiatedError`
+    on every click (the boxes sit above the button).
+    """
+    result = grid.latest_result(parent.path) if parent is not None else None
+    ages = dict(view.claiming_ages(result)) if result is not None else {}
+    for person in names:
+        st.session_state[f"col_variant_claim_{person}"] = (
+            "" if person not in ages else f"{ages[person]:g}")
+
+
+runs = lib.runs()
+if not runs:  # review AC7: `lib.scenario(None)` used to end the page here
+    st.caption("The library has no runs yet: save one first (the Run page), then make "
+               "variants of it here.")
+if runs:
+    with st.expander("Make variants", expanded=False):
+        parent = st.selectbox("From run", runs, format_func=lambda r: f"{r.name}  ({r.folder_name})",
+                              key="col_variant_parent",
+                              help="One child draft per value of the dimensions below (section 9.3); "
+                                   "several dimensions give their product -- the grid.")
+        names = list(((lib.scenario(parent).get("case") or {}).get("basic_info") or {}).get("names") or [])
+        st.caption("Each table is one dimension: **one row per value**. Leave a table or field "
+                   "empty to keep the parent's.")
+        years_text = st.text_input("Purchase year(s)", key="col_variant_years", placeholder="2027, 2029, 2031")
+        st.markdown("**Place(s)**")
+        places = st.data_editor(_places_table(), num_rows="dynamic", key="col_variant_places")
+        st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`)")
+        fins = st.data_editor(_financing_table(), num_rows="dynamic", key="col_variant_fins")
+        c1, c2 = st.columns(2)
+        work_person = c1.selectbox("Last work year, for", ["(none)"] + names, key="col_variant_work_person")
+        work_years = c2.text_input("their last year(s)", key="col_variant_work_years", placeholder="2026, 2027")
+        st.markdown("**Claiming ages** (comma separated per person; empty: let Owl choose)")
+        claim_texts = {person: st.text_input(f"{person}", key=f"col_variant_claim_{person}")
+                       for person in names}
+        st.button("Fill the ages from the run's last solve", key="col_variant_fill",
+                  on_click=_fill_claim_ages, args=(parent, names))  # AC1: a callback, not an inline handler
+        coll_target = st.selectbox("Into collection", colls, format_func=lambda c: c.name,
+                                   index=list(c.id for c in colls).index(coll.id),
+                                   key="col_variant_collection")
+        c3, c4 = st.columns(2)
+        run_now = c3.checkbox("Queue them when created", key="col_variant_run",
+                              help="Each child is solved with the preset below (its own results "
+                                   "folder, section 8.2).")
+        preset = c4.selectbox("Preset", list(PRESETS), key="col_variant_preset",
+                              help="quick: the loop, ages held. decision: local search + its exact "
+                                   "companion. ages: the two-stage claiming-age search. custom: the "
+                                   "case's own options.")
+        if st.button("Create the variants", type="primary", key="col_variant_go"):
             try:
-                saved = lib.save_run(name=f"{parent.name} {variant.label}",
-                                     scenario=variant.scenario, parent=parent.id)
-            except Exception as exc:  # noqa: BLE001 - shown, not raised (a bad value, a locked library)
-                libraryjobs.flash("error", f"{variant.label}: not saved ({exc})")
-                skipped += 1
-                continue
-            run = saved.run if saved.created else saved.identical_to
-            lib.add_member(coll_target.id, run, variant.values)
-            if saved.created:
-                created += 1
-            else:
-                skipped += 1
-                libraryjobs.flash("caption", f"{variant.label}: identical to *{run.name}* "
-                                             "(same inputs): added to the collection as it is.")
-            if run_now:
-                for solve in preset_solves(preset):
-                    try:
-                        manager.enqueue(run, preset=solve)
-                    except (ScenarioError, JobsError) as exc:
-                        libraryjobs.flash("error", f"{run.name}: not queued ({exc})")
-                        break
-        message = (f"{created} variant(s) created in *{coll_target.name}*"
-                   + (f", {skipped} skipped" if skipped else "")
-                   + (", queued" if run_now else "."))
-        libraryjobs.flash("success", message)
-        _open_collection(coll_target.id)
-        st.rerun()
+                dimensions, notes = _dimensions(names, years_text, places, fins,
+                                                work_person, work_years, claim_texts)
+            except ScenarioError as exc:  # a bad cell: flash it and make nothing (AC6)
+                libraryjobs.flash("error", f"No variants: {exc}")
+                st.rerun()
+            for note in notes:
+                libraryjobs.flash("caption", f"Skipped {note}.")
+            if not dimensions:
+                libraryjobs.flash("error", "No dimension given: fill a table or a field above.")
+                st.rerun()
+            try:
+                made = variants.plan_variants(lib.scenario(parent), dimensions)
+            except ScenarioError as exc:  # a value that does not fit the scenario
+                libraryjobs.flash("error", f"No variants: {exc}")
+                st.rerun()
+            created, skipped = 0, 0
+            for variant in made:
+                try:
+                    saved = lib.save_run(name=f"{parent.name} {variant.label}",
+                                         scenario=variant.scenario, parent=parent.id)
+                except Exception as exc:  # noqa: BLE001 - shown, not raised (a bad value, a locked library)
+                    libraryjobs.flash("error", f"{variant.label}: not saved ({exc})")
+                    skipped += 1
+                    continue
+                run = saved.run if saved.created else saved.identical_to
+                lib.add_member(coll_target.id, run, variant.values)
+                if saved.created:
+                    created += 1
+                else:
+                    skipped += 1
+                    libraryjobs.flash("caption", f"{variant.label}: identical to *{run.name}* "
+                                                 "(same inputs): added to the collection as it is.")
+                if run_now:
+                    for solve in preset_solves(preset):
+                        try:
+                            manager.enqueue(run, preset=solve)
+                        except (ScenarioError, JobsError) as exc:
+                            libraryjobs.flash("error", f"{run.name}: not queued ({exc})")
+                            break
+            message = (f"{created} variant(s) created in *{coll_target.name}*"
+                       + (f", {skipped} skipped" if skipped else "")
+                       + (", queued" if run_now else "."))
+            libraryjobs.flash("success", message)
+            _open_collection(coll_target.id)  # AC2-AC3: the plain key, translated below
+            st.rerun()
 
 
 # -- the grid and the leads -------------------------------------------
@@ -356,6 +417,10 @@ else:
                 + (f" -- {judgment.note}" if judgment.note else ""))
     for entry in g.unplaced:
         st.caption(f"Beside the grid (no variant values): **{entry.name}**"
+                   + (f", score {entry.score:,.0f}" if entry.score is not None else ""))
+    for entry, shares in g.collided:  # AC4: two runs with the same values, both shown
+        st.caption(f"Beside the grid (its cell shows **{shares.name}**, the same values): "
+                   f"**{entry.name}**"
                    + (f", score {entry.score:,.0f}" if entry.score is not None else ""))
 
 

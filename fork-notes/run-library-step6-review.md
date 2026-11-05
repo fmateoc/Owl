@@ -252,3 +252,44 @@ direct callers can be misled. A `None`/`not comparable` verdict, or an explicit
   Queue page's handlers (their buttons were not swept; step 3's review covered those pages'
   own flows).
 
+## Dispositions (2026-11-05, the user's call: fold AC1-AC7; AC8-AC10 stand as written)
+
+- **AC1 folded:** the fill button is an `on_click` callback
+  (`ui/Collections.py` `_fill_claim_ages`), which runs before the claim boxes are
+  instantiated so writing their keys is legal; no rerun is needed. Test:
+  `test_ac1_fill_the_ages_fills_the_boxes`.
+- **AC2 folded:** `_open_collection` writes the plain `library_selected_collection` key
+  (the route a jump from another page takes), so no widget key is written mid-run; the
+  make-variants tail completes, its success flash shows and the target collection opens.
+  Test: `test_ac2_create_the_variants_ends_without_an_exception` (one claim variant of the
+  bill run through the real builder).
+- **AC3 folded:** with AC2's change the key carries an id again and the existing
+  translate-to-label block (before the picker instantiates) is the only reader: creating a
+  collection opens it and the previous selection is not lost. Test:
+  `test_ac3_create_collection_opens_the_new_collection`.
+- **AC4 folded:** `grid.grid_view` keeps one member per cell and gives a colliding member
+  (the same values) its own Cell beside the grid (`Grid.collided`, `(entry, shown)` pairs,
+  captioned on the page); the best-score mark goes to the cell that holds the row's best
+  score, even when that is a collided member. Test:
+  `test_ac4_two_members_with_the_same_values_never_vanish`.
+- **AC5 folded:** `variants._check_value` types the place `price` (a positive number) and
+  raises `ScenarioError` for anything else; the shape check no longer advertises a string
+  price. Test: `test_ac5_a_price_that_is_not_a_number_is_refused`.
+- **AC6 folded:** the make-variants editors build their dimensions in
+  `ui/Collections.py` `_dimensions`, every cell through `_number`; a bad cell raises
+  `ScenarioError`, which the handler flashes ("No variants: ...") and nothing is created
+  (before, the years field flashed and the build continued without it). A table row with
+  data but no label is skipped and named. Test:
+  `test_ac6_a_bad_cell_flashes_an_error_and_makes_nothing`.
+- **AC7 folded:** Make variants renders only when the library has runs (a caption points to
+  the Run page otherwise), so `lib.scenario(None)` is unreachable. Test:
+  `test_ac7_a_collection_with_no_runs_renders`.
+
+Verification of the fold: the 7 new tests (all checked to fail before their fix -- the
+fixes under `src/` and `ui/` stashed, the tests re-run: 7 failed), the four touched suites
+(`tests\library tests\rate_models tests\config tests\ui`) **1313 passed, 1 skipped** (53 s),
+full suite (Windows, -n 4) **4203 passed, 2 skipped** (8:30; 4196 + 7), lint clean; the
+review's probes re-run against the fixed page (the fill button fills `67`, "Create the
+variants" ends clean and its member lands, "Create collection" opens the new collection, a
+non-numeric claim age flashes and makes nothing, a collection with no runs renders, a
+string price is a `ScenarioError`).

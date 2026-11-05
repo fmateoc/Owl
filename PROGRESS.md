@@ -6357,3 +6357,45 @@ Left for the next increment (as called): I8/I9, the I2/I11 variant dimensions, "
 thorough" (`work_sweep.py` as a preset), member values for hand-added runs (the grid places
 them only through "make variants" today), and the save dialog's "Collection" field (design
 section 7; adding to a collection is on the Collections page).
+
+
+## Run-library step 6: the core reviewed, AC1-AC7 folded (2026-11-05)
+
+An independent review of step 6's core (`fork-notes/run-library-step6-review.md`, findings
+AC1-AC10, prefix AC; read against design sections 4, 8.1, 9.2, 9.3 and 11 with 10 probes on
+the branch head `9372c7d9`). The user's call: fold **AC1-AC7** (AC8-AC10 stand as written).
+Dispositions (details in the review's "Dispositions"):
+- **AC1 (medium):** the "Fill the ages from the run's last solve" button is dead on click --
+  an inline handler writing the claim boxes' widget keys raises
+  `StreamlitWidgetAlreadyInstantiatedError`. It is an `on_click` callback now
+  (`_fill_claim_ages`, which runs before the boxes exist).
+- **AC2 (medium):** "Create the variants" ended in the same exception in its tail
+  (`_open_collection` writing the collection picker's widget key): the children were saved
+  but the page's last word was an error. `_open_collection` writes the plain
+  `library_selected_collection` key now (the route a jump from another page takes).
+- **AC3 (low):** `_open_collection` stored the collection's **id** where the picker holds
+  **labels**, so "Create collection" landed on the first collection (the new one never
+  opened, the previous selection lost). With AC2's change the id is translated to the label
+  before the picker instantiates.
+- **AC4 (low):** the grid silently dropped a member whose (row, column) key collided with
+  another's (no cell, not even `unplaced`, and its best-score star marked a hidden entry).
+  `grid_view` keeps one member per cell, lists a colliding member beside the grid
+  (`Grid.collided`), and marks the cell that holds the row's best score.
+- **AC5 (low):** `plan_variants` raised TypeError on a string place price (the shape check
+  allows "a number or a string", then `price <= 0` compares). `_check_value` types the
+  price and refuses anything else with `ScenarioError`.
+- **AC6 (low):** the make-variants editors converted numbers unguarded (`float()` on prices
+  and claim boxes: a raw ValueError ended the page where the years field flashed). The
+  dimensions are built in `_dimensions` through `_number`; a bad cell flashes and nothing
+  is made, and a table row with data but no label is skipped and named.
+- **AC7 (low):** a collection with no runs crashed the page on every render
+  (`lib.scenario(None)` -> "no run with id None"). Make variants renders only when the
+  library has runs.
+
+Tests +7 (`tests/library/test_grid.py` +1, `tests/library/test_variants.py` +1,
+`tests/ui/test_collections_page.py` +5; the fixture's result plan now names bill's own
+individual). **All 7 were checked to fail before their fix** (the fixes under `src/` and
+`ui/` stashed, the tests re-run: 7 failed). The four touched suites
+(`tests\library tests\rate_models tests\config tests\ui`): **1313 passed, 1 skipped**
+(0:53). Full suite (Windows, -n 4): **4203 passed, 2 skipped** (8:30; 4196 + 7). flake8/ruff:
+clean on the touched files (upstream's known items untouched).

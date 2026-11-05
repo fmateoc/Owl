@@ -458,3 +458,54 @@ class TestTheLocalhostGuard:
         assert libraryjobs.library_address_ok()
         monkeypatch.setattr(st, "get_option", lambda key: "127.0.0.1")
         assert libraryjobs.library_address_ok()
+
+
+class TestTheSensitivityTornado:
+    """I9 on the Run page: one child per key input moved by a set step, queued under the
+    exact LP into a "Sensitivity: <run>" collection, and the effects as bars with their
+    tolerances (`library.tornado` is unit-tested in tests/library/test_tornado.py)."""
+
+    def test_the_button_makes_the_children_and_queues_them(self, library, monkeypatch):
+        from owlplanner.library import JobManager
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)  # no real worker
+        before = {j.id for j in JobManager(library).jobs()}
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(x.label == "Sensitivity (tornado)" for x in at.expander)
+        assert "returns -1 point" in _text(at)  # the movers' steps, spelled out
+        next(b for b in at.button if b.label == "Make the sensitivity runs").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        coll = next(c for c in library.collections() if c.name.startswith("Sensitivity:"))
+        values = [m.values for m in coll.members]
+        assert {"mover": "returns -1 point"} in values
+        assert {"mover": "Bill dies at 80"} in values
+        child = next(r for r in library.runs() if r.name.startswith("bill later "))
+        assert child.parent == next(r for r in library.runs() if r.name == "bill later").id
+        queued = [j for j in JobManager(library).jobs() if j.id not in before]
+        assert queued and {j.doc["preset"] for j in queued} == {"decision_exact"}
+
+    def test_the_bars_come_with_their_tolerances(self, library, monkeypatch):
+        from owlplanner.library import JobManager
+        from streamlit.testing.v1 import AppTest
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Make the sensitivity runs").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        coll = next(c for c in library.collections() if c.name.startswith("Sensitivity:"))
+        for i, member in enumerate(coll.members):
+            child = library.get(member.run)
+            _write_result(child, f"2026-11-04T10-00-0{i}_decision_exact", preset="decision_exact",
+                          exact=True, score=82_000.0 - 3_000 * i)
+        # A fresh render defaults to the newest run (a tornado child now): open the parent.
+        parent = next(r for r in library.runs() if r.name == "bill later")
+        at = AppTest.from_file(str(UI_DIR / "Run.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_run"] = parent.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        table = next(str(m.value) for m in at.markdown
+                     if str(m.value).startswith("| mover | difference |"))
+        assert "returns -1 point" in table and "±" in table

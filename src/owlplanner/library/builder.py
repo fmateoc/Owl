@@ -664,6 +664,21 @@ def _rates_table(scenario: dict, events=None) -> dict | None:
     return _generated_rates(scenario, events, downs)
 
 
+def plan_rates_table(scenario: dict) -> dict:
+    """The run's rate path as a rates table, however the run names it (I9's rate movers).
+
+    A hand table or a downturn overlay comes back as `rates_table` builds it; a run on its
+    own rate method gets that method's path as rows (`_generated_rates` with no overlay --
+    the plan's own method with its own window and seed, reversed or rolled already).
+    """
+    case = scenario.get("case") or {}
+    events = validate_events(scenario.get("events"), list((case.get("basic_info") or {}).get("names") or []))
+    table = _rates_table(scenario, events=events)
+    if table is not None:
+        return table
+    return _generated_rates(scenario, events, [])
+
+
 def _generated_rates(scenario: dict, events: list[dict], downs: list[dict]) -> dict:
     """The rates table the downturn events generate: the case's own rate path, overlaid.
 

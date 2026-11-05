@@ -7,7 +7,9 @@ and method, status, and a plain-language quality line), the headline numbers (th
 added, R3 -- total taxes, the claiming ages, SS withheld), "Things to look at" (the years
 whose income sits just below or just over a threshold, design 14.1 I3), charts drawn from
 `plan.json` (durable; D7) including the one-year cash-flow Sankey (I6), the Results
-workbook's sheets, the claiming-age map over a work_sweep scores file (I7), and the
+workbook's sheets, the sensitivity tornado (I9: one child per key input moved by a set
+step, solved under the exact LP, the effects sorted into bars with their tolerances), the
+claiming-age map over a work_sweep scores file (I7), and the
 buttons: "Open in Owl" (the existing pages from the cached `plan.pkl`, no solve),
 "Download everything" (a zip of the run), "Edit as new run" (the run's frozen files into
 the case pages; saving makes a child run) and "Edit the scenario" (the run's events on the
@@ -39,7 +41,7 @@ import libraryjobs
 import sskeys as kz
 from owlplanner.library import JobsError, PRESETS, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
-from owlplanner.library import view
+from owlplanner.library import tornado, view
 
 st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
@@ -443,6 +445,95 @@ with st.expander("Solve this run"):
                 break
             st.toast(f"Queued {job.id} ({solve})")
         st.rerun()
+
+# -- the sensitivity tornado (design 14.1, I9) --------------------------
+
+
+def _tornado_collection(run, name):
+    """The collection the sensitivity runs live in (created on first use): one child per
+    mover, queued under the exact LP, "run the collection again" re-solves them all."""
+    coll = next((c for c in lib.collections() if c.name == name), None)
+    return coll if coll is not None else lib.create_collection(
+        name,
+        question=f"What moves {run.name}'s score? (one key input at a time)",
+        rule="each child re-solved under the exact LP; bars sorted by effect, each with its "
+             "tolerance (R2)")
+
+
+with st.expander("Sensitivity (tornado)"):
+    st.caption(
+        "One child run per key input moved by a set step: " +
+        "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
+        ". Each child is solved under the exact LP (for speed) and the bars below are sorted "
+        "by the size of the effect, each with its tolerance (R2). A mover that does not fit "
+        "this scenario is skipped and says why. The runs land in the collection "
+        f"*Sensitivity: {run.name}*."
+    )
+    if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado"):
+        made, skipped = tornado.tornado_variants(lib.scenario(run.id))
+        for note in skipped:
+            libraryjobs.flash("caption", f"Skipped {note}.")
+        if not made:
+            libraryjobs.flash("error", "No sensitivity run fits this scenario.")
+            st.rerun()
+        coll = _tornado_collection(run, f"Sensitivity: {run.name}")
+        queued = 0
+        for variant in made:
+            try:
+                saved = lib.save_run(name=f"{run.name} {variant.label}",
+                                     scenario=variant.scenario, parent=run.id)
+            except Exception as exc:  # noqa: BLE001 - shown, not raised (a bad value, a locked library)
+                libraryjobs.flash("error", f"{variant.label}: not saved ({exc})")
+                continue
+            child = saved.run if saved.created else saved.identical_to
+            lib.add_member(coll.id, child, variant.values)
+            try:
+                manager.enqueue(child, preset="decision_exact")
+            except (ScenarioError, JobsError) as exc:  # another plan year (R1)
+                libraryjobs.flash("error", f"{child.name}: not queued ({exc})")
+                continue
+            queued += 1
+        libraryjobs.flash("success", f"{queued} sensitivity run(s) queued under the exact LP.")
+        st.rerun()
+    _coll = next((c for c in lib.collections() if c.name == f"Sensitivity: {run.name}"), None)
+    if _coll is not None:
+        _base = tornado.result_of(run.path)
+        _rows = []
+        for _member in _coll.members:
+            _label = (_member.values or {}).get("mover") or "(no label)"
+            try:
+                _child = lib.get(_member.run)
+            except Exception:  # noqa: BLE001 - a deleted child is shown, not fatal
+                _rows.append((_label, None))
+                continue
+            _rows.append((_label, tornado.result_of(_child.path)))
+        if _base is not None and any(result is not None for _label, result in _rows):
+            _bars = tornado.bars(_base, _rows)
+            _shown = [b for b in _bars if b["delta"] is not None]
+            if _shown:
+                fig = go.Figure(go.Bar(
+                    y=[b["label"] for b in _shown][::-1],
+                    x=[b["delta"] for b in _shown][::-1],
+                    orientation="h",
+                    error_x=dict(type="data", array=[b["tolerance"] or 0.0 for b in _shown][::-1],
+                                 visible=True),
+                    marker_color=["#c62828" if b["delta"] < 0 else "#2e7d32" for b in _shown][::-1],
+                ))
+                fig.update_layout(height=max(240, 40 * len(_shown) + 120),
+                                  xaxis_title="score's difference from this run (today's $)",
+                                  showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            lines = ["| mover | difference | tolerance | verdict |",
+                     "|---|---:|---:|---|"]
+            for b in _bars:
+                delta = f"{b['delta']:+,.0f}" if b["delta"] is not None else "-"
+                tol = f"{b['tolerance']:,.0f}" if b["tolerance"] is not None else "-"
+                lines.append(f"| {b['label']} | {delta} | ±{tol} | {b['verdict']}"
+                             + (f" ({b['note']})" if b["note"] else "") + " |")
+            st.markdown("\n".join(lines))
+        else:
+            st.caption("No sensitivity result yet: the Queue page shows their progress "
+                       "(each is one solve under the exact LP).")
 
 # -- the claiming-age map (design 14.1, I7) -----------------------------
 

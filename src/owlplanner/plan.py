@@ -585,6 +585,7 @@ class Plan:
         self._setHSAStop([65] * self.N_i)  # Sets n_hsa_i and hsaFrac_in: HSA contributions end at Medicare
         self.slcsp_annual = 0.0  # Today-dollar annual ACA benchmark Silver plan premium ($)
         self.aca_start_year = 0  # Calendar year ACA coverage begins (0 = plan start)
+        self.aca_table_year = 0  # Pinned ACA applicable-percentage table (0 = each year's own)
         self.ACA_n = np.zeros(self.N_n)  # Net ACA cost (after subsidy) per year (plan $)
         self._aca_lp = False  # True when withACA="optimize" is active
         self._sb_lp = False  # True when withSeniorBonus="optimize" is active
@@ -3133,6 +3134,7 @@ class Plan:
                     self.yobs, self.horizons, gamma_n, self.slcsp_annual, self.N_n, n_aca_start=n_aca_start,
                     medical_n=self._medical_n(gamma_n), mobs=self.mobs, tobs=self.tobs,
                     medicaid_n=self._medicaid_n(),
+                    table_year=getattr(self, "aca_table_year", 0) or None,
                 )
             else:
                 self.n_aca = 0
@@ -8082,7 +8084,8 @@ class Plan:
             ACA_true = tx.acaCosts(self.yobs, self.horizons, self.MAGI_aca_n, g, self.slcsp_annual, Nn,
                                    n_aca_start=n_aca_start, medical_n=self._medical_n(g),
                                    mobs=self.mobs, tobs=self.tobs, medicaid_n=self._medicaid_n(),
-                                   gap="exact" if self._aca_lp else "approx", slack=1.0)
+                                   gap="exact" if self._aca_lp else "approx", slack=1.0,
+                                   table_year=getattr(self, "aca_table_year", 0) or None)
             res["ACA"] = (self.aca_costs_n - ACA_true) / g
 
         res["NIIT"] = (self.J_n - tx.computeNIIT(self.N_i, self.MAGI_n, self.I_n, self.Q_n, self.n_d, Nn)) / g
@@ -9160,6 +9163,7 @@ class Plan:
                 mobs=self.mobs,
                 tobs=self.tobs,
                 medicaid_n=self._medicaid_n(),
+                table_year=getattr(self, "aca_table_year", 0) or None,
             )
 
         return None

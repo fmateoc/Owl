@@ -8,7 +8,9 @@ a run is solved only in its plan year (`check_plan_year`). Build step 3 adds the
 `view` (one result as the pages show it) and `compare` (two results, judged against the noise
 rule). Build step 6 adds the collections (`store.Collection`, section 9.3), the variant
 dimensions ("make variants", `variants`), the grid view (`grid`) and the "Ages" preset's
-two-stage claiming-age search (`agesearch`, shared with `fork-notes/synthetic/run_suite.py`).
+two-stage claiming-age search (`agesearch`, shared with `fork-notes/synthetic/run_suite.py`);
+its second increment adds the death (I2) and downturn-sequence (I11) dimensions and the
+sensitivity tornado (I9, `tornado`).
 """
 
 from .scenario import (  # noqa: F401

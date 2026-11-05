@@ -394,6 +394,9 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     aca = known.get("aca_settings") or {}
     dic["slcspAnnual"] = float(aca.get("slcsp_annual", 0))
     dic["acaStartYear"] = int(aca.get("aca_start_year", 0) or 0)
+    # The pinned ACA table (I9's "the 2027 marketplace benchmark"): no page edits it, but a
+    # pages save must keep the run's value (it round-trips like every other case field).
+    dic["acaTableYear"] = int(aca.get("aca_table_year", 0) or 0)
     dic["otherMedical"] = float(known.get("optimization_parameters", {}).get("other_medical_expenses", 0.0))
     dic["medicalExcess"] = float(known.get("optimization_parameters", {}).get("medical_inflation_excess", 0.0))
     dic["optimizeACA"] = so.get("withACA", "loop") == "optimize"
@@ -705,10 +708,16 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
     part_d_base = uidic.get("medicarePartDBasePremium")
     if part_d_base is not None and part_d_base != "":
         diconf["solver_options"]["medicarePartDBasePremium"] = float(part_d_base)
-    diconf["aca_settings"] = {
+    aca_settings = {
         "slcsp_annual": _get_ui(uidic, "slcspAnnual", 0, float),
         "aca_start_year": _get_ui(uidic, "acaStartYear", 0, int),
     }
+    # The pinned ACA table (I9) is set only when it is set: a None cannot enter the case
+    # dict (`scenario._check_case_values`: TOML would silently drop it).
+    table_year = _get_ui(uidic, "acaTableYear", 0, int)
+    if table_year:
+        aca_settings["aca_table_year"] = table_year
+    diconf["aca_settings"] = aca_settings
     diconf["solver_options"]["withACA"] = "optimize" if uidic.get("optimizeACA") else "loop"
     optimize_ltcg = bool(uidic.get("optimizeLTCG"))
     optimize_niit = bool(uidic.get("optimizeNIIT"))

@@ -972,3 +972,36 @@ class TestCoverageGapPlans:
         assert np.any(p.MAGI_aca_n[: p.n_aca] < fpl)
         assert np.allclose(p.aca_costs_n[: p.n_aca], 0)
         assert "coverage gap" not in log
+
+
+class TestPinnedTableYear:
+    """`aca_settings.aca_table_year` (run library I9's "the 2027 marketplace benchmark"):
+    one year's applicable percentages in every plan year (`_aca_table`'s `table_year`)."""
+
+    def _gamma(self, n):
+        return np.ones(n + 1)
+
+    def test_the_pinned_table_prices_every_year(self):
+        yobs = np.array([1990])  # pre-65 for the whole plan
+        horizons = np.array([20])
+        magi_n = np.full(20, 30_000.0)  # a subsidized income, well inside the bands
+        gamma_n = self._gamma(20)
+        own = tx.acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual=12_000.0, N_n=20,
+                          thisyear=2026)
+        pinned = tx.acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual=12_000.0, N_n=20,
+                             thisyear=2026, table_year=2027)
+        assert pinned[0] != pytest.approx(own[0])  # 2026 priced on the 2027 table
+        assert np.allclose(pinned[1:], own[1:])  # 2027 on takes the 2027 table either way
+
+    def test_the_lp_limits_follow_the_pinned_table(self):
+        yobs = np.array([1990])
+        horizons = np.array([20])
+        gamma_n = self._gamma(20)
+        # The bracket edges are the breakpoints (the same in both tables); the pricing is the
+        # tangent lines, which carry the applicable percentages.
+        _, lbar_own, tan_own, _ = tx.acaVals(yobs, horizons, gamma_n, 12_000.0, 20)
+        _, lbar_pinned, tan_pinned, _ = tx.acaVals(yobs, horizons, gamma_n, 12_000.0, 20,
+                                                   table_year=2027)
+        assert np.allclose(lbar_own[0], lbar_pinned[0])
+        assert not np.allclose(tan_own[0], tan_pinned[0])
+        assert np.allclose(tan_own[1:], tan_pinned[1:])

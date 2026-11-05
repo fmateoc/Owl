@@ -80,7 +80,7 @@ class Comparison:
     what_moved_totals: tuple  # lifetime differences of the same items
 
 
-def _pair_tolerance(a: Result, b: Result, reference: float) -> tuple:
+def pair_tolerance(a: Result, b: Result, reference: float) -> tuple:
     """(tolerance in dollars, why) for a difference measured against `reference` (R2)."""
     kinds = {method_kind(a), method_kind(b)}
     tol = max(tolerance(a), tolerance(b))
@@ -109,7 +109,7 @@ def difference(label: str, a: Optional[float], b: Optional[float], *, ta: Result
     if from_inputs:
         return Judgment(label, a, b, delta, "resolved",
                         "set by the inputs (no solve moves it): no noise band applies")
-    tol, why = _pair_tolerance(ta, tb, a)
+    tol, why = pair_tolerance(ta, tb, a)
     if abs(delta) <= tol:
         kind = "within noise"
         if "gap" in why:

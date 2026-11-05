@@ -6399,3 +6399,27 @@ individual). **All 7 were checked to fail before their fix** (the fixes under `s
 (`tests\library tests\rate_models tests\config tests\ui`): **1313 passed, 1 skipped**
 (0:53). Full suite (Windows, -n 4): **4203 passed, 2 skipped** (8:30; 4196 + 7). flake8/ruff:
 clean on the touched files (upstream's known items untouched).
+
+
+## Run-library step 6: second review of the core, AD1-AD9 (2026-11-05)
+
+Branch `claude/review-step6-core-abwxbs` (from `claude/run-library-step6` `97b6059`): a second,
+independent review of step 6's core after the AC1-AC7 folds,
+`fork-notes/run-library-step6-review-2.md`, findings **AD1-AD9** (1 high, 1 medium, 4 low,
+3 nit). Nothing in `src/`, `ui/` or `tests/` changed; the user decides what to fold.
+- **AD1 (high):** the page's places and financing tables read empty cells as NaN
+  (`DataFrame.iterrows()` turns the editor's `None` into NaN, and every guard tests
+  `None` / `""`): a place row with its costs left empty "to keep the parent's" saves and
+  solves with property tax, HOA and insurance at \$0 (\$20,000/yr on the synthetic Yonkers
+  parent); an empty price is refused, a loan with term and rate only fails in `build`
+  (`ValueError`), an empty name becomes "nan". Reproduced with Streamlit 1.66.1's own
+  edit-application code through `save_run` and `config_to_plan`.
+- **AD2 (medium):** with no saved layout the grid takes the alphabetically first and last
+  dimensions: place x year x financing shows financing x year, the other places listed
+  "beside the grid" as "the same values"; one dimension pivots against itself.
+- AD3 (AC4's fold stars a cell whose number is not the row's best), AD4 (cell grey where R3
+  says the variant leads), AD5 (no flag when a cell's claiming ages differ from the
+  reference's), AD6 (`bool("False")` is True for the move cell), AD7-AD9 nits.
+
+Checks: `tests/library tests/ui` **693 passed** (Linux, 0:30); flake8 clean on the step's
+files.

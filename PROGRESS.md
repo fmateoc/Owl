@@ -6450,4 +6450,8 @@ Tests +47 (`tests/ui/test_variant_tables.py` 21 through Streamlit's own
 `test_collections_page.py` +7). Before the fold: 23 new tests + AC4's failed, the 21 table
 tests errored (new module), 3 guards passed. `tests/library tests/ui`, the four touched files
 and `check_library_builder.py` (46/46) green; flake8 clean, ruff only upstream's four known
-items. Full suite (Linux, -n 4): see the next entry.
+items. Full suite (Linux, -n 4): **4251 passed, 1 skipped** (9:51; the first review's 4203 / 2
+skipped on Windows is 4204 / 1 here, + 47).
+
+`main` fast-forwarded to `claude/review-step6-core-abwxbs` on 2026-11-05 (the user's call): step 6's
+core with both reviews' folds (AC1-AC7, AD1-AD6).

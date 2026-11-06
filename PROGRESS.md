@@ -6901,3 +6901,27 @@ The user's call. `main` moves from `37dfad4` (step 6 with the whole-step review'
 2027 benchmark-jump mover and the `aca_table_year` removal) to this branch: the third review
 of step 6's second increment (AH1-AH6) and its folds. Full suite on the branch: 4391 passed,
 1 skipped.
+
+## Run-library step 6: fourth review of the whole step, AI1-AI6 (2026-11-06)
+
+Branch `claude/eager-fermat-bhl251` (from `main` `0e4803e`). An independent review of step 6 as
+a whole after the AG and AH folds, looking at what the pages show on the household's shape and
+at how the movers and dimensions meet the builder (`fork-notes/run-library-step6-review-4.md`,
+prefix AI after AC-AH). **AI1** (medium): the I8 chart stacks the gross conversion on taxable
+income net of the deduction (2028-2032 on `yonkers-2027-cash`: bars 51-62k for a taxable
+income of 24,800) and draws the MAGI lines (IRMAA tier 1, the 400% FPL cliff) against that
+bar: in 2028 the bar sits 33k under the cliff while MAGI is 121,355, 37k over it, and the full
+premium is paid. **AI2** (low): "bracket filled" names the bracket below the income (91,493
+for a couple reads "10%"; the test pins it) and flips between "below the first bracket / room
+0" and "10% / room 76,000" on fractions of a cent at a filled edge. **AI3** (low): the tornado's
+collection is found by the run's name: a second run with the same name draws the first run's
+children (and the first run) as its bars; a rename orphans them, and the button then queues
+every child again into a second collection (AppTest). **AI4** (low): the tornado shows the score
+only; "condo price +10%" is -3,640 on the score and +76,086 on the home at the end, which no
+column shows. **AI5** (low, design): that mover holds the property tax and insurance (-3,640;
+-4,739 with both x 1.1); the user's call. **AI6** (nit): a death before the person's own last
+work year builds; Owl drops the wages and the generated `aca_start_year` still follows the
+dead person's work, so the widowed survivor pays no premium in 2027. Checks: `tests/library
+tests/ui` + the bracket/ACA/regret tests **987 passed** (1:27, Linux); full suite running at this commit (result in the next commit);
+lint only upstream's listed items. The review changed nothing in `src/`, `ui/` or `tests/`.
+Folds are the user's call.

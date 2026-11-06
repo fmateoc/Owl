@@ -6856,3 +6856,25 @@ The user's call. `main` moves from `92daa09` (step 6's core with AD1-AD6) to thi
 step 6's second increment, its two reviews (AE, AF) and their folds, the `work_sweep` move,
 the whole-step review (AG) and its folds, the 2027 benchmark-jump mover and the
 `aca_table_year` removal. Full suite on the branch: 4380 passed, 1 skipped.
+
+## Run-library step 6: third review of the second increment, AH1-AH6 (2026-11-06)
+
+Branch `claude/great-galileo-j51nry` (from `main` `37dfad4`). An independent review of the
+second increment as it now stands -- after the AG folds, the 2027 benchmark-jump mover and the
+`aca_table_year` removal (`fork-notes/run-library-step6-inc2-review-3.md`, prefix AH after
+AC-AG). **AH1** (medium): "Ages, thorough" publishes a final solve under the case's own options
+(no gap: `MILP_GAP` under `withMedicare = "optimize"`), not the plan its sweep proved at gap
+1e-5; on the synthetic baseline at 70/70 the sweep's cell is 165,361.78 (1,271 s) and the
+published solve 164,153.49 (12 s, recorded as proved at gap 6.8e-4): 1,208 below, 1.08% of the
+score; the run page says the candidates were "scored under the case's own model". **AH2**
+(low): the benchmark jump reads a downturn run's inflation without its overlay (poor-decade at
+2026: the plan's 2027 benchmark 26.744, not 25.29). **AH3** (low): it judges the marketplace
+start on the hand case's `aca_start_year`, not the generated one (a hand case without it is
+skipped with a false reason). **AH4** (low): the regret curve is never drawn -- the page reads
+`by_grid`, the summarizer writes `regret_by_grid`; the worker test's canned summary uses the
+invented key (AppTest: 6 charts, no curve; 7 with the key renamed). **AH5** (low): AG5's rule
+puts a whole decision collection on the exact LP when one member's local search is running or
+failed. **AH6** (nit): "run again" leaves `regret.json` and `scores.json` in the folder.
+Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **976 passed** (2:00, Linux);
+lint only upstream's listed items; full suite not re-run. The review changed nothing in `src/`,
+`ui/` or `tests/`. Folds are the user's call.

@@ -106,7 +106,7 @@ a reduced grid). First increment:
   `decision` -- matches `run_suite.py`'s own `report.md` cell for cell within the noise
   rule, and the children's events are `make_cases.py`'s grid scenarios. The user's call: a
   reduced grid (one place x three purchase years x cash/mortgage) is the recorded check; the
-  full 42-cell grid is an offline/overnight run (`--full`).
+  full 36-cell grid is an offline/overnight run (`--full`).
 - Tests: `tests/library/test_agesearch.py`, `test_collections.py`, `test_variants.py`,
   `test_grid.py`, `tests/ui/test_collections_page.py`, plus the `test_presets.py` update
   (`PRESETS` now offers `ages`).

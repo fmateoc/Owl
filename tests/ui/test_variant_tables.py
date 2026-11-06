@@ -269,6 +269,11 @@ class TestMemberValues:
         assert vt.member_values("mover: returns -1 point") == values
         assert vt.member_values(vt.values_text(values)) == values
 
+    def test_a_dimension_given_twice_is_refused(self, vt):
+        # AF6: the first pair used to be overwritten silently.
+        with pytest.raises(ScenarioError, match="given twice"):
+            vt.member_values("year: 2027; year: 2029")
+
     def test_values_text_round_trips(self, vt):
         values = {"year": 2027, "place": "yonkers"}
         assert vt.member_values(vt.values_text(values)) == values

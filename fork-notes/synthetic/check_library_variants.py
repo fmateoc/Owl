@@ -2,7 +2,8 @@
 
 `run-library-design.md` section 11, step 6, Check column: "the synthetic condo grid through
 the interface matches `run_suite.py`'s report". The user's call (2026-11-04): a reduced grid
-now -- one place x three purchase years x cash/mortgage -- and the full 42-cell grid as an
+now -- one place x three purchase years x cash/mortgage -- and the full 36-cell grid
+(six of them the 2027 ARM rows, below) as an
 offline/overnight run (below). Both sides solve the **same day** (plans start today) from
 the same synthetic inputs:
 
@@ -37,7 +38,8 @@ Run after `make_cases.py` (which this script runs itself), from anywhere:
     uv run python fork-notes/synthetic/check_library_variants.py [--full]
 
 Prints one line per check and a summary; exits 1 if any check fails. `--full` runs the
-whole 42-cell condo grid through both routes (the design's literal check: hours of local-
+whole 36-cell condo grid through both routes (3 places x 5 purchase years x cash/mortgage
+plus the six ARM rows `make_cases.py` writes for 2027; the design's literal check: hours of local-
 search solves on this machine, an overnight run; the reduced grid is the recorded one).
 
 Notes: the synthetic cases are plan-year 2026, so the check only runs in 2026 (R1: a run is
@@ -75,12 +77,18 @@ SCENARIOS = CASES / "scenarios.json"
 RUN_SUITE = Path(__file__).parent / "run_suite.py"
 
 # The reduced grid (the user's call, 2026-11-04): one place, three purchase years, two
-# financings -- 6 cells. The full grid is make_cases.py's (3 places x 5 years x cash and
-# mortgage, plus the ARM rows).
+# financings -- 6 cells. The full grid is make_cases.py's: 3 places x 5 years x cash and
+# mortgage (30 cells) plus the ARM rows (2027 only, below) = 36 cells.
 REDUCED = {"place": ["yonkers"], "years": [2027, 2029, 2031], "financing": ["cash", "mortgage"]}
 FULL = {"place": ["yonkers", "whiteplains", "queens"],
         "years": [2027, 2029, 2031, 2034, 2038],
-        "financing": ["cash", "mortgage"]}  # the ARM rows are their own financing values
+        "financing": ["cash", "mortgage"]}
+# The ARM rows (make_cases.py: ARM_YEARS = (2027,)): arm5 (paid down within the fixed 5
+# years) and arm30 (refinanced at no higher rate), for the "now or soon" purchase only --
+# later rates are unknown. They are their own make-variants pass (one purchase year cannot
+# ride the dimensions' product), added to the same grid by --full (the user's call,
+# 2026-11-05: --full includes the ARM rows).
+ARM = {"years": [2027], "financing": ["arm5", "arm30"]}
 
 # The suite's own pool (its --jobs). Unbounded it is `os.cpu_count()` -- 16 concurrent
 # local-search solves here -- and the full grid's run died with BrokenProcessPool ~15 min
@@ -246,10 +254,12 @@ def main():
     scenarios = json.loads(SCENARIOS.read_text(encoding="utf-8"))["scenarios"]
     by_name = {e["name"]: e for e in scenarios}
     reference = json.loads(GRID_JSON.read_text(encoding="utf-8"))["reference"]
+    blocks = [(selection["years"], selection["financing"])]
+    if args.full:
+        blocks.append((ARM["years"], ARM["financing"]))
+    combos = [(year, fin) for years, fins in blocks for year in years for fin in fins]
     grid_names = [f"{place}-{year}-{fin}"
-                  for place, year, fin in itertools.product(selection["place"],
-                                                            selection["years"],
-                                                            selection["financing"])]
+                  for place, (year, fin) in itertools.product(selection["place"], combos)]
     suite_only = ["condo/reference"] + [f"condo/{name}" for name in grid_names if name != reference]
 
     checks = Checks()
@@ -284,23 +294,24 @@ def main():
         chosen = ((parent_result.record.get("age_search") or {}).get("chosen")
                   if parent_result is not None else None)
 
-        dimensions = {}
-        place_values, fin_values = [], []
-        for place in selection["place"]:
-            for fin in selection["financing"]:
-                place_value, _year, fin_value = _values_for(make_cases, place, 2027, fin)
-                if place_value not in place_values:
-                    place_values.append(place_value)
-                if fin_value not in fin_values:
-                    fin_values.append(fin_value)
-        dimensions["place"] = place_values
-        dimensions["year"] = list(selection["years"])
-        dimensions["financing"] = fin_values
-        if chosen:
-            names = list((reference_entry["scenario"]["case"].get("basic_info") or {}).get("names") or [])
-            dimensions["claim"] = [dict(zip(names, [float(a) for a in chosen], strict=True))]
-
-        made = variants.plan_variants(reference_entry["scenario"], dimensions)
+        made = []
+        for years, fins in blocks:
+            dimensions = {}
+            place_values, fin_values = [], []
+            for place in selection["place"]:
+                for fin in fins:
+                    place_value, _year, fin_value = _values_for(make_cases, place, 2027, fin)
+                    if place_value not in place_values:
+                        place_values.append(place_value)
+                    if fin_value not in fin_values:
+                        fin_values.append(fin_value)
+            dimensions["place"] = place_values
+            dimensions["year"] = list(years)
+            dimensions["financing"] = fin_values
+            if chosen:
+                names = list((reference_entry["scenario"]["case"].get("basic_info") or {}).get("names") or [])
+                dimensions["claim"] = [dict(zip(names, [float(a) for a in chosen], strict=True))]
+            made += variants.plan_variants(reference_entry["scenario"], dimensions)
         coll = lib.create_collection("Condo grid (check)",
                                      question="Maximize first-year discretionary spending, condo kept",
                                      rule="reference: " + reference + " (the baseline's claiming ages)")

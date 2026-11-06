@@ -459,7 +459,7 @@ building it:)*
   is listed beside it. The grid therefore holds the reference only when the user gives it
   values too (as "make variants" naturally does when one combination is the parent's own).*
 - *The acceptance is a **reduced grid** now (one place x three purchase years x cash/mortgage
-  through both routes, same day) and the full 42-cell grid as an offline/overnight run
+  through both routes, same day) and the full 36-cell grid as an offline/overnight run
   (the user's call, 2026-11-04; `check_library_variants.py --full`).*
 - *Step 6's second increment (2026-11-05) adds the `death` (I2) and `sequence` (I11)
   dimensions, member values for a hand-added run ("Values" beside it in Members) and the

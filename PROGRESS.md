@@ -6704,3 +6704,29 @@ report cells parse as whole dollars. The grid is the check's `FULL` selection (3
 `make_cases.py`'s six ARM rows (2027 arm5/arm30 per place) are outside it, and the
 prose's "42-cell" count (the design, the check's own docstring) matches neither the 30
 run nor the 36 variants `make_cases.py` writes -- the scope to reconcile with the user.
+
+
+## Run-library step 6: AF6 folded, `--full` gains the ARM rows (2026-11-05)
+
+The user's call: fold AF6, and `check_library_variants.py --full` must include the ARM
+rows (the scope question above).
+
+- **AF6**: `variant_tables.member_values` refuses a dimension given twice (the first pair
+  was overwritten silently). Its test is checked to fail before the fix.
+- **`--full`'s ARM rows**: the check's grid is now **36 cells** -- 3 places x 5 purchase
+  years x cash/mortgage (30) plus `make_cases.py`'s six ARM rows (arm5: paid down within
+  the fixed 5 years; arm30: refinanced at no higher rate; `ARM_YEARS = (2027,)` --
+  "later rates are unknown"). The ARM rows are their own make-variants pass (one purchase
+  year cannot ride the dimensions' product) into the same collection; `suite_only`, the
+  children and the grid grow with them. The reduced grid stays its recorded 6 cells. The
+  prose's "42-cell" count is corrected to 36 (the check's docstring, the design's 9.3
+  note, CHANGELOG-fork): `make_cases.py` writes 36 condo variants and the grid has 36
+  cells.
+- Pre-flight without solving (the check's `check_children` logic over the full set):
+  36/36 grid names in `scenarios.json`, 36/36 children match `make_cases.py`'s grid
+  scenarios (events, hand rows, hand case), the reference cell among them.
+
+Tests: `tests/ui/test_variant_tables.py` **42 passed**. flake8/ruff clean. The 36-cell
+`--full` run launched the same evening (`check_library_variants_full_2026-11-05_run3.log`
+in the session's temp); its verdict joins this entry. AF8 (`gains_edge_0`'s measure
+undocumented) stands.

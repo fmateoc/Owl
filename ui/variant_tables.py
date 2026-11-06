@@ -251,6 +251,8 @@ def member_values(text):
             raise ScenarioError(f"not a 'dimension: label' pair: {part!r}")
         if dim not in VALUE_KEYS:
             raise ScenarioError(f"not one of the dimensions {list(VALUE_KEYS)}: {part!r}")
+        if dim in out:
+            raise ScenarioError(f"{dim!r} given twice: {part!r}")
         if dim == "year":
             years = _years(label, "the year's label")
             if len(years) != 1:

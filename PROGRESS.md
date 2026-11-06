@@ -6747,3 +6747,15 @@ measure is now named where the other measures are named (the `brackets` module's
 (`brackets.gains_edge_0_measured_against`, beside `units`, so `plan.json`'s readers see
 it per block). Its test is checked to fail before the fix.
 `tests/plan/test_brackets.py` **7 passed**; flake8/ruff clean.
+
+
+## Run-library step 6: the full suite after AF1-AF8 (2026-11-06)
+
+Full suite (Windows, -n 4) over the fully folded state -- the AE and AF folds, the ARM
+rows and the `work_sweep` move: **4357 passed, 2 skipped** (13:54; the 4350 after the AE
+folds plus the AF folds' five, AF6's one and AF8's one). The branch
+`claude/run-library-step6-inc2` now holds the second increment, both reviews'
+findings (AE1-AE3 in `run-library-step6-inc2-review.md`, AF1-AF8 in
+`run-library-step6-inc2-review-2.md`) and all eleven folds, the `work_sweep` move, and
+the 36-cell acceptance at **5/5**. `main` fast-forwarding is the user's call (the core's
+pattern: once the reviews and their folds are done).

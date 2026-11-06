@@ -23,7 +23,7 @@ scenarios, regenerated this session), solved on 2026-11-06 in plan year 2026 und
 | Command | Result |
 |---|---|
 | `pytest -n 4 tests/library tests/ui tests/plan/test_brackets.py tests/tax/test_aca.py tests/stochastic/test_regret_sweep.py` | **987 passed** (1:27) |
-| full suite (`pytest -n 4 -q`) | running at this commit; its result follows in the next commit |
+| full suite (`pytest -n 4 -q`) | **4391 passed, 1 skipped** (9:22, Linux; the same count PROGRESS records after the AH folds) |
 | `flake8 src tests ui --max-line-length=120`, `ruff check src tests ui` | only the upstream items CLAUDE.md lists (`test_spending_bequest_frontier.py` / `test_spending_units.py` E301/E304; B905 in `localsearch.py:244`, `test_local_search.py:288`, `test_roth_maturation_losses.py:49`, `Run_Options.py:260`) |
 | probes p2-p5, q1 (below) | AI1-AI6 reproduced; four suspects cleared |
 | `check_library_variants.py` (reduced or `--full`) | not run (PROGRESS records 5/5 for both) |

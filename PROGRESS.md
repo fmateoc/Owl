@@ -6922,6 +6922,6 @@ column shows. **AI5** (low, design): that mover holds the property tax and insur
 -4,739 with both x 1.1); the user's call. **AI6** (nit): a death before the person's own last
 work year builds; Owl drops the wages and the generated `aca_start_year` still follows the
 dead person's work, so the widowed survivor pays no premium in 2027. Checks: `tests/library
-tests/ui` + the bracket/ACA/regret tests **987 passed** (1:27, Linux); full suite running at this commit (result in the next commit);
+tests/ui` + the bracket/ACA/regret tests **987 passed** (1:27, Linux); full suite **4391 passed, 1 skipped** (9:22, Linux);
 lint only upstream's listed items. The review changed nothing in `src/`, `ui/` or `tests/`.
 Folds are the user's call.

@@ -6950,3 +6950,33 @@ tests/ui` + bracket/ACA/regret **1004 passed** (1:18, Linux); `check_library_bui
 The user's call. `main` moves from `0e4803e` (step 6 with the AH folds) to this branch: the
 fourth whole-step review of step 6 (AI1-AI6) and its folds. Full suite on the branch: 4408
 passed, 1 skipped.
+
+## Run-library step 6: fifth review of the whole step, AJ1-AJ4 (2026-11-06)
+
+Branch `claude/modest-gauss-6hg9z6` (from `main` `59bc8d9`). An independent review of step 6 as
+a whole after the AI folds, running every tornado mover through the real worker and comparing
+the bars with the same movers under the case's own model, and the per-request jobs end to end
+(`fork-notes/run-library-step6-review-5.md`, prefix AJ after AC-AI). **AJ1** (medium): the
+tornado solves under the exact LP, which has `withMedicare = "none"`, so "medical inflation +2
+points" reaches only the three marketplace years: on `yonkers-2027-cash` the bar is -83
+(resolved at ±0, sorted last) while the same two scenarios move -1,813 under local search and
+-1,901 under the loop, with lifetime Medicare premiums +57,182 / +57,273 today's \$; every other
+mover agrees with the loop within about 10% (benchmark -10% aside, inside the loop's band).
+The design pairs the mover with the model, so the fold is the user's call (another model for
+this mover, skip it with the reason, or say so on the bar). **AJ2** (medium): a `regret` job's
+`record.json` carries 126 warnings (the same base solve under `custom`: 1), because the sweep's
+clones share the plan's logger and the log tee is not quiet during the sweep; the Run page reads
+"Quality: 7 problem(s)", each a historical scenario's "Exiting loop on maximum iterations.",
+for a plan whose `custom` twin reads "settled". **AJ3** (low): under maxBequest `view.score` is
+savings + home, and the tornado's bars, the grid's cells and star and the front's "vs the
+reference" still read it (W5 fixed only the lead rule): "condo price +10%" reads -97,822 =
+-173,908 savings + 76,086 home, with the home shown again beside it; the household runs
+maxSpending. **AJ4** (nit): the Ages preset's stage 2 clips neighbours to 62-70 but not to the
+person's age this month, and a fixed past age is solved without a word as an entitlement
+already running (Ari 62y0m = April 2026: 15,527 of 2026 benefits withheld by the earnings
+test); it scores lowest here. Cleared: the exact-LP bars' ±0 tolerance matches `run_suite.py`
+(no `~` outside its `main` group); the two death bars equal to the dollar (symmetric
+survivors). Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **1004 passed**
+(2:11, Linux); full suite **4408 passed, 1 skipped** (13:21, Linux, `-n 3`); lint only
+upstream's listed items. The review changed nothing in `src/`, `ui/` or `tests/`. Folds are
+the user's call.

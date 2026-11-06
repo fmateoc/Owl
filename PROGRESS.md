@@ -6728,8 +6728,12 @@ rows (the scope question above).
 
 Tests: `tests/ui/test_variant_tables.py` **42 passed**. flake8/ruff clean. The 36-cell
 `--full` run launched the same evening (`check_library_variants_full_2026-11-05_run3.log`
-in the session's temp); its verdict joins this entry. AF8 (`gains_edge_0`'s measure
-undocumented) stands.
+in the session's temp) and finished overnight: **5/5 checks passed** -- the children 36/36
+are `make_cases.py`'s grid scenarios (the six ARM rows included), the ages preset and the
+suite's baseline both pick [70.0, 70.0], the reference score 112,862 vs 112,862 (tolerance
+1,129), 36/36 grid cells within the noise rule, 36/36 report cells parse as whole dollars.
+The acceptance item is closed: the whole condo grid through the interface matches
+`run_suite.py`'s report.
 
 
 ## Run-library step 6: AF8 folded (2026-11-05)

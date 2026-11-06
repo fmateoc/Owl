@@ -6759,3 +6759,31 @@ findings (AE1-AE3 in `run-library-step6-inc2-review.md`, AF1-AF8 in
 `run-library-step6-inc2-review-2.md`) and all eleven folds, the `work_sweep` move, and
 the 36-cell acceptance at **5/5**. `main` fast-forwarding is the user's call (the core's
 pattern: once the reviews and their folds are done).
+
+
+## Run-library step 6: review of the whole step, AG1-AG11 (2026-11-06)
+
+Branch `claude/step6-implementation-review-3bejy1` (from `claude/run-library-step6-inc2`
+`c93b1be`). An independent review of step 6 as a whole -- the core, the second increment and
+all four earlier reviews' folds -- looking between the increments and at what the tornado's
+movers measure on the household's shape (`fork-notes/run-library-step6-review-3.md`, prefix
+AG after AC-AF). **AG1** (medium): the rate movers add 1.0 to a hand table in decimals
+(`in_percent = false`): -94% returns, 102.5% inflation in the child (probe). **AG2** (medium):
+the tornado's bars fall back to a non-exact parent result, so every bar carries the model
+change: +4,534 (`quick`) / +4,381 (`custom`) against the exact LP on the synthetic baseline at
+fixed ages, four times the 1% band. **AG3** (medium): "inflation +1 point" holds nominal
+returns, so its real returns match "returns -1 point" (bars -7,814 and -7,064 on the
+synthetic baseline); which question the bar answers is the user's call. **AG4** (medium): "the
+2027 marketplace rules" (Owl already reads the 2027 table from 2027 on) and "no 2032
+reversion" (2066 -> 2100, both past the plan's end) are exact no-ops on the household's shape
+(116,033.84 = the unmoved score; the 2032 control 113,131.74). **AG5** (low): the Collections
+page shows the sensitivity collection as unsolved (`latest_result` skips exact-LP results).
+**AG6** (low): the save dialogs' "Collection" field wipes an identical member's variant
+values (AppTest of the Scenario page). **AG7** (low): the regret caption reads `mean`, the
+summary says `mean_regret`: always "mean regret 0". **AG8** (low, design): death and sequence
+values are judged as choices (an early death raises the score: +15,987 at 66). Nits AG9
+(run names lose the mover's sign: "benchmark-premium-10" twice), AG10 (the regret sweep is
+person 0's, unnamed), AG11 (a cooperative cancel can wait a whole "Ages, thorough" pass).
+Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **956 passed** (1:21, Linux);
+full suite pending at this entry (follow-up commit); lint only upstream's listed items. The review changed nothing in
+`src/`, `ui/` or `tests/`. Folds are the user's call.

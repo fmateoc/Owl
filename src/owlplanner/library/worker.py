@@ -137,11 +137,11 @@ class _LogTee:
     cancellation check rides along (throttled): the solve runs between log lines, and a
     worker that has been marked interrupted stops at the next one (S8).
 
-    While `quiet` is set (the "Ages" preset's search stages, step 6), every line still goes
-    to solve.log and the cancellation check still runs, but the line is not read as the
-    solve's own: run_suite.py keeps the stage warnings out of the record ("their warnings
-    are not in the report"), and an unsettled candidate is not a problem with the final
-    solve.
+    While `quiet` is set (the "Ages" preset's search stages, step 6, and the "regret" job's
+    sweep, review AJ2), every line still goes to solve.log and the cancellation check still
+    runs, but the line is not read as the solve's own: run_suite.py keeps the stage warnings
+    out of the record ("their warnings are not in the report"), and an unsettled candidate or
+    historical scenario is not a problem with the published solve.
     """
 
     def __init__(self, path, check=None):
@@ -350,6 +350,13 @@ class Worker:
         # results are published, so a failed sweep keeps them (record.json says what failed).
         regret = None
         if status == "solved" and preset == "regret":
+            # The sweep re-solves the plan on clones that share its logger, so every scenario's
+            # warnings reach the tee: quiet, as during the Ages stages, they go to solve.log but
+            # not into the record, which is the base solve's (review AJ2: 126 warnings against
+            # the same solve's 1 under "custom", and the Run page listed seven historical
+            # scenarios' "Exiting loop on maximum iterations." as problems of a settled plan).
+            # The sweep's own convergence counts are in its summary.
+            self.tee.quiet = True
             try:
                 self.job.touch(self.token, step="the conversion regret sweep")
                 self.check()
@@ -359,6 +366,8 @@ class Worker:
             except Exception as exc:  # noqa: BLE001 - the sweep failed; the solve stands
                 traceback.print_exc(file=self.tee)
                 regret = {"error": str(exc)}
+            finally:
+                self.tee.quiet = False
 
         self._write_record(
             status=status,

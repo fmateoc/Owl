@@ -101,10 +101,11 @@ def test_ages_is_the_case_s_own_model_with_its_own_ages_choice():
 
 def test_the_presets_the_interface_offers_and_the_solves_it_records():
     assert PRESETS == ("quick", "decision", "ages", "ages_thorough", "custom")
-    # "decision_exact" and "regret" are solve presets, not queue-time choices: one is the
-    # decision's exact companion, the other I8's per-request sweep (its button queues it).
-    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "ages", "ages_thorough",
-                             "regret", "custom")
+    # "decision_exact", "exact_medicare" and "regret" are solve presets, not queue-time
+    # choices: the decision's exact companion, the tornado's medical-inflation model (review
+    # AJ1), and I8's per-request sweep (their buttons queue them).
+    assert SOLVE_PRESETS == ("quick", "decision", "decision_exact", "exact_medicare", "ages",
+                             "ages_thorough", "regret", "custom")
     for preset in PRESETS:
         for solve in preset_solves(preset):
             assert solve in SOLVE_PRESETS
@@ -121,3 +122,15 @@ def test_an_unknown_preset_is_refused():
         preset_options("decision_exact_typo")
     with pytest.raises(ValueError):
         preset_solves("quick_thorough")
+
+
+def test_aj1_the_medicare_companion_is_the_exact_model_with_medicare_priced_exactly():
+    """Review AJ1: the tornado's medical-inflation mover solves with Medicare (the exact LP has
+    it off); a solve preset and a model companion, never a queue-time choice."""
+    from owlplanner.library.agesearch import EXACT_GROUP
+    from owlplanner.library.presets import COMPANION_PRESETS, EXACT_MEDICARE
+
+    assert EXACT_MEDICARE == {**EXACT_GROUP, "withMedicare": "optimize"}
+    assert preset_options("exact_medicare") == {"withSSAges": "fixed", **EXACT_MEDICARE}
+    assert COMPANION_PRESETS == ("decision_exact", "exact_medicare")
+    assert "exact_medicare" not in PRESETS

@@ -99,6 +99,34 @@ def score_label(result: Result) -> str:
     return r"spending basis (\$/yr, today's)"
 
 
+def first_number(result: Result) -> Optional[float]:
+    """R3's first number, what a variant's difference is read on beside the home at the end:
+    the score under maxSpending; under maxBequest the savings left, since the score there is
+    the final bequest, which holds the home (step-3 review 3, W5, for the lead rule; review
+    AJ3 for the tornado's bars, the grid's cells and star and the front: "condo price +10%"
+    read -97,822 = -173,908 savings + 76,086 home, with the home shown again beside it).
+    None when unsolved."""
+    if result is None or not result.solved:
+        return None
+    if result.plan.get("objective") != "maxSpending":
+        return savings_left(result)
+    return score(result)
+
+
+def first_number_name(result: Result) -> str:
+    """`first_number`'s name, as `compare`'s rows name it ("score" / "savings left at the end")."""
+    if result is not None and result.plan.get("objective") != "maxSpending":
+        return "savings left at the end"
+    return "score"
+
+
+def first_number_label(result: Result) -> str:
+    """`first_number` in words, for a page's caption or axis."""
+    if result is not None and result.plan.get("objective") != "maxSpending":
+        return r"savings left at the end (today's \$, after the heirs' tax)"
+    return score_label(result) if result is not None else "score"
+
+
 def savings_left(result: Result) -> Optional[float]:
     """Savings left at the end, today's $, after the heirs' tax (run_suite: "savings left")."""
     if not result.solved:
@@ -327,6 +355,29 @@ def record_is_exact_lp(record: dict) -> bool:
         and abs(ss_taxable - 0.85) < 1e-9
         and _norm(options.get("withLTCG")) == "optimize"
     )
+
+
+def record_companion(record: dict) -> Optional[str]:
+    """Which model companion a record.json is: "exact_medicare" (by its solve preset: the
+    exact model with Medicare priced exactly, the tornado's medical-inflation mover and its
+    base, review AJ1), "decision_exact" (the exact LP, by its options, `record_is_exact_lp`),
+    or None -- a solve under the case's own model, which the pages may show as the run's
+    headline.
+
+    The pages pick a run's default result, and the collections their headline result, among
+    the records this says None for: a companion's model is not the case's (no Medicare, or
+    the SS taxable fraction pinned at 0.85), so it is read beside the headline, never as it.
+    """
+    if str(record.get("preset") or "") == "exact_medicare":
+        return "exact_medicare"
+    if record_is_exact_lp(record):
+        return "decision_exact"
+    return None
+
+
+def is_companion(result: Result) -> bool:
+    """Is this a model companion's result (`record_companion`), not a headline one?"""
+    return record_companion(result.record) is not None
 
 
 def objective_value(result: Result) -> Optional[float]:

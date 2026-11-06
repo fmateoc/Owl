@@ -7,6 +7,24 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6: the fifth whole-step review's AJ1-AJ4 folded (2026-11-06)
+
+- **The tornado's medical-inflation mover solves with Medicare priced exactly** (new solve
+  preset `exact_medicare`: the exact model with `withMedicare = "optimize"`), as does the run's
+  own base for that bar; every other mover stays on the exact LP. The exact LP has Medicare
+  off, and Medicare premiums are what medical inflation grows: on the synthetic household the
+  bar read -83 (last of ten); it reads -1,842 ±198 (local search: -1,813). Neither companion
+  preset is ever a run's headline result (`view.record_companion`).
+- **A regret job's record keeps the base solve's warnings only**: the sweep's 125 scenario
+  warnings no longer reach it, and its page no longer lists seven historical scenarios'
+  "Exiting loop on maximum iterations." as problems of a settled plan.
+- **Under maxBequest the tornado's bars, the grid's cells and star and the front read the
+  savings left** (`view.first_number`), not the final bequest, which holds the home shown
+  beside them: "condo price +10%" read -97,822 = -173,908 savings + 76,086 home.
+- **The Ages preset never tries a claiming month already past**: stage 2's neighbours are
+  clipped to each person's first open claiming age (`Plan._ssaOpenAges`), where they used to
+  reach 62y0m for someone already 62y7m.
+
 ### Run library, build step 6: the fourth whole-step review's AI1-AI6 folded (2026-11-06)
 
 - **The conversion chart stacks what is taxable and draws MAGI**: the conversion layer is its

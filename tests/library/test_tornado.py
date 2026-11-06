@@ -417,14 +417,14 @@ class TestReview5:
     def test_ai3_a_result_is_current_only_today_and_by_this_code(self, tmp_path, monkeypatch):
         from datetime import date
 
-        monkeypatch.setattr(tornado, "base_result", lambda path: self._result(
+        monkeypatch.setattr(tornado, "base_result", lambda path, preset=None: self._result(
             1.0, 1.0, finished="2026-03-04T10:00:00-05:00", engine={"version": "v", "commit": "c"}))
         engine = {"version": "v", "commit": "c"}
         assert tornado.is_current(tmp_path, today=date(2026, 3, 4), engine=engine)
         assert not tornado.is_current(tmp_path, today=date(2026, 3, 5), engine=engine)
         assert not tornado.is_current(tmp_path, today=date(2026, 3, 4),
                                       engine={"version": "v", "commit": "d"})
-        monkeypatch.setattr(tornado, "base_result", lambda path: None)
+        monkeypatch.setattr(tornado, "base_result", lambda path, preset=None: None)
         assert not tornado.is_current(tmp_path, today=date(2026, 3, 4), engine=engine)
 
 
@@ -468,3 +468,77 @@ class TestReview5Collection:
         lib.set_reference(old.id, a)
         assert tornado.collection_of(lib, a.id).id == old.id
         assert tornado.collection_of(lib, b_run.id) is None  # the same name is not enough
+
+
+class TestReview5Folds:
+    """`fork-notes/run-library-step6-review-5.md` AJ1 and AJ3 in the tornado's own module."""
+
+    @staticmethod
+    def _result(first, home=400_000.0, *, preset="decision_exact", objective="maxSpending",
+                savings=0.0):
+        options = dict(TestBars.EXACT)
+        if preset == "exact_medicare":
+            options["withMedicare"] = "optimize"
+        record = {"status": "solved", "preset": preset, "gap": None,
+                  "method": {"breakpoint_method": "loop", "options": options, "objective": objective},
+                  "convergence": {"objective_error_bar_today_dollars": 0.0},
+                  "solve_date": {"finished": "2026-01-01T09:00:00+00:00"},
+                  "engine": {"version": "v", "commit": "c"}}
+        summary = {"discretionary_year1": first, "final_bequest_today": home + savings,
+                   "final_bequest_savings_today": savings}
+        return view.Result(results_id="r", results_dir=Path("."), record=record,
+                           summary=summary, plan={"objective": objective, "by_year": []})
+
+    def test_aj1_the_medical_mover_solves_with_medicare(self, stub_plan):
+        movers = {m.key: m for m in tornado.movers(_scenario())}
+        assert movers["medical+2"].preset == tornado.MEDICARE_PRESET == "exact_medicare"
+        assert {m.preset for k, m in movers.items() if k != "medical+2"} == {tornado.EXACT_PRESET}
+        made, _ = tornado.tornado_variants(_scenario())
+        for variant in made:  # the label route (what a collection member stores) agrees
+            assert tornado.preset_of(variant) == movers[variant.label].preset
+            assert tornado.preset_of(variant.values["mover"]) == movers[variant.label].preset
+        assert tornado.presets_needed(made) == ["decision_exact", "exact_medicare"]
+        assert "Medicare priced exactly" in movers["medical+2"].note
+
+    def test_aj1_the_medical_bar_reads_the_base_under_its_own_model(self):
+        """Measured on the synthetic household: -83 under the exact LP (no Medicare), -1,842
+        with Medicare priced exactly, -1,813 under local search."""
+        bases = {"decision_exact": self._result(114_428.0),
+                 "exact_medicare": self._result(109_151.0, preset="exact_medicare")}
+        rows = [(tornado.MEDICAL_LABEL, self._result(107_309.0, preset="exact_medicare")),
+                ("returns -1 point", self._result(106_514.0))]
+        by = {b["label"]: b for b in tornado.bars(bases, rows)}
+        assert by[tornado.MEDICAL_LABEL]["delta"] == pytest.approx(-1_842.0)
+        assert by["returns -1 point"]["delta"] == pytest.approx(-7_914.0)
+
+    def test_aj1_the_medical_bar_waits_for_its_own_base_and_child(self):
+        exact_only = {"decision_exact": self._result(114_428.0)}
+        bar = tornado.bars(exact_only, [(tornado.MEDICAL_LABEL,
+                                         self._result(107_309.0, preset="exact_medicare"))])[0]
+        assert bar["delta"] is None and "Medicare" in bar["note"] and "waiting" in bar["note"]
+        # A child solved under the exact LP (the model with no Medicare) is not its bar.
+        bases = {**exact_only, "exact_medicare": self._result(109_151.0, preset="exact_medicare")}
+        bar = tornado.bars(bases, [(tornado.MEDICAL_LABEL, self._result(114_344.0))])[0]
+        assert bar["delta"] is None and bar["note"].startswith("no Medicare")
+        # A single base is the exact LP's (the old call form): the medical bar waits.
+        bar = tornado.bars(self._result(114_428.0), [(tornado.MEDICAL_LABEL,
+                                                      self._result(107_309.0, preset="exact_medicare"))])[0]
+        assert bar["delta"] is None
+
+    def test_aj1_the_flags_pair_each_bar_with_its_own_base(self):
+        exact = self._result(114_428.0)
+        medicare = self._result(109_151.0, preset="exact_medicare")
+        rows = [(tornado.MEDICAL_LABEL, self._result(107_309.0, preset="exact_medicare"))]
+        # Same day, same commit: the medical pair has nothing to flag. Paired with the exact
+        # base it would flag the presets.
+        assert tornado.bar_flags({"decision_exact": exact, "exact_medicare": medicare}, rows) == []
+        assert tornado.bar_flags({"decision_exact": None}, rows) == []
+
+    def test_aj3_under_max_bequest_the_bar_is_the_savings_left(self):
+        """The synthetic household under maxBequest: "condo price +10%" read -97,822 = -173,908
+        savings + 76,086 home, with the home shown again beside it."""
+        base = self._result(0.0, 760_861.0, objective="maxBequest", savings=1_043_946.0)
+        condo = self._result(0.0, 836_947.0, objective="maxBequest", savings=870_038.0)
+        bar = tornado.bars(base, [("condo price +10%", condo)])[0]
+        assert bar["delta"] == pytest.approx(-173_908.0)
+        assert bar["home_delta"] == pytest.approx(76_086.0)

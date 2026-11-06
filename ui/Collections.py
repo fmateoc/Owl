@@ -343,9 +343,13 @@ elif ref_entry is None or ref_entry.result is None or not ref_entry.result.solve
     st.info("Choose a reference below: the grid's cells are differences from it (section 9.3).")
 else:
     g = grid.grid_view(entries, reference=ref_entry.run_id, row_dims=rows, col_dims=columns)
-    st.caption(f"Each cell: the score's difference from the reference (**{ref_entry.name}**, "
-               f"{view.score(ref_entry.result):,.0f}), and below it the home at the end "
-               "(today's \\$). &#9733; is the best score in its row, by score only. Colour, R3's "
+    # R3's first number (review AJ3): the score, or under maxBequest the savings left (the
+    # score there is the final bequest, which holds the home shown below it).
+    first_name = view.first_number_label(ref_entry.result)
+    st.caption(f"Each cell: the difference from the reference (**{ref_entry.name}**, "
+               f"{view.first_number(ref_entry.result):,.0f}) in {first_name}, and below it the home "
+               "at the end (today's \\$). &#9733; is the best in its row on that number alone. "
+               "Colour, R3's "
                "verdict on the two numbers: green leads the reference, red the reference leads, "
                "blue a trade-off (more spending against more home), grey no difference beyond the "
                "noise rule; ~ marks a score difference inside the noise band.")
@@ -369,8 +373,11 @@ else:
             judgment = item["vs_reference"]
             beat = f"; leads {', '.join(item['leads'])}" if item["leads"] else ""
             home = f"{item['home']:,.0f}" if item["home"] is not None else "-"
+            # R3's two numbers (review AJ3): under maxBequest the savings left, not the score,
+            # which there holds the home.
+            first = view.first_number_name(entry.result)
             st.markdown(
-                f"- **{entry.name}**: score {item['score']:,.0f}, home {home}{beat}  \n"
+                f"- **{entry.name}**: {first} {item['first']:,.0f}, home {home}{beat}  \n"
                 f"  vs *{ref_entry.name}*: {judgment.verdict}"
                 + (f" ({judgment.delta:+,.0f})" if judgment.delta is not None else "")
                 + (f" -- {judgment.note}" if judgment.note else ""))
@@ -424,6 +431,13 @@ for member in coll.members:
     if entry.result is not None and entry.result.solved:
         home = f"{entry.home:,.0f}" if entry.home is not None else "-"
         line += f"  \nscore {entry.score:,.0f} · home {home} · {view.method_text(entry.result)}"
+    elif (_EXACT and _RUNS.get(member.run) is not None
+          and grid.latest_result(_RUNS[member.run].path, companion="exact_medicare") is not None):
+        # The tornado's medical-inflation child solves with Medicare priced exactly (review
+        # AJ1): it has no exact-LP result to place in this read; its bar is on the run's page.
+        line += ("  \nsolved with Medicare priced exactly (the tornado's medical-inflation "
+                 "mover): not in the exact-LP grid; its bar, against the run's own solve under "
+                 "the same model, is on the run's page")
     else:
         line += "  \nno solved result yet"
     cols = st.columns([7, 1, 1, 1])

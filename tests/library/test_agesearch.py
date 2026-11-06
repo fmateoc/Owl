@@ -35,6 +35,41 @@ class TestTrials:
         trials = agesearch._trials([69.8333], [0])
         assert [t[0] for t in trials] == pytest.approx([69.8333, 68.8333, 70.0])
 
+    def test_aj4_a_neighbour_below_the_first_open_month_is_clipped_to_it(self):
+        """Review AJ4: Ari, born April 1964, is 62y7m in November 2026; the pick 62y9m's
+        -1 year neighbour was 62y0m, a month already past, which Owl solves at fixed ages
+        without a word as benefits already being collected."""
+        first = [62 + 7 / 12, 62 + 1 / 12]
+        trials = agesearch._trials([62.75, 70.0], [0, 1], first)
+        assert [round(t[0], 4) for t in trials] == [62.75, 62.5833, 63.75, 62.75]
+        # A pick at the first open month has no neighbour below it.
+        trials = agesearch._trials([62 + 7 / 12, 70.0], [0], first)
+        assert [round(t[0], 4) for t in trials] == [62.5833, 63.5833]
+        # Without `first` the 62-70 clip alone (run_suite's rule before the fold).
+        assert agesearch._trials([62.75, 70.0], [0])[1] == [62.0, 70.0]
+
+    def test_aj4_the_search_clips_at_each_person_s_first_open_month(self, monkeypatch):
+        """`two_stage_ages` reads each person's first open claiming age from the stage-1 plan
+        (`Plan._ssaOpenAges`) and no stage-2 trial goes below it."""
+        import types
+
+        open_ages = {0: [62 + 7 / 12 + m / 12 for m in range(0, 90)], 1: [62 + 1 / 12]}
+        tried = []
+
+        def plan(diconf, dirname, log, sets=()):
+            ages = next((json.loads(x.split("=", 1)[1]) for x in sets
+                         if x.startswith("fixed_income.social_security_ages=")), [62.75, 70.0])
+            tried.append(ages)
+            return types.SimpleNamespace(ssecAges=ages, caseStatus="solved", inames=["Ari", "Noa"],
+                                         _ssaOpenAges=lambda i: open_ages[i], objective="maxSpending")
+
+        monkeypatch.setattr(agesearch, "_plan", plan)
+        monkeypatch.setattr(agesearch, "_solve", lambda p, options=None: p)
+        monkeypatch.setattr(agesearch, "score_plan", lambda p: -abs(p.ssecAges[0] - 62.0))
+        ages, scored = agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".")
+        assert [round(a[0], 4) for a, _ in scored] == [62.75, 62.5833, 63.75]
+        assert round(ages[0], 4) == 62.5833  # the closest open month, never 62y0m
+
 
 class TestOptions:
     def test_the_exact_model_is_run_suite_s(self):

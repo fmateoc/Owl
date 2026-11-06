@@ -10,7 +10,8 @@ whose income sits just below or just over a threshold, design 14.1 I3), charts d
 workbook's sheets, the conversion and bracket view (I8: taxable income, the Roth
 conversion layer and the bracket, IRMAA and ACA lines, with the per-request regret
 sweep), the sensitivity tornado (I9: one child per key input moved by a set
-step, solved under the exact LP, the effects sorted into bars with their tolerances), the
+step, solved under the exact LP -- the medical-inflation child with Medicare priced exactly,
+review AJ1 -- the effects sorted into bars with their tolerances), the
 claiming-age map over a work_sweep scores file (I7), and the
 buttons: "Open in Owl" (the existing pages from the cached `plan.pkl`, no solve),
 "Download everything" (a zip of the run), "Edit as new run" (the run's frozen files into
@@ -423,9 +424,9 @@ if run.notes:
     st.markdown(run.notes)
 
 if entries:
-    # The exact-model companion is a check, not the headline (R2): default to the newest
-    # main solve, not to it.
-    default_idx = next((i for i, e in enumerate(entries) if not view.is_exact_lp(e[2])), 0)
+    # A model companion (the exact LP, or the tornado's Medicare model, review AJ1) is a
+    # check, not the headline (R2): default to the newest main solve, not to it.
+    default_idx = next((i for i, e in enumerate(entries) if not view.is_companion(e[2])), 0)
     chosen = st.selectbox("Result", [e[0] for e in entries], index=default_idx,
                           key="run_page_result")
     job, result = next((e[1], e[2]) for e in entries if e[0] == chosen)
@@ -628,23 +629,38 @@ def _tornado_collection(run):
     return lib.collection(coll.id)
 
 
-def _live_exact_runs():
-    """The runs with an exact-LP solve waiting or running (review AI3: not queued twice)."""
-    return {str(j.doc.get("run_id")) for j in manager.jobs()
-            if j.state in (R.WAITING, R.RUNNING) and j.doc.get("preset") == "decision_exact"}
+def _live_companion_solves():
+    """(run id, preset) of every model-companion solve waiting or running (review AI3: not
+    queued twice; review AJ1: the medical-inflation pair solves under its own preset)."""
+    return {(str(j.doc.get("run_id")), str(j.doc.get("preset"))) for j in manager.jobs()
+            if j.state in (R.WAITING, R.RUNNING)
+            and j.doc.get("preset") in (tornado.EXACT_PRESET, tornado.MEDICARE_PRESET)}
+
+
+def _queue_unless_current(target, preset, live):
+    """Queue `target` under `preset` unless that solve is queued, running, or was solved today
+    by the code running now (review AI3). Returns "queued", "current" or an error message."""
+    if (target.id, preset) in live or tornado.is_current(target.path, preset=preset):
+        return "current"
+    try:
+        manager.enqueue(target, preset=preset)
+    except (ScenarioError, JobsError) as exc:  # another plan year (R1)
+        return str(exc)
+    return "queued"
 
 
 with st.expander("Sensitivity (tornado)"):
     st.caption(
         "One child run per key input moved by a set step: " +
         "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
-        ". Each child is solved under the exact LP (for speed) and measured against this "
-        "run's own exact-LP solve, which the button queues when the run has none (review "
-        "AG2); the bars below are sorted by the size of the effect, each with its tolerance "
-        "(R2), the home at the end beside it (R3's other number, never added). A mover that "
-        "does not fit this scenario, or that no plan year would see, is skipped and says why. "
-        "A child already solved today by this code, or with its solve queued, is not queued "
-        "again. The runs land in the collection "
+        ". Each child is solved under the exact LP (for speed) -- the medical-inflation child "
+        "with Medicare priced exactly, since the exact LP has no Medicare premiums (review "
+        "AJ1) -- and measured against this run's own solve under the same model, which the "
+        "button queues when the run has none (review AG2); the bars below are sorted by the "
+        "size of the effect, each with its tolerance (R2), the home at the end beside it (R3's "
+        "other number, never added). A mover that does not fit this scenario, or that no plan "
+        "year would see, is skipped and says why. A solve already made today by this code, or "
+        "queued, is not queued again. The runs land in the collection "
         f"*{getattr(tornado.collection_of(lib, run.id), 'name', None) or 'Sensitivity: ' + run.name}*."
     )
     if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado"):
@@ -656,17 +672,16 @@ with st.expander("Sensitivity (tornado)"):
             st.rerun()
         coll = _tornado_collection(run)
         queued, current = 0, 0
-        live = _live_exact_runs()
-        # The bars measure from this run's own exact-LP result only (review AG2), queued unless
-        # it is already queued or was solved today by this code (review AI3): the bars then
-        # compare solves of one day, the children's rule too.
-        if not (run.id in live or tornado.is_current(run.path)):
-            try:
-                manager.enqueue(run, preset="decision_exact")
-            except (ScenarioError, JobsError) as exc:  # another plan year (R1)
-                libraryjobs.flash("error", f"{run.name}: its exact-LP solve not queued ({exc})")
-            else:
+        live = _live_companion_solves()
+        # The bars measure from this run's own result under each mover's model only (reviews
+        # AG2, AJ1), queued unless it is already queued or was solved today by this code
+        # (review AI3): the bars then compare solves of one day, the children's rule too.
+        for preset in tornado.presets_needed(made):
+            outcome = _queue_unless_current(run, preset, live)
+            if outcome == "queued":
                 queued += 1
+            elif outcome != "current":
+                libraryjobs.flash("error", f"{run.name}: its {preset} solve not queued ({outcome})")
         for variant in made:
             try:
                 saved = lib.save_run(name=f"{run.name} {variant.label}",
@@ -676,22 +691,22 @@ with st.expander("Sensitivity (tornado)"):
                 continue
             child = saved.run if saved.created else saved.identical_to
             lib.add_member(coll.id, child, variant.values)
-            if child.id in live or tornado.is_current(child.path):
+            outcome = _queue_unless_current(child, tornado.preset_of(variant), live)
+            if outcome == "queued":
+                queued += 1
+            elif outcome == "current":
                 current += 1  # solved today by this code, or queued (review AI3)
-                continue
-            try:
-                manager.enqueue(child, preset="decision_exact")
-            except (ScenarioError, JobsError) as exc:  # another plan year (R1)
-                libraryjobs.flash("error", f"{child.name}: not queued ({exc})")
-                continue
-            queued += 1
-        libraryjobs.flash("success", f"{queued} sensitivity run(s) queued under the exact LP"
+            else:
+                libraryjobs.flash("error", f"{child.name}: not queued ({outcome})")
+        libraryjobs.flash("success", f"{queued} sensitivity solve(s) queued"
                           + (f"; {current} already solved today or queued, not queued again."
                              if current else "."))
         st.rerun()
     _coll = tornado.collection_of(lib, run.id)  # by the run's id (review AI3)
     if _coll is not None:
-        _base = tornado.base_result(run.path)
+        _bases = {p: tornado.base_result(run.path, p)
+                  for p in (tornado.EXACT_PRESET, tornado.MEDICARE_PRESET)}
+        _base = _bases[tornado.EXACT_PRESET]
         _rows = []
         for _member in _coll.members:
             if _member.run == run.id:
@@ -702,24 +717,29 @@ with st.expander("Sensitivity (tornado)"):
             except Exception:  # noqa: BLE001 - a deleted child is shown, not fatal
                 _rows.append((_label, None))
                 continue
-            _rows.append((_label, tornado.result_of(_child.path)))
-        if _base is None:
+            _rows.append((_label, tornado.result_of(_child.path, tornado.preset_of(_label))))
+        if all(b is None for b in _bases.values()):
             st.caption("The bars wait for this run's own exact-LP solve (the children's model; "
                        "\"Make the sensitivity runs\" queues it): another model's result would "
                        "put the model change into every bar (review AG2).")
         elif any(result is not None for _label, result in _rows):
-            st.caption(f"Measured from this run's exact-LP solve: score {view.score(_base):,.0f}, "
-                       f"claiming ages {view.claiming_ages_text(_base)}.")
+            _ref = _base or _bases[tornado.MEDICARE_PRESET]
+            _what = view.first_number_label(_ref)
+            _measured = [f"{'this run' if p == tornado.EXACT_PRESET else 'the medical-inflation bar'}"
+                         f"'s {'exact-LP' if p == tornado.EXACT_PRESET else 'Medicare-priced'} solve, "
+                         f"{view.first_number(b):,.0f}" for p, b in _bases.items() if b is not None]
+            st.caption(f"Measured from {'; '.join(_measured)} ({_what}); claiming ages "
+                       f"{view.claiming_ages_text(_ref)}.")
             _plain = grid.latest_result(run.path)
             if (_plain is not None and _plain.record.get("age_search")
-                    and view.claiming_ages(_plain) != view.claiming_ages(_base)):
+                    and view.claiming_ages(_plain) != view.claiming_ages(_ref)):
                 st.warning(f"This run's last '{_plain.record.get('preset')}' solve picked the claiming "
-                           f"ages {view.claiming_ages_text(_plain)}; the exact-LP solves hold the "
-                           f"case's own ({view.claiming_ages_text(_base)}), so the bars do too.",
+                           f"ages {view.claiming_ages_text(_plain)}; the sensitivity solves hold the "
+                           f"case's own ({view.claiming_ages_text(_ref)}), so the bars do too.",
                            icon=":material/flag:")
-            for _flag in tornado.bar_flags(_base, _rows):
+            for _flag in tornado.bar_flags(_bases, _rows):
                 st.warning(_flag, icon=":material/flag:")
-            _bars = tornado.bars(_base, _rows)
+            _bars = tornado.bars(_bases, _rows)
             _shown = [b for b in _bars if b["delta"] is not None]
             if _shown:
                 fig = go.Figure(go.Bar(
@@ -730,29 +750,34 @@ with st.expander("Sensitivity (tornado)"):
                                  visible=True),
                     marker_color=["#c62828" if b["delta"] < 0 else "#2e7d32" for b in _shown][::-1],
                     customdata=[b.get("home_delta") or 0.0 for b in _shown][::-1],
-                    hovertemplate="%{y}: score %{x:+,.0f}; home at the end %{customdata:+,.0f}"
+                    hovertemplate="%{y}: %{x:+,.0f}; home at the end %{customdata:+,.0f}"
                                   "<extra></extra>",
                 ))
                 fig.update_layout(height=max(240, 40 * len(_shown) + 120),
-                                  xaxis_title="score's difference from this run (today's $)",
+                                  # Plotly shows text as is: no Markdown escape.
+                                  xaxis_title="difference from this run: " + _what.replace("\\$", "$"),
                                   showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
-            # The home at the end beside the score (review AI4: R3's other number, never added;
-            # "condo price +10%" moves it by about the price change).
-            lines = ["| mover | difference | tolerance | verdict | home at the end |",
-                     "|---|---:|---:|---|---:|"]
+            # The home at the end beside the first number (review AI4: R3's other number,
+            # never added; "condo price +10%" moves it by about the price change). Under
+            # maxBequest the first number is the savings left (review AJ3).
+            lines = ["| mover | difference | tolerance | verdict | home at the end | model |",
+                     "|---|---:|---:|---|---:|---|"]
             for b in _bars:
                 delta = f"{b['delta']:+,.0f}" if b["delta"] is not None else "-"
                 tol = f"{b['tolerance']:,.0f}" if b["tolerance"] is not None else "-"
                 home = b.get("home_delta")
                 home = "-" if home is None else ("±0" if b.get("home_verdict") == "no difference"
                                                  else f"{home:+,.0f}")
+                model = ("exact LP" if tornado.preset_of(b["label"]) == tornado.EXACT_PRESET
+                         else "exact LP, Medicare priced exactly")
                 lines.append(f"| {b['label']} | {delta} | ±{tol} | {b['verdict']}"
-                             + (f" ({b['note']})" if b["note"] else "") + f" | {home} |")
+                             + (f" ({b['note']})" if b["note"] else "") + f" | {home} | {model} |")
             st.markdown("\n".join(lines))
         else:
             st.caption("No sensitivity result yet: the Queue page shows their progress "
-                       "(each is one solve under the exact LP).")
+                       "(each is one solve under the exact LP, the medical-inflation pair with "
+                       "Medicare priced exactly).")
 
 # -- the claiming-age map (design 14.1, I7) -----------------------------
 

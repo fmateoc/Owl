@@ -228,3 +228,50 @@ well as at 62.
 - `check_library_variants.py` (reduced and `--full`): PROGRESS records 5/5 for both.
 - An "Ages, thorough" job end to end through the worker (29-51 min per variant).
 - A browser session of the pages (AppTest only); Windows.
+
+## Dispositions (2026-11-06, the user's call: fold AJ1-AJ4; for AJ1, "solve this mover under a model with Medicare")
+
+- **AJ1 folded:** a new solve preset, `exact_medicare` (`presets.EXACT_MEDICARE` = the exact
+  model with `withMedicare = "optimize"`, ages fixed), and `Mover.preset`: the medical-inflation
+  child and the run's own base for its bar solve under it, every other mover under
+  `decision_exact` as before. The model was chosen by measurement (scratchpad
+  `f1_medicare_models.py`, the synthetic run and its `medical+2` child): Medicare on the loop
+  -1,842 (±0, 18 s for the pair), Medicare priced exactly -1,842 (±198, the reported gap x
+  objective, 14 s), the same at gap 1e-4 (±0, 51 s); `"optimize"` at the default gap is what
+  local search does with Medicare and states its own tolerance. `tornado.bars` / `bar_flags`
+  take {preset: the run's result under it} (one result is still read as the exact-LP base) and
+  pair each bar with its mover's preset (`preset_of`); `base_result` / `result_of` /
+  `is_current` take the preset. The Run page's button queues the base under every preset its
+  children need (`presets_needed`) and each child under its own; the table gives each bar's
+  model. `view.record_companion` names both companion presets, so neither is ever a run's
+  headline: the Run page's default result, the Compare page's default pair and
+  `grid.latest_result` (collections) skip them -- the base's `exact_medicare` solve was its
+  newest non-exact-LP result and became its headline (SS pinned at 0.85). On the Collections
+  page the medical child, which has no exact-LP result, says where its bar is. Probe
+  (`f2_tornado_after.py`, the whole tornado through the worker): "medical inflation +2 points"
+  -1,842 ±198, resolved, 6th of 10 (was -83 ±0, last); the other nine bars unchanged; the
+  run's headline its `decision` solve.
+- **AJ2 folded:** the log tee is quiet during the regret sweep (`worker._solve`): its lines go
+  to `solve.log`, the record's warnings stay the base solve's. Probe `r1_regret_warnings.py`
+  again: the `regret` job's record has 1 warning, its quality line "settled", as the `custom`
+  twin's.
+- **AJ3 folded:** `view.first_number` (with `first_number_name` / `first_number_label`): the
+  score under maxSpending, the savings left under maxBequest. `tornado.bars`, the grid's cells
+  and star (`grid.Entry.first`) and `grid.front`'s "vs the reference" (and its new `first`) read
+  it; the Run page's axis and caption and the Collections page's caption name it. Probe
+  `r2_maxbequest_tornado.py` again: the bar and the cell read -173,908 (the savings), the home
+  +76,086 beside it (was -97,822).
+- **AJ4 folded:** `agesearch._trials` takes each person's first open claiming age
+  (`Plan._ssaOpenAges`: eligibility, 62y1m unless born on the 1st or 2nd, or this month,
+  whichever is later), which `two_stage_ages` reads from the stage-1 plan; no neighbour goes
+  below it. On the synthetic case on 2026-11-06: Ari 62y7m, Noa 62y1m. `run_suite.py` shares
+  the code.
+
+Tests: 14 new (`test_tornado.py` +5, `test_grid.py` +3, `test_agesearch.py` +2,
+`test_presets.py` +1, `test_worker.py` +1, `test_library_pages.py` +1,
+`test_collections_page.py` +1) and three re-pinned (the solve-preset list, the button's
+queued presets, `is_current`'s stub, which takes the preset). With `src/` and `ui/` stashed,
+13 of the 14 new tests failed and the re-pinned preset list with them; the 14th (the medical
+child keeps a sensitivity collection on the exact LP) guards AG5's switch and passed before
+too. `tests/library tests/ui` + the bracket/ACA/regret tests **1018 passed** (2:44, `-n 2`);
+lint only upstream's listed items; full suite **4422 passed, 1 skipped** (11:47, Linux, `-n 4`; 4408 + the 14 new tests; two later edits, a docstring and the tornado axis label's escape, re-checked by the 8 tornado page tests).

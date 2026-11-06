@@ -7,7 +7,10 @@ cell showing the **score's difference from the reference** and below it the **ho
 end**, coloured by the comparison rule (R3, `compare`): *leads the reference* (at least as
 good on both numbers, better on one beyond the noise rule), *trade-off*, *the reference
 leads*, or grey when the difference is inside the noise band. The best score in each row is
-marked, by score only (run_suite bolds the same way).
+marked, by score only (run_suite bolds the same way). Under maxBequest the cell's number, the
+star and the front's "vs the reference" read the savings left instead of the score, which
+there is the final bequest and holds the home, R3's other number (`view.first_number`,
+review AJ3).
 
 `front` answers the question the collection is written for (section 9.3): the variants that
 **no other variant beats on both numbers** (the score and the home at the end, never added
@@ -48,13 +51,20 @@ class Entry:
     def home(self) -> Optional[float]:
         return view.home_at_end(self.result) if self.result is not None else None
 
+    @property
+    def first(self) -> Optional[float]:
+        """R3's first number (`view.first_number`): the score, or under maxBequest the savings
+        left -- what the cells, the star and the front read (review AJ3)."""
+        return view.first_number(self.result) if self.result is not None else None
+
 
 @dataclass(frozen=True)
 class Cell:
     """One grid cell: the difference from the reference, judged (section 9.3)."""
 
     entry: Entry
-    delta: Optional[float] = None        # score - the reference's score
+    delta: Optional[float] = None        # the first number - the reference's (AJ3: the score,
+    #                                      or under maxBequest the savings left)
     verdict: str = "-"                   # "resolved" | "within noise" | "no difference" | "-"
     note: str = ""
     home: Optional[float] = None
@@ -124,7 +134,8 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
         if entry is ref or entry.result is None or ref.result is None:
             cells[entry.run_id] = Cell(entry=entry, home=entry.home)
             continue
-        judgment = C.difference("score", ref.score, entry.score, ta=ref.result, tb=entry.result)
+        judgment = C.difference(view.first_number_name(ref.result), ref.first, entry.first,
+                                ta=ref.result, tb=entry.result)
         home = entry.home
         home_delta = None if home is None or ref.home is None else home - ref.home
         cells[entry.run_id] = Cell(
@@ -148,16 +159,17 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
         else:
             shown[key] = entry
 
-    # Best score in each row, by score only (run_suite's `condo_pivot` bolds the same way).
+    # Best score in each row, by score only (run_suite's `condo_pivot` bolds the same way) --
+    # R3's first number, so under maxBequest the savings left, not savings + home (AJ3).
     # The mark goes to the best member itself (review AD3): a cell is starred only when it
     # shows that member, and a best member listed beside the grid (collided) is named in
     # `best_beside` -- the star never sits on a number that is not the row's best.
     best_beside = []
     for key in row_keys:
         here = [e for e in placed if _key(e.values, row_dims) == key]
-        scored = [e for e in here if e.score is not None]
+        scored = [e for e in here if e.first is not None]
         if scored:
-            best = max(scored, key=lambda e: e.score)
+            best = max(scored, key=lambda e: e.first)
             if shown[(key, _key(best.values, col_dims))] is not best:
                 best_beside.append(best.run_id)
                 continue
@@ -196,13 +208,16 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
 
 
 def _exact_only(run_path) -> bool:
-    """Is every solve of the run -- solved, failed, running or queued -- an exact-LP one?
+    """Is every solve of the run -- solved, failed, running or queued -- a model companion's?
 
-    The tornado's children are queued under `decision_exact` alone. A "decision" member is
-    not: its local-search solve sits beside its exact companion even while it runs or after it
-    failed (review AH5). A folder's model comes from its record when there is one, else from
-    its job record's preset (`status.json`), else from its name (`<stamp>_<preset>`).
+    The tornado's children are queued under `decision_exact` alone (its medical-inflation
+    child under `exact_medicare`, review AJ1). A "decision" member is not: its local-search
+    solve sits beside its exact companion even while it runs or after it failed (review AH5).
+    A folder's model comes from its record when there is one, else from its job record's
+    preset (`status.json`), else from its name (`<stamp>_<preset>`).
     """
+    from .presets import COMPANION_PRESETS
+
     results = Path(run_path) / "results"
     if not results.is_dir():
         return False
@@ -212,15 +227,15 @@ def _exact_only(run_path) -> bool:
             continue
         record = view.load_result(folder).record
         if record:
-            exact = (record.get("preset") == "decision_exact"
-                     or bool(view.record_is_exact_lp(record)))
+            exact = (record.get("preset") in COMPANION_PRESETS
+                     or view.record_companion(record) is not None)
         else:
             try:
                 with open(folder / "status.json", encoding="utf-8") as f:
                     preset = (json.load(f) or {}).get("preset")
             except (OSError, ValueError, AttributeError):
                 preset = folder.name.split("_", 1)[1] if "_" in folder.name else None
-            exact = preset == "decision_exact"
+            exact = preset in COMPANION_PRESETS
         if not exact:
             return False
         found = True
@@ -238,6 +253,9 @@ def member_results(run_paths) -> tuple:
     none), so the grid never judges two models against each other; `exact` says which.
     A member whose headline solve is still running or failed beside a solved exact companion
     (a "decision" member) does not switch the collection: it shows as unsolved (review AH5).
+    The tornado's medical-inflation child solves under its own companion model alone
+    (`exact_medicare`, review AJ1): it has no exact-LP result, so it shows as unsolved in the
+    exact read (its bar, against the run's own solve under that model, is on the Run page).
     """
     paths = list(run_paths)
     plain = {path: latest_result(path) for path in paths}
@@ -334,23 +352,35 @@ def front(entries, reference=None) -> list:
     for entry in solved:
         if entry.run_id in beaten:
             continue
-        judgment = C.difference("score", ref.score, entry.score, ta=ref.result, tb=entry.result)
+        # R3's first number (review AJ3): under maxBequest the score holds the home.
+        judgment = C.difference(view.first_number_name(ref.result), ref.first, entry.first,
+                                ta=ref.result, tb=entry.result)
         out.append({
             "entry": entry,
             "leads": tuple(leads_over[entry.run_id]),
             "score": entry.score,
+            "first": entry.first,
             "home": entry.home,
             "vs_reference": judgment,
         })
     return out
 
 
-def latest_result(run_path, *, prefer_exact: bool = False) -> Optional[Result]:
-    """The result to show for a run: its newest solved one (the exact companion only when
-    asked, as `ui/Run.py` defaults away from it -- R2's agreement check, not the headline).
+def latest_result(run_path, *, prefer_exact: bool = False,
+                  companion: Optional[str] = None) -> Optional[Result]:
+    """The result to show for a run: its newest solved one under the case's own model (a
+    model companion only when asked, as `ui/Run.py` defaults away from it -- R2's agreement
+    check, not the headline).
 
-    Returns None for a run with no solved result yet (a draft, or a failed solve).
+    `prefer_exact` asks for the exact-LP companion ("decision_exact"); `companion` names any
+    companion (`view.record_companion`: "decision_exact" or "exact_medicare", the tornado's
+    Medicare model, review AJ1). Without either, no companion is a headline result: the
+    tornado's "exact_medicare" base solve was the newest non-exact-LP result of its run, and
+    a collection or the Run page read it as the run's own.
+
+    Returns None for a run with no such solved result yet (a draft, or a failed solve).
     """
+    wanted = companion if companion is not None else ("decision_exact" if prefer_exact else None)
     results = Path(run_path) / "results"
     if not results.is_dir():
         return None
@@ -359,7 +389,7 @@ def latest_result(run_path, *, prefer_exact: bool = False) -> Optional[Result]:
         if not folder.is_dir():
             continue
         result = view.load_result(folder)
-        if not result.solved or bool(view.is_exact_lp(result)) != prefer_exact:
+        if not result.solved or view.record_companion(result.record) != wanted:
             continue
         best = result
         break

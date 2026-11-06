@@ -11,10 +11,10 @@ two stages, as `fork-notes/synthetic/run_suite.py` runs it:
   `owlplanner.work_sweep`'s stage (a): ``withACA = "optimize"`` makes each
   candidate a MIP (9 s there, about 10 minutes for the search's ~270 candidates), and the
   exact LP mis-prices the ACA years even then (`plan-review-2026-10-22.md` 3.2).
-- **Stage 2** solves the pick and each searched person's pick +-1 year (clipped to 62-70,
-  one person at a time) at **fixed ages** under **the case's own model**, scoring each with
-  `score_plan` (run_suite's score rule, the library's `view.score` over a plan). The best
-  score wins.
+- **Stage 2** solves the pick and each searched person's pick +-1 year (clipped to 62-70
+  and to the person's first open claiming age, review AJ4; one person at a time) at **fixed
+  ages** under **the case's own model**, scoring each with `score_plan` (run_suite's score
+  rule, the library's `view.score` over a plan). The best score wins.
 
 The search is one implementation, shared by the suite and the interface (the fork's rule,
 run-library-design.md section 6.2): `run_suite.py` imports it, and the worker runs it for
@@ -112,12 +112,20 @@ def searched_names(option, names) -> list:
     return []
 
 
-def _trials(pick, free) -> list:
-    """The age tuples stage 2 scores: the pick, then each searched person's pick +-1 year."""
+def _trials(pick, free, first=None) -> list:
+    """The age tuples stage 2 scores: the pick, then each searched person's pick +-1 year.
+
+    Each neighbour is clipped to 62-70 and, when `first` is given (each person's first open
+    claiming age, `Plan._ssaOpenAges`: eligibility or this month, whichever is later), to
+    that age from below (review AJ4): a fixed age already past is solved without a word as
+    benefits already being collected, so stage 2 could score -- and pick -- a month that can
+    no longer be claimed (Ari, 62y7m on 2026-11-06, was tried at 62y0m).
+    """
     trials = [list(pick)]
     for i in free:
+        low = 62.0 if first is None else max(62.0, float(first[i]))
         for d in (-1.0, 1.0):
-            a = min(70.0, max(62.0, pick[i] + d))  # clipped: a 69y10m pick still tries 70
+            a = min(70.0, max(low, pick[i] + d))  # clipped: a 69y10m pick still tries 70
             if abs(a - pick[i]) > 1e-6:
                 t = list(pick)
                 t[i] = a
@@ -142,8 +150,10 @@ def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], An
     sel = diconf.get("solver_options", {}).get("withSSAges", "optimize")
     names = list(p.inames)
     free = [names.index(n) for n in searched_names(sel, names)]
+    # Each person's first open claiming age (review AJ4); 70 for someone with none left.
+    first = [(p._ssaOpenAges(i) or [70.0])[0] for i in range(len(names))]
     scored = []
-    for t in _trials(pick, free):
+    for t in _trials(pick, free, first):
         if check is not None:
             check()
         q = _solve(_plan(diconf, dirname, log, fixed_ages(t)))

@@ -436,3 +436,41 @@ class TestASensitivityCollection:
         assert "no solved result yet" not in text
         assert "exact-LP" in text
         assert "-2,000" in text  # the first mover's cell: 78,000 against the reference's 80,000
+
+    def test_aj1_the_medical_child_says_where_its_bar_is(self, library):
+        """Review AJ1: the medical-inflation child solves with Medicare priced exactly and has
+        no exact-LP result to place; the member list says so instead of "no solved result"."""
+        from owlplanner.library import tornado
+
+        base = next(r for r in library.runs() if r.name == "bill")
+        self._exact(base, "2026-11-03T09-00-00_decision_exact", 80_000.0)
+        made, _ = tornado.tornado_variants(library.scenario(base.id))
+        coll = library.create_collection(f"Sensitivity: {base.name}", tornado_of=base.id)
+        library.add_member(coll.id, base, {"mover": tornado.BASE_LABEL})
+        library.set_reference(coll.id, base)
+        returns = next(v for v in made if v.label == "returns-1")
+        medical = next(v for v in made if v.label == "medical+2")
+        for variant in (returns, medical):
+            child = library.save_run(name=f"bill {variant.label}", scenario=variant.scenario,
+                                     parent=base.id).run
+            library.add_member(coll.id, child, variant.values)
+            if variant is returns:
+                self._exact(child, "2026-11-03T10-00-00_decision_exact", 78_000.0)
+            else:
+                folder = _write_result(child, "2026-11-03T11-00-00_exact_medicare", score=77_000.0)
+                record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+                record["preset"] = "exact_medicare"
+                record["method"] = {"objective": "maxSpending", "breakpoint_method": "loop",
+                                    "options": {**self.EXACT, "withMedicare": "optimize"}}
+                (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(UI_DIR / "Collections.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_collection"] = coll.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "exact-LP" in text and "-2,000" in text  # the grid stays on the exact LP
+        assert "solved with Medicare priced exactly" in text

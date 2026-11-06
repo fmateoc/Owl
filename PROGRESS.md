@@ -6980,3 +6980,26 @@ survivors). Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **10
 (2:11, Linux); full suite **4408 passed, 1 skipped** (13:21, Linux, `-n 3`); lint only
 upstream's listed items. The review changed nothing in `src/`, `ui/` or `tests/`. Folds are
 the user's call.
+
+## Run-library step 6: the fifth review's AJ1-AJ4 folded (2026-11-06)
+
+The user's call: fold AJ1-AJ4, and for AJ1 "solve this mover under a model with Medicare"
+(`fork-notes/run-library-step6-review-5.md`, "Dispositions"; `fork-notes/CHANGELOG-fork.md`
+has the entry; the design's I9 note amended). **AJ1**: a new solve preset `exact_medicare`
+(the exact model with `withMedicare = "optimize"`), and `Mover.preset`: the medical-inflation
+child and the run's own base for its bar solve under it, the other movers under
+`decision_exact`. Chosen by measurement on the synthetic run and its `medical+2` child: Medicare
+on the loop -1,842 (±0, 18 s for the pair), priced exactly -1,842 (±198, 14 s), at gap 1e-4
+the same (±0, 51 s); local search -1,813. `tornado.bars` / `bar_flags` take the bases per
+preset; the Run page queues the base under every preset its children need and gives each bar's
+model. `view.record_companion` names both companion presets, so neither becomes a run's
+headline (Run, Compare, `grid.latest_result`). End to end (the whole tornado through the
+worker): medical inflation -1,842 ±198, 6th of 10 (was -83, last); the other bars unchanged.
+**AJ2**: the log tee is quiet during the regret sweep: the regret job's record 1 warning
+(was 126), quality "settled". **AJ3**: `view.first_number` (the savings left under
+maxBequest) in the bars, the grid's cells, star and front: "condo price +10%" under
+maxBequest -173,908 (was -97,822, savings + home). **AJ4**: stage 2 clips neighbours at each
+person's first open claiming age (`Plan._ssaOpenAges`; Ari 62y7m, Noa 62y1m on 2026-11-06).
+Tests: 14 new, three re-pinned; with `src/` and `ui/` stashed 13 of the 14 failed (the 14th
+guards AG5's switch). `tests/library tests/ui` + bracket/ACA/regret **1018 passed** (2:44);
+lint only upstream's listed items; full suite **4422 passed, 1 skipped** (11:47, Linux, `-n 4`; 4408 + the 14 new tests; two later edits, a docstring and the tornado axis label's escape, re-checked by the 8 tornado page tests).

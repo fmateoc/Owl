@@ -353,6 +353,27 @@ class TestTheRegretSweep:
         names = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))["individuals"]
         assert record["regret"]["person"] == names[0]
 
+    def test_aj2_the_sweeps_warnings_are_not_the_solves(self, run, monkeypatch):
+        """Review AJ2: the sweep's clones share the plan's logger, so a scenario's warning
+        reached the record as the base solve's, and the Run page listed it as a problem with
+        the plan. It still goes to solve.log."""
+        def sweep(self, *args, **kw):
+            self.mylog.print("1945 | Exiting loop on maximum iterations.", tag="WARNING")
+            return {"canned": True}
+
+        monkeypatch.setattr("owlplanner.Plan.runConversionRegret", sweep)
+        monkeypatch.setattr("owlplanner.summarize_conversion_regret",
+                            lambda result: {"valley": {"x": 0.0, "mean_regret": 1.0}, "n_scenarios": 1})
+        job = make_job(run, name="2026-01-01T00-00-03_regret", preset="regret")
+        assert run_job(job.results_dir, job.token) == R.DONE
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert not any("maximum iterations" in w for w in record["warnings"]), record["warnings"]
+        log = (job.results_dir / R.SOLVE_LOG).read_text(encoding="utf-8")
+        assert "1945 | Exiting loop on maximum iterations." in log
+        from owlplanner.library import view
+
+        assert view.quality_line(view.load_result(job.results_dir)) == "settled"
+
     def test_a_failed_sweep_keeps_the_solve(self, run, monkeypatch):
         def boom(*args, **kw):
             raise RuntimeError("the sweep died")

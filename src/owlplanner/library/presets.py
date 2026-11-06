@@ -57,6 +57,13 @@ step 6.
   its "Quick look" size) and writes `regret.json`: what a different first-year Roth
   conversion would have cost. It is a solve preset, not a queue-time choice (as
   ``decision_exact``); the interface offers it through the run page's own button.
+- ``exact_medicare`` is ``decision_exact``'s model with Medicare priced exactly
+  (`withMedicare = "optimize"`, IRMAA binaries; `EXACT_MEDICARE`): the sensitivity tornado
+  solves its medical-inflation mover, and the run's own base for that bar, under it (review
+  AJ1: the exact LP has no Medicare premiums, which are what medical inflation grows, so the
+  bar read -83 where local search moved -1,813 on the synthetic household; this model gives
+  -1,842 at +-198). A model companion like ``decision_exact`` (`view.record_companion`): never
+  a run's headline result. A solve preset, not a queue-time choice.
 - ``custom`` runs the case's own `[solver_options]`, with the caller's options on top (as
   `owlcli --solver-opt` does).
 """
@@ -65,11 +72,20 @@ from __future__ import annotations
 
 from .agesearch import EXACT_GROUP
 
+# The tornado's medical-inflation model (review AJ1): the exact model with Medicare priced
+# exactly. The other movers stay on `decision_exact` (EXACT_GROUP), which has Medicare off.
+EXACT_MEDICARE = {**EXACT_GROUP, "withMedicare": "optimize"}
+
 # What the interface offers (section 8.1's rows).
 PRESETS = ("quick", "decision", "ages", "ages_thorough", "custom")
 
 # What one solve is recorded as (its results folder is <stamp>_<solve preset>).
-SOLVE_PRESETS = ("quick", "decision", "decision_exact", "ages", "ages_thorough", "regret", "custom")
+SOLVE_PRESETS = ("quick", "decision", "decision_exact", "exact_medicare", "ages", "ages_thorough",
+                 "regret", "custom")
+
+# The solve presets of a model companion: a model other than the case's own, read beside a
+# run's headline result and never as it (`view.record_companion`).
+COMPANION_PRESETS = ("decision_exact", "exact_medicare")
 
 # The families whose "optimize" mode makes the solve a MIP (or a local search); "quick" puts
 # each on the loop.
@@ -83,6 +99,8 @@ _FORCED = {
     # run_suite.py's EXACT_GROUP: the exact model companion of "decision" (R2's agreement
     # check). Ages fixed like the local-search solve it accompanies.
     "decision_exact": {"withSSAges": "fixed", **EXACT_GROUP},
+    # The tornado's medical-inflation mover and its base (review AJ1): Medicare priced exactly.
+    "exact_medicare": {"withSSAges": "fixed", **EXACT_MEDICARE},
     # The Ages presets force nothing: the case's own model, its own ages choice (section 8.1).
     # (The "Ages, thorough" worker re-solves its decided cell with the sweep's own scorer
     # options when the sweep ran, review AH1; a case with fixed ages just solves.)

@@ -31,6 +31,8 @@ def _write_result(run, name, *, preset="decision", score=82_000.0, home=150_000.
     options = ({"breakpointMethod": "loop", "withMedicare": "none",
                 "withSSTaxability": 0.85, "withLTCG": "optimize"} if exact
                else {"breakpointMethod": "local-search", "withSSAges": "fixed"})
+    if preset == "exact_medicare":  # the tornado's medical-inflation model (review AJ1)
+        options = {**options, "withMedicare": "optimize"}
     record = {
         "record_format": R.RECORD_FORMAT, "status": "solved", "preset": preset,
         "method": {"objective": "maxSpending",
@@ -533,7 +535,14 @@ class TestTheSensitivityTornado:
         child = next(r for r in library.runs() if r.name.startswith("bill later "))
         assert child.parent == next(r for r in library.runs() if r.name == "bill later").id
         queued = [j for j in JobManager(library).jobs() if j.id not in before]
-        assert queued and {j.doc["preset"] for j in queued} == {"decision_exact"}
+        # The exact LP for every child but medical inflation's, which solves with Medicare
+        # priced exactly, as does the run's own base for that bar (review AJ1).
+        assert queued and {j.doc["preset"] for j in queued} == {"decision_exact", "exact_medicare"}
+        medical = next(r for r in library.runs() if r.name.endswith(" medical+2"))
+        parent = next(r for r in library.runs() if r.name == "bill later")
+        medicare = {(j.doc["run_id"], j.doc["preset"]) for j in queued
+                    if j.doc["preset"] == "exact_medicare"}
+        assert medicare == {(medical.id, "exact_medicare"), (parent.id, "exact_medicare")}
 
     def test_the_bars_come_with_their_tolerances(self, library, monkeypatch):
         from owlplanner.library import JobManager
@@ -628,16 +637,19 @@ class TestTheTornadoReview4:
 
     @staticmethod
     def _solve_children(library, coll, parent, *, current=False):
-        """Hand-written exact-LP results for the children (scores 69,000, 68,000, ...; the
-        homes 150,000 + 1,000 x i); `current` stamps them today, by the code running now."""
+        """Hand-written results for the children under their movers' presets (scores 69,000,
+        68,000, ...; the homes 150,000 + 1,000 x i); `current` stamps them today, by the code
+        running now."""
         from datetime import date
 
+        from owlplanner.library import tornado
         from owlplanner.version import engine_provenance
 
         for i, member in enumerate(m for m in coll.members if m.run != parent.id):
             child = library.get(member.run)
-            folder = _write_result(child, f"2026-11-04T10-00-0{i}_decision_exact",
-                                   preset="decision_exact", exact=True, score=69_000.0 - 1_000 * i,
+            preset = tornado.preset_of(member.values["mover"])  # review AJ1: its own model
+            folder = _write_result(child, f"2026-11-04T10-00-0{i}_{preset}",
+                                   preset=preset, exact=True, score=69_000.0 - 1_000 * i,
                                    home=150_000.0 + 1_000 * i,
                                    finished=(f"{date.today().isoformat()}T10:00:00+00:00" if current
                                              else "2026-11-04T10:00:00+00:00"))
@@ -694,6 +706,38 @@ class TestTheTornadoReview4:
         assert "| home at the end |" in table.splitlines()[0]
         # The base's exact-LP home is the fixture's 150,000; the children's 150,000 + 1,000 x i.
         assert "| ±0 |" in table and "| +1,000 |" in table
+
+
+class TestTheTornadoReview5:
+    """`fork-notes/run-library-step6-review-5.md` AJ1 on the Run page: the medical-inflation
+    bar is measured against the run's own solve with Medicare priced exactly, and that solve
+    never becomes the run's headline result."""
+
+    _open = staticmethod(TestTheTornadoReview3._open)
+    _make = staticmethod(TestTheTornadoReview4._make)
+    _table = staticmethod(TestTheTornadoReview4._table)
+
+    def test_aj1_the_medical_bar_reads_the_medicare_base(self, library, monkeypatch):
+        from owlplanner.library import JobManager, tornado
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        run = next(r for r in library.runs() if r.name == "bill later")
+        self._make(run)
+        coll = tornado.collection_of(library, run.id)
+        TestTheTornadoReview4._solve_children(library, coll, run)
+        # The run's own exact-LP base is the fixture's (72,500); its Medicare-priced base:
+        _write_result(run, "2026-11-04T12-00-00_exact_medicare", preset="exact_medicare",
+                      exact=True, score=70_000.0, finished="2026-11-04T10:00:00+00:00")
+        at = self._open(run)
+        assert not at.exception, [e.value for e in at.exception]
+        rows = {line.split("|")[1].strip(): line for line in self._table(at).splitlines()[2:]}
+        medical = rows[tornado.MEDICAL_LABEL]
+        # Its child is the third mover (69,000 - 2 x 1,000 = 67,000), against 70,000, not 72,500.
+        assert "| -3,000 |" in medical and "Medicare priced exactly" in medical
+        assert "| exact LP |" in rows["returns -1 point"]
+        # The headline stays the case's own model: the newest solve is the companion's.
+        assert "decision" in str(at.selectbox(key="run_page_result").value)
+        assert "exact_medicare" not in str(at.selectbox(key="run_page_result").value)
 
 
 class TestConversionsAndBrackets:

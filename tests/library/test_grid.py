@@ -287,3 +287,72 @@ class TestClaimingAgesFlag:
         other = _entry("other", {"year": 2029}, self._aged(_result(), [67.83333333, 70.0]))
         grid = grid_view([ref, other], reference="ref", row_dims=(), col_dims=("year",))
         assert not [f for f in grid.flags if "claiming ages" in f]
+
+
+class TestReview5Folds:
+    """`fork-notes/run-library-step6-review-5.md` AJ1 (a model companion is never a run's
+    headline) and AJ3 (under maxBequest the cells, the star and the front read the savings
+    left, not the score, which there holds the home)."""
+
+    @staticmethod
+    def _write(path, stamp, preset, medicare="none"):
+        folder = path / "results" / stamp
+        folder.mkdir(parents=True)
+        options = ({"withSSTaxability": 0.85, "withMedicare": medicare, "withLTCG": "optimize",
+                    "breakpointMethod": "loop"} if preset in ("decision_exact", "exact_medicare") else {})
+        (folder / "record.json").write_text(json.dumps({
+            "status": "solved", "preset": preset,
+            "method": {"breakpoint_method": "loop", "options": options},
+        }), encoding="utf-8")
+        (folder / "summary.json").write_text('{"spending_basis": 1}', encoding="utf-8")
+        (folder / "plan.json").write_text('{"objective": "maxSpending"}', encoding="utf-8")
+
+    def test_aj1_the_medicare_companion_is_not_the_headline(self, tmp_path):
+        """The tornado queues the run's own `exact_medicare` base: as the newest non-exact-LP
+        result it used to become the run's headline (SS pinned at 0.85)."""
+        self._write(tmp_path, "2026-01-01T00-00-00_decision", "decision")
+        self._write(tmp_path, "2026-01-01T00-00-01_decision_exact", "decision_exact")
+        self._write(tmp_path, "2026-01-01T00-00-02_exact_medicare", "exact_medicare", "optimize")
+        assert latest_result(tmp_path).results_id.endswith("_decision")
+        assert latest_result(tmp_path, prefer_exact=True).results_id.endswith("_decision_exact")
+        assert latest_result(tmp_path, companion="exact_medicare").results_id.endswith("_exact_medicare")
+        record = json.loads((tmp_path / "results" / "2026-01-01T00-00-02_exact_medicare"
+                             / "record.json").read_text(encoding="utf-8"))
+        assert view.record_companion(record) == "exact_medicare"
+        assert not view.record_is_exact_lp(record)  # the agreement check reads the exact LP only
+
+    def test_aj1_the_medical_child_keeps_the_collection_on_the_exact_lp(self, tmp_path):
+        parent, child, medical = tmp_path / "parent", tmp_path / "child", tmp_path / "medical"
+        self._write(parent, "2026-01-01T00-00-00_decision", "decision")
+        self._write(parent, "2026-01-01T00-00-01_decision_exact", "decision_exact")
+        self._write(parent, "2026-01-01T00-00-02_exact_medicare", "exact_medicare", "optimize")
+        self._write(child, "2026-01-01T00-00-03_decision_exact", "decision_exact")
+        self._write(medical, "2026-01-01T00-00-04_exact_medicare", "exact_medicare", "optimize")
+        results, exact = member_results([parent, child, medical])
+        assert exact is True
+        assert results[parent].results_id.endswith("_decision_exact")
+        assert results[medical] is None  # no exact-LP result: its bar is on the Run page
+
+    @staticmethod
+    def _bequest(savings, home):
+        result = _result(home=home, savings=savings)
+        result.plan["objective"] = "maxBequest"
+        result.record["method"]["objective"] = "maxBequest"
+        return result
+
+    def test_aj3_under_max_bequest_the_cell_and_the_star_read_the_savings_left(self):
+        ref = _entry("ref", {"mover": "none"}, self._bequest(1_043_946.0, 760_861.0))
+        condo = _entry("condo", {"mover": "condo"}, self._bequest(870_038.0, 836_947.0))
+        grid = grid_view([ref, condo], reference="ref", row_dims=(), col_dims=("mover",))
+        cell = dict(grid.rows)[()][("condo",)]
+        assert cell.delta == pytest.approx(-173_908.0)  # not -97,822, savings + home
+        assert cell.home_delta == pytest.approx(76_086.0)
+        # The star reads the savings left: the reference leaves more savings (1,043,946 against
+        # 900,000) and the other the larger final bequest (2,400,000 against 1,804,807).
+        rich_home = _entry("home", {"mover": "home"}, self._bequest(900_000.0, 1_500_000.0))
+        grid = grid_view([ref, rich_home], reference="ref", row_dims=(), col_dims=("mover",))
+        row = dict(grid.rows)[()]
+        assert row[("none",)].best and not row[("home",)].best  # 1,043,946 > 900,000 savings
+        item = next(i for i in front([ref, rich_home], reference="ref") if i["entry"].run_id == "home")
+        assert item["first"] == pytest.approx(900_000.0)
+        assert item["vs_reference"].delta == pytest.approx(-143_946.0)

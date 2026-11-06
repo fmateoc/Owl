@@ -78,11 +78,11 @@ if len(catalog) < 2:
     st.stop()
 
 labels = [label for label, _, _, _ in catalog]
-# The default pair is two main solves from two different runs (a run's exact-model
-# companion is a check, not a headline, R2).
-a_idx = next((i for i, e in enumerate(catalog) if not view.record_is_exact_lp(e[3])), 0)
+# The default pair is two main solves from two different runs (a run's model companion --
+# the exact LP, or the tornado's Medicare model, review AJ1 -- is a check, not a headline, R2).
+a_idx = next((i for i, e in enumerate(catalog) if view.record_companion(e[3]) is None), 0)
 b_idx = next((i for i, e in enumerate(catalog)
-              if i != a_idx and not view.record_is_exact_lp(e[3]) and e[1].id != catalog[a_idx][1].id),
+              if i != a_idx and view.record_companion(e[3]) is None and e[1].id != catalog[a_idx][1].id),
              min(1, len(catalog) - 1))
 col1, col2 = st.columns(2)
 a_label = col1.selectbox("Result A (the reference)", labels, key="cmp_a", index=a_idx)

@@ -11,7 +11,10 @@ the two the user called for (2026-11-05):
   and the bar is inflation's own effect (indexing, basis, fixed nominal amounts), not a
   second copy of the returns bar (review AG3); the shift is in the table's own units
   (`in_percent`, review AG1);
-- ``medical inflation +2 points``: `optimization_parameters.medical_inflation_excess`;
+- ``medical inflation +2 points``: `optimization_parameters.medical_inflation_excess`, solved
+  with Medicare priced exactly (`exact_medicare`, review AJ1: the exact LP has Medicare off,
+  and Medicare premiums are what medical inflation grows -- the bar read -83 there, where
+  local search moved -1,813 and this model -1,842 on the synthetic household);
 - ``condo price +10%``: the purchase event's price and its property tax (today's $; review AI5:
   the tax is assessed on the value, the HOA and the insurance are held);
 - ``benchmark premium +10%`` / ``-10%``: `aca_settings.slcsp_annual`, the marketplace's
@@ -34,10 +37,13 @@ A child is an ordinary run (`variants.Variant`, saved under the run and queued w
 collection; named after the mover's key, which keeps its sign: `slcsp+10`, `slcsp-10`,
 review AG9); a mover that does not fit the scenario, or whose edit no plan year can see, is
 skipped with its reason (no home purchase, no benchmark premium, a death already past, a
-policy year outside the plan). The bars measure the children's **exact-LP** results against
-the run's own exact-LP result and nothing else (review AG2: another model's result would
-put the model change into every bar); without one, the bars wait for it. Nothing here
-solves anything and nothing here changes the model: every mover is a scenario edit.
+policy year outside the plan). Each mover names the solve preset its pair is solved under
+(`Mover.preset`, `preset_of`): the exact LP (`decision_exact`) for every mover but medical
+inflation's, whose bar needs Medicare (`exact_medicare`, review AJ1). A bar measures the
+child's result under its mover's preset against the run's own result under the same preset
+and nothing else (review AG2: another model's result would put the model change into the
+bar); without one, the bar waits for it. Nothing here solves anything and nothing here
+changes the model: every mover is a scenario edit.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -78,6 +84,18 @@ DEATH_AGE = 80
 # The run itself in its "Sensitivity" collection (the reference, review AG5): its `mover` value.
 BASE_LABEL = "none (this run)"
 
+# The solve presets the bars are measured under (`presets.COMPANION_PRESETS`): the exact LP
+# for speed (design 14.1, I9), and for the medical-inflation mover the same model with
+# Medicare priced exactly (review AJ1).
+EXACT_PRESET = "decision_exact"
+MEDICARE_PRESET = "exact_medicare"
+MEDICAL_LABEL = "medical inflation +2 points"
+# A mover label -> its preset when it is not the exact LP's (the collection member stores the
+# label, `values["mover"]`, so the bars find a child's preset from it).
+_PRESET_BY_LABEL = {MEDICAL_LABEL: MEDICARE_PRESET}
+# What a bar waits for, per preset.
+_MODEL_WORDS = {EXACT_PRESET: "exact-LP", MEDICARE_PRESET: "Medicare-priced (exact_medicare)"}
+
 
 @dataclass(frozen=True)
 class Mover:
@@ -87,6 +105,24 @@ class Mover:
     label: str  # "returns -1 point" (the bar's and the run name's label)
     note: str  # what moves, in plain terms (the page's caption)
     edit: Callable[[dict], None]  # the scenario edit; ScenarioError when it cannot apply
+    preset: str = EXACT_PRESET  # the solve preset the child and its base solve under (AJ1)
+
+
+def preset_of(mover) -> str:
+    """The solve preset a mover's child and the run's base for its bar solve under: from a
+    `Variant` (its `values["mover"]`) or a mover label (review AJ1)."""
+    label = mover.values.get("mover") if isinstance(mover, Variant) else mover
+    return _PRESET_BY_LABEL.get(label, EXACT_PRESET)
+
+
+def presets_needed(variants) -> list:
+    """The solve presets the run's own base must have for these children's bars, in order."""
+    out = []
+    for variant in variants:
+        preset = preset_of(variant)
+        if preset not in out:
+            out.append(preset)
+    return out
 
 
 def _section(scenario: dict, name: str) -> dict:
@@ -309,9 +345,11 @@ def movers(scenario: dict) -> list:
               "the rate path's inflation, 1 point higher, with every return 1 point higher "
               "too (the same real returns: inflation's own effect)",
               _inflation_plus_1),
-        Mover("medical+2", "medical inflation +2 points",
-              "medical_inflation_excess, 2 points higher",
-              _medical_plus_2),
+        Mover("medical+2", MEDICAL_LABEL,
+              "medical_inflation_excess, 2 points higher; solved with Medicare priced exactly "
+              "(withMedicare = optimize), the run's base for this bar too: the exact LP has no "
+              "Medicare premiums, which are what medical inflation grows",
+              _medical_plus_2, preset=MEDICARE_PRESET),
         Mover("condo+10", "condo price +10%",
               "the home purchase's price and its property tax, 10% higher (today's $; the HOA "
               "and the insurance held)",
@@ -370,40 +408,70 @@ def tornado_variants(scenario: dict) -> tuple:
 WAITING_FOR_BASE = "waiting for this run's own exact-LP solve"
 
 
-def bars(parent_result, rows) -> list:
-    """The tornado's bars: each mover's score against the parent's, judged (R2), sorted by
-    the size of the effect (largest first; a bar with no result to judge last).
+def _waiting(preset: str) -> str:
+    """What a bar waits for when the run has no base under its mover's preset."""
+    return (WAITING_FOR_BASE if preset == EXACT_PRESET
+            else f"waiting for this run's own {_MODEL_WORDS.get(preset, preset)} solve")
 
-    `rows` is [(label, result or None)] over the movers' runs. Each bar carries the
-    difference's tolerance in dollars (`compare.pair_tolerance`) beside the verdict, so the
-    chart can draw both ("bars sorted by effect, each with its tolerance"), and the home at
-    the end's difference beside it (`home_delta`, R3's other number, never added to the
-    score: review AI4). The bars are sorted by the score's effect. Both sides must
-    be exact-LP results (review AG2): the children solve under the exact LP, and a parent
-    result under another model put the model change -- +4,381 to +4,534 on the synthetic
-    household, four times the noise band -- into every bar. Without the parent's own
-    exact-LP result every bar waits (`WAITING_FOR_BASE`).
+
+def _no_child(preset: str) -> str:
+    return f"no {_MODEL_WORDS.get(preset, preset)} result yet"
+
+
+def _bases(parent_result) -> dict:
+    """{preset: the run's own result under it}: a dict as given, a single result as the
+    exact-LP base (every mover but medical inflation's, review AJ1)."""
+    if isinstance(parent_result, dict):
+        return dict(parent_result)
+    return {EXACT_PRESET: parent_result}
+
+
+def _under(result, preset: str) -> bool:
+    """Is `result` a solved result of the companion model `preset` (`view.record_companion`)?"""
+    return result is not None and result.solved and view.record_companion(result.record) == preset
+
+
+def bars(parent_result, rows) -> list:
+    """The tornado's bars: each mover's effect against the run's own result, judged (R2),
+    sorted by the size of the effect (largest first; a bar with no result to judge last).
+
+    `rows` is [(label, result or None)] over the movers' runs. `parent_result` is the run's
+    own result under each mover's preset -- {preset: result} (`preset_of`), or one result,
+    the exact-LP base. Each bar carries the difference's tolerance in dollars
+    (`compare.pair_tolerance`) beside the verdict, so the chart can draw both ("bars sorted by
+    effect, each with its tolerance"), and the home at the end's difference beside it
+    (`home_delta`, R3's other number, never added: review AI4). The effect is R3's first
+    number, `view.first_number`: the score under maxSpending, the savings left under
+    maxBequest, whose score holds the home (review AJ3: "condo price +10%" read -97,822 =
+    -173,908 savings + 76,086 home there, with the home again beside it). Both sides of a bar
+    solve under its mover's preset (review AG2: a parent result under another model put the
+    model change -- +4,381 to +4,534 on the synthetic household -- into every bar; review AJ1:
+    the medical-inflation pair solves with Medicare priced exactly). Without the parent's own
+    result under a mover's preset its bar waits (`WAITING_FOR_BASE` for the exact LP).
     """
-    usable = parent_result is not None and parent_result.solved and view.is_exact_lp(parent_result)
-    base = view.score(parent_result) if usable else None
+    bases = _bases(parent_result)
     out = []
     for label, result in rows:
-        exact = result is not None and result.solved and view.is_exact_lp(result)
-        got = view.score(result) if exact else None
+        preset = preset_of(label)
+        parent = bases.get(preset)
+        base = view.first_number(parent) if _under(parent, preset) else None
+        mine = _under(result, preset)
+        got = view.first_number(result) if mine else None
         if base is None or got is None:
-            note = (WAITING_FOR_BASE if base is None
-                    else "no exact-LP result yet" if result is None or not exact
+            note = (_waiting(preset) if base is None
+                    else _no_child(preset) if result is None or not mine
                     else "no score")
             out.append({"label": label, "delta": None, "tolerance": None, "verdict": "-",
                         "note": note, "result": result, "home_delta": None, "home_verdict": "-"})
             continue
-        judgment = compare.difference("score", base, got, ta=parent_result, tb=result)
-        tolerance, why = compare.pair_tolerance(parent_result, result, base)
+        judgment = compare.difference(view.first_number_name(parent), base, got,
+                                      ta=parent, tb=result)
+        tolerance, why = compare.pair_tolerance(parent, result, base)
         # R3's other number (review AI4): "condo price +10%" costs the score 3,640 and leaves
         # 76,086 more in the home on the synthetic household. Judged as the grid judges it:
         # the inputs set it, so only the fifty-cent rule applies.
-        home = compare.difference("home at the end", view.home_at_end(parent_result),
-                                  view.home_at_end(result), ta=parent_result, tb=result,
+        home = compare.difference("home at the end", view.home_at_end(parent),
+                                  view.home_at_end(result), ta=parent, tb=result,
                                   from_inputs=True)
         out.append({"label": label, "delta": judgment.delta, "tolerance": tolerance,
                     "verdict": judgment.verdict,
@@ -415,18 +483,22 @@ def bars(parent_result, rows) -> list:
 
 
 def bar_flags(parent_result, rows) -> list:
-    """The caveats the bars carry (S13's `compare.flags`, deduplicated) and the claiming
-    ages they hold (review AG2: `decision_exact` fixes the ages, so a case that searches them
-    solves every bar at its own hand ages, which the page must say). Empty without a base."""
-    if parent_result is None or not parent_result.solved:
+    """The caveats the bars carry (S13's `compare.flags` of each bar's pair, deduplicated) and
+    the claiming ages they hold (review AG2: the companion presets fix the ages, so a case
+    that searches them solves every bar at its own hand ages, which the page must say).
+    `parent_result` as `bars` takes it. Empty without a base."""
+    bases = _bases(parent_result)
+    ref_result = bases.get(EXACT_PRESET) or next((b for b in bases.values() if b is not None), None)
+    if ref_result is None or not ref_result.solved:
         return []
     out = []
     entries = []
     for label, result in rows:
-        if result is not None and result.solved:
-            out.extend(compare.flags(parent_result, result))
+        parent = bases.get(preset_of(label))
+        if result is not None and result.solved and parent is not None and parent.solved:
+            out.extend(compare.flags(parent, result))
             entries.append(grid.Entry(run_id=label, name=label, values={}, result=result))
-    ref = grid.Entry(run_id="(this run)", name="this run", values={}, result=parent_result)
+    ref = grid.Entry(run_id="(this run)", name="this run", values={}, result=ref_result)
     ages = grid.claiming_ages_flag(ref, [ref, *entries])
     if ages:
         out.append(ages)
@@ -452,15 +524,15 @@ def collection_of(lib, run_id: str):
     return None
 
 
-def is_current(run_path, *, today=None, engine=None) -> bool:
-    """Does the run have an exact-LP result that a new solve would only repeat (review AI3)?
-    Solved today, by the code running now (version and commit): plans start today, and a
+def is_current(run_path, *, today=None, engine=None, preset: str = EXACT_PRESET) -> bool:
+    """Does the run have a result under `preset` that a new solve would only repeat (review
+    AI3)? Solved today, by the code running now (version and commit): plans start today, and a
     result from another day or another code would differ."""
     from datetime import date
 
     from owlplanner.version import engine_provenance
 
-    result = base_result(run_path)
+    result = base_result(run_path, preset)
     if result is None:
         return False
     day = ((result.record.get("solve_date") or {}).get("finished") or "")[:10]
@@ -471,13 +543,14 @@ def is_current(run_path, *, today=None, engine=None) -> bool:
             and stamp.get("commit") == engine.get("commit"))
 
 
-def base_result(run_path) -> Optional[view.Result]:
-    """The run's own exact-LP result, the only base the bars measure from (review AG2)."""
-    return grid.latest_result(run_path, prefer_exact=True)
+def base_result(run_path, preset: str = EXACT_PRESET) -> Optional[view.Result]:
+    """The run's own result under `preset` (the exact LP by default; `exact_medicare` for the
+    medical-inflation bar, review AJ1): the only base its bars measure from (review AG2)."""
+    return grid.latest_result(run_path, companion=preset)
 
 
-def result_of(run_path) -> Optional[view.Result]:
-    """A mover run's result for the tornado: its newest exact-LP one (the children solve
-    under the exact LP, "for speed"); None when it has none (review AG2: no other model's
-    result enters a bar)."""
-    return grid.latest_result(run_path, prefer_exact=True)
+def result_of(run_path, preset: str = EXACT_PRESET) -> Optional[view.Result]:
+    """A mover run's result for the tornado: its newest one under its mover's preset
+    (`preset_of`; the exact LP "for speed" but for medical inflation's, review AJ1); None when
+    it has none (review AG2: no other model's result enters a bar)."""
+    return grid.latest_result(run_path, companion=preset)

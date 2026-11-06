@@ -647,7 +647,12 @@ Corrections to the first pass (2026-11-01):
   "make variants", the grid view and the Ages preset -- was built 2026-11-04. I9's "2027
   marketplace benchmark" is the benchmark's published 2027 jump above inflation
   (`aca_settings.slcsp_published_*`; the user's call, 2026-11-06, after
-  `run-library-step6-review-3.md` AG4)*.
+  `run-library-step6-review-3.md` AG4). "Under the exact LP for speed" holds for every mover
+  but medical inflation's: the exact LP has Medicare off, and Medicare premiums are what
+  medical inflation grows, so that bar read -83 where local search moved -1,813 on the
+  synthetic household. Its pair -- the child and the run's own base -- solves under the exact
+  LP with Medicare priced exactly (solve preset `exact_medicare`; the user's call,
+  2026-11-06, after `run-library-step6-review-5.md` AJ1)*.
 - **I11** is build step 5b (D11), then the variant dimension with step 6 *(second
   increment, as above)*.
 - **I5** is a separate backend project, measured before it is designed (D9).

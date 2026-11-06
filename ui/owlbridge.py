@@ -2196,7 +2196,6 @@ def genDic(plan):
     # applies what differs from the run's case, and a key missing here read as an edit to 0
     # (aca_start_year 2027 -> 0 moved the marketplace premiums to the plan's first year).
     dic["acaStartYear"] = int(getattr(plan, "aca_start_year", 0) or 0)
-    dic["acaTableYear"] = int(getattr(plan, "aca_table_year", 0) or 0)
     dic["slcspPublishedYear"] = int(getattr(plan, "slcsp_published_year", 0) or 0)
     dic["slcspPublishedAnnual"] = getattr(plan, "slcsp_published_annual", None)
     dic["otherMedical"] = getattr(plan, "other_medical_k", 0.0) / 1000

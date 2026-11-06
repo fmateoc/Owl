@@ -6836,5 +6836,15 @@ Found and fixed on the way: a save after "Open in Owl" turned `aca_start_year` 2
 carries it and the other fork `aca_settings` keys; the test fails without the fix.
 
 Checks: `check_library_builder.py` 46/46, `check_library_roundtrip.py` 39/39,
-`tests/config` 256 passed, lint only upstream's items; full suite pending at this commit (follow-up commit). Details in
+`tests/config` 256 passed, lint only upstream's items; full suite: the run for this commit was stopped for the next entry's change, and run after it. Details in
 `run-library-step6-review-3.md`, last section.
+
+
+## Run-library step 6: `aca_table_year` removed (2026-11-06)
+
+The user's call: the knob the old marketplace-rules mover pinned goes, since no bar uses it.
+Removed: the schema field, `Plan.aca_table_year`, `tax_federal._aca_table`'s / `acaCosts`'s
+/ `acaVals`'s `table_year` and its five call sites, both config bridges, `genDic`'s key, and
+`TestPinnedTableYear`. `tax_federal.py`, `thresholds.py`, `assistant/explain.py` and
+`tests/tax/test_aca.py` are identical to `e898f699` (before step 6) again. Checks: lint only
+upstream's items; `tests/config tests/tax tests/library tests/ui` + `test_brackets.py` 1662 passed; full suite pending at this commit (follow-up commit).

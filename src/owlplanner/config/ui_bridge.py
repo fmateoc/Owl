@@ -394,11 +394,9 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     aca = known.get("aca_settings") or {}
     dic["slcspAnnual"] = float(aca.get("slcsp_annual", 0))
     dic["acaStartYear"] = int(aca.get("aca_start_year", 0) or 0)
-    # The pinned ACA table (I9's "the 2027 marketplace benchmark"): no page edits it, but a
-    # pages save must keep the run's value (it round-trips like every other case field).
-    dic["acaTableYear"] = int(aca.get("aca_table_year", 0) or 0)
     # A published benchmark for a later year (the run library's tornado reads it): no page
-    # edits it either, and a pages save keeps it.
+    # edits it, but a pages save must keep the run's value (it round-trips like every other
+    # case field).
     dic["slcspPublishedYear"] = int(aca.get("slcsp_published_year", 0) or 0)
     dic["slcspPublishedAnnual"] = aca.get("slcsp_published_annual")
     dic["otherMedical"] = float(known.get("optimization_parameters", {}).get("other_medical_expenses", 0.0))
@@ -716,11 +714,8 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
         "slcsp_annual": _get_ui(uidic, "slcspAnnual", 0, float),
         "aca_start_year": _get_ui(uidic, "acaStartYear", 0, int),
     }
-    # The pinned ACA table (I9) is set only when it is set: a None cannot enter the case
+    # A published benchmark (I9) is set only when it is set: a None cannot enter the case
     # dict (`scenario._check_case_values`: TOML would silently drop it).
-    table_year = _get_ui(uidic, "acaTableYear", 0, int)
-    if table_year:
-        aca_settings["aca_table_year"] = table_year
     published_year = _get_ui(uidic, "slcspPublishedYear", 0, int)
     if published_year:
         aca_settings["slcsp_published_year"] = published_year

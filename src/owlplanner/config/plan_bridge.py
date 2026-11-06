@@ -339,7 +339,6 @@ def _apply_aca_to_plan(plan: "Plan", known: dict) -> None:
     if slcsp and float(slcsp) > 0:
         start_year = int(aca.get("aca_start_year", 0) or 0)
         plan.setACA(slcsp=float(slcsp), units="k", start_year=start_year)
-    plan.aca_table_year = int(aca.get("aca_table_year", 0) or 0)
     # A published benchmark for a later year (the run library's tornado reads it; the model
     # does not). Kept on the plan so plan_to_config writes it back.
     plan.slcsp_published_year = int(aca.get("slcsp_published_year", 0) or 0)
@@ -617,8 +616,6 @@ def plan_to_config(myplan: "Plan") -> dict:
         diconf["aca_settings"] = {"slcsp_annual": myplan.slcsp_annual / 1000}  # $ → $k
         if getattr(myplan, "aca_start_year", 0) > 0:
             diconf["aca_settings"]["aca_start_year"] = myplan.aca_start_year
-        if getattr(myplan, "aca_table_year", 0) > 0:
-            diconf["aca_settings"]["aca_table_year"] = myplan.aca_table_year
         if getattr(myplan, "slcsp_published_year", 0) > 0:
             diconf["aca_settings"]["slcsp_published_year"] = myplan.slcsp_published_year
         if getattr(myplan, "slcsp_published_annual", None) is not None:

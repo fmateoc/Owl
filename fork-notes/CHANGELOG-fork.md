@@ -23,7 +23,9 @@ has) is logged in `PROGRESS.md` only.
   the plan's benchmark in a published year is the published one
   (`aca_settings.slcsp_published_year` / `slcsp_published_annual`, new fields the model does
   not read; the template states 2027's 25.29, +21.4% over 2026). On the synthetic household:
-  -375. `aca_table_year` stays as a knob no bar uses.
+  -375. **`aca_settings.aca_table_year` removed** (the user's call): the knob the rules mover
+  pinned is gone from the schema, both bridges, `Plan`, `tax_federal._aca_table` / `acaCosts` /
+  `acaVals`, `thresholds` and `explain` -- those are upstream's again, byte for byte.
 - **"Open in Owl" keeps the marketplace settings**: a save from pages opened that way turned
   `aca_start_year` into 0 (premiums from the plan's first year); `genDic` now carries it and
   the fork's other `aca_settings` fields.

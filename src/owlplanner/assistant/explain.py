@@ -542,8 +542,7 @@ def _aca_cliffs(plan):
         return float(
             tx.acaCosts(plan.yobs, plan.horizons, np.array([m]), g, plan.slcsp_annual, 1,
                         thisyear=thisyear, medical_n=plan._medical_n(g), mobs=plan.mobs, tobs=plan.tobs,
-                        medicaid_n=[medicaid_ratio], gap=gap,
-                        table_year=getattr(plan, "aca_table_year", 0) or None)[0]
+                        medicaid_n=[medicaid_ratio], gap=gap)[0]
         )
 
     out = {

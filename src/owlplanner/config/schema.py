@@ -308,13 +308,6 @@ class ACASettings(BaseModel):
         default=0,
         description="Calendar year ACA coverage begins (0 = from plan start).",
     )
-    aca_table_year: Optional[int] = Field(
-        default=None,
-        description=(
-            "Pin one year's applicable-percentage table for every plan year (a sensitivity "
-            "knob, run library I9). Empty: each year's own table."
-        ),
-    )
     slcsp_published_year: Optional[int] = Field(
         default=None,
         description=(

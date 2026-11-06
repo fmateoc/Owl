@@ -42,7 +42,6 @@ class FakePlan:
         self.MAGI_n = np.zeros(N)
         self.slcsp_annual = 0.0
         self.aca_start_year = 0
-        self.aca_table_year = 0
         self.yOBBBA = 2032
         for key, value in kw.items():
             setattr(self, key, value)

@@ -232,14 +232,13 @@ def _aca_entries(p):
             thisyear=thisyear, n_aca_start=n_aca_start, medical_n=medical_n,
             mobs=p.mobs, tobs=p.tobs, medicaid_n=medicaid_n,
             gap="exact" if getattr(p, "_aca_lp", False) else "approx", slack=1.0,
-            table_year=getattr(p, "aca_table_year", 0) or None,
         )
 
     for n in range(N):
         if n < n_aca_start or not parts_n[n]:
             continue  # nobody enrolled this year
         fpl = float(tx._aca_fpl(int(p.year_n[n]), family_n[n], gamma, thisyear))
-        table = tx._aca_table(int(p.year_n[n]), getattr(p, "aca_table_year", 0) or None)
+        table = tx._aca_table(int(p.year_n[n]))
         ratios = set(table[0]) | {float(medicaid_n[n])}
         for ratio in sorted(r for r in ratios if r > 0):
             edge = ratio * fpl

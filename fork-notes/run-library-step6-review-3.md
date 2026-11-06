@@ -359,8 +359,8 @@ tests. `tests/library tests/ui` **855 passed** (526 + 329); full suite **4378 pa
 
 AG4's open question answered: the bar measures the 2027 benchmark's jump above inflation, not
 a pinned applicable-percentage table. "the 2027 marketplace rules" is gone from the movers;
-the `aca_settings.aca_table_year` knob stays in the model (generic and tested, now used by no
-bar).
+the `aca_settings.aca_table_year` knob stayed in the model at first and was removed the same
+day (below).
 
 - **The input.** Owl grows `slcsp_annual` with (medical) inflation (`Plan._medical_n`, which
   `acaCosts` / `acaVals` multiply the benchmark by), so a published later-year benchmark has
@@ -398,3 +398,12 @@ its year at the stub's 2% inflation and 1% medical excess; no published figure; 
 years before it), the movers' list re-pinned, the stub plan given an inflation path; the
 `aca_table_year` knob's test docstring no longer names a bar. `check_library_builder.py`
 46/46 and `check_library_roundtrip.py` 39/39 with the template's new fields.
+
+**`aca_table_year` removed (2026-11-06, the user's call).** With no bar using it, the knob is
+gone: the schema field, `Plan.aca_table_year`, the `table_year` parameter of
+`tax_federal._aca_table` / `acaCosts` / `acaVals` and its five call sites (`plan.py` x3,
+`thresholds.py`, `assistant/explain.py`), both config bridges, `genDic`'s key and
+`tests/tax/test_aca.py`'s `TestPinnedTableYear`. `tax_federal.py`, `thresholds.py`,
+`assistant/explain.py` and `tests/tax/test_aca.py` are byte for byte what they were before
+step 6 (`git diff e898f699` is empty for them). A case that still carries the key reads it as
+an unknown `aca_settings` entry (`extra="allow"`), ignored as it was before step 6.

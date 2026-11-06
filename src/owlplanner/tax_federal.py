@@ -640,16 +640,12 @@ def mediCosts(yobs, horizons, magi, prevmagi, gamma_n, Nn, *, include_part_d=Tru
     return costs
 
 
-def _aca_table(calendar_year, table_year=None):
+def _aca_table(calendar_year):
     """Applicable percentage table (breakpoints, pct, initial pct) for coverage in calendar_year.
 
     The table is published for each taxable year (IRC 36B(b)(3)(A)); a year past the last one
-    published uses the last one, and a year before the first uses the first. `table_year`
-    pins one year's table for every year (`aca_settings.aca_table_year`, the run library's
-    "the 2027 marketplace benchmark" sensitivity, I9); None reads each year's own.
+    published uses the last one, and a year before the first uses the first.
     """
-    if table_year:
-        calendar_year = int(table_year)
     years = [y for y in _ACA_TABLES if y <= calendar_year]
     return _ACA_TABLES[max(years) if years else min(_ACA_TABLES)]
 
@@ -733,7 +729,7 @@ def _aca_coverage(yobs, horizons, N_n, mobs, tobs, thisyear):
 
 
 def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, n_aca_start=0, medical_n=None,
-             mobs=None, tobs=None, medicaid_n=None, gap="approx", slack=0.0, table_year=None):
+             mobs=None, tobs=None, medicaid_n=None, gap="approx", slack=0.0):
     """
     Compute net ACA marketplace premium costs (after Premium Tax Credit) for each year.
 
@@ -796,9 +792,6 @@ def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, 
         Dollars by which a MAGI parked on an edge is read on its own side of it, as in irmaaTier:
         below the Medicaid limit and the 400% cliff, which both include their edge, and at or above
         100% FPL, where the credit starts. The cost itself is that of MAGI.
-    table_year : int, optional
-        Pin one year's applicable-percentage table for every year (`aca_settings.aca_table_year`,
-        the run library's I9 sensitivity); None reads each year's own table.
 
     Returns
     -------
@@ -835,7 +828,7 @@ def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, 
         ratio = magi / fpl
         if magi + slack < fpl and gap == "exact":
             cap_pct = np.inf  # coverage gap: no Medicaid, no credit
-        elif not table_year and calendar_year < 2026:
+        elif calendar_year < 2026:
             # 2025 rules: Rev. Proc. 2024-35, 8.5% cap above 400%
             if ratio < _ACA_BREAKPOINTS_2025[0]:
                 cap_pct = 0.0
@@ -845,7 +838,7 @@ def acaCosts(yobs, horizons, magi_n, gamma_n, slcsp_annual, N_n, thisyear=None, 
                 cap_pct = _aca_contrib_pct(ratio, _ACA_BREAKPOINTS_2025, _ACA_CONTRIB_PCT_2025)
         else:
             # 2026+ rules: the year's table, no PTC above 400% (exactly 400% still qualifies)
-            breakpoints, pct, initial = _aca_table(calendar_year, table_year)
+            breakpoints, pct, initial = _aca_table(calendar_year)
             if magi - slack > breakpoints[-1] * fpl:
                 cap_pct = np.inf
             elif ratio < breakpoints[0]:
@@ -965,7 +958,7 @@ def _aca_capped_limits(fpl, slcsp, table=None, medicaid=_ACA_MEDICAID_RATIO):
 
 
 def acaVals(yobs, horizons, gamma_n, slcsp_annual, Nn, n_aca_start=0, medical_n=None, mobs=None, tobs=None,
-            medicaid_n=None, table_year=None):
+            medicaid_n=None):
     """
     Return (n_aca, Lbar_aca_nr, tangents_aca_nrk, slcsp_aca_n) for the ACA LP/MIP formulation.
 
@@ -1050,7 +1043,7 @@ def acaVals(yobs, horizons, gamma_n, slcsp_annual, Nn, n_aca_start=0, medical_n=
 
         calendar_year = thisyear + n
         fpl = _aca_fpl(calendar_year, family_n[n], gamma_n, thisyear)
-        table = _aca_table(calendar_year, table_year)
+        table = _aca_table(calendar_year)
 
         # The year's benchmark is the sum over its coverage months, and the contribution is owed
         # for the fraction of the year with anybody enrolled.

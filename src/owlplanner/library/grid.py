@@ -21,6 +21,7 @@ chosen one, or the exact-model companion.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -194,20 +195,54 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
     )
 
 
+def _exact_only(run_path) -> bool:
+    """Is every solve of the run -- solved, failed, running or queued -- an exact-LP one?
+
+    The tornado's children are queued under `decision_exact` alone. A "decision" member is
+    not: its local-search solve sits beside its exact companion even while it runs or after it
+    failed (review AH5). A folder's model comes from its record when there is one, else from
+    its job record's preset (`status.json`), else from its name (`<stamp>_<preset>`).
+    """
+    results = Path(run_path) / "results"
+    if not results.is_dir():
+        return False
+    found = False
+    for folder in results.iterdir():
+        if not folder.is_dir() or folder.name.startswith("."):
+            continue
+        record = view.load_result(folder).record
+        if record:
+            exact = (record.get("preset") == "decision_exact"
+                     or bool(view.record_is_exact_lp(record)))
+        else:
+            try:
+                with open(folder / "status.json", encoding="utf-8") as f:
+                    preset = (json.load(f) or {}).get("preset")
+            except (OSError, ValueError, AttributeError):
+                preset = folder.name.split("_", 1)[1] if "_" in folder.name else None
+            exact = preset == "decision_exact"
+        if not exact:
+            return False
+        found = True
+    return found
+
+
 def member_results(run_paths) -> tuple:
     """({path: Result or None}, exact): one model for every member of a collection.
 
     The grid reads each member's newest result that is not the exact-LP companion (R2's
-    agreement check, not the headline). A member that has only exact-LP results -- the
+    agreement check, not the headline). A member whose solves are all exact-LP ones -- the
     sensitivity tornado's children, which solve under the exact LP alone -- used to show as
     "no solved result yet" however many had solved (review AG5). When any member is in that
     state, every member is read through its exact-LP result instead (None where it has
     none), so the grid never judges two models against each other; `exact` says which.
+    A member whose headline solve is still running or failed beside a solved exact companion
+    (a "decision" member) does not switch the collection: it shows as unsolved (review AH5).
     """
     paths = list(run_paths)
     plain = {path: latest_result(path) for path in paths}
     exact = {path: latest_result(path, prefer_exact=True) for path in paths}
-    if any(plain[path] is None and exact[path] is not None for path in paths):
+    if any(plain[path] is None and exact[path] is not None and _exact_only(path) for path in paths):
         return exact, True
     return plain, False
 

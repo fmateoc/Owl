@@ -65,6 +65,18 @@ class TestJobRecord:
         assert doc["state"] == R.WAITING and doc["token"] != first and doc["attempts"] == 2
         assert doc["error"] is None and doc["pid"] is None
 
+    def test_ah6_requeue_moves_every_published_artifact_aside(self, tmp_path):
+        """Review AH6: step 6's `scores.json` and `regret.json` go with the others (N4: the
+        folder starts clean), so an old attempt's sweep cannot sit beside a new record."""
+        job = make_job(tmp_path)
+        for name in R.ARTIFACTS:
+            (job.results_dir / name).write_text("{}", encoding="utf-8")
+        assert R.SCORES_JSON in R.ARTIFACTS and R.REGRET_JSON in R.ARTIFACTS
+        job.finish(R.INTERRUPTED, error="killed after publish")
+        job.requeue()
+        left = {p.name for p in job.results_dir.iterdir()}
+        assert not left & set(R.ARTIFACTS)
+
     def test_only_one_dispatcher_takes_a_waiting_job(self, tmp_path):
         """F1: two Queue fragments tick at once; the compare-and-swap lets one win."""
         job = make_job(tmp_path)

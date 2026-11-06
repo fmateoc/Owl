@@ -7,6 +7,25 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6: the third review of the second increment, AH1-AH6 folded (2026-11-06)
+
+- **"Ages, thorough" publishes the plan its sweep decided on**: the final solve re-solves the
+  decided cell with the options that scored it (`work_sweep.scorer_options`: branch-and-bound
+  at the sweep's gap 1e-5, or local search where the cell fell back to it). It used the case's
+  own options with no gap, which published a plan 1,208 below the decided cell on the synthetic
+  household (1.08% of the score). The record keeps the decided and the published values; the
+  run page names the scorer.
+- **The 2027 benchmark jump reads the case the run solves**: a downturn run's overlaid
+  inflation (its 2027 benchmark was 26.744 for a published 25.29) and the marketplace start
+  year its work events generate.
+- **The regret curve is drawn** (the page read `by_grid`; the summary's key is
+  `regret_by_grid`).
+- **A collection switches to exact-LP numbers only for members solved under the exact LP
+  alone** (the sensitivity runs): a decision member whose local search runs or failed shows as
+  unsolved instead of switching every cell.
+- **"Run again" clears `regret.json` and `scores.json`** too, and the claiming-age map reads a
+  sweep only from a solved results folder.
+
 ### Run library, build step 6: the whole-step review's AG1-AG7, AG9-AG11 folded (2026-11-06)
 
 - **The tornado's rate movers** shift a hand rates table in its own units: one point is

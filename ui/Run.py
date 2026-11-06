@@ -217,7 +217,10 @@ def _claiming_age_map(run):
     else:
         # "Ages, thorough" writes its sweep with the solve (its results folder; I7).
         results = run.path / "results"
-        mine = sorted(results.glob(f"*/{R.SCORES_JSON}"), reverse=True) if results.is_dir() else []
+        # Only a folder whose solve finished (review AH6: a folder's sweep must be its record's).
+        mine = sorted((p for p in results.glob(f"*/{R.SCORES_JSON}")
+                       if ((R.read_record(p.parent) or {}).get("status")) == "solved"),
+                      reverse=True) if results.is_dir() else []
         if mine:
             found = mine[0]
             note = (f"Reading `scores.json` from `{found.parent.name}` (the newest "
@@ -346,7 +349,8 @@ def _conversions_and_brackets(run, result):
         st.markdown("**What a different conversion would have cost** "
                     + (f"-- {regret['person']}'s first-year conversion " if regret.get("person") else "")
                     + f"({regret.get('n_scenarios')} historical scenario(s))")
-        by_grid = regret.get("by_grid") or []
+        # The summarizer's key is `regret_by_grid` (review AH4: `by_grid` drew nothing).
+        by_grid = regret.get("regret_by_grid") or []
         if by_grid:
             fig = go.Figure(go.Scatter(
                 x=[g["x"] / 1000.0 for g in by_grid],
@@ -423,10 +427,26 @@ if entries:
                 f"{view.method_text(result)}")
     search = record.get("age_search")
     if search:
-        st.caption("Claiming ages searched (the Ages preset): picked "
-                   f"{view.claiming_ages_text(result)} from "
-                   f"{len(search.get('candidates') or [])} candidate(s), scored at fixed ages "
-                   "under the case's own model (design 8.1).")
+        decided = search.get("decided")
+        if decided:
+            # "Ages, thorough" (review AH1): the sweep's scorer, and the published plan re-solved
+            # the same way; both values shown, so a gap between them is visible.
+            how = ("local search" if decided.get("used") == "local search"
+                   else "branch-and-bound at gap 1e-5")
+            published = search.get("published_value")
+            st.caption("Claiming ages searched ('Ages, thorough'): picked "
+                       f"{view.claiming_ages_text(result)} from "
+                       f"{len(search.get('candidates') or [])} whole-year pair(s), each scored "
+                       f"at fixed ages by {how} (work_sweep); this plan is the decided cell "
+                       "re-solved the same way"
+                       + (f" (objective {published:,.2f}; the sweep's cell {decided['value']:,.2f})"
+                          if published is not None and decided.get("value") is not None else "")
+                       + ".")
+        else:
+            st.caption("Claiming ages searched (the Ages preset): picked "
+                       f"{view.claiming_ages_text(result)} from "
+                       f"{len(search.get('candidates') or [])} candidate(s), scored at fixed ages "
+                       "under the case's own model (design 8.1).")
     if record.get("status") != "solved":
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),

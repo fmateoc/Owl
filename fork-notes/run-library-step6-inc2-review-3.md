@@ -217,3 +217,44 @@ published artifact, shared with `_publish_results`, would keep them in step).
 - The full suite and the `check_library_*.py` scripts (not re-run; PROGRESS records them on this
   tree).
 - A browser session of the pages (AppTest only).
+
+## Dispositions (2026-11-06, the user's call: fold AH1-AH6)
+
+- **AH1 folded:** `work_sweep.scorer_options(p, cfg, used)` is the one definition of the
+  options a plan at fixed ages is scored with (`_score_bb` and `_score_ls` call it;
+  `work_sweep.scorer_config(args)` is `decide`'s `cfg`). The "Ages, thorough" worker re-solves
+  the decided cell with them -- branch-and-bound at the sweep's gap, or local search where the
+  cell fell back to it (the cell's own `used`) -- so the published plan is the one the map's
+  best cell scores; the final solve repeats one scored plan's time. `record.json`'s
+  `age_search` gains `decided` (`used`, `value`, `proved`, `gap`) and `published_value`, and
+  the run page's caption names the scorer and shows both values (the `ages` preset's caption
+  is unchanged). End to end on the synthetic baseline at 70/70: the folded final solve (`ah_p5_fold.py`, the worker's options as built after the fold) gives
+  165,361.78 at gap 9.98e-6 (1,417 s), the sweep's proved cell to the cent; it published
+  164,153.49 before.
+- **AH2 and AH3 folded:** the benchmark jump reads the case the run solves
+  (`builder.build(scenario)[0]`): its inflation path with the run's rates table (a downturn
+  overlay included) and its generated `aca_start_year`. Probe `ah_p1_jump.py` again: the
+  downturn run's 2027 benchmark is 25.290 (`slcsp_annual` 22.9199), and the hand cases without
+  a start year or with a stale 2026 make the mover.
+- **AH4 folded:** the run page reads `regret_by_grid`; the worker test's canned summary uses
+  the summarizer's key and the AG7 page test asserts the curve.
+- **AH5 folded:** `grid.member_results` switches a collection to the exact LP only for a member
+  whose every solve -- solved, failed, running or queued -- is exact-LP (`_exact_only`: the
+  record's preset or model, else the job record's preset, else the folder name). A decision
+  member whose local search runs or failed beside a solved exact companion shows as unsolved.
+  The Collections page's caption says "solved under the exact LP alone (the sensitivity runs)".
+  Probe `ah_p3_member_results.py` again: `exact: False`, member c None.
+- **AH6 folded:** `results.ARTIFACTS` lists every published artifact, `regret.json` and
+  `scores.json` included, and `requeue` moves them all aside (probe: only `status.json` and
+  `status.lock` left); the claiming-age map reads `scores.json` only from a folder whose record
+  says solved.
+
+Tests: 11 new (`test_tornado.py` +3, `test_worker.py` +3, `test_grid.py` +2,
+`test_results.py` +1, `test_library_pages.py` +2) plus the AG7 page test's chart assertion; one
+re-pinned (`test_the_benchmark_jump_refuses_marketplace_years_before_it`: its hand start year
+2026 sat beside work events that generate 2027, so it now uses a scenario without work events;
+it passes before and after the fold). The `ages_thorough` worker stubs carry the new
+`work_sweep` names. Checked to fail before the fold (`src/` and `ui/` stashed): the 11 new tests
+and the AG7 test fail; two existing `ages_thorough` tests fail too, only because their stubs
+read `work_sweep.scorer_config`. Full suite **4391 passed, 1 skipped** (11:48, Linux, `-n 3`,
+4380 before); lint only upstream's listed items.

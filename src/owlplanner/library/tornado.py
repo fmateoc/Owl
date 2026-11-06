@@ -180,19 +180,23 @@ def _slcsp(factor: float) -> Callable[[dict], None]:
     return edit
 
 
-def _benchmark_growth(scenario: dict, year: int) -> float:
+def _benchmark_growth(scenario: dict, year: int, built: dict = None) -> float:
     """The factor the model grows `slcsp_annual` by from the plan's first year to `year`:
     the run's own inflation path compounded with `medical_inflation_excess` (`Plan._medical_n`,
     which `tax_federal.acaCosts` / `acaVals` multiply the benchmark by). The path is the one
-    the solve uses: the run's rates table when it has one, else the case's own method."""
-    case = scenario.get("case") or {}
+    the solve uses, read from the case the run solves (`built`, `builder.build`'s case): its
+    rates table when it has one -- a downturn overlay included, which the hand case does not
+    name (its method is not `table`, so `config_to_plan` ignored the rows: review AH2) --
+    else the case's own method."""
+    if built is None:
+        built = builder.build(scenario)[0]
     start = builder.plan_window(scenario)[0]
     table = builder.rates_table(scenario)
-    gamma = builder._gamma(case, rates_rows=table["rows"] if table is not None else None)
+    gamma = builder._gamma(built, rates_rows=table["rows"] if table is not None else None)
     k = year - start
     if not 0 <= k < len(gamma):
         raise ScenarioError(f"{year} is outside the case's inflation path")
-    excess = float((case.get("optimization_parameters") or {}).get("medical_inflation_excess", 0.0) or 0.0)
+    excess = float((built.get("optimization_parameters") or {}).get("medical_inflation_excess", 0.0) or 0.0)
     return float(gamma[k]) * (1.0 + excess / 100.0) ** k
 
 
@@ -212,12 +216,15 @@ def _benchmark_jump(scenario: dict) -> None:
     start, end = builder.plan_window(scenario)
     if year < start or (end is not None and year > end):
         raise ScenarioError(f"the published benchmark's year {year} is outside the plan ({start}-{end})")
-    first = max(start, int(aca.get("aca_start_year", 0) or 0) or start)
+    # The case the run solves: its work events generate `aca_start_year` (section 6.2), which
+    # the hand case need not hold (a pages save keeps it out; review AH3).
+    built = builder.build(scenario)[0]
+    first = max(start, int((built.get("aca_settings") or {}).get("aca_start_year", 0) or 0) or start)
     if first < year:
         raise ScenarioError(
             f"the case's marketplace years start in {first}, before the published {year} "
             f"benchmark: scaling slcsp_annual would move {first} too")
-    moved = round(published / _benchmark_growth(scenario, year), 4)
+    moved = round(published / _benchmark_growth(scenario, year, built), 4)
     if abs(moved - current) < 5e-4:
         raise ScenarioError(f"this case already prices the published {year} benchmark")
     aca["slcsp_annual"] = moved

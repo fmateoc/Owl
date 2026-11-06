@@ -6878,3 +6878,18 @@ failed. **AH6** (nit): "run again" leaves `regret.json` and `scores.json` in the
 Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **976 passed** (2:00, Linux);
 lint only upstream's listed items; full suite not re-run. The review changed nothing in `src/`,
 `ui/` or `tests/`. Folds are the user's call.
+
+## Run-library step 6: the third review's AH1-AH6 folded (2026-11-06)
+
+The user's call: fold AH1-AH6 (`fork-notes/run-library-step6-inc2-review-3.md`, "Dispositions").
+**AH1**: `work_sweep.scorer_options` / `scorer_config` are the sweep's scorer settings in one
+place; the "Ages, thorough" worker re-solves the decided cell with them (branch-and-bound at gap
+1e-5, or local search where the cell fell back), records `age_search.decided` and
+`published_value`, and the run page names the scorer. End to end on the synthetic baseline at 70/70 the final solve now gives 165,361.78
+(gap 9.98e-6, 1,417 s), the sweep's cell to the cent (164,153.49 before). **AH2/AH3**: the benchmark jump
+reads `builder.build(scenario)[0]` (the downturn run's 2027 benchmark 25.290; the generated
+`aca_start_year`). **AH4**: the page reads `regret_by_grid`. **AH5**: `grid.member_results`
+switches only for members whose every solve is exact-LP (`_exact_only`). **AH6**:
+`results.ARTIFACTS` for `requeue`; the age map reads only solved folders. Tests: 11 new, one
+re-pinned, checked to fail before the fold. Full suite **4391 passed, 1 skipped** (11:48, Linux);
+lint only upstream's listed items.

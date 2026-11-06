@@ -333,8 +333,9 @@ dims = sorted({key for e in entries for key in (e.values or {})})
 rows, columns = vt.grid_layout(dims, coll.grid)  # AD2: no dimension dropped by default
 
 if _EXACT:
-    st.caption("Every member is read through its **exact-LP** result: some members (the "
-               "sensitivity runs) have no other, and the grid judges one model at a time.")
+    st.caption("Every member is read through its **exact-LP** result: some members are solved "
+               "under the exact LP alone (the sensitivity runs), and the grid judges one model "
+               "at a time.")
 if not solved:
     st.info("No member of this collection has a solved result yet: queue them below (or on "
             "the Run page) and come back.")

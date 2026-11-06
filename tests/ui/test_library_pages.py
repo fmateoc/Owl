@@ -416,6 +416,27 @@ class TestRunPageDetails:
         assert f"Reading `scores.json` from `{folder.name}`" in text
         assert "Claiming-age map" in text
 
+    def test_ah6_the_map_skips_a_folder_whose_solve_did_not_finish(self, library):
+        """Review AH6: a sweep is read only from a folder whose record says solved (a newer
+        folder holding an old attempt's scores.json beside a failed record is skipped)."""
+        run = library.runs()[-1]
+        scores = [{"name": "base", "free": ["Noa", "Avi"], "best": [804, 804], "sweeps": [],
+                   "results": {
+                       "67y0m/67y0m": {"status": "solved", "value": 84_000.0,
+                                       "tolerance": 8.4, "proved": True, "ages": [804, 804]}}}]
+        solved = next(p for p in (run.path / "results").iterdir()
+                      if (R.read_record(p) or {}).get("status") == "solved")
+        (solved / R.SCORES_JSON).write_text(json.dumps(scores), encoding="utf-8")
+        failed = run.path / "results" / "2099-01-01T00-00-00_ages_thorough"
+        failed.mkdir()
+        (failed / R.RECORD_JSON).write_text(json.dumps({"status": "failed"}), encoding="utf-8")
+        (failed / R.SCORES_JSON).write_text(json.dumps(scores), encoding="utf-8")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert f"Reading `scores.json` from `{solved.name}`" in text
+        assert failed.name not in text
+
     def test_a_work_variant_with_fixed_ages_draws_nothing_and_does_not_crash(self, library):
         """A work_sweep row with no free person (the claiming ages are fixed) has nothing to
         sweep: its cells carry no age tuples, and the page must say so, not raise (the
@@ -628,6 +649,36 @@ class TestConversionsAndBrackets:
         assert not at.exception, [e.value for e in at.exception]
         least = next(c.value for c in at.caption if "Least regret" in c.value)
         assert "mean regret 150" in least and "Noa's first-year conversion" in least
+        # Review AH4: the curve is drawn from the summarizer's own key, `regret_by_grid`.
+        charts = [json.loads(c.proto.spec) for c in at.get("plotly_chart")]
+        assert any("mean regret" in json.dumps(((c.get("layout") or {}).get("yaxis") or {}).get("title"))
+                   for c in charts), "the regret curve was not drawn"
+
+    def test_ah1_the_ages_thorough_caption_names_the_sweep_s_scorer(self, library):
+        """Review AH1: an "Ages, thorough" result says the candidates were scored by
+        branch-and-bound and that the plan is the decided cell re-solved the same way, with
+        both values."""
+        from streamlit.testing.v1 import AppTest
+
+        run = next(r for r in library.runs() if r.name == "bill later")
+        folder = next(p for p in (run.path / "results").iterdir() if p.name.endswith("_decision"))
+        record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+        record["preset"] = "ages_thorough"
+        record["age_search"] = {"chosen": [66.1667, 70.0], "candidates": [[[66.0, 70.0], 1.0]],
+                                "decided": {"used": "branch-and-bound", "value": 165_361.78,
+                                            "proved": True, "gap": 1e-5},
+                                "published_value": 165_361.78}
+        (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+        at = AppTest.from_file(str(UI_DIR / "Run.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_run"] = run.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        caption = next(c.value for c in at.caption if "Claiming ages searched" in c.value)
+        assert "'Ages, thorough'" in caption and "branch-and-bound at gap 1e-5" in caption
+        assert "re-solved the same way" in caption and "165,361.78" in caption
+        assert "under the case's own model" not in caption
 
     def test_the_regret_button_queues_one_job(self, library, monkeypatch):
         from owlplanner.library import JobManager

@@ -133,7 +133,9 @@ class TestTheMovers:
                    for s in skipped)
 
     def test_the_benchmark_jump_refuses_marketplace_years_before_it(self, stub_plan):
-        made, skipped = tornado.tornado_variants(_scenario(aca_start=2026))
+        # No work event: the hand case's start year is the one the run solves (review AH3:
+        # with work events the generated start year counts, TestReview4).
+        made, skipped = tornado.tornado_variants(_scenario([BUY], aca_start=2026))
         assert not any(v.label == "slcsp-published" for v in made)
         assert any("start in 2026, before the published 2027 benchmark" in s for s in skipped)
 
@@ -319,3 +321,50 @@ class TestReview3Bars:
         flags = tornado.bar_flags(base, [("returns -1 point", child)])
         assert any("claiming ages other than the reference's" in f for f in flags)
         assert tornado.bar_flags(None, [("x", child)]) == []
+
+
+class TestReview4:
+    """The third review of the second increment (AH2, AH3): the benchmark jump reads the case
+    the run solves -- its rates table (a downturn overlay included) and the marketplace start
+    year its work events generate."""
+
+    @pytest.fixture
+    def table_aware_plan(self, monkeypatch):
+        """As `config_to_plan` does: the rows count only when the case's method is `table`."""
+        def plan(case, rates_rows=None):
+            method = (case.get("rates_selection") or {}).get("method")
+            if method == "table" and rates_rows is not None:
+                gamma = [1.0]
+                for row in rates_rows:
+                    gamma.append(gamma[-1] * (1 + float(row[4]) / 100))
+            else:
+                gamma = [1.02 ** n for n in range(31)]
+            return types.SimpleNamespace(
+                year_n=list(range(2026, 2056)), gamma_n=gamma,
+                tau_kn=np.array([[0.06] * 30, [0.045] * 30, [0.03] * 30, [0.02] * 30]))
+
+        monkeypatch.setattr(b, "_throwaway_plan", plan)
+
+    def test_ah2_a_downturn_run_s_benchmark_is_the_published_one(self, table_aware_plan):
+        down = {"id": "downturn", "kind": "downturn", "sequence": "poor-decade", "start": {"year": 2026}}
+        scenario = _scenario([WORK_ARI, WORK_NOA, BUY, down])
+        inflation_2026 = next(r for r in b.rates_table(scenario)["rows"] if r[0] == 2026)[4]
+        assert inflation_2026 != 2.0  # the overlay moves 2026's inflation
+        variant, _ = _made(scenario, "the 2027 benchmark jump")
+        moved = variant.scenario["case"]["aca_settings"]["slcsp_annual"]
+        # The plan's 2027 benchmark: slcsp_annual x the overlaid inflation x 1% medical excess.
+        assert moved * (1 + inflation_2026 / 100) * 1.01 == pytest.approx(15.0, abs=1e-3)
+
+    def test_ah3_the_generated_start_year_counts(self, stub_plan):
+        scenario = _scenario()  # work events to 2026: the run's marketplace starts in 2027
+        del scenario["case"]["aca_settings"]["aca_start_year"]
+        variant, skipped = _made(scenario, "the 2027 benchmark jump")
+        assert not any(s.startswith("the 2027 benchmark jump") for s in skipped)
+        stale = _scenario(aca_start=2026)  # a stale hand value: the generated 2027 counts
+        _made(stale, "the 2027 benchmark jump")
+
+    def test_ah3_a_generated_start_before_the_published_year_is_refused(self, stub_plan):
+        part = dict(WORK_ARI, level="part")  # no full-time work: the marketplace from 2026
+        made, skipped = tornado.tornado_variants(_scenario([part, BUY], aca_start=2027))
+        assert not any(v.label == "slcsp-published" for v in made)
+        assert any("start in 2026, before the published 2027 benchmark" in s for s in skipped)

@@ -289,6 +289,7 @@ class Worker:
         preset = str(self.job.doc.get("preset") or "custom")
         age_search = None
         scores = None
+        thorough = None  # "Ages, thorough": (work_sweep, its scorer config, the decided cell)
         if preset in ("ages", "ages_thorough") and str(
                 diconf.get("solver_options", {}).get("withSSAges", "fixed")
         ).strip().lower() != "fixed":
@@ -298,12 +299,17 @@ class Worker:
             try:
                 if preset == "ages_thorough":
                     self.job.touch(self.token, step="the claiming-age sweep (every whole-year pair)")
-                    ages, candidates, scores = self._ages_thorough(diconf, dirname)
+                    ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname)
                 else:
                     ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check)
             finally:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
+            if thorough is not None:
+                # What scored the decided cell (review AH1): the final solve repeats it.
+                cell = thorough[2]
+                age_search["decided"] = {"used": cell.get("used"), "value": cell.get("value"),
+                                         "proved": cell.get("proved"), "gap": cell.get("gap")}
             diconf = apply_overrides(diconf, fixed_ages(ages))
             self.job.touch(self.token, step="building the plan")
             self.check()
@@ -313,9 +319,20 @@ class Worker:
         self.job.touch(self.token, step="solving")
         self.check()
         options = resolve_options(preset, plan.solverOptions, self.job.doc.get("options"))
+        if thorough is not None:
+            # "Ages, thorough" publishes the plan its sweep decided on (review AH1): the decided
+            # cell re-solved with the options that scored it (branch-and-bound at the sweep's
+            # gap, or the local search it fell back to), not the case's own -- with no gap,
+            # `plan.py` loosens it to MILP_GAP under withMedicare = "optimize", and the plan
+            # came out 1,208 below the decided cell on the synthetic household.
+            ws, cfg, cell = thorough
+            options = {k: v for k, v in options.items() if k not in ws.PRESET_KEYS}
+            options.update(ws.scorer_options(plan, cfg, cell.get("used") or "branch-and-bound"))
         options = parse_solver_options(options)
         plan.solve(plan.objective, options)
         wall = time.time() - t0
+        if thorough is not None and plan.caseStatus == "solved":
+            age_search["published_value"] = float(plan._objectiveValue(plan.objective))
 
         self.check()
         status = plan.caseStatus
@@ -437,7 +454,8 @@ class Worker:
         return summary
 
     def _ages_thorough(self, diconf, dirname) -> tuple:
-        """(ages in years, candidates, scores.json's row): section 8.1's "Ages, thorough".
+        """(ages in years, candidates, scores.json's row, (work_sweep, scorer config, decided
+        cell)): section 8.1's "Ages, thorough".
 
         `owlplanner.work_sweep`'s own `run_variant`: stage (a)'s exact-LP search
         and stage (c)'s sweep of every whole-year pair of the searched people, each scored
@@ -446,7 +464,8 @@ class Worker:
         are sensitivities, not the decision. Decided ages are months in the row (`best`);
         they come back as years for `fixed_ages`, and the row itself is `scores.json` (the
         claiming-age map reads it, I7). Runs a while (29-51 min per variant on the chris+pat
-        dry run); the cancel checks run at every sweep message.
+        dry run); the cancel checks run at every sweep message. The last item is what the final
+        solve needs to re-solve the decided cell the way it was scored (review AH1).
         """
         import types
 
@@ -456,6 +475,7 @@ class Worker:
         args = types.SimpleNamespace(
             no_loop=True, decider="bb", gap=1e-5, max_time=ws.TIME_LIMIT,
             ls_time=7200.0, ls_step_time=1800.0, passes=2, eta=[])
+        cfg = ws.scorer_config(args)  # `run_variant`'s own scorer settings, for the final solve
 
         def log(message):
             self.tee.write(str(message) + "\n")
@@ -467,7 +487,7 @@ class Worker:
         amap = parse_scores([scores])[0]
         candidates = [[[m / 12.0 for m in cell.ages], cell.value]
                       for cell in sorted(amap.cells, key=lambda c: c.ages)]
-        return chosen, candidates, scores
+        return chosen, candidates, scores, (ws, cfg, dict(row.get("result") or {}))
 
     def _write_json(self, folder, name, doc):
         from owlplanner.cli.formatters import _NumpyEncoder

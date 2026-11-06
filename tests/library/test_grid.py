@@ -222,6 +222,41 @@ class TestMemberResults:
         assert results[b].results_id.endswith("_decision")
 
 
+class TestMemberResultsAH5:
+    """Review AH5: only a member whose every solve is exact-LP (the tornado's children) puts
+    the collection on the exact LP; a "decision" member whose local search is running or
+    failed beside a solved exact companion shows as unsolved instead."""
+
+    @staticmethod
+    def _decision_member(path, i):
+        TestMemberResults._write(path, f"2026-01-01T00-00-0{i}_decision", exact=False)
+        TestMemberResults._write(path, f"2026-01-01T00-00-0{i + 1}_decision_exact", exact=True)
+
+    def test_a_failed_local_search_does_not_switch_the_collection(self, tmp_path):
+        a, b, c = tmp_path / "a", tmp_path / "b", tmp_path / "c"
+        self._decision_member(a, 0)
+        self._decision_member(b, 2)
+        TestMemberResults._write(c, "2026-01-01T00-00-06_decision_exact", exact=True)
+        failed = c / "results" / "2026-01-01T00-00-05_decision"
+        failed.mkdir()
+        (failed / "record.json").write_text(json.dumps({"status": "failed", "preset": "decision"}),
+                                            encoding="utf-8")
+        results, exact = member_results([a, b, c])
+        assert exact is False
+        assert results[a].results_id.endswith("_decision") and results[c] is None
+
+    def test_a_running_local_search_does_not_switch_it_either(self, tmp_path):
+        a, c = tmp_path / "a", tmp_path / "c"
+        self._decision_member(a, 0)
+        TestMemberResults._write(c, "2026-01-01T00-00-06_decision_exact", exact=True)
+        running = c / "results" / "2026-01-01T00-00-05_decision"
+        running.mkdir()  # queued or running: a job record, no record.json yet
+        (running / "status.json").write_text(json.dumps({"state": "running", "preset": "decision"}),
+                                             encoding="utf-8")
+        results, exact = member_results([a, c])
+        assert exact is False and results[c] is None
+
+
 class TestClaimingAgesFlag:
     """Review AD5: a cell solved at other claiming ages than the reference's is flagged."""
 

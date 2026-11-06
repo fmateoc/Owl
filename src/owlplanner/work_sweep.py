@@ -305,11 +305,32 @@ def _solved(p, t0):
     return {"status": p.caseStatus, "seconds": time.time() - t0, "method": getattr(p, "breakpointMethodUsed", None)}
 
 
+def scorer_config(args):
+    """The scorer's settings from the command's arguments (`decide`'s `cfg`)."""
+    return {"decider": args.decider, "gap": args.gap, "max_time": args.max_time,
+            "ls_time": args.ls_time, "ls_step": args.ls_step_time}
+
+
+def scorer_options(p, cfg, used="branch-and-bound"):
+    """The solve options a plan at fixed ages is scored with: branch-and-bound at the sweep's
+    gap, or the local search `score` falls back to (`used`, a scored cell's own record).
+
+    One definition for `_score_bb`, `_score_ls` and the run library's "Ages, thorough" final
+    solve, which re-solves the decided cell this way so the plan it publishes is the one the
+    sweep scored (review AH1: the case's own options, with no gap, published a plan 1.1% below
+    the decided cell on the synthetic household).
+    """
+    if used == "local search":
+        return base_options(p, withSSAges="fixed", breakpointMethod="local-search",
+                            localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
+    return base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
+                        gap=cfg["gap"], maxTime=cfg["max_time"])
+
+
 def _score_ls(diconf, dirname, ages, cfg):
     _record_netting()
     p, buf = make_plan(diconf, dirname, ages, cfg.get("eta"))
-    opts = base_options(p, withSSAges="fixed", breakpointMethod="local-search",
-                        localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
+    opts = scorer_options(p, cfg, "local search")
     t0 = time.time()
     p.solve(p.objective, opts)
     out = _solved(p, t0)
@@ -336,8 +357,7 @@ def _score_bb(diconf, dirname, ages, cfg):
     _record_netting()
     _HIGHS_RUNS.clear()
     p, _ = make_plan(diconf, dirname, ages, cfg.get("eta"))
-    opts = base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
-                        gap=cfg["gap"], maxTime=cfg["max_time"])
+    opts = scorer_options(p, cfg, "branch-and-bound")
     t0 = time.time()
     p.solve(p.objective, opts)
     out = _solved(p, t0)
@@ -479,8 +499,7 @@ def run_variant(name, diconf, dirname, args, pool, log):
         log(f"  (b) loop search:     {loop['status']}, ages {'/'.join(ym(a) for a in loop['ages'])} "
             f"({loop['seconds']:.0f}s)")
     log(f"  (c) {DECIDER[args.decider]} at fixed ages:")
-    cfg = {"decider": args.decider, "gap": args.gap, "max_time": args.max_time,
-           "ls_time": args.ls_time, "ls_step": args.ls_step_time}
+    cfg = scorer_config(args)
     best, cache, sweeps, free = decide(diconf, dirname, ref if ref["status"] == "solved" else None, loop, pool,
                                        cfg, args.passes, log)
     etas = eta_check(diconf, dirname, best, pool, cfg, args.eta, log)

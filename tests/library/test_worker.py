@@ -332,7 +332,7 @@ class TestTheRegretSweep:
         monkeypatch.setattr("owlplanner.summarize_conversion_regret", lambda result: summary)
 
     def test_the_preset_solves_then_sweeps(self, run, monkeypatch):
-        summary = {"by_grid": [{"x": 0.0, "mean": 100.0}],
+        summary = {"regret_by_grid": [{"x": 0.0, "mean": 100.0}],  # the summarizer's key (AH4)
                    "valley": {"x": 0.0, "mean_regret": 100.0}, "n_scenarios": 3}
         self._canned(monkeypatch, summary)
         job = make_job(run, name="2026-01-01T00-00-00_regret", preset="regret")
@@ -394,18 +394,31 @@ class TestAgesThorough:
         doc["case"]["solver_options"]["withSSAges"] = "optimize"
         return library.save_run(name="bill searches", scenario=doc).run
 
-    def _stub_sweep(self, monkeypatch, seen=None):
+    def _stub_sweep(self, monkeypatch, seen=None, scorer=None, cell=None):
         import types
 
         from owlplanner.library import worker as W
 
+        from owlplanner import work_sweep
+
+        row = dict(self.ROW, result=dict(self.ROW["result"], **(cell or {})))
+
         def run_variant(name, diconf, dirname, args, pool, log):
             if seen is not None:
                 seen.append(args)
-            return dict(self.ROW)
+            return dict(row)
 
-        monkeypatch.setattr(W, "_load_work_sweep",
-                            lambda: types.SimpleNamespace(TIME_LIMIT=900.0, run_variant=run_variant))
+        def scorer_options(p, cfg, used="branch-and-bound"):
+            # The real options would solve by branch-and-bound at gap 1e-5 (slow on a test
+            # case): the loop, with the sweep's gap, marks what the final solve was given.
+            if scorer is not None:
+                scorer.append((cfg, used))
+            return dict(work_sweep.base_options(p, withSSAges="fixed"), gap=cfg["gap"],
+                        breakpointMethod="loop")
+
+        monkeypatch.setattr(W, "_load_work_sweep", lambda: types.SimpleNamespace(
+            TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config,
+            scorer_options=scorer_options, PRESET_KEYS=work_sweep.PRESET_KEYS))
 
     def test_the_sweep_lives_in_the_package(self):
         """The move (2026-11-05): `_load_work_sweep` is a plain import of `owlplanner.work_sweep`,
@@ -431,6 +444,51 @@ class TestAgesThorough:
         assert record["method"]["options"]["withSSAges"] == "fixed"  # the solve pins them
         scores = json.loads((job.results_dir / R.SCORES_JSON).read_text(encoding="utf-8"))
         assert scores[0]["best"] == [804] and scores[0]["results"]
+
+    def test_ah1_the_final_solve_repeats_the_decided_cell_s_scoring(self, searching_run, monkeypatch):
+        """Review AH1: the published plan is the decided cell re-solved with the options that
+        scored it (`work_sweep.scorer_options`, branch-and-bound at the sweep's gap), not the
+        case's own -- which, with no gap, published a plan 1,208 below the cell."""
+        scorer = []
+        cell = {"used": "branch-and-bound", "proved": True, "gap": 9e-6}
+        self._stub_sweep(monkeypatch, scorer=scorer, cell=cell)
+        job = make_job(searching_run, name="2026-01-01T00-00-05_ages_thorough",
+                       preset="ages_thorough")
+        assert run_job(job.results_dir, job.token) == R.DONE
+        [(cfg, used)] = scorer
+        assert used == "branch-and-bound" and cfg["gap"] == 1e-5 and cfg["decider"] == "bb"
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        assert record["method"]["options"]["gap"] == 1e-5  # the sweep's gap, not the case's
+        search = record["age_search"]
+        assert search["decided"] == {"used": "branch-and-bound", "value": 82_000.0, "proved": True,
+                                     "gap": 9e-6}
+        assert isinstance(search["published_value"], float)
+
+    def test_ah1_a_cell_decided_by_local_search_is_re_solved_by_it(self, searching_run, monkeypatch):
+        scorer = []
+        self._stub_sweep(monkeypatch, scorer=scorer, cell={"used": "local search", "proved": False})
+        job = make_job(searching_run, name="2026-01-01T00-00-06_ages_thorough",
+                       preset="ages_thorough")
+        assert run_job(job.results_dir, job.token) == R.DONE
+        assert [used for _cfg, used in scorer] == ["local search"]
+
+    def test_ah1_scorer_options_are_the_sweep_s(self):
+        """`work_sweep.scorer_options` is what `_score_bb` / `_score_ls` solve with: the case's
+        options less the method keys, the ages fixed, and the scorer's method on top."""
+        import types
+
+        from owlplanner import work_sweep
+
+        p = types.SimpleNamespace(solverOptions={"withMedicare": "optimize", "breakpointMethod": "loop",
+                                                 "localSearchTime": 5.0, "withSSAges": "optimize"})
+        cfg = work_sweep.scorer_config(types.SimpleNamespace(
+            decider="bb", gap=1e-5, max_time=900.0, ls_time=7200.0, ls_step_time=1800.0))
+        bb = work_sweep.scorer_options(p, cfg)
+        assert bb == {"withMedicare": "optimize", "withSSAges": "fixed",
+                      "breakpointMethod": "branch-and-bound", "gap": 1e-5, "maxTime": 900.0}
+        ls = work_sweep.scorer_options(p, cfg, "local search")
+        assert ls == {"withMedicare": "optimize", "withSSAges": "fixed", "breakpointMethod": "local-search",
+                      "localSearchTime": 7200.0, "localSearchStepTime": 1800.0}
 
     def test_a_case_that_fixes_the_ages_just_solves(self, run, monkeypatch):
         self._stub_sweep(monkeypatch)
@@ -461,8 +519,10 @@ class TestAgesThorough:
             pool.map(score, [1, 2, 3])  # no log line between the plans of one pass
             raise AssertionError("the pass should have stopped")
 
-        monkeypatch.setattr(W, "_load_work_sweep",
-                            lambda: types.SimpleNamespace(TIME_LIMIT=900.0, run_variant=run_variant))
+        from owlplanner import work_sweep
+
+        monkeypatch.setattr(W, "_load_work_sweep", lambda: types.SimpleNamespace(
+            TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config))
         state = run_job(job.results_dir, job.token)
         assert state == R.INTERRUPTED
         assert scored == [1]

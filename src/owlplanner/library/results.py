@@ -50,6 +50,9 @@ REGRET_JSON = "regret.json"
 SCORES_JSON = "scores.json"
 SOLVE_LOG = "solve.log"
 PLAN_PKL = "plan.pkl"
+# Every artifact a worker publishes into a results folder: "run again" moves them all aside
+# (N4: the folder starts clean), step 6's two included (review AH6).
+ARTIFACTS = (SUMMARY_JSON, PLAN_JSON, RESULTS_XLSX, PLAN_PKL, SCORES_JSON, REGRET_JSON)
 PREV_RECORD_JSON = "record.prev.json"  # the previous attempt's record, kept by "run again"
 PREV_SOLVE_LOG = "solve.prev.log"      # and its log (M1)
 
@@ -470,7 +473,7 @@ class JobRecord:
             doc = type(self).read(self.results_dir).doc
             trash = self.results_dir / f".requeue-{secrets.token_hex(4)}"
             moves = [(self.results_dir / name, trash / name)
-                     for name in (SUMMARY_JSON, PLAN_JSON, RESULTS_XLSX, PLAN_PKL)]
+                     for name in ARTIFACTS]
             moves += [(self.results_dir / RECORD_JSON, self.results_dir / PREV_RECORD_JSON),
                       (self.results_dir / SOLVE_LOG, self.results_dir / PREV_SOLVE_LOG)]
             moves = [(src, dst) for src, dst in moves if src.exists()]

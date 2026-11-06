@@ -6730,3 +6730,16 @@ Tests: `tests/ui/test_variant_tables.py` **42 passed**. flake8/ruff clean. The 3
 `--full` run launched the same evening (`check_library_variants_full_2026-11-05_run3.log`
 in the session's temp); its verdict joins this entry. AF8 (`gains_edge_0`'s measure
 undocumented) stands.
+
+
+## Run-library step 6: AF8 folded (2026-11-05)
+
+The user's call: fold AF8 too -- the AF review's list is closed (AF1-AF8 all folded).
+`gains_edge_0` is edged on the QDCG worksheet's line-1 income (`G_n + e_n + max(Q_n, 0)`
+less the deduction the ordinary income leaves unused -- `thresholds._gains_entries`, the
+step-3 review 2 Q1 fix), **not** on `ordinary_taxable_income`, and nothing said so. The
+measure is now named where the other measures are named (the `brackets` module's and
+`bracket_view`'s docstrings) and once in the artifact itself
+(`brackets.gains_edge_0_measured_against`, beside `units`, so `plan.json`'s readers see
+it per block). Its test is checked to fail before the fix.
+`tests/plan/test_brackets.py` **7 passed**; flake8/ruff clean.

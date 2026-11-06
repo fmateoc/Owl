@@ -13,8 +13,11 @@ The conversions themselves are already optimized in the model -- IRMAA, ACA, SS 
 and state tax priced together -- so the design explains them here instead of adding an
 explorer. The lines and the income are not all the same measure: the ordinary edges are
 measured against ordinary taxable income (`Plan.G_n`), the IRMAA and ACA lines against
-MAGI (`Plan.MAGI_n`), and both are shown per year so the reader sees which line the
-conversion is filling. No model change: nothing here feeds back into an LP.
+MAGI (`Plan.MAGI_n`), and the 0% capital-gains edge against the preferential-income base
+the model edges the gains on -- the QDCG worksheet's line-1 income, `G_n + e_n +
+max(Q_n, 0)` less the deduction the ordinary income leaves unused
+(`thresholds._gains_entries`; review AF8) -- each shown per year so the reader sees which
+line the conversion is filling. No model change: nothing here feeds back into an LP.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -66,7 +69,11 @@ def bracket_view(p) -> dict:
     the tax year's dollars, as `thresholds._irmaa_entries` reads them; a tax year whose
     premium year leaves the plan has none (review AF4). The ACA lines are
     the poverty line of the year's tax household (`tax_federal._aca_fpl`) times the
-    Medicaid limit, 1.0 (where the credit starts) and 4.0 (the cliff).
+    Medicaid limit, 1.0 (where the credit starts) and 4.0 (the cliff). `gains_edge_0` (the
+    0%->15% capital-gains edge) is measured against the QDCG worksheet's line-1 income,
+    `G_n + e_n + max(Q_n, 0)` less the deduction the ordinary income leaves unused
+    (`thresholds._gains_entries`), **not** `ordinary_taxable_income`; the block says so
+    once for every row (review AF8).
     """
     N = p.N_n
     gamma = np.asarray(p.gamma_n[:N], dtype=float)
@@ -119,4 +126,9 @@ def bracket_view(p) -> dict:
             "irmaa_edges": irmaa_edges,
             "aca_lines": aca_lines,
         })
-    return {"units": "today's dollars", "years": rows}
+    return {"units": "today's dollars",
+            "gains_edge_0_measured_against":
+                "the QDCG worksheet's line-1 income (G_n + e_n + max(Q_n, 0) less the "
+                "deduction the ordinary income leaves unused; thresholds._gains_entries), "
+                "not ordinary_taxable_income",
+            "years": rows}

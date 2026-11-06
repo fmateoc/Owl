@@ -87,6 +87,15 @@ class TestOneYear:
         assert rows[-3]["irmaa_edges"][0]["premium_year"] == THISYEAR + N_YEARS - 1
         assert rows[-2]["irmaa_edges"] == [] and rows[-1]["irmaa_edges"] == []
 
+    def test_the_gains_edge_names_its_measure(self):
+        # Review AF8: `gains_edge_0` is not comparable to `ordinary_taxable_income` -- the
+        # model edges the gains on the QDCG worksheet's line-1 income. The block names the
+        # measure once for its rows (the docstrings say the same).
+        view = bracket_view(FakePlan())
+        assert "QDCG" in view["gains_edge_0_measured_against"]
+        assert "not ordinary_taxable_income" in view["gains_edge_0_measured_against"]
+        assert "gains_edge_0" in view["years"][0]
+
     def test_the_aca_lines_appear_only_with_the_marketplace(self):
         assert all(not row["aca_lines"] for row in bracket_view(FakePlan())["years"])
         # A couple still pre-Medicare: the marketplace is in the plan for them.

@@ -6943,4 +6943,4 @@ member), and the button queues no run already queued or solved today by the runn
 (build, the death dimension, `plan_variants`' children, the tornado's death movers). Tests: 17
 new, three re-pinned; with `src/` and `ui/` stashed the 19 selected failed. `tests/library
 tests/ui` + bracket/ACA/regret **1004 passed** (1:18, Linux); `check_library_builder.py`
-46/46; lint only upstream's listed items; full suite running at this commit (its result in the next commit).
+46/46; lint only upstream's listed items; full suite **4408 passed, 1 skipped** (7:59, Linux; 4391 + the 17 new tests).

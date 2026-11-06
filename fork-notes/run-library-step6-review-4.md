@@ -268,4 +268,4 @@ Tests: 17 new (`test_brackets.py` +4 counting the three noise cases, `test_torna
 the `src/` and `ui/` changes stashed, the 17 new tests and the first two re-pinned ones failed
 (19 failures; the third was not in that run). `tests/library
 tests/ui` + the bracket/ACA/regret tests **1004 passed** (1:18); `check_library_builder.py`
-46/46; lint only upstream's listed items; full suite running at this commit (its result in the next commit).
+46/46; lint only upstream's listed items; full suite **4408 passed, 1 skipped** (7:59, Linux; 4391 + the 17 new tests).

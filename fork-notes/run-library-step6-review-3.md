@@ -24,7 +24,7 @@ outputs are pasted below where a finding rests on them. The synthetic cases are
 | Command | Result |
 |---|---|
 | `pytest -n 4 tests/library tests/ui tests/plan/test_brackets.py tests/tax/test_aca.py tests/stochastic/test_regret_sweep.py` | **956 passed** (1:21) |
-| full suite (`pytest -n 4 -q`) | running at the first commit; result in the follow-up commit |
+| full suite (`pytest -n 4 -q`) | **4358 passed, 1 skipped** (9:45, Linux; PROGRESS recorded 4357 / 2 skipped on Windows, whose extra skip is the POSIX-only tzset test) |
 | `flake8 src tests ui --max-line-length=120`, `ruff check src tests ui` | only the upstream items CLAUDE.md lists (`test_spending_bequest_frontier.py` / `test_spending_units.py` E301/E304; B905 in `localsearch.py:244`, `test_local_search.py:288`, `test_roth_maturation_losses.py:49`, `Run_Options.py:260`) |
 | probes p1-p12 (below) | AG1-AG7, AG9 reproduced; three suspects cleared |
 | `check_library_variants.py` (reduced or `--full`) | not run (PROGRESS records 5/5 for both) |

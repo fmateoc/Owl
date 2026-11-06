@@ -6785,5 +6785,5 @@ values are judged as choices (an early death raises the score: +15,987 at 66). N
 (run names lose the mover's sign: "benchmark-premium-10" twice), AG10 (the regret sweep is
 person 0's, unnamed), AG11 (a cooperative cancel can wait a whole "Ages, thorough" pass).
 Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **956 passed** (1:21, Linux);
-full suite pending at this entry (follow-up commit); lint only upstream's listed items. The review changed nothing in
+full suite **4358 passed, 1 skipped** (9:45, Linux); lint only upstream's listed items. The review changed nothing in
 `src/`, `ui/` or `tests/`. Folds are the user's call.

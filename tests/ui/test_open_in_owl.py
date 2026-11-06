@@ -61,3 +61,27 @@ def test_the_graphs_page_restores_without_a_solve(monkeypatch, cached_results):
     at.run()
     assert not at.exception, [str(e.value) for e in at.exception]
     assert ran == []  # restored from the cache: the page did not re-run the case
+
+
+def test_a_save_after_open_in_owl_keeps_the_aca_settings():
+    """Found while folding review 3 (2026-11-06): `genDic` carried `slcsp_annual` only, and a
+    pages save applies what differs from the run's case, so the missing `acaStartYear` read
+    as an edit to 0 -- the marketplace premiums moved to the plan's first year, while the
+    couple still works -- and the fork's `aca_table_year` / `slcsp_published_*` were dropped."""
+    import copy
+    import io
+
+    from owlplanner.config import config_to_plan
+    from owlplanner.config.ui_bridge import config_to_ui, ui_to_config
+    from owlplanner.library.casefiles import _apply_page_edits
+    from owlplanner.library import import_case
+
+    case = import_case(BILL)["case"]
+    case["aca_settings"] = {"slcsp_annual": 20.84, "aca_start_year": 2027, "aca_table_year": 2027,
+                            "slcsp_published_year": 2027, "slcsp_published_annual": 25.29}
+    plan = config_to_plan(copy.deepcopy(case), ".", verbose=False, logstreams=[io.StringIO()],
+                          loadHFP=False)
+    _, dic = owlbridge.genDic(plan)
+    before = ui_to_config(config_to_ui(copy.deepcopy(case)))
+    saved = _apply_page_edits(case, before, ui_to_config(dic))
+    assert saved["aca_settings"] == case["aca_settings"]

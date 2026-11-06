@@ -397,6 +397,10 @@ def config_to_ui(diconf: dict, *, mylog=None) -> dict:  # noqa: C901
     # The pinned ACA table (I9's "the 2027 marketplace benchmark"): no page edits it, but a
     # pages save must keep the run's value (it round-trips like every other case field).
     dic["acaTableYear"] = int(aca.get("aca_table_year", 0) or 0)
+    # A published benchmark for a later year (the run library's tornado reads it): no page
+    # edits it either, and a pages save keeps it.
+    dic["slcspPublishedYear"] = int(aca.get("slcsp_published_year", 0) or 0)
+    dic["slcspPublishedAnnual"] = aca.get("slcsp_published_annual")
     dic["otherMedical"] = float(known.get("optimization_parameters", {}).get("other_medical_expenses", 0.0))
     dic["medicalExcess"] = float(known.get("optimization_parameters", {}).get("medical_inflation_excess", 0.0))
     dic["optimizeACA"] = so.get("withACA", "loop") == "optimize"
@@ -717,6 +721,12 @@ def ui_to_config(uidic: dict, *, mylog=None) -> dict:
     table_year = _get_ui(uidic, "acaTableYear", 0, int)
     if table_year:
         aca_settings["aca_table_year"] = table_year
+    published_year = _get_ui(uidic, "slcspPublishedYear", 0, int)
+    if published_year:
+        aca_settings["slcsp_published_year"] = published_year
+    published = uidic.get("slcspPublishedAnnual")
+    if published is not None and published != "":
+        aca_settings["slcsp_published_annual"] = float(published)
     diconf["aca_settings"] = aca_settings
     diconf["solver_options"]["withACA"] = "optimize" if uidic.get("optimizeACA") else "loop"
     optimize_ltcg = bool(uidic.get("optimizeLTCG"))

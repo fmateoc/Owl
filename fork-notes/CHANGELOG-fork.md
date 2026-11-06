@@ -14,10 +14,19 @@ has) is logged in `PROGRESS.md` only.
   returns). **"inflation +1 point"** now raises the return columns by the same point, so
   the real returns hold and the bar is inflation's own effect (on the synthetic household
   -920, where it was -7,814 at fixed nominal returns, next to returns -1 point's -7,064).
-- **Movers no plan year can see are skipped** with the reason: "the 2027 marketplace
-  rules" when the marketplace years start in 2027 or later (Owl reads the 2027 table from
-  2027 on), a reversion move when no plan year changes side of the expiration (2066 to
-  2100 for a plan ending in 2053), a death age the case already has.
+- **Movers no plan year can see are skipped** with the reason: a reversion move when no
+  plan year changes side of the expiration (2066 to 2100 for a plan ending in 2053), a death
+  age the case already has.
+- **"the 2027 marketplace rules" became "the 2027 benchmark jump"** (the user's call): the
+  rules mover pinned the 2027 applicable-percentage table, which Owl already reads from 2027
+  on, so no year of the household's plan could see it. The new mover sets `slcsp_annual` so
+  the plan's benchmark in a published year is the published one
+  (`aca_settings.slcsp_published_year` / `slcsp_published_annual`, new fields the model does
+  not read; the template states 2027's 25.29, +21.4% over 2026). On the synthetic household:
+  -375. `aca_table_year` stays as a knob no bar uses.
+- **"Open in Owl" keeps the marketplace settings**: a save from pages opened that way turned
+  `aca_start_year` into 0 (premiums from the plan's first year); `genDic` now carries it and
+  the fork's other `aca_settings` fields.
 - **The bars measure exact-LP results against the run's own exact-LP result only**; the
   button queues that solve when the run has none, the bars wait for it, and the page names
   the claiming ages the bars hold (a run whose `ages` solve picked others is flagged) and

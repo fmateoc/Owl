@@ -323,9 +323,8 @@ run at every sweep message") is accurate. Suggested fold, if wanted: call `check
   `check_death_window`), and a death age the case already has. On the synthetic household
   (p9 again) 9 movers are made and these two skipped: "the case's marketplace years start in
   2027, and Owl already reads the 2027 table from 2027 on: no plan year would change" and
-  "the plan (2026-2053) is the same under obbba_expiration_year = 2066 and 2100". **Open
-  (the user's):** what the marketplace bar should measure instead -- the 2026 table held,
-  or the 2027 benchmark's jump above inflation (`aca-ny/README.md` 147-148).
+  "the plan (2026-2053) is the same under obbba_expiration_year = 2066 and 2100". **Settled
+  the same day (the user's call): the marketplace bar is the 2027 benchmark jump**, below.
 - **AG5 folded:** `grid.member_results` reads a collection on one model -- the exact-LP
   results when any member has nothing else, the headline results otherwise -- and the
   Collections page says so in a caption. The tornado adds the run itself to its collection
@@ -355,3 +354,47 @@ inflation test all failed (the two `test_grid.py` ones at import: `member_result
 exist); `TestJoinCollection` (3) and one bar-flags test failed on the missing name alone,
 their behaviour pinned by the Scenario page test (AG6) and the claiming-ages flag's own
 tests. `tests/library tests/ui` **855 passed** (526 + 329); full suite **4378 passed, 1 skipped** (9:09, Linux; 4358 before the fold).
+
+## The marketplace bar: the 2027 benchmark jump (2026-11-06, the user's call)
+
+AG4's open question answered: the bar measures the 2027 benchmark's jump above inflation, not
+a pinned applicable-percentage table. "the 2027 marketplace rules" is gone from the movers;
+the `aca_settings.aca_table_year` knob stays in the model (generic and tested, now used by no
+bar).
+
+- **The input.** Owl grows `slcsp_annual` with (medical) inflation (`Plan._medical_n`, which
+  `acaCosts` / `acaVals` multiply the benchmark by), so a published later-year benchmark has
+  no place in the model. Two `aca_settings` fields carry it, read by the run library only:
+  `slcsp_published_year` and `slcsp_published_annual` ($k, that year's nominal dollars). The
+  schema says so; both config bridges, `plan_to_config` (`Plan.slcsp_published_year` /
+  `_annual`) and `owlbridge.genDic` carry them, each field on its own (the generic round-trip
+  suite sets one at a time). The household template states the 2027 figure with its source:
+  25.29 (Anthem HP `41046NY0010004`, 1,053.68/mo single, "dep26", +21.4% over 2026 against the
+  market's +6.0%; `aca-ny/README.md`), and the synthetic household inherits it.
+- **The mover** ("the 2027 benchmark jump", key `slcsp-published`) sets `slcsp_annual` to
+  published / growth, growth being the run's own inflation path (its rates table when it has
+  one) compounded with `medical_inflation_excess` from the plan's first year to the published
+  one, so the plan's benchmark in that year is the published amount and grows with (medical)
+  inflation after it. Skipped with the reason: no benchmark premium, no published figure, a
+  published year outside the plan, marketplace years before the published year (scaling
+  `slcsp_annual` would move them too), or a case that already prices it.
+- **Measured** (`p13_benchmark_jump.py`, the synthetic baseline, `decision_exact`, ages
+  70/70): `slcsp_annual` 20.84 -> 24.2376 (25.29 / (1.028 x 1.015)); the plan's benchmark for
+  2026-2029 ($k nominal) 20.84 / 21.745 / 22.689 / 23.674 -> 24.238 / **25.29** / 26.388 /
+  27.534; the marketplace premiums paid 2027-2029 rise from 21,745 / 22,689 / 13,810 to
+  25,290 / 26,388 / 16,061 (no credit at this income); the score 116,034 -> 115,659, **-375**,
+  inside the 1% band (the cost spreads over the plan's years under maxSpending).
+- **Found on the way, fixed:** a save from pages opened with "Open in Owl" turned
+  `aca_start_year` 2027 into **0**. `genDic` carried `slcsp_annual` only, and the save applies
+  what differs from the run's case, so the missing key read as an edit: the marketplace
+  premiums moved to the plan's first year, while the couple still works (probe
+  `test_p14_gendic.py`; step 2's path, before step 6). `genDic` now carries `acaStartYear`,
+  `acaTableYear` and the published pair. Test:
+  `tests/ui/test_open_in_owl.py::test_a_save_after_open_in_owl_keeps_the_aca_settings`
+  (fails without the fix).
+
+Tests: the marketplace-rules tests replaced by three on the jump (the published benchmark in
+its year at the stub's 2% inflation and 1% medical excess; no published figure; marketplace
+years before it), the movers' list re-pinned, the stub plan given an inflation path; the
+`aca_table_year` knob's test docstring no longer names a bar. `check_library_builder.py`
+46/46 and `check_library_roundtrip.py` 39/39 with the template's new fields.

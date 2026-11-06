@@ -65,6 +65,13 @@ social_security_ages = [ 67.0, 67.0, ]    # default: claim at FRA; scenarios var
 # The same region covers Yonkers, White Plains and NYC (the README lists the counties).
 slcsp_annual = 20.84                     # household benchmark Silver premium, $k/yr, today's $
 aca_start_year = 2027                    # first year without employer coverage
+# The 2027 benchmark, approved rates (DFS, 2026-09-04): Anthem HP 41046NY0010004, 1,053.68/mo
+# single x 2 x 12 = 25,288 ("dep26"), +21.4% over 2026 against the market's +6.0% (Fidelis
+# dropped its cheapest silver plans); fork-notes/aca-ny/README.md. Owl does not read it: it
+# grows slcsp_annual with inflation. The run library's tornado bar "the 2027 benchmark jump"
+# sets slcsp_annual so that the plan's 2027 benchmark is this amount.
+slcsp_published_year = 2027
+slcsp_published_annual = 25.29          # $k/yr, 2027 (nominal) dollars
 
 [rates_selection]
 # Reproducibility: use "user" with explicit rates, or "historical" with a

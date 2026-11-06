@@ -311,8 +311,24 @@ class ACASettings(BaseModel):
     aca_table_year: Optional[int] = Field(
         default=None,
         description=(
-            "Pin one year's applicable-percentage table for every plan year (sensitivity: "
-            "'the 2027 marketplace benchmark', run library I9). Empty: each year's own table."
+            "Pin one year's applicable-percentage table for every plan year (a sensitivity "
+            "knob, run library I9). Empty: each year's own table."
+        ),
+    )
+    slcsp_published_year: Optional[int] = Field(
+        default=None,
+        description=(
+            "The year of a published benchmark Silver premium (the marketplace's approved rates "
+            "for a later year). The model does not read it: the run library's sensitivity "
+            "tornado sets slcsp_annual so that the plan's benchmark in this year is "
+            "slcsp_published_annual (I9, 'the 2027 benchmark jump')."
+        ),
+    )
+    slcsp_published_annual: Optional[float] = Field(
+        default=None,
+        description=(
+            "The published benchmark Silver premium of slcsp_published_year, household, $k per "
+            "year in that year's (nominal) dollars. Read by the run library's tornado only."
         ),
     )
 

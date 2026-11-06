@@ -586,6 +586,10 @@ class Plan:
         self.slcsp_annual = 0.0  # Today-dollar annual ACA benchmark Silver plan premium ($)
         self.aca_start_year = 0  # Calendar year ACA coverage begins (0 = plan start)
         self.aca_table_year = 0  # Pinned ACA applicable-percentage table (0 = each year's own)
+        # A published benchmark for a later year (its year; $k in that year's dollars): read by
+        # the run library's tornado only, kept here so plan_to_config writes it back.
+        self.slcsp_published_year = 0
+        self.slcsp_published_annual = None
         self.ACA_n = np.zeros(self.N_n)  # Net ACA cost (after subsidy) per year (plan $)
         self._aca_lp = False  # True when withACA="optimize" is active
         self._sb_lp = False  # True when withSeniorBonus="optimize" is active

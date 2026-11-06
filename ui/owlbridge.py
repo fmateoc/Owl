@@ -2192,6 +2192,13 @@ def genDic(plan):
         dic["optimizeMedicare"] = True if opt == "optimize" else False
 
     dic["slcspAnnual"] = getattr(plan, "slcsp_annual", 0.0) / 1000
+    # The rest of aca_settings, as config_to_ui reads them: a pages save after "Open in Owl"
+    # applies what differs from the run's case, and a key missing here read as an edit to 0
+    # (aca_start_year 2027 -> 0 moved the marketplace premiums to the plan's first year).
+    dic["acaStartYear"] = int(getattr(plan, "aca_start_year", 0) or 0)
+    dic["acaTableYear"] = int(getattr(plan, "aca_table_year", 0) or 0)
+    dic["slcspPublishedYear"] = int(getattr(plan, "slcsp_published_year", 0) or 0)
+    dic["slcspPublishedAnnual"] = getattr(plan, "slcsp_published_annual", None)
     dic["otherMedical"] = getattr(plan, "other_medical_k", 0.0) / 1000
     dic["medicalExcess"] = getattr(plan, "medical_excess", 0.0) * 100
     dic["optimizeACA"] = plan.solverOptions.get("withACA", "loop") == "optimize"

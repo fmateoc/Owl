@@ -34,7 +34,8 @@ def _scenario(events=None, *, slcsp=12.0, aca_start=2027):
             "basic_info": {"names": ["Ari", "Noa"], "date_of_birth": ["1964-04-17", "1964-12-09"],
                            "life_expectancy": [89, 89], "start_date": "2026-01-01"},
             "fixed_income": {"social_security_ages": [67.0, 67.0]},
-            "aca_settings": {"aca_start_year": aca_start, "slcsp_annual": slcsp},
+            "aca_settings": {"aca_start_year": aca_start, "slcsp_annual": slcsp,
+                             "slcsp_published_year": 2027, "slcsp_published_annual": 15.0},
             "optimization_parameters": {"medical_inflation_excess": 1.0},
             "rates_selection": {"method": "trailing_30", "obbba_expiration_year": 2034},
             "solver_options": {"withSSAges": "fixed"},
@@ -49,6 +50,7 @@ def stub_plan(monkeypatch):
     """The case's own rate path (`_generated_rates`): constant rates, known years."""
     monkeypatch.setattr(b, "_throwaway_plan", lambda case, rates_rows=None: types.SimpleNamespace(
         year_n=list(range(2026, 2056)),
+        gamma_n=[1.02 ** n for n in range(31)],
         tau_kn=np.array([[0.06] * 30, [0.045] * 30, [0.03] * 30, [0.02] * 30])))
 
 
@@ -64,11 +66,11 @@ class TestTheMovers:
         assert labels == [
             "returns -1 point", "inflation +1 point", "medical inflation +2 points",
             "condo price +10%", "benchmark premium +10%", "benchmark premium -10%",
-            "the 2027 marketplace rules", "the 2032 reversion", "no 2032 reversion",
+            "the 2027 benchmark jump", "the 2032 reversion", "no 2032 reversion",
             "Ari dies at 80", "Noa dies at 80"]
 
     def test_returns_minus_one_shifts_the_run_s_own_path(self, stub_plan):
-        variant, skipped = _made(_scenario(aca_start=2026), "returns -1 point")
+        variant, skipped = _made(_scenario(), "returns -1 point")
         assert skipped == []
         assert variant.values == {"mover": "returns -1 point"}
         table = variant.scenario["rates_table"]
@@ -111,9 +113,29 @@ class TestTheMovers:
         down, _ = _made(_scenario(), "benchmark premium -10%")
         assert down.scenario["case"]["aca_settings"]["slcsp_annual"] == 10.8
 
-    def test_the_marketplace_mover_pins_the_2027_table(self, stub_plan):
-        variant, _ = _made(_scenario(aca_start=2026), "the 2027 marketplace rules")
-        assert variant.scenario["case"]["aca_settings"]["aca_table_year"] == 2027
+    def test_the_benchmark_jump_prices_the_published_benchmark_in_its_year(self, stub_plan):
+        """The user's call (2026-11-06): the marketplace bar is the 2027 benchmark jump. The
+        model's benchmark in year n is slcsp_annual x medical growth (inflation compounded
+        with medical_inflation_excess, 1% in this case); the mover sets slcsp_annual so the
+        2027 benchmark is the published 15.0 ($k, nominal)."""
+        variant, _ = _made(_scenario(), "the 2027 benchmark jump")
+        assert variant.label == "slcsp-published"
+        moved = variant.scenario["case"]["aca_settings"]["slcsp_annual"]
+        assert moved == pytest.approx(15.0 / (1.02 * 1.01), abs=1e-4)
+        assert moved * 1.02 * 1.01 == pytest.approx(15.0, abs=1e-3)
+
+    def test_the_benchmark_jump_needs_a_published_benchmark(self, stub_plan):
+        scenario = _scenario()
+        del scenario["case"]["aca_settings"]["slcsp_published_year"]
+        made, skipped = tornado.tornado_variants(scenario)
+        assert not any(v.label == "slcsp-published" for v in made)
+        assert any(s.startswith("the published benchmark") and "states no published benchmark" in s
+                   for s in skipped)
+
+    def test_the_benchmark_jump_refuses_marketplace_years_before_it(self, stub_plan):
+        made, skipped = tornado.tornado_variants(_scenario(aca_start=2026))
+        assert not any(v.label == "slcsp-published" for v in made)
+        assert any("start in 2026, before the published 2027 benchmark" in s for s in skipped)
 
     def test_the_reversion_movers_move_the_expiration_year(self, stub_plan):
         on, _ = _made(_scenario(), "the 2032 reversion")
@@ -160,7 +182,7 @@ class TestTheMovers:
         assert sum("marketplace is not in the plan" in s for s in skipped) == 3
 
     def test_the_children_are_scenarios_like_any_other(self, stub_plan):
-        scenario = _scenario(aca_start=2026)
+        scenario = _scenario()
         made, skipped = tornado.tornado_variants(scenario)
         assert skipped == []
         for variant in made:
@@ -246,12 +268,6 @@ class TestReview3Fixes:
         assert variant.scenario["rates_table"]["rows"][0][:4] == [2026, 5.0, 3.5, 2.0]
         assert "in_percent" not in variant.scenario["case"]["rates_selection"]
 
-    def test_ag4_the_marketplace_rules_are_skipped_when_coverage_starts_in_2027(self, stub_plan):
-        made, skipped = tornado.tornado_variants(_scenario(aca_start=2027))
-        assert not any(v.values["mover"] == "the 2027 marketplace rules" for v in made)
-        assert any(s.startswith("the 2027 marketplace rules") and "no plan year would change" in s
-                   for s in skipped)
-
     def test_ag4_a_reversion_year_past_the_plan_s_end_is_skipped(self, stub_plan):
         scenario = _scenario()
         scenario["case"]["rates_selection"]["obbba_expiration_year"] = 2066  # the template's
@@ -269,7 +285,7 @@ class TestReview3Fixes:
         assert any("already has Ari die at 80" in s for s in skipped)
 
     def test_ag9_the_children_s_names_keep_the_mover_s_sign(self, stub_plan):
-        made, _ = tornado.tornado_variants(_scenario(aca_start=2026))
+        made, _ = tornado.tornado_variants(_scenario())
         labels = [v.label for v in made]
         assert len(labels) == len(set(labels))
         assert {"slcsp+10", "slcsp-10", "inflation+1", "returns-1"} <= set(labels)

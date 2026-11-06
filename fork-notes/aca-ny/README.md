@@ -145,7 +145,11 @@ benchmark jumps (silver discontinuations) while this gold plan rises 8.47%.
 - `aca_settings.slcsp_annual` is today's dollars, household benchmark, in $k. With the plan starting
   in 2026: **20.84** (in the template since 2026-10-27, the user's call) (`dep26`, 2026 rates) or 20.32 (`all`). Owl grows it with `_medical_n(gamma_n)` (inflation, or
   `setMedicalInflation`'s rate; `plan.py`, the `acaVals` call), so the 2027 jump above inflation is not represented; entering the
-  2027 benchmark deflated one year is the conservative alternative (25.29 nominal 2027).
+  2027 benchmark deflated one year is the conservative alternative (25.29 nominal 2027). Since
+  2026-11-06 the template also states it (`slcsp_published_year = 2027`,
+  `slcsp_published_annual = 25.29`, read by the run library only), and the tornado's bar "the
+  2027 benchmark jump" prices it: `slcsp_annual` set so the plan's 2027 benchmark is 25.29
+  (-375 on the synthetic household; `run-library-step6-review-3.md`).
 - **Buying gold:** Owl prices the marketplace as the benchmark (net cost min(SLCSP, applicable
   percentage x MAGI), `tax_federal.acaCosts`), so a gold plan's extra premium over the benchmark
   is not in the model. The credit does not depend on the plan bought, so the extra is the same

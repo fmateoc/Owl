@@ -6814,3 +6814,27 @@ Checks: 21 new tests plus seven re-pinned and one dropped. The 21 and the re-pin
 test were checked to fail with `src/` and `ui/` stashed. `tests/library tests/ui` **855
 passed**; probes p1, p9 and p11 re-run on the fixed code (the numbers above); lint only
 upstream's listed items; full suite **4378 passed, 1 skipped** (9:09, Linux; 4358 before the fold, net +20).
+
+
+## Run-library step 6: the marketplace bar is the 2027 benchmark jump (2026-11-06)
+
+The user's answer to AG4's open question: the bar measures the 2027 benchmark's jump above
+inflation. "the 2027 marketplace rules" is replaced by "the 2027 benchmark jump" (key
+`slcsp-published`). Two new `aca_settings` fields, `slcsp_published_year` and
+`slcsp_published_annual` ($k, that year's dollars), are read by the run library only. They
+are carried by both bridges, `plan_to_config` and `genDic`. The template states 2027's 25.29
+with its source (`aca-ny/README.md`: +21.4% over 2026, the market +6.0%).
+
+The mover sets `slcsp_annual` to the published amount over the run's own medical growth to
+that year, so the plan's 2027 benchmark is 25.29. On the synthetic baseline (`decision_exact`,
+70/70) that is `slcsp_annual` 24.2376, premiums 2027-2029 25,290 / 26,388 / 16,061 (were
+21,745 / 22,689 / 13,810), and the score -375 (inside the 1% band). `aca_table_year` stays as
+a knob no bar uses.
+
+Found and fixed on the way: a save after "Open in Owl" turned `aca_start_year` 2027 into 0.
+`genDic` lacked the key, and the save applies what differs from the run's case. `genDic` now
+carries it and the other fork `aca_settings` keys; the test fails without the fix.
+
+Checks: `check_library_builder.py` 46/46, `check_library_roundtrip.py` 39/39,
+`tests/config` 256 passed, lint only upstream's items; full suite pending at this commit (follow-up commit). Details in
+`run-library-step6-review-3.md`, last section.

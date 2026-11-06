@@ -644,7 +644,10 @@ Corrections to the first pass (2026-11-01):
 - **I4** comes after step 6.
 - **I8 and I9** come with step 6 *(built in its second increment, 2026-11-05, together with
   I2's longevity and I11's downturn-sequence variant dimensions; the core -- collections,
-  "make variants", the grid view and the Ages preset -- was built 2026-11-04)*.
+  "make variants", the grid view and the Ages preset -- was built 2026-11-04. I9's "2027
+  marketplace benchmark" is the benchmark's published 2027 jump above inflation
+  (`aca_settings.slcsp_published_*`; the user's call, 2026-11-06, after
+  `run-library-step6-review-3.md` AG4)*.
 - **I11** is build step 5b (D11), then the variant dimension with step 6 *(second
   increment, as above)*.
 - **I5** is a separate backend project, measured before it is designed (D9).

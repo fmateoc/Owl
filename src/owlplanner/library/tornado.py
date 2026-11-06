@@ -15,10 +15,14 @@ the two the user called for (2026-11-05):
 - ``condo price +10%``: the purchase event's price (today's $);
 - ``benchmark premium +10%`` / ``-10%``: `aca_settings.slcsp_annual`, the marketplace's
   benchmark Silver plan;
-- ``the 2027 marketplace rules``: `aca_settings.aca_table_year` = 2027, the 2027
-  applicable-percentages table in every plan year (the knob's own sensitivity); Owl already
-  reads the 2027 table from 2027 on, so the mover is skipped when no marketplace year comes
-  before 2027 (review AG4);
+- ``the <year> benchmark jump``: the published benchmark Silver premium of a later year
+  (`aca_settings.slcsp_published_year` / `slcsp_published_annual`, the marketplace's
+  approved rates -- for the household's region the 2027 benchmark is 21.4% over 2026 against
+  the market's 6.0%, `fork-notes/aca-ny/README.md`). Owl grows `slcsp_annual` with (medical)
+  inflation, so the jump above it is not in the plan; the mover sets `slcsp_annual` so that
+  the plan's benchmark in that year is the published one, growing with (medical) inflation
+  after it (the user's call, 2026-11-06: this bar replaces "the 2027 marketplace rules",
+  which no plan year of the household could see -- review AG4);
 - ``the 2032 reversion`` and ``no 2032 reversion``: `rates_selection.obbba_expiration_year`
   at 2032 (as scheduled) and pushed out (the OBBBA provisions made permanent); each is
   skipped when no plan year changes side of the expiration (review AG4: the template's
@@ -66,7 +70,6 @@ INFLATION_STEP = 1.0
 MEDICAL_STEP = 2.0
 PRICE_STEP = 0.10
 SLCSP_STEP = 0.10
-MARKETPLACE_TABLE_YEAR = 2027
 REVERSION_YEAR = 2032
 NO_REVERSION_YEAR = 2100
 DEATH_AGE = 80
@@ -177,39 +180,47 @@ def _slcsp(factor: float) -> Callable[[dict], None]:
     return edit
 
 
-def _table_moves(scenario: dict, table_year: int) -> list:
-    """The marketplace years whose applicable-percentage table pinning `table_year` changes:
-    from the case's ACA start (0: the plan start) to the plan's last year (review AG4).
-    `tax_federal._aca_table` reads the last published table for every later year, so pinning
-    that table moves no year at or after it."""
-    from owlplanner import tax_federal as tx
-
-    start, end = builder.plan_window(scenario)
-    aca = (scenario.get("case") or {}).get("aca_settings") or {}
-    current = int(aca.get("aca_table_year", 0) or 0) or None
-    first = max(start, int(aca.get("aca_start_year", 0) or 0) or start)
-    last = end if end is not None else first
-    pinned = tx._aca_table(table_year)
-    # Before 2026 the model uses the 2025 rules unless a table is pinned (`acaCosts`).
-    return [y for y in range(first, last + 1)
-            if (y < 2026 and current is None) or tx._aca_table(y, current) is not pinned]
+def _benchmark_growth(scenario: dict, year: int) -> float:
+    """The factor the model grows `slcsp_annual` by from the plan's first year to `year`:
+    the run's own inflation path compounded with `medical_inflation_excess` (`Plan._medical_n`,
+    which `tax_federal.acaCosts` / `acaVals` multiply the benchmark by). The path is the one
+    the solve uses: the run's rates table when it has one, else the case's own method."""
+    case = scenario.get("case") or {}
+    start = builder.plan_window(scenario)[0]
+    table = builder.rates_table(scenario)
+    gamma = builder._gamma(case, rates_rows=table["rows"] if table is not None else None)
+    k = year - start
+    if not 0 <= k < len(gamma):
+        raise ScenarioError(f"{year} is outside the case's inflation path")
+    excess = float((case.get("optimization_parameters") or {}).get("medical_inflation_excess", 0.0) or 0.0)
+    return float(gamma[k]) * (1.0 + excess / 100.0) ** k
 
 
-def _marketplace_rules(scenario: dict) -> None:
+def _benchmark_jump(scenario: dict) -> None:
     aca = _section(scenario, "aca_settings")
-    if float(aca.get("slcsp_annual", 0.0) or 0.0) <= 0:
+    current = float(aca.get("slcsp_annual", 0.0) or 0.0)
+    if current <= 0:
         raise ScenarioError(
             "this case sets no benchmark Silver premium (aca_settings.slcsp_annual): "
             "the marketplace is not in the plan")
-    if int(aca.get("aca_table_year", 0) or 0) == MARKETPLACE_TABLE_YEAR:
-        raise ScenarioError(f"this case already pins the {MARKETPLACE_TABLE_YEAR} table")
-    if not _table_moves(scenario, MARKETPLACE_TABLE_YEAR):
-        first = max(builder.plan_window(scenario)[0], int(aca.get("aca_start_year", 0) or 0))
+    year, published = aca.get("slcsp_published_year"), aca.get("slcsp_published_annual")
+    if not year or published is None:
         raise ScenarioError(
-            f"the case's marketplace years start in {first}, and Owl already reads the "
-            f"{MARKETPLACE_TABLE_YEAR} table from {MARKETPLACE_TABLE_YEAR} on: no plan year "
-            "would change")
-    aca["aca_table_year"] = MARKETPLACE_TABLE_YEAR
+            "this case states no published benchmark (aca_settings.slcsp_published_year and "
+            "slcsp_published_annual: a later year's approved benchmark, nominal $k)")
+    year, published = int(year), float(published)
+    start, end = builder.plan_window(scenario)
+    if year < start or (end is not None and year > end):
+        raise ScenarioError(f"the published benchmark's year {year} is outside the plan ({start}-{end})")
+    first = max(start, int(aca.get("aca_start_year", 0) or 0) or start)
+    if first < year:
+        raise ScenarioError(
+            f"the case's marketplace years start in {first}, before the published {year} "
+            f"benchmark: scaling slcsp_annual would move {first} too")
+    moved = round(published / _benchmark_growth(scenario, year), 4)
+    if abs(moved - current) < 5e-4:
+        raise ScenarioError(f"this case already prices the published {year} benchmark")
+    aca["slcsp_annual"] = moved
 
 
 def _obbba(year: int) -> Callable[[dict], None]:
@@ -260,6 +271,11 @@ def _life_of(scenario: dict, person: str):
     return int(life[i]) if i is not None and i < len(life) else None
 
 
+def _benchmark_label(scenario: dict) -> str:
+    year = ((scenario.get("case") or {}).get("aca_settings") or {}).get("slcsp_published_year")
+    return f"the {int(year)} benchmark jump" if year else "the published benchmark"
+
+
 def movers(scenario: dict) -> list:
     """One `Mover` per key input moved by its set step, this run's own people included."""
     out = [
@@ -282,10 +298,11 @@ def movers(scenario: dict) -> list:
         Mover("slcsp-10", "benchmark premium -10%",
               "aca_settings.slcsp_annual, 10% lower",
               _slcsp(1.0 - SLCSP_STEP)),
-        Mover("marketplace-2027", f"the {MARKETPLACE_TABLE_YEAR} marketplace rules",
-              f"aca_settings.aca_table_year = {MARKETPLACE_TABLE_YEAR}: the "
-              f"{MARKETPLACE_TABLE_YEAR} applicable percentages in every plan year",
-              _marketplace_rules),
+        Mover("slcsp-published", _benchmark_label(scenario),
+              "aca_settings.slcsp_annual set so the plan's benchmark in the published year is "
+              "the published one (slcsp_published_annual), growing with (medical) inflation "
+              "after it",
+              _benchmark_jump),
         Mover("reversion-2032", "the 2032 reversion",
               f"rates_selection.obbba_expiration_year = {REVERSION_YEAR} (as scheduled)",
               _obbba(REVERSION_YEAR)),

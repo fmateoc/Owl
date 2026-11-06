@@ -975,7 +975,7 @@ class TestCoverageGapPlans:
 
 
 class TestPinnedTableYear:
-    """`aca_settings.aca_table_year` (run library I9's "the 2027 marketplace benchmark"):
+    """`aca_settings.aca_table_year` (a sensitivity knob; the run library I9 built it):
     one year's applicable percentages in every plan year (`_aca_table`'s `table_year`)."""
 
     def _gamma(self, n):

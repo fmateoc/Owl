@@ -137,3 +137,23 @@ class TestOnDisk:
         assert entry["members"] == [{"run": runs[0].id, "values": {"year": 2027}}]
         assert entry["reference"] == runs[0].id
         assert doc["collection_order"] == [coll.id]
+
+
+class TestJoinCollection:
+    """Review AG6: the save dialogs' "Collection" field joins a run without wiping the
+    variant values it already has as a member (`add_member` replaces them)."""
+
+    def test_a_member_keeps_its_values(self, lib, runs):
+        coll = lib.create_collection("grid")
+        lib.add_member(coll.id, runs[0], {"place": "yonkers", "year": 2027})
+        coll = lib.join_collection(coll.id, runs[0])
+        assert list(coll.members) == [Member(run=runs[0].id, values={"place": "yonkers", "year": 2027})]
+
+    def test_a_new_run_joins_with_no_values(self, lib, runs):
+        coll = lib.create_collection("grid")
+        coll = lib.join_collection(coll.id, runs[1])
+        assert [(m.run, m.values) for m in coll.members] == [(runs[1].id, {})]
+
+    def test_an_unknown_collection_is_refused(self, lib, runs):
+        with pytest.raises(LibraryError, match="no collection"):
+            lib.join_collection("nope", runs[0])

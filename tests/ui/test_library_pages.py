@@ -540,6 +540,54 @@ class TestTheSensitivityTornado:
         assert "returns -1 point" in table and "±" in table
 
 
+class TestTheTornadoReview3:
+    """`fork-notes/run-library-step6-review-3.md` AG2 and AG5 on the Run page."""
+
+    @staticmethod
+    def _open(run):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(UI_DIR / "Run.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_run"] = run.id
+        return at.run()
+
+    def test_ag2_a_run_with_no_exact_result_gets_one_queued_and_the_bars_wait(self, library, monkeypatch):
+        from owlplanner.library import JobManager, import_case
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = "bill quick"
+        run = library.save_run(name="bill quick", scenario=scenario).run
+        _write_result(run, "2026-11-02T12-00-00_quick", preset="quick")  # no exact-LP result
+        before = {j.id for j in JobManager(library).jobs()}
+        at = self._open(run)
+        next(b for b in at.button if b.label == "Make the sensitivity runs").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        queued = [j for j in JobManager(library).jobs() if j.id not in before]
+        assert any(j.doc["run_id"] == run.id and j.doc["preset"] == "decision_exact" for j in queued)
+        coll = next(c for c in library.collections() if c.name == "Sensitivity: bill quick")
+        for i, member in enumerate(m for m in coll.members if m.run != run.id):
+            _write_result(library.get(member.run), f"2026-11-04T10-00-0{i}_decision_exact",
+                          preset="decision_exact", exact=True, score=82_000.0 - 1_000 * i)
+        at = self._open(run)
+        assert not at.exception, [e.value for e in at.exception]
+        assert "wait for this run's own exact-LP solve" in _text(at)
+        assert not any(str(m.value).startswith("| mover | difference |") for m in at.markdown)
+
+    def test_ag5_the_run_is_the_collection_s_reference(self, library, monkeypatch):
+        from owlplanner.library import JobManager, tornado
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        parent = next(r for r in library.runs() if r.name == "bill later")
+        at = self._open(parent)
+        next(b for b in at.button if b.label == "Make the sensitivity runs").click().run()
+        coll = next(c for c in library.collections() if c.name == "Sensitivity: bill later")
+        assert coll.reference == parent.id
+        assert coll.member(parent.id).values == {"mover": tornado.BASE_LABEL}
+
+
 class TestConversionsAndBrackets:
     """I8 on the run page: the income, the conversion layer and the lines it fills
     (plan.json's `brackets` block), and the per-request regret sweep button."""
@@ -551,6 +599,35 @@ class TestConversionsAndBrackets:
         assert "Conversions and brackets" in text
         assert "of which conversions" in text  # the table's column
         assert "Run the regret sweep" in [b.label for b in at.button]
+
+    def test_ag7_ag10_the_caption_reads_the_valley_and_names_the_person(self, library):
+        """Review AG7: the summary's key is `mean_regret` (the caption always said 0);
+        AG10: whose first-year conversion the sweep pinned."""
+        import numpy as np
+        from streamlit.testing.v1 import AppTest
+        from owlplanner import summarize_conversion_regret
+
+        grid = np.array([0.0, 25_000.0, 50_000.0])
+        v_at = np.array([[1000.0, 1200.0, 1100.0], [900.0, 1300.0, 1000.0]])
+        summary = summarize_conversion_regret({
+            "grid": grid, "v_at": v_at, "v_star": v_at.max(axis=1) + 150.0,
+            "x_star": grid[v_at.argmax(axis=1)], "v_noconv": v_at[:, 0]})
+        summary = json.loads(json.dumps(summary, default=float))
+        summary["person"] = "Noa"
+        assert summary["valley"]["mean_regret"] == 150.0
+        run = next(r for r in library.runs() if r.name == "bill later")
+        folder = next(p for p in (run.path / "results").iterdir() if p.name.endswith("_decision"))
+        record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+        record["regret"] = summary
+        (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+        at = AppTest.from_file(str(UI_DIR / "Run.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_run"] = run.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        least = next(c.value for c in at.caption if "Least regret" in c.value)
+        assert "mean regret 150" in least and "Noa's first-year conversion" in least
 
     def test_the_regret_button_queues_one_job(self, library, monkeypatch):
         from owlplanner.library import JobManager

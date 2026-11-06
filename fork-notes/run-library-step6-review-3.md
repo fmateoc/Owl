@@ -295,3 +295,63 @@ run at every sweep message") is accurate. Suggested fold, if wanted: call `check
 - An "Ages, thorough" or "regret" job end to end through the worker (the pieces were read; the
   presets' tests pass).
 - A browser session of the pages (AppTest only).
+
+## Dispositions (2026-11-06, the user's call: fold AG1-AG7 and AG9-AG11; AG8 stands as written)
+
+- **AG1 folded:** `tornado._shift_rates` moves a hand table in its own units (one point is
+  0.01 when the case's `rates_selection.in_percent` is false, rounded to 6 places), and a
+  generated path (always percent) drops a stray `in_percent`. Probe p1 again: the decimal
+  table's children read `[0.05, 0.035, 0.02, 0.025]` and `[0.07, 0.055, 0.04, 0.035]`.
+- **AG2 folded:** the bars take the run's own exact-LP result only (`tornado.base_result`),
+  and each child's exact-LP result only (`result_of`); a base or child from another model
+  makes its bar wait ("waiting for this run's own exact-LP solve" / "no exact-LP result yet")
+  instead of measuring the model change. "Make the sensitivity runs" queues the run's
+  `decision_exact` solve when it has none. The page states the base's score and claiming
+  ages, warns when the run's last `ages`-type solve picked other ages than the exact-LP
+  solves hold, and shows `tornado.bar_flags` (S13's caveats and `grid.claiming_ages_flag`).
+  Pinning an `ages` pick in the exact-LP solves was not built: the bars say which ages they
+  hold instead (the review's second option).
+- **AG3 folded** with the review's first option (the user's call to fold; the option is the
+  agent's): "inflation +1 point" raises the three return columns by the same point -- the
+  same real returns, inflation's own effect. On the synthetic baseline (`decision_exact`,
+  ages 70/70): unmoved 116,034, returns -1 point 108,970 (-7,064), inflation +1 point
+  115,114 (**-920**, inside the 1% band; it was -7,814 at fixed nominal returns).
+- **AG4 folded:** a mover whose edit no plan year can see is skipped with its reason --
+  "the 2027 marketplace rules" when every marketplace year is at or after the pinned table
+  (`tornado._table_moves`, through `tax_federal._aca_table`), a reversion move when no plan
+  year changes side of the expiration (`builder.plan_window`, shared with
+  `check_death_window`), and a death age the case already has. On the synthetic household
+  (p9 again) 9 movers are made and these two skipped: "the case's marketplace years start in
+  2027, and Owl already reads the 2027 table from 2027 on: no plan year would change" and
+  "the plan (2026-2053) is the same under obbba_expiration_year = 2066 and 2100". **Open
+  (the user's):** what the marketplace bar should measure instead -- the 2026 table held,
+  or the 2027 benchmark's jump above inflation (`aca-ny/README.md` 147-148).
+- **AG5 folded:** `grid.member_results` reads a collection on one model -- the exact-LP
+  results when any member has nothing else, the headline results otherwise -- and the
+  Collections page says so in a caption. The tornado adds the run itself to its collection
+  (`mover: none (this run)`, `tornado.BASE_LABEL`) and sets it as the reference.
+- **AG6 folded:** `Library.join_collection` adds a run with no values, or leaves a member as
+  it is, under the lock; the Library page's two save dialogs, the Scenario page's save and
+  the Collections page's Add button use it.
+- **AG7 folded:** the caption reads `valley["mean_regret"]`.
+- **AG9 folded:** a sensitivity child is named after the mover's key (`slcsp+10`,
+  `slcsp-10`, `inflation+1`, `returns-1`, ...), unique per mover.
+- **AG10 folded:** `worker.REGRET_PERSON = 0`, the summary's `person` (the case's first
+  name, written to a copy of the summarizer's dict), and the run page names it before the
+  sweep (the button's text) and after (the curve's title and the valley caption). A person
+  choice on the button was not added.
+- **AG11 folded:** `_SerialPool` takes the worker's `check` and runs it before every
+  scored plan.
+
+Tests: 21 new (`test_tornado.py` +9, `test_collections.py` +3, `test_grid.py` +2,
+`test_worker.py` +2, `test_library_pages.py` +3, `test_scenario_page.py` +1,
+`test_collections_page.py` +1), the inflation mover's test re-pinned (constant real returns),
+six more tornado tests re-pinned to the new rules (three to a 2026 coverage start, where the
+marketplace mover must be made; three bar tests to exact-LP results, one also to its new
+note), and the bar test of a
+proved result dropped (a bar's two sides are exact-LP results now): net +20. Checked to fail
+before the fold (the `src/` and `ui/` changes stashed): the 21 new tests and the re-pinned
+inflation test all failed (the two `test_grid.py` ones at import: `member_results` did not
+exist); `TestJoinCollection` (3) and one bar-flags test failed on the missing name alone,
+their behaviour pinned by the Scenario page test (AG6) and the claiming-ages flag's own
+tests. `tests/library tests/ui` **855 passed** (526 + 329).

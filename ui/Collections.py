@@ -275,13 +275,28 @@ if runs:
 # -- the grid and the leads -------------------------------------------
 
 
+def _member_runs(members):
+    out = {}
+    for member in members:
+        try:
+            out[member.run] = lib.get(member.run)
+        except Exception:  # noqa: BLE001 - a deleted member is shown, not fatal
+            out[member.run] = None
+    return out
+
+
+_RUNS = _member_runs(coll.members)
+# One model for the whole collection (review AG5): the exact-LP results when a member has
+# nothing else (the sensitivity runs), the headline results otherwise.
+_RESULTS, _EXACT = grid.member_results([r.path for r in _RUNS.values() if r is not None])
+
+
 def _entry(member):
-    try:
-        run = lib.get(member.run)
-    except Exception:  # noqa: BLE001 - a deleted member is shown, not fatal
+    run = _RUNS.get(member.run)
+    if run is None:
         return grid.Entry(run_id=member.run, name="a deleted run", values=member.values)
     return grid.Entry(run_id=run.id, name=run.name, values=member.values,
-                      result=grid.latest_result(run.path))
+                      result=_RESULTS.get(run.path))
 
 
 _LEAD_COLORS = {
@@ -317,6 +332,9 @@ ref_entry = next((e for e in entries if e.run_id == coll.reference), None)
 dims = sorted({key for e in entries for key in (e.values or {})})
 rows, columns = vt.grid_layout(dims, coll.grid)  # AD2: no dimension dropped by default
 
+if _EXACT:
+    st.caption("Every member is read through its **exact-LP** result: some members (the "
+               "sensitivity runs) have no other, and the grid judges one model at a time.")
 if not solved:
     st.info("No member of this collection has a solved result yet: queue them below (or on "
             "the Run page) and come back.")
@@ -383,10 +401,8 @@ add_run = c1.selectbox("Add a run", [None] + list(lib.runs()),
                        format_func=lambda r: "(choose)" if r is None else r.name,
                        key="col_add_run")
 if c2.button("Add to the collection", disabled=add_run is None):
-    existing = coll.member(add_run.id)
-    # Idempotent and `values` replaces (store.add_member): a run already in the collection
-    # keeps the values it has when re-added from here.
-    lib.add_member(coll.id, add_run, values=existing.values if existing else None)
+    # A run already in the collection keeps the values it has (store.join_collection, AG6).
+    lib.join_collection(coll.id, add_run)
     st.rerun()
 ref_options = [None] + member_runs
 ref_index = next((i for i, r in enumerate(ref_options) if r is not None and r.id == coll.reference), 0)

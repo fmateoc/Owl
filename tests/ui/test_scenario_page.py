@@ -246,3 +246,19 @@ class TestDeathEventsAndTheCollectionField:
         assert not at.exception, [e.value for e in at.exception]
         child = next(r for r in library.runs() if r.name != "bill")
         assert library.collection(coll.id).member(child.id).values == {}
+
+    def test_ag6_an_identical_save_keeps_the_member_s_values(self, library):
+        """Review AG6: saving a grid member's run again unchanged with its collection chosen
+        joins the run it is -- and used to wipe its variant values (`add_member` replaces)."""
+        run = library.runs()[0]
+        coll = library.create_collection("Where to live")
+        library.add_member(coll.id, run, {"place": "yonkers", "year": 2027})
+        at = _page()
+        at.selectbox(key="scenario_page_collection").select("Where to live")
+        at.run()
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        save.set_value(True)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert [r.id for r in library.runs()] == [run.id]  # identical: nothing new saved
+        assert library.collection(coll.id).member(run.id).values == {"place": "yonkers", "year": 2027}

@@ -7,6 +7,33 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6: the whole-step review's AG1-AG7, AG9-AG11 folded (2026-11-06)
+
+- **The tornado's rate movers** shift a hand rates table in its own units: one point is
+  0.01 in a table stored in decimals (`in_percent = false`), where it used to be 1.0 (-94%
+  returns). **"inflation +1 point"** now raises the return columns by the same point, so
+  the real returns hold and the bar is inflation's own effect (on the synthetic household
+  -920, where it was -7,814 at fixed nominal returns, next to returns -1 point's -7,064).
+- **Movers no plan year can see are skipped** with the reason: "the 2027 marketplace
+  rules" when the marketplace years start in 2027 or later (Owl reads the 2027 table from
+  2027 on), a reversion move when no plan year changes side of the expiration (2066 to
+  2100 for a plan ending in 2053), a death age the case already has.
+- **The bars measure exact-LP results against the run's own exact-LP result only**; the
+  button queues that solve when the run has none, the bars wait for it, and the page names
+  the claiming ages the bars hold (a run whose `ages` solve picked others is flagged) and
+  the S13 caveats. The run is a member of its "Sensitivity" collection, and its reference.
+- **The Collections page reads a collection on one model**: the exact-LP results when a
+  member has nothing else (the sensitivity runs used to show as unsolved), the headline
+  results otherwise (`grid.member_results`).
+- **The save dialogs' "Collection" field keeps a member's variant values** when the save
+  is identical to a run already in the collection (`Library.join_collection`; it used to
+  wipe them, taking the run out of the grid). The Collections page's Add button uses it.
+- The regret caption reads the summary's `mean_regret` (it always said 0) and names whose
+  first-year conversion the sweep pins (the case's first person; `record.json`'s
+  `regret.person`). Sensitivity runs are named after the mover's key, which keeps its sign
+  (`slcsp+10`, `slcsp-10`). A cancel during "Ages, thorough" is checked before every scored
+  plan, not once per pass.
+
 ### Run library, build step 6, second increment: I8, I9, the I2/I11 dimensions and the leftovers (2026-11-05)
 
 The second increment of step 6 (`fork-notes/run-library-design.md` 8.1, 9.3, 14.1, 14.3):

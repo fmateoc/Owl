@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from owlplanner.library import view
-from owlplanner.library.grid import Entry, front, grid_view, latest_result, lead_between
+from owlplanner.library.grid import Entry, front, grid_view, latest_result, lead_between, member_results
 
 # A local-search solve: the noise rule is the 1% band of the reference's score (R2).
 REF_SCORE, REF_HOME = 100_000.0, 400_000.0
@@ -182,6 +182,44 @@ class TestLatestResult:
 
     def test_a_run_with_no_solved_result_has_none(self, tmp_path):
         assert latest_result(tmp_path) is None
+
+
+class TestMemberResults:
+    """Review AG5: one model for a whole collection -- the exact-LP results when a member
+    has nothing else (the tornado's children), the headline results otherwise."""
+
+    @staticmethod
+    def _write(path, stamp, exact):
+        folder = path / "results" / stamp
+        folder.mkdir(parents=True)
+        options = {"withSSTaxability": 0.85, "withMedicare": "none", "withLTCG": "optimize",
+                   "breakpointMethod": "loop"} if exact else {}
+        (folder / "record.json").write_text(json.dumps({
+            "status": "solved", "preset": "decision_exact" if exact else "decision",
+            "method": {"breakpoint_method": "loop", "options": options},
+        }), encoding="utf-8")
+        (folder / "summary.json").write_text('{"spending_basis": 1}', encoding="utf-8")
+        (folder / "plan.json").write_text('{"objective": "maxSpending"}', encoding="utf-8")
+
+    def test_a_member_with_only_an_exact_result_puts_the_grid_on_the_exact_lp(self, tmp_path):
+        parent, child = tmp_path / "parent", tmp_path / "child"
+        self._write(parent, "2026-01-01T00-00-00_decision", exact=False)
+        self._write(parent, "2026-01-01T00-00-01_decision_exact", exact=True)
+        self._write(child, "2026-01-01T00-00-02_decision_exact", exact=True)
+        results, exact = member_results([parent, child])
+        assert exact is True
+        assert results[parent].results_id.endswith("_decision_exact")
+        assert results[child].results_id.endswith("_decision_exact")
+
+    def test_headline_results_when_every_member_has_one(self, tmp_path):
+        a, b = tmp_path / "a", tmp_path / "b"
+        self._write(a, "2026-01-01T00-00-00_decision", exact=False)
+        self._write(a, "2026-01-01T00-00-01_decision_exact", exact=True)
+        self._write(b, "2026-01-01T00-00-02_decision", exact=False)
+        results, exact = member_results([a, b])
+        assert exact is False
+        assert results[a].results_id.endswith("_decision")
+        assert results[b].results_id.endswith("_decision")
 
 
 class TestClaimingAgesFlag:

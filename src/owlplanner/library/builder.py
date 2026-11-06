@@ -483,15 +483,10 @@ def check_death_age(person: str, age, case: dict, scenario: dict, where: str = "
         )
 
 
-def check_death_window(scenario: dict, person: str = None, age=None, where: str = "") -> None:
-    """The plan window the deaths leave (I2, U7's door check; review AE1).
-
-    A death at the age one is now is fine for that person (one year of horizon), but
-    `Plan` refuses to build a plan of one year ("Plan needs more than 1 years"), so the
-    *last* death must leave the plan more than one year past its start. `person`/`age` is
-    a death not in the events yet -- a variant value or a mover, checked at the door
-    before it applies (the events' own deaths are applied here too, so a combination that
-    collapses the window is refused where it is entered).
+def plan_window(scenario: dict, person: str = None, age=None) -> tuple:
+    """(first plan year, last plan year) of a scenario: the start year and the last life
+    horizon, with the scenario's death events applied (and `person` dying at `age`, a death
+    not in the events yet). The last year is None when no date of birth is known.
     """
     case = scenario.get("case") or {}
     info = case.get("basic_info") or {}
@@ -509,6 +504,20 @@ def check_death_window(scenario: dict, person: str = None, age=None, where: str 
     if person is not None and person in names:
         life[names.index(person)] = int(age)
     end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
+    return start, end_year
+
+
+def check_death_window(scenario: dict, person: str = None, age=None, where: str = "") -> None:
+    """The plan window the deaths leave (I2, U7's door check; review AE1).
+
+    A death at the age one is now is fine for that person (one year of horizon), but
+    `Plan` refuses to build a plan of one year ("Plan needs more than 1 years"), so the
+    *last* death must leave the plan more than one year past its start. `person`/`age` is
+    a death not in the events yet -- a variant value or a mover, checked at the door
+    before it applies (the events' own deaths are applied here too, so a combination that
+    collapses the window is refused where it is entered).
+    """
+    start, end_year = plan_window(scenario, person, age)
     if end_year is not None and end_year <= start:
         prefix = f"{where}: " if where else ""
         raise ScenarioError(

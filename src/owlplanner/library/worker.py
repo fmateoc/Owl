@@ -47,6 +47,9 @@ REGRET_N_SCENARIOS = 18
 REGRET_N_GRID = 7
 REGRET_GRID_PAD = 45_000.0
 REGRET_SEED = 1
+# Whose first-year conversion the sweep pins: the case's first person (upstream's interface
+# offers a choice, `regret_person`; this job does not). The summary names the person (AG10).
+REGRET_PERSON = 0
 
 
 def _load_work_sweep():
@@ -69,12 +72,21 @@ class _SerialPool:
     The CLI's default is `--jobs 1`, which is serial too. (`score` is picklable across
     processes now that the sweep lives in `owlplanner.work_sweep`, so a pool would work;
     the worker keeps the sweep serial -- one job at a time, and the plans inside it are
-    the expensive part.)
+    the expensive part.) `check` (the worker's cancellation hook) runs before every item:
+    the sweep logs once per person pass, and a pass of nine ages at up to `TIME_LIMIT`
+    (900 s) each kept a cooperative cancel waiting up to two hours (review AG11).
     """
 
-    @staticmethod
-    def map(fn, items):
-        return [fn(item) for item in items]
+    def __init__(self, check=None):
+        self._check = check
+
+    def map(self, fn, items):
+        out = []
+        for item in items:
+            if self._check is not None:
+                self._check()
+            out.append(fn(item))
+        return out
 
 
 _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
@@ -403,12 +415,15 @@ class Worker:
         yend = int(plan.year_n[0]) - plan.N_n  # the last start with a full horizon (histYendMax)
         result = plan.runConversionRegret(
             plan.objective, options, FROM, yend,
-            person=0,
+            person=REGRET_PERSON,
             n_grid=REGRET_N_GRID, grid_pad=REGRET_GRID_PAD,
             n_scenarios=REGRET_N_SCENARIOS, seed=REGRET_SEED, milp_downgrade=True,
             on_scenario=lambda *args: self.check(),
         )
-        summary = summarize_conversion_regret(result)
+        summary = dict(summarize_conversion_regret(result))
+        # Whose first-year conversion the sweep pinned (review AG10): the run page names it.
+        names = list(getattr(plan, "inames", []) or [])
+        summary["person"] = names[REGRET_PERSON] if REGRET_PERSON < len(names) else None
         staging = self.results_dir / f".attempt-{self.token[:8]}"
         staging.mkdir(exist_ok=True)
         try:
@@ -446,7 +461,7 @@ class Worker:
             self.tee.write(str(message) + "\n")
             self.check()
 
-        row = ws.run_variant("base", diconf, dirname, args, _SerialPool(), log)
+        row = ws.run_variant("base", diconf, dirname, args, _SerialPool(self.check), log)
         scores = {k: v for k, v in row.items() if k != "_cache"}
         chosen = [m / 12.0 for m in row.get("best") or []]
         amap = parse_scores([scores])[0]

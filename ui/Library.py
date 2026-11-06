@@ -73,12 +73,14 @@ def _report_saved(result):
 def _add_to_collection(collection, result):
     """The save dialog's "Collection" field (design section 7): the saved run joins the
     collection as it is -- no variant values, so the grid lists it beside the cells until
-    they are set (the Members section, "Values"). An identical save joins the run it is."""
+    they are set (the Members section, "Values"). An identical save joins the run it is,
+    which keeps its values when it is already a member (review AG6)."""
     if collection is None:
         return
     run = result.run if result.created else result.identical_to
     if run is not None:
-        lib.add_member(collection.id, run)
+        # A run already in the collection keeps its variant values (review AG6).
+        lib.join_collection(collection.id, run)
 
 
 def _save_uploaded_run(name, notes, tags, uploaded, collection=None):

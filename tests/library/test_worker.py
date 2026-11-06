@@ -333,7 +333,7 @@ class TestTheRegretSweep:
 
     def test_the_preset_solves_then_sweeps(self, run, monkeypatch):
         summary = {"by_grid": [{"x": 0.0, "mean": 100.0}],
-                   "valley": {"x": 0.0, "mean": 100.0}, "n_scenarios": 3}
+                   "valley": {"x": 0.0, "mean_regret": 100.0}, "n_scenarios": 3}
         self._canned(monkeypatch, summary)
         job = make_job(run, name="2026-01-01T00-00-00_regret", preset="regret")
         state = run_job(job.results_dir, job.token)
@@ -341,7 +341,17 @@ class TestTheRegretSweep:
         written = json.loads((job.results_dir / R.REGRET_JSON).read_text(encoding="utf-8"))
         assert written == {"canned": True}  # regret.json is the sweep itself (review AE3)
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
-        assert record["status"] == "solved" and record["regret"] == summary
+        assert record["status"] == "solved"
+        assert {k: v for k, v in record["regret"].items() if k != "person"} == summary
+
+    def test_ag10_the_summary_names_whose_conversion(self, run, monkeypatch):
+        """Review AG10: the sweep pins the first person's conversion; the record says whose."""
+        self._canned(monkeypatch, {"valley": {"x": 0.0, "mean_regret": 1.0}, "n_scenarios": 1})
+        job = make_job(run, name="2026-01-01T00-00-02_regret", preset="regret")
+        assert run_job(job.results_dir, job.token) == R.DONE
+        record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
+        names = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))["individuals"]
+        assert record["regret"]["person"] == names[0]
 
     def test_a_failed_sweep_keeps_the_solve(self, run, monkeypatch):
         def boom(*args, **kw):
@@ -430,3 +440,29 @@ class TestAgesThorough:
         assert not (job.results_dir / R.SCORES_JSON).exists()  # no search: no sweep
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
         assert record["age_search"] is None
+
+    def test_ag11_a_cancel_stops_the_sweep_between_scored_plans(self, searching_run, monkeypatch):
+        """Review AG11: the sweep logs once per person pass, so the cancel check rides on the
+        pool too -- a pending cancel stops before the next scored plan, not after the pass."""
+        import types
+
+        from owlplanner.library import worker as W
+
+        scored = []
+        job = make_job(searching_run, name="2026-01-01T00-00-04_ages_thorough",
+                       preset="ages_thorough")
+
+        def score(item):
+            scored.append(item)
+            job.request_cancel()  # the user clicks Cancel while the first plan is scored
+            return item
+
+        def run_variant(name, diconf, dirname, args, pool, log):
+            pool.map(score, [1, 2, 3])  # no log line between the plans of one pass
+            raise AssertionError("the pass should have stopped")
+
+        monkeypatch.setattr(W, "_load_work_sweep",
+                            lambda: types.SimpleNamespace(TIME_LIMIT=900.0, run_variant=run_variant))
+        state = run_job(job.results_dir, job.token)
+        assert state == R.INTERRUPTED
+        assert scored == [1]

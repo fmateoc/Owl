@@ -493,6 +493,6 @@ if st.button("Save as a new run", type="primary", disabled=built is None):
             )
         if collection is not None:
             saved = result.run if result.created else result.identical_to
-            if saved is not None:
-                lib.add_member(collection.id, saved)
+            if saved is not None:  # a member already keeps its values (review AG6)
+                lib.join_collection(collection.id, saved)
     st.rerun()

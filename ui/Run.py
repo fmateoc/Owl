@@ -43,7 +43,7 @@ import libraryjobs
 import sskeys as kz
 from owlplanner.library import JobsError, PRESETS, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
-from owlplanner.library import tornado, view
+from owlplanner.library import grid, tornado, view
 
 st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
@@ -324,9 +324,12 @@ def _conversions_and_brackets(run, result):
     # -- the regret sweep (I8: "what a different conversion would have cost") -----
     regret = result.record.get("regret")
     if regret is None:
+        first = ((result.plan.get("individuals") or [None])[0])
         st.markdown("**What would a different conversion have cost?** A regret sweep "
                     "(design 14.1, I8) re-solves historical scenarios with this year's "
-                    "conversion pinned on a grid and reports the regret of each commitment.")
+                    "conversion pinned on a grid and reports the regret of each commitment"
+                    + (f" -- {first}'s conversion, the first person of the case (review AG10)"
+                       if first else "") + ".")
         if st.button("Run the regret sweep", key="run_page_regret",
                      help="One solve per request (a background job, its own results): "
                           "\"Quick look\" size -- 18 historical scenarios, a 7-point grid."):
@@ -341,7 +344,8 @@ def _conversions_and_brackets(run, result):
         st.warning(f"The regret sweep did not finish: {regret['error']}", icon=":material/warning:")
     else:
         st.markdown("**What a different conversion would have cost** "
-                    f"({regret.get('n_scenarios')} historical scenario(s))")
+                    + (f"-- {regret['person']}'s first-year conversion " if regret.get("person") else "")
+                    + f"({regret.get('n_scenarios')} historical scenario(s))")
         by_grid = regret.get("by_grid") or []
         if by_grid:
             fig = go.Figure(go.Scatter(
@@ -352,10 +356,14 @@ def _conversions_and_brackets(run, result):
                               yaxis_title="mean regret (today's $)", height=320)
             st.plotly_chart(fig, width="stretch")
         valley = regret.get("valley") or {}
+        whose = regret.get("person")
         if valley:
+            # The summary's key is `mean_regret` (review AG7: `mean` always read 0).
             st.caption(f"Least regret: commit {valley.get('x', 0):,.0f} "
-                       f"(mean regret {valley.get('mean', 0):,.0f}); the curves and the "
-                       "per-scenario spread are in `regret.json` in this results folder.")
+                       f"(mean regret {valley.get('mean_regret') or 0:,.0f})"
+                       + (f", {whose}'s first-year conversion" if whose else "")
+                       + "; the curves and the per-scenario spread are in `regret.json` in "
+                       "this results folder.")
         with st.expander("The full summary"):
             st.json(regret)
 
@@ -574,22 +582,32 @@ with st.expander("Solve this run"):
 
 def _tornado_collection(run, name):
     """The collection the sensitivity runs live in (created on first use): one child per
-    mover, queued under the exact LP, "run the collection again" re-solves them all."""
+    mover, queued under the exact LP, "run the collection again" re-solves them all. The run
+    itself is a member and the reference (review AG5: the grid's cells are differences from
+    it, as the bars are)."""
     coll = next((c for c in lib.collections() if c.name == name), None)
-    return coll if coll is not None else lib.create_collection(
-        name,
-        question=f"What moves {run.name}'s score? (one key input at a time)",
-        rule="each child re-solved under the exact LP; bars sorted by effect, each with its "
-             "tolerance (R2)")
+    if coll is None:
+        coll = lib.create_collection(
+            name,
+            question=f"What moves {run.name}'s score? (one key input at a time)",
+            rule="each child re-solved under the exact LP, against this run's own exact-LP "
+                 "solve; bars sorted by effect, each with its tolerance (R2)")
+    if coll.member(run.id) is None:
+        lib.add_member(coll.id, run, {"mover": tornado.BASE_LABEL})
+    if coll.reference is None:
+        lib.set_reference(coll.id, run)
+    return lib.collection(coll.id)
 
 
 with st.expander("Sensitivity (tornado)"):
     st.caption(
         "One child run per key input moved by a set step: " +
         "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
-        ". Each child is solved under the exact LP (for speed) and the bars below are sorted "
-        "by the size of the effect, each with its tolerance (R2). A mover that does not fit "
-        "this scenario is skipped and says why. The runs land in the collection "
+        ". Each child is solved under the exact LP (for speed) and measured against this "
+        "run's own exact-LP solve, which the button queues when the run has none (review "
+        "AG2); the bars below are sorted by the size of the effect, each with its tolerance "
+        "(R2). A mover that does not fit this scenario, or that no plan year would see, is "
+        "skipped and says why. The runs land in the collection "
         f"*Sensitivity: {run.name}*."
     )
     if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado"):
@@ -601,6 +619,14 @@ with st.expander("Sensitivity (tornado)"):
             st.rerun()
         coll = _tornado_collection(run, f"Sensitivity: {run.name}")
         queued = 0
+        if tornado.base_result(run.path) is None:
+            # The bars measure from this run's own exact-LP result only (review AG2).
+            try:
+                manager.enqueue(run, preset="decision_exact")
+            except (ScenarioError, JobsError) as exc:  # another plan year (R1)
+                libraryjobs.flash("error", f"{run.name}: its exact-LP solve not queued ({exc})")
+            else:
+                queued += 1
         for variant in made:
             try:
                 saved = lib.save_run(name=f"{run.name} {variant.label}",
@@ -620,9 +646,11 @@ with st.expander("Sensitivity (tornado)"):
         st.rerun()
     _coll = next((c for c in lib.collections() if c.name == f"Sensitivity: {run.name}"), None)
     if _coll is not None:
-        _base = tornado.result_of(run.path)
+        _base = tornado.base_result(run.path)
         _rows = []
         for _member in _coll.members:
+            if _member.run == run.id:
+                continue  # the run itself: the base, not a bar
             _label = (_member.values or {}).get("mover") or "(no label)"
             try:
                 _child = lib.get(_member.run)
@@ -630,7 +658,22 @@ with st.expander("Sensitivity (tornado)"):
                 _rows.append((_label, None))
                 continue
             _rows.append((_label, tornado.result_of(_child.path)))
-        if _base is not None and any(result is not None for _label, result in _rows):
+        if _base is None:
+            st.caption("The bars wait for this run's own exact-LP solve (the children's model; "
+                       "\"Make the sensitivity runs\" queues it): another model's result would "
+                       "put the model change into every bar (review AG2).")
+        elif any(result is not None for _label, result in _rows):
+            st.caption(f"Measured from this run's exact-LP solve: score {view.score(_base):,.0f}, "
+                       f"claiming ages {view.claiming_ages_text(_base)}.")
+            _plain = grid.latest_result(run.path)
+            if (_plain is not None and _plain.record.get("age_search")
+                    and view.claiming_ages(_plain) != view.claiming_ages(_base)):
+                st.warning(f"This run's last '{_plain.record.get('preset')}' solve picked the claiming "
+                           f"ages {view.claiming_ages_text(_plain)}; the exact-LP solves hold the "
+                           f"case's own ({view.claiming_ages_text(_base)}), so the bars do too.",
+                           icon=":material/flag:")
+            for _flag in tornado.bar_flags(_base, _rows):
+                st.warning(_flag, icon=":material/flag:")
             _bars = tornado.bars(_base, _rows)
             _shown = [b for b in _bars if b["delta"] is not None]
             if _shown:

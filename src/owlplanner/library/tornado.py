@@ -6,23 +6,33 @@ the two the user called for (2026-11-05):
 
 - ``returns -1 point`` and ``inflation +1 point``: the run's own rate path, written out as
   a rates table with the shift in it (step 5b's `rates_table`; `builder.plan_rates_table`
-  reads the path however the run names it, and a downturn overlay is baked into it);
+  reads the path however the run names it, and a downturn overlay is baked into it). The
+  inflation mover raises every return column by the same point, so the real returns hold
+  and the bar is inflation's own effect (indexing, basis, fixed nominal amounts), not a
+  second copy of the returns bar (review AG3); the shift is in the table's own units
+  (`in_percent`, review AG1);
 - ``medical inflation +2 points``: `optimization_parameters.medical_inflation_excess`;
 - ``condo price +10%``: the purchase event's price (today's $);
 - ``benchmark premium +10%`` / ``-10%``: `aca_settings.slcsp_annual`, the marketplace's
   benchmark Silver plan;
 - ``the 2027 marketplace rules``: `aca_settings.aca_table_year` = 2027, the 2027
-  applicable-percentages table in every plan year (the knob's own sensitivity);
+  applicable-percentages table in every plan year (the knob's own sensitivity); Owl already
+  reads the 2027 table from 2027 on, so the mover is skipped when no marketplace year comes
+  before 2027 (review AG4);
 - ``the 2032 reversion`` and ``no 2032 reversion``: `rates_selection.obbba_expiration_year`
-  at 2032 (as scheduled) and pushed out (the OBBBA provisions made permanent);
+  at 2032 (as scheduled) and pushed out (the OBBBA provisions made permanent); each is
+  skipped when no plan year changes side of the expiration (review AG4: the template's
+  2066 and 2100 are both past a plan that ends in 2053);
 - ``<person> dies at 80``: the `death` event (I2), one bar per person.
 
 A child is an ordinary run (`variants.Variant`, saved under the run and queued with its
-collection); a mover that does not fit the scenario is skipped with its reason (no home
-purchase, no benchmark premium, a death already past). The bars measure against the run's
-newest **exact-LP** result when it has one (the children solve under the exact LP "for
-speed"), else its newest result. Nothing here solves anything and nothing here changes the
-model: every mover is a scenario edit.
+collection; named after the mover's key, which keeps its sign: `slcsp+10`, `slcsp-10`,
+review AG9); a mover that does not fit the scenario, or whose edit no plan year can see, is
+skipped with its reason (no home purchase, no benchmark premium, a death already past, a
+policy year outside the plan). The bars measure the children's **exact-LP** results against
+the run's own exact-LP result and nothing else (review AG2: another model's result would
+put the model change into every bar); without one, the bars wait for it. Nothing here
+solves anything and nothing here changes the model: every mover is a scenario edit.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -61,6 +71,9 @@ REVERSION_YEAR = 2032
 NO_REVERSION_YEAR = 2100
 DEATH_AGE = 80
 
+# The run itself in its "Sensitivity" collection (the reference, review AG5): its `mover` value.
+BASE_LABEL = "none (this run)"
+
 
 @dataclass(frozen=True)
 class Mover:
@@ -84,6 +97,13 @@ def _shift_rates(scenario: dict, shifts: dict) -> None:
     generated rows carry (builder AB1). A hand table keeps its case's transforms: shifting
     commutes with reversing and rolling."""
     generated = scenario.get("rates_table") is None
+    selection = _section(scenario, "rates_selection")
+    # The shifts are percentage points. A hand table is stored as its file holds it and
+    # `in_percent` says what the cells mean (review AA1): in decimals one point is 0.01, not
+    # 1.0 (review AG1: -1.0 on a decimal table was -94% returns). A generated path is in
+    # percent (`builder._generated_rates`).
+    in_percent = generated or bool(selection.get("in_percent", True))
+    scale, digits = (1.0, 4) if in_percent else (0.01, 6)
     table = builder.plan_rates_table(scenario)
     columns = list(table["columns"])
     rows = []
@@ -91,30 +111,39 @@ def _shift_rates(scenario: dict, shifts: dict) -> None:
         moved = list(row)
         for i, column in enumerate(columns):
             if i and column in shifts:
-                moved[i] = round(float(moved[i]) + float(shifts[column]), 4)
+                moved[i] = round(float(moved[i]) + scale * float(shifts[column]), digits)
         rows.append(moved)
     scenario["rates_table"] = {"columns": columns, "rows": rows}
     scenario["events"] = [e for e in scenario.get("events") or []
                           if not (isinstance(e, dict) and e.get("kind") == "downturn")]
-    selection = _section(scenario, "rates_selection")
     selection["method"] = "table"
     selection["rates_file"] = builder.RATES_CSV
     if generated:
+        selection.pop("in_percent", None)  # the generated rows are in percent
         if selection.get("reverse_sequence"):
             selection["reverse_sequence"] = False
         if int(selection.get("roll_sequence") or 0) != 0:
             selection["roll_sequence"] = 0
 
 
-def _returns_minus_1(scenario: dict) -> None:
+def _return_columns() -> list:
     from owlplanner.rate_models.table import RATE_TABLE_COLUMNS
 
-    returns = [c for c in RATE_TABLE_COLUMNS if c not in ("year", "Inflation")]
-    _shift_rates(scenario, {c: RETURNS_STEP for c in returns})
+    return [c for c in RATE_TABLE_COLUMNS if c not in ("year", "Inflation")]
+
+
+def _returns_minus_1(scenario: dict) -> None:
+    _shift_rates(scenario, {c: RETURNS_STEP for c in _return_columns()})
 
 
 def _inflation_plus_1(scenario: dict) -> None:
-    _shift_rates(scenario, {"Inflation": INFLATION_STEP})
+    """Inflation one point higher at the same real returns (review AG3): the return columns
+    move with it. Held at the same *nominal* returns, the real returns of stocks and bonds
+    fell by the point the returns mover already takes away, and the two bars measured nearly
+    the same thing (-7,814 and -7,064 on the synthetic household)."""
+    shifts = {c: INFLATION_STEP for c in _return_columns()}
+    shifts["Inflation"] = INFLATION_STEP
+    _shift_rates(scenario, shifts)
 
 
 def _medical_plus_2(scenario: dict) -> None:
@@ -148,6 +177,24 @@ def _slcsp(factor: float) -> Callable[[dict], None]:
     return edit
 
 
+def _table_moves(scenario: dict, table_year: int) -> list:
+    """The marketplace years whose applicable-percentage table pinning `table_year` changes:
+    from the case's ACA start (0: the plan start) to the plan's last year (review AG4).
+    `tax_federal._aca_table` reads the last published table for every later year, so pinning
+    that table moves no year at or after it."""
+    from owlplanner import tax_federal as tx
+
+    start, end = builder.plan_window(scenario)
+    aca = (scenario.get("case") or {}).get("aca_settings") or {}
+    current = int(aca.get("aca_table_year", 0) or 0) or None
+    first = max(start, int(aca.get("aca_start_year", 0) or 0) or start)
+    last = end if end is not None else first
+    pinned = tx._aca_table(table_year)
+    # Before 2026 the model uses the 2025 rules unless a table is pinned (`acaCosts`).
+    return [y for y in range(first, last + 1)
+            if (y < 2026 and current is None) or tx._aca_table(y, current) is not pinned]
+
+
 def _marketplace_rules(scenario: dict) -> None:
     aca = _section(scenario, "aca_settings")
     if float(aca.get("slcsp_annual", 0.0) or 0.0) <= 0:
@@ -156,6 +203,12 @@ def _marketplace_rules(scenario: dict) -> None:
             "the marketplace is not in the plan")
     if int(aca.get("aca_table_year", 0) or 0) == MARKETPLACE_TABLE_YEAR:
         raise ScenarioError(f"this case already pins the {MARKETPLACE_TABLE_YEAR} table")
+    if not _table_moves(scenario, MARKETPLACE_TABLE_YEAR):
+        first = max(builder.plan_window(scenario)[0], int(aca.get("aca_start_year", 0) or 0))
+        raise ScenarioError(
+            f"the case's marketplace years start in {first}, and Owl already reads the "
+            f"{MARKETPLACE_TABLE_YEAR} table from {MARKETPLACE_TABLE_YEAR} on: no plan year "
+            "would change")
     aca["aca_table_year"] = MARKETPLACE_TABLE_YEAR
 
 
@@ -166,6 +219,14 @@ def _obbba(year: int) -> Callable[[dict], None]:
         current = REVERSION_YEAR if value is None else int(value)
         if current == year:
             raise ScenarioError(f"this case already assumes it (obbba_expiration_year = {current})")
+        # A plan year is under OBBBA when it is before the expiration year (`tax_federal.
+        # taxParams`): the move reaches the plan only if some year changes side (review AG4).
+        start, end = builder.plan_window(scenario)
+        end = end if end is not None else start
+        if not any((y < current) != (y < year) for y in range(start, end + 1)):
+            raise ScenarioError(
+                f"this case already assumes it: the plan ({start}-{end}) is the same under "
+                f"obbba_expiration_year = {current} and {year}")
         selection["obbba_expiration_year"] = year
 
     return edit
@@ -174,6 +235,8 @@ def _obbba(year: int) -> Callable[[dict], None]:
 def _death(person: str, scenario: dict) -> None:
     builder.check_death_age(person, DEATH_AGE, scenario.get("case") or {}, scenario,
                             where=f"{person!r} dies at {DEATH_AGE}")
+    if _life_of(scenario, person) == DEATH_AGE:  # a child equal to its parent (review AG4)
+        raise ScenarioError(f"this case already has {person} die at {DEATH_AGE}")
     builder.check_death_window(scenario, person, DEATH_AGE,
                                where=f"{person!r} dies at {DEATH_AGE}")
     event = next((e for e in (scenario.get("events") or [])
@@ -185,6 +248,18 @@ def _death(person: str, scenario: dict) -> None:
     event["age"] = DEATH_AGE
 
 
+def _life_of(scenario: dict, person: str):
+    """The person's life horizon (age) as the scenario sets it: a death event, else the case."""
+    for event in scenario.get("events") or []:
+        if isinstance(event, dict) and event.get("kind") == "death" and event.get("person") == person:
+            return int(event["age"])
+    info = (scenario.get("case") or {}).get("basic_info") or {}
+    names = list(info.get("names") or [])
+    life = list(info.get("life_expectancy") or [])
+    i = names.index(person) if person in names else None
+    return int(life[i]) if i is not None and i < len(life) else None
+
+
 def movers(scenario: dict) -> list:
     """One `Mover` per key input moved by its set step, this run's own people included."""
     out = [
@@ -192,7 +267,8 @@ def movers(scenario: dict) -> list:
               "every return of the run's own rate path, 1 point lower",
               _returns_minus_1),
         Mover("inflation+1", "inflation +1 point",
-              "the rate path's inflation column, 1 point higher (prices and the deflator)",
+              "the rate path's inflation, 1 point higher, with every return 1 point higher "
+              "too (the same real returns: inflation's own effect)",
               _inflation_plus_1),
         Mover("medical+2", "medical inflation +2 points",
               "medical_inflation_excess, 2 points higher",
@@ -244,26 +320,39 @@ def tornado_variants(scenario: dict) -> tuple:
             skipped.append(f"{mover.label}: {exc}")
             continue
         validate(child)
-        made.append(Variant(label=_slug(mover.label),
-                            values={"mover": mover.label}, scenario=child))
+        # The child's name takes the mover's key, which keeps its sign ("slcsp+10" and
+        # "slcsp-10" were both "benchmark-premium-10", review AG9).
+        made.append(Variant(label=mover.key, values={"mover": mover.label}, scenario=child))
     return made, skipped
+
+
+WAITING_FOR_BASE = "waiting for this run's own exact-LP solve"
 
 
 def bars(parent_result, rows) -> list:
     """The tornado's bars: each mover's score against the parent's, judged (R2), sorted by
-    the size of the effect (largest first; a bar with no solved result last).
+    the size of the effect (largest first; a bar with no result to judge last).
 
     `rows` is [(label, result or None)] over the movers' runs. Each bar carries the
     difference's tolerance in dollars (`compare.pair_tolerance`) beside the verdict, so the
-    chart can draw both ("bars sorted by effect, each with its tolerance").
+    chart can draw both ("bars sorted by effect, each with its tolerance"). Both sides must
+    be exact-LP results (review AG2): the children solve under the exact LP, and a parent
+    result under another model put the model change -- +4,381 to +4,534 on the synthetic
+    household, four times the noise band -- into every bar. Without the parent's own
+    exact-LP result every bar waits (`WAITING_FOR_BASE`).
     """
-    base = view.score(parent_result) if parent_result is not None else None
+    usable = parent_result is not None and parent_result.solved and view.is_exact_lp(parent_result)
+    base = view.score(parent_result) if usable else None
     out = []
     for label, result in rows:
-        got = view.score(result) if result is not None and result.solved else None
+        exact = result is not None and result.solved and view.is_exact_lp(result)
+        got = view.score(result) if exact else None
         if base is None or got is None:
+            note = (WAITING_FOR_BASE if base is None
+                    else "no exact-LP result yet" if result is None or not exact
+                    else "no score")
             out.append({"label": label, "delta": None, "tolerance": None, "verdict": "-",
-                        "note": "no solved result yet", "result": result})
+                        "note": note, "result": result})
             continue
         judgment = compare.difference("score", base, got, ta=parent_result, tb=result)
         tolerance, why = compare.pair_tolerance(parent_result, result, base)
@@ -276,7 +365,32 @@ def bars(parent_result, rows) -> list:
     return out
 
 
+def bar_flags(parent_result, rows) -> list:
+    """The caveats the bars carry (S13's `compare.flags`, deduplicated) and the claiming
+    ages they hold (review AG2: `decision_exact` fixes the ages, so a case that searches them
+    solves every bar at its own hand ages, which the page must say). Empty without a base."""
+    if parent_result is None or not parent_result.solved:
+        return []
+    out = []
+    entries = []
+    for label, result in rows:
+        if result is not None and result.solved:
+            out.extend(compare.flags(parent_result, result))
+            entries.append(grid.Entry(run_id=label, name=label, values={}, result=result))
+    ref = grid.Entry(run_id="(this run)", name="this run", values={}, result=parent_result)
+    ages = grid.claiming_ages_flag(ref, [ref, *entries])
+    if ages:
+        out.append(ages)
+    return list(dict.fromkeys(out))
+
+
+def base_result(run_path) -> Optional[view.Result]:
+    """The run's own exact-LP result, the only base the bars measure from (review AG2)."""
+    return grid.latest_result(run_path, prefer_exact=True)
+
+
 def result_of(run_path) -> Optional[view.Result]:
-    """A run's own result for the tornado: its newest exact-LP one when it has one (the
-    children solve under the exact LP, "for speed"), else its newest (R2)."""
-    return grid.latest_result(run_path, prefer_exact=True) or grid.latest_result(run_path)
+    """A mover run's result for the tornado: its newest exact-LP one (the children solve
+    under the exact LP, "for speed"); None when it has none (review AG2: no other model's
+    result enters a bar)."""
+    return grid.latest_result(run_path, prefer_exact=True)

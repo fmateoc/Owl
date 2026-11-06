@@ -194,6 +194,24 @@ def grid_view(entries, *, reference: "Entry | str", row_dims=("place", "financin
     )
 
 
+def member_results(run_paths) -> tuple:
+    """({path: Result or None}, exact): one model for every member of a collection.
+
+    The grid reads each member's newest result that is not the exact-LP companion (R2's
+    agreement check, not the headline). A member that has only exact-LP results -- the
+    sensitivity tornado's children, which solve under the exact LP alone -- used to show as
+    "no solved result yet" however many had solved (review AG5). When any member is in that
+    state, every member is read through its exact-LP result instead (None where it has
+    none), so the grid never judges two models against each other; `exact` says which.
+    """
+    paths = list(run_paths)
+    plain = {path: latest_result(path) for path in paths}
+    exact = {path: latest_result(path, prefer_exact=True) for path in paths}
+    if any(plain[path] is None and exact[path] is not None for path in paths):
+        return exact, True
+    return plain, False
+
+
 def _months(result: Result) -> Optional[tuple]:
     """The claiming ages a solve used, as (name, months) pairs; None when unknown."""
     ages = view.claiming_ages(result)

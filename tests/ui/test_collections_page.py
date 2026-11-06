@@ -392,3 +392,47 @@ class TestTheClaimingAgesWarnings:
         next(b for b in at.button if b.label == "Create the variants").click().run()
         assert not at.exception, [e.value for e in at.exception]
         assert lib.collections()[0].grid == {"rows": [], "columns": ["claim"]}
+
+
+class TestASensitivityCollection:
+    """Review AG5: the tornado's children have exact-LP results only; the page reads the
+    whole collection through them instead of calling every member unsolved."""
+
+    EXACT = {"breakpointMethod": "loop", "withMedicare": "none", "withSSTaxability": 0.85,
+             "withLTCG": "optimize", "withSSAges": "fixed"}
+
+    def _exact(self, run, name, score):
+        folder = _write_result(run, name, score=score)
+        record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+        record["preset"] = "decision_exact"
+        record["method"] = {"objective": "maxSpending", "breakpoint_method": "loop",
+                            "options": dict(self.EXACT)}
+        (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+
+    def test_ag5_the_members_show_their_exact_lp_numbers(self, library):
+        from owlplanner.library import tornado
+
+        base = next(r for r in library.runs() if r.name == "bill")
+        self._exact(base, "2026-11-03T09-00-00_decision_exact", 80_000.0)
+        made, _ = tornado.tornado_variants(library.scenario(base.id))
+        coll = library.create_collection(f"Sensitivity: {base.name}")
+        library.add_member(coll.id, base, {"mover": tornado.BASE_LABEL})
+        library.set_reference(coll.id, base)
+        for i, variant in enumerate(made[:2]):
+            child = library.save_run(name=f"bill {variant.label}", scenario=variant.scenario,
+                                     parent=base.id).run
+            library.add_member(coll.id, child, variant.values)
+            self._exact(child, f"2026-11-03T1{i}-00-00_decision_exact", 78_000.0 - 1_000 * i)
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(UI_DIR / "Collections.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_collection"] = coll.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "No member of this collection has a solved result yet" not in text
+        assert "no solved result yet" not in text
+        assert "exact-LP" in text
+        assert "-2,000" in text  # the first mover's cell: 78,000 against the reference's 80,000

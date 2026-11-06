@@ -705,6 +705,27 @@ class Library:
             self._write_json(self.root / LIBRARY_JSON, doc)
         return self.collection(cid)
 
+    def join_collection(self, cid: str, run: "RunInfo | str") -> Collection:
+        """Put a run in a collection as it is: a run already in it keeps its values.
+
+        The save dialogs' "Collection" field (design section 7) and the Collections page's
+        Add button use this: a save identical to a member joins that member's run, and
+        `add_member`'s replace semantics would wipe its variant values and take it out of
+        the grid (review AG6). Read and write under one lock.
+        """
+        info = run if isinstance(run, RunInfo) else self.get(run)
+        with self._lock():
+            doc = self._library_doc()
+            entry = (doc.get("collections") or {}).get(cid)
+            if not isinstance(entry, dict):
+                raise LibraryError(f"no collection with id {cid!r}")
+            members = [m for m in entry.get("members") or [] if isinstance(m, dict)]
+            if not any(m.get("run") == info.id for m in members):
+                members.append({"run": info.id, "values": {}})
+                entry["members"] = members
+                self._write_json(self.root / LIBRARY_JSON, doc)
+        return self.collection(cid)
+
     def remove_member(self, cid: str, run: "RunInfo | str") -> Collection:
         info = run if isinstance(run, RunInfo) else self.get(run)
         with self._lock():

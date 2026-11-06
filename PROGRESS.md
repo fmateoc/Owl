@@ -6787,3 +6787,30 @@ person 0's, unnamed), AG11 (a cooperative cancel can wait a whole "Ages, thoroug
 Checks: `tests/library tests/ui` + the bracket/ACA/regret tests **956 passed** (1:21, Linux);
 full suite **4358 passed, 1 skipped** (9:45, Linux); lint only upstream's listed items. The review changed nothing in
 `src/`, `ui/` or `tests/`. Folds are the user's call.
+
+
+## Run-library step 6: the whole-step review's AG1-AG7, AG9-AG11 folded (2026-11-06)
+
+The user's call: fold AG1-AG7 and AG9-AG11; AG8 (death and sequence values judged as
+choices) stands as written. Dispositions in `fork-notes/run-library-step6-review-3.md`;
+`fork-notes/CHANGELOG-fork.md` has the entry. In short:
+- the tornado's rate shift is in the table's own units (AG1);
+- the bars read exact-LP results on both sides, the button queues the run's own exact-LP
+  solve, and the page names the ages the bars hold (AG2);
+- "inflation +1 point" holds the real returns (AG3, the review's first option): -920 on the
+  synthetic baseline, where it was -7,814, beside returns -1 point's -7,064;
+- movers no plan year can see are skipped (AG4: on the synthetic household, the 2027
+  marketplace rules and "no 2032 reversion");
+- the Collections page reads a collection on one model, and the run is its sensitivity
+  collection's reference (AG5);
+- `Library.join_collection` keeps a member's values (AG6);
+- the regret caption reads `mean_regret` and names the person (AG7, AG10);
+- the children are named after the mover keys (AG9);
+- the "Ages, thorough" sweep checks for a cancel before every scored plan (AG11).
+Open, the user's: what the marketplace-rules bar should measure instead (the 2026 table held,
+or the 2027 benchmark jump).
+
+Checks: 21 new tests plus seven re-pinned and one dropped. The 21 and the re-pinned inflation
+test were checked to fail with `src/` and `ui/` stashed. `tests/library tests/ui` **855
+passed**; probes p1, p9 and p11 re-run on the fixed code (the numbers above); lint only
+upstream's listed items; full suite pending at this commit (follow-up commit).

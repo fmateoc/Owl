@@ -27,14 +27,14 @@ BUY = {"id": "buy", "kind": "purchase", "name": "yonkers condo", "price": 700000
        "financing": {"kind": "cash", "closing": 0.03}}
 
 
-def _scenario(events=None, *, slcsp=12.0):
+def _scenario(events=None, *, slcsp=12.0, aca_start=2027):
     return {
         "schema_version": 3, "plan_year": 2026,
         "case": {
             "basic_info": {"names": ["Ari", "Noa"], "date_of_birth": ["1964-04-17", "1964-12-09"],
                            "life_expectancy": [89, 89], "start_date": "2026-01-01"},
             "fixed_income": {"social_security_ages": [67.0, 67.0]},
-            "aca_settings": {"aca_start_year": 2027, "slcsp_annual": slcsp},
+            "aca_settings": {"aca_start_year": aca_start, "slcsp_annual": slcsp},
             "optimization_parameters": {"medical_inflation_excess": 1.0},
             "rates_selection": {"method": "trailing_30", "obbba_expiration_year": 2034},
             "solver_options": {"withSSAges": "fixed"},
@@ -68,7 +68,7 @@ class TestTheMovers:
             "Ari dies at 80", "Noa dies at 80"]
 
     def test_returns_minus_one_shifts_the_run_s_own_path(self, stub_plan):
-        variant, skipped = _made(_scenario(), "returns -1 point")
+        variant, skipped = _made(_scenario(aca_start=2026), "returns -1 point")
         assert skipped == []
         assert variant.values == {"mover": "returns -1 point"}
         table = variant.scenario["rates_table"]
@@ -77,9 +77,11 @@ class TestTheMovers:
         assert variant.scenario["case"]["rates_selection"] == {
             "method": "table", "rates_file": "rates.csv", "obbba_expiration_year": 2034}
 
-    def test_inflation_plus_one_moves_the_inflation_column_only(self, stub_plan):
+    def test_inflation_plus_one_holds_the_real_returns(self, stub_plan):
+        """Review AG3: the returns move with inflation (the same real returns), so the bar
+        is inflation's own effect and not a second copy of "returns -1 point"."""
         variant, _ = _made(_scenario(), "inflation +1 point")
-        assert variant.scenario["rates_table"]["rows"][0] == [2026, 6.0, 4.5, 3.0, 3.0]
+        assert variant.scenario["rates_table"]["rows"][0] == [2026, 7.0, 5.5, 4.0, 3.0]
 
     def test_the_rate_movers_bake_a_downturn_overlay_in(self, stub_plan):
         events = [WORK_ARI, WORK_NOA, BUY,
@@ -110,7 +112,7 @@ class TestTheMovers:
         assert down.scenario["case"]["aca_settings"]["slcsp_annual"] == 10.8
 
     def test_the_marketplace_mover_pins_the_2027_table(self, stub_plan):
-        variant, _ = _made(_scenario(), "the 2027 marketplace rules")
+        variant, _ = _made(_scenario(aca_start=2026), "the 2027 marketplace rules")
         assert variant.scenario["case"]["aca_settings"]["aca_table_year"] == 2027
 
     def test_the_reversion_movers_move_the_expiration_year(self, stub_plan):
@@ -158,7 +160,7 @@ class TestTheMovers:
         assert sum("marketplace is not in the plan" in s for s in skipped) == 3
 
     def test_the_children_are_scenarios_like_any_other(self, stub_plan):
-        scenario = _scenario()
+        scenario = _scenario(aca_start=2026)
         made, skipped = tornado.tornado_variants(scenario)
         assert skipped == []
         for variant in made:
@@ -176,9 +178,15 @@ class TestTheMovers:
 
 
 class TestBars:
-    def _result(self, score_value, gap=None, method="local search"):
-        record = {"status": "solved", "preset": "decision_exact", "gap": gap,
-                  "method": {"breakpoint_method": method, "options": {}, "objective": "maxSpending"},
+    EXACT = {"breakpointMethod": "loop", "withMedicare": "none", "withSSTaxability": 0.85,
+             "withLTCG": "optimize", "withSSAges": "fixed"}
+
+    def _result(self, score_value, gap=None, method="loop", exact=True):
+        options = dict(self.EXACT) if exact else {"breakpointMethod": "local-search"}
+        record = {"status": "solved", "preset": "decision_exact" if exact else "decision",
+                  "gap": gap,
+                  "method": {"breakpoint_method": method, "options": options,
+                             "objective": "maxSpending"},
                   "convergence": {"objective_error_bar_today_dollars": 0.0},
                   "solve_date": {"finished": "2026-01-01T00:00:00"}}
         summary = {"discretionary_year1": score_value,
@@ -204,14 +212,94 @@ class TestBars:
         resolved = next(b for b in bars if b["label"] == "resolved")
         assert resolved["verdict"] == "resolved" and resolved["tolerance"] == pytest.approx(1_000.0)
 
-    def test_a_proved_result_prices_the_tolerance_by_its_gap(self):
-        base = self._result(100_000.0, gap=1e-4, method="branch-and-bound")
-        bars = tornado.bars(base, [("moved", self._result(90_000.0, gap=1e-4,
-                                                          method="branch-and-bound"))])
-        assert bars[0]["tolerance"] == pytest.approx(100_000.0 * 1e-4)  # gap x objective
-        assert bars[0]["verdict"] == "resolved"
-
     def test_a_bar_without_a_result_is_listed_last(self):
         bars = tornado.bars(self._result(100_000.0), [("gone", None)])
         assert bars == [{"label": "gone", "delta": None, "tolerance": None, "verdict": "-",
-                         "note": "no solved result yet", "result": None}]
+                         "note": "no exact-LP result yet", "result": None}]
+
+
+class TestReview3Fixes:
+    """`fork-notes/run-library-step6-review-3.md` AG1-AG4 and AG9 (AG8 not folded). Each test
+    was checked to fail before the fix it names."""
+
+    DECIMAL = {"method": "table", "rates_file": "rates.csv", "in_percent": False}
+    COLUMNS = ["year", "S&P 500", "Bonds Baa", "T-Notes", "Inflation"]
+
+    def _decimal(self):
+        scenario = _scenario()
+        scenario["case"]["rates_selection"] = dict(self.DECIMAL)
+        scenario["rates_table"] = {"columns": list(self.COLUMNS),
+                                   "rows": [[2026, 0.06, 0.045, 0.03, 0.02]]}
+        return scenario
+
+    def test_ag1_a_decimal_table_moves_by_one_point_not_one_hundred(self, stub_plan):
+        down, _ = _made(self._decimal(), "returns -1 point")
+        assert down.scenario["rates_table"]["rows"] == [[2026, 0.05, 0.035, 0.02, 0.02]]
+        assert down.scenario["case"]["rates_selection"]["in_percent"] is False
+        up, _ = _made(self._decimal(), "inflation +1 point")
+        assert up.scenario["rates_table"]["rows"] == [[2026, 0.07, 0.055, 0.04, 0.03]]
+
+    def test_ag1_a_generated_path_is_written_in_percent(self, stub_plan):
+        scenario = _scenario()
+        scenario["case"]["rates_selection"]["in_percent"] = False  # a stray key, no table
+        variant, _ = _made(scenario, "returns -1 point")
+        assert variant.scenario["rates_table"]["rows"][0][:4] == [2026, 5.0, 3.5, 2.0]
+        assert "in_percent" not in variant.scenario["case"]["rates_selection"]
+
+    def test_ag4_the_marketplace_rules_are_skipped_when_coverage_starts_in_2027(self, stub_plan):
+        made, skipped = tornado.tornado_variants(_scenario(aca_start=2027))
+        assert not any(v.values["mover"] == "the 2027 marketplace rules" for v in made)
+        assert any(s.startswith("the 2027 marketplace rules") and "no plan year would change" in s
+                   for s in skipped)
+
+    def test_ag4_a_reversion_year_past_the_plan_s_end_is_skipped(self, stub_plan):
+        scenario = _scenario()
+        scenario["case"]["rates_selection"]["obbba_expiration_year"] = 2066  # the template's
+        made, skipped = tornado.tornado_variants(scenario)
+        movers = [v.values["mover"] for v in made]
+        assert "no 2032 reversion" not in movers  # 2066 -> 2100: the plan ends in 2053
+        assert "the 2032 reversion" in movers
+        assert any(s.startswith("no 2032 reversion") and "2026-2053" in s for s in skipped)
+
+    def test_ag4_a_death_the_case_already_has_is_skipped(self, stub_plan):
+        scenario = _scenario()
+        scenario["case"]["basic_info"]["life_expectancy"] = [80, 89]
+        made, skipped = tornado.tornado_variants(scenario)
+        assert not any(v.values["mover"] == "Ari dies at 80" for v in made)
+        assert any("already has Ari die at 80" in s for s in skipped)
+
+    def test_ag9_the_children_s_names_keep_the_mover_s_sign(self, stub_plan):
+        made, _ = tornado.tornado_variants(_scenario(aca_start=2026))
+        labels = [v.label for v in made]
+        assert len(labels) == len(set(labels))
+        assert {"slcsp+10", "slcsp-10", "inflation+1", "returns-1"} <= set(labels)
+
+
+class TestReview3Bars:
+    """Review AG2: the bars measure exact-LP results against the run's own exact-LP result."""
+
+    _result = TestBars._result
+    EXACT = TestBars.EXACT
+
+    def test_ag2_a_base_from_another_model_makes_every_bar_wait(self):
+        base = self._result(111_500.0, exact=False)  # a quick/custom/ages result
+        bars = tornado.bars(base, [("returns -1 point", self._result(108_970.0))])
+        assert bars[0]["delta"] is None and bars[0]["note"] == tornado.WAITING_FOR_BASE
+
+    def test_ag2_a_child_from_another_model_is_not_a_bar(self):
+        bars = tornado.bars(self._result(116_034.0),
+                            [("re-run by hand", self._result(108_000.0, exact=False)),
+                             ("returns -1 point", self._result(108_970.0))])
+        by = {b["label"]: b for b in bars}
+        assert by["returns -1 point"]["delta"] == pytest.approx(-7_064.0)
+        assert by["re-run by hand"]["delta"] is None
+        assert by["re-run by hand"]["note"] == "no exact-LP result yet"
+
+    def test_ag2_the_flags_name_children_at_other_claiming_ages(self):
+        base = self._result(116_034.0)
+        base.plan.update({"individuals": ["Ari", "Noa"], "claiming_ages": [67.0, 67.0]})
+        child = self._result(108_970.0)
+        child.plan.update({"individuals": ["Ari", "Noa"], "claiming_ages": [70.0, 67.0]})
+        flags = tornado.bar_flags(base, [("returns -1 point", child)])
+        assert any("claiming ages other than the reference's" in f for f in flags)
+        assert tornado.bar_flags(None, [("x", child)]) == []

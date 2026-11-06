@@ -6813,4 +6813,4 @@ or the 2027 benchmark jump).
 Checks: 21 new tests plus seven re-pinned and one dropped. The 21 and the re-pinned inflation
 test were checked to fail with `src/` and `ui/` stashed. `tests/library tests/ui` **855
 passed**; probes p1, p9 and p11 re-run on the fixed code (the numbers above); lint only
-upstream's listed items; full suite pending at this commit (follow-up commit).
+upstream's listed items; full suite **4378 passed, 1 skipped** (9:09, Linux; 4358 before the fold, net +20).

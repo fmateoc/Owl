@@ -354,4 +354,4 @@ before the fold (the `src/` and `ui/` changes stashed): the 21 new tests and the
 inflation test all failed (the two `test_grid.py` ones at import: `member_results` did not
 exist); `TestJoinCollection` (3) and one bar-flags test failed on the missing name alone,
 their behaviour pinned by the Scenario page test (AG6) and the claiming-ages flag's own
-tests. `tests/library tests/ui` **855 passed** (526 + 329).
+tests. `tests/library tests/ui` **855 passed** (526 + 329); full suite **4378 passed, 1 skipped** (9:09, Linux; 4358 before the fold).

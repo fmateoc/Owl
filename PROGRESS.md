@@ -6893,3 +6893,11 @@ switches only for members whose every solve is exact-LP (`_exact_only`). **AH6**
 `results.ARTIFACTS` for `requeue`; the age map reads only solved folders. Tests: 11 new, one
 re-pinned, checked to fail before the fold. Full suite **4391 passed, 1 skipped** (11:48, Linux);
 lint only upstream's listed items.
+
+
+## `main` fast-forwarded to `claude/great-galileo-j51nry` (2026-11-06)
+
+The user's call. `main` moves from `37dfad4` (step 6 with the whole-step review's folds, the
+2027 benchmark-jump mover and the `aca_table_year` removal) to this branch: the third review
+of step 6's second increment (AH1-AH6) and its folds. Full suite on the branch: 4391 passed,
+1 skipped.

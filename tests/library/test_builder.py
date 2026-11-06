@@ -553,6 +553,14 @@ class TestDeathEvents:
         with pytest.raises(ScenarioError, match="not more than one year"):
             b.build(_scenario(events))
 
+    def test_a_one_year_window_is_refused_with_no_events(self):
+        # Review AF1: the hand document's early return skipped the window check, leaving the
+        # model's own "Plan needs more than 1 years." at solve time.
+        case = _case()
+        case["basic_info"]["life_expectancy"] = [62, 62]
+        with pytest.raises(ScenarioError, match="not more than one year"):
+            b.build(_scenario([], case=case))
+
     def test_the_window_shrinks_with_the_last_death(self):
         # Both people die young: a care line past the window is refused (U7).
         events = [dict(self.DEATH), {"id": "d2", "kind": "death", "person": "Noa", "age": 63},

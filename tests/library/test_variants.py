@@ -247,7 +247,7 @@ class TestAD1NonFiniteValues:
 
     def test_the_builder_refuses_a_cost_or_term_left_empty(self):
         # The library's own door (any route, not only make variants): a stored None.
-        doc = _scenario()
+        doc = copy.deepcopy(_scenario())  # its events are shared fixtures: never edit in place
         buy = next(e for e in doc["events"] if e["kind"] == "purchase")
         buy["costs"] = {"property tax": None, "hoa": 9600, "insurance": 900}
         with pytest.raises(ScenarioError, match="costs.property tax"):
@@ -340,6 +340,16 @@ class TestSequence:
         assert [e for e in out[0].scenario["events"] if e["kind"] == "downturn"] == [
             {"id": "downturn", "kind": "downturn", "sequence": "crash-30",
              "start": {"anchor": "work_end", "person": "Ari", "after": True}}]
+
+    def test_an_event_anchor_is_read_against_the_scenario_s_ids(self):
+        # Review AF3 (X5's rule): `event:<id>` is parsed against the scenario's ids -- an id
+        # that itself ends in `-<digits>` wins over reading the digits as an offset.
+        doc = _scenario([WORK_ARI, WORK_NOA, dict(BUY_CASH, id="buy-2027")])
+        out = v.plan_variants(doc, {"sequence": [
+            {"sequence": "crash-30", "start": "event:buy-2027"}]})
+        assert [e for e in out[0].scenario["events"] if e["kind"] == "downturn"] == [
+            {"id": "downturn", "kind": "downturn", "sequence": "crash-30",
+             "start": {"anchor": "event", "id": "buy-2027", "offset": 0}}]
 
     def test_the_label_names_the_sequence_and_the_placement(self):
         out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),

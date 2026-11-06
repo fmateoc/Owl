@@ -47,6 +47,28 @@ def _rel(a, b):
     return abs(a - b) / max(abs(b), 1.0)
 
 
+def test_summarize_reads_a_saved_result():
+    # Review AF5: the worker writes the sweep result to regret.json and the summary to
+    # record.json; a saved result is lists after the JSON round trip, and summarizing it
+    # back must work ("a sweep saved before lifting summarizes the same as a new one").
+    result = {
+        "grid": [0.0, 50_000.0, 100_000.0],
+        "start_years": [1990, 1991, 1992],
+        "v_star": [100_000.0, 80_000.0, float("nan")],
+        "x_star": [50_000.0, 0.0, float("nan")],
+        "v_at": [[99_000.0, 100_000.0, 98_000.0],
+                 [80_000.0, 79_000.0, float("nan")],
+                 [float("nan"), float("nan"), float("nan")]],
+        "v_noconv": [98_500.0, 80_000.0, float("nan")],
+        "person": 0,
+    }
+    s = summarize_conversion_regret(result, asymmetry_deltas=(50_000,))
+    assert s["n_scenarios"] == 2 and s["n_failed_baselines"] == 1
+    assert s["regret_by_grid"][0]["mean"] == 500.0
+    assert s["regret_by_grid"][2]["n_infeasible"] == 1
+    assert s["valley"]["x"] in (0.0, 50_000.0)
+
+
 def test_summarize_conversion_regret_pure():
     grid = [0.0, 50_000.0, 100_000.0]
     result = {

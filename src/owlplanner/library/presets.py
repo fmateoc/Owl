@@ -45,9 +45,9 @@ step 6.
   own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
   gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
   skipped) -- writes its `scores.json` (the claiming-age map reads it, I7) and solves at the
-  ages it decided. The same implementation `fork-notes/synthetic/run_suite.py` runs; the
-  preset imports it from `fork-notes/` (moving it into `src/owlplanner` stays open). A slow
-  job (29-51 min per variant on the chris+pat dry run), one per request.
+  ages it decided. The same implementation `fork-notes/synthetic/run_suite.py` runs
+  (`owlplanner.work_sweep`, moved into `src/owlplanner` 2026-11-05). A slow job (29-51 min
+  per variant on the chris+pat dry run), one per request.
 - ``regret`` (I8, one per request from the run page) solves as ``custom`` with the ages
   fixed, then runs the conversion regret sweep (`stresstests.run_conversion_regret_sweep`,
   its "Quick look" size) and writes `regret.json`: what a different first-year Roth

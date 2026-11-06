@@ -29,7 +29,7 @@ import math
 import pandas as pd
 
 from owlplanner.library import ScenarioError
-from owlplanner.library.variants import DIMENSIONS
+from owlplanner.library.variants import DIMENSIONS, VALUE_KEYS
 
 PLACE_COLUMNS = ["label", "name", "price", "state", "locality", "school_district", "move",
                  "property tax", "hoa", "insurance"]
@@ -236,7 +236,7 @@ def member_values(text):
 
     Pairs are separated by `;` or newlines ("year: 2027; place: yonkers"). The year's label
     is stored as a calendar year (int, what "make variants" stores, so one grid cell holds
-    both routes); every other label stays text. A dimension that is not one of `DIMENSIONS`
+    both routes); every other label stays text. A dimension that is not one of `VALUE_KEYS`
     is refused (AD6's rule: a typo is refused). Raises ScenarioError on a part that is not a
     pair or on a year that is not one calendar year.
     """
@@ -249,8 +249,8 @@ def member_values(text):
         dim, label = dim.strip(), label.strip()
         if not dim or not label:
             raise ScenarioError(f"not a 'dimension: label' pair: {part!r}")
-        if dim not in DIMENSIONS:
-            raise ScenarioError(f"not one of the dimensions {list(DIMENSIONS)}: {part!r}")
+        if dim not in VALUE_KEYS:
+            raise ScenarioError(f"not one of the dimensions {list(VALUE_KEYS)}: {part!r}")
         if dim == "year":
             years = _years(label, "the year's label")
             if len(years) != 1:

@@ -79,6 +79,14 @@ class TestOneYear:
         assert first["irmaa_edges"][0]["amount"] == pytest.approx(
             round(float(expected[0]) / float(p.gamma_n[0]), 2))
 
+    def test_a_premium_year_past_the_plan_has_no_irmaa_edges(self):
+        # Review AF4: m + 2 past the plan is not clamped to the last year -- there is no
+        # premium year to name (`thresholds._irmaa_entries` skips those years).
+        p = FakePlan()
+        rows = bracket_view(p)["years"]
+        assert rows[-3]["irmaa_edges"][0]["premium_year"] == THISYEAR + N_YEARS - 1
+        assert rows[-2]["irmaa_edges"] == [] and rows[-1]["irmaa_edges"] == []
+
     def test_the_aca_lines_appear_only_with_the_marketplace(self):
         assert all(not row["aca_lines"] for row in bracket_view(FakePlan())["years"])
         # A couple still pre-Medicare: the marketplace is in the plan for them.

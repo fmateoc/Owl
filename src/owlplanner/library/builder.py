@@ -765,7 +765,8 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
     """(case, hfp tables, provenance) for a scenario: its hand rows plus what its events generate.
 
     Deterministic and without side effects (design section 6.2). With no events this is the
-    hand document unchanged. `hfp` maps a sheet name to {"columns": [...], "rows": [[...]]};
+    hand document unchanged (the plan window is still checked: a plan needs more than one
+    year). `hfp` maps a sheet name to {"columns": [...], "rows": [[...]]};
     the provenance marks every generated row, cell and case field with the id of the event
     that produced it (section 6.3).
 
@@ -810,7 +811,11 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
                 generated.append("rates_selection.roll_sequence")
             for field in generated:
                 provenance["case_fields"][field] = downs[0]["id"]
+    # The plan window must be more than one year even with no events (review AF1: the
+    # no-events return used to skip the check, leaving the model's own "Plan needs more
+    # than 1 years." at solve time).
     if not events:
+        check_death_window(scenario)
         return hand_case, hand_hfp, provenance
 
     info = hand_case.get("basic_info") or {}

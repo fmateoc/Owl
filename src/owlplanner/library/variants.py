@@ -53,6 +53,11 @@ DIMENSIONS = ("place", "year", "financing", "work", "claim", "death", "sequence"
 # The dimensions that edit the one purchase event (D6: one purchase per scenario).
 _PURCHASE_DIMENSIONS = ("place", "year", "financing")
 
+# What a collection member's `values` may key on: the make-variants dimensions plus the
+# sensitivity tornado's mover label (`tornado` stores {"mover": <label>} and the grid keys
+# on it like a dimension). `ui/variant_tables.member_values` accepts exactly these (AF2).
+VALUE_KEYS = tuple(DIMENSIONS) + ("mover",)
+
 
 @dataclass(frozen=True)
 class Variant:
@@ -72,11 +77,18 @@ def _events(scenario: dict) -> list:
     return [e for e in events if isinstance(e, dict)]
 
 
-def _start_ref(value: Any, where: str) -> dict:
+def _event_ids(scenario: dict) -> list:
+    """The scenario's event ids (`builder.parse_year_ref` settles `event:<id>-<n>` against
+    an id that itself ends in `-<digits>`, review X5/AF3)."""
+    return [e.get("id") for e in _events(scenario)]
+
+
+def _start_ref(value: Any, where: str, ids=None) -> dict:
     """A downturn's placement: a year field ({"year"/anchor}), a bare year, or its editable
-    text form ("purchase", "after:Ari", "age:Ari:86"; `builder.parse_year_ref`)."""
+    text form ("purchase", "after:Ari", "age:Ari:86"; `builder.parse_year_ref`). `ids` (the
+    scenario's event ids) settles `event:<id>-<n>` (review AF3)."""
     if isinstance(value, str):
-        return builder.parse_year_ref(value, where)
+        return builder.parse_year_ref(value, where, ids=ids)
     return builder._year_ref(value, where)
 
 
@@ -113,7 +125,7 @@ def _age_text(age: float) -> str:
     return age_text(float(age))
 
 
-def _value_label(dimension: str, value: Any) -> str:
+def _value_label(dimension: str, value: Any, ids=None) -> str:
     """The grid label of one value ("yonkers", 2027, "cash", "Ari 67y0m / Noa 70y0m")."""
     if dimension == "year":
         return int(value)
@@ -130,7 +142,7 @@ def _value_label(dimension: str, value: Any) -> str:
     if dimension == "sequence":
         if value.get("sequence") is None:
             return "no downturn"
-        where = builder.year_ref_text(_start_ref(value.get("start"), "sequence.start"))
+        where = builder.year_ref_text(_start_ref(value.get("start"), "sequence.start", ids))
         return f"{value.get('sequence')} at {where}"
     raise ScenarioError(f"{dimension}: value {value!r} needs a 'label'")
 
@@ -238,7 +250,7 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
             raise ScenarioError(f"sequence: {sequence!r} is not one of {sorted(known)}")
         if "start" not in value:
             raise ScenarioError("sequence: each value needs a 'start' (a year or an anchor)")
-        _start_ref(value["start"], "sequence: start")
+        _start_ref(value["start"], "sequence: start", _event_ids(scenario))
         # A downturn generates the run's rates table (step 5b); one that already reads a table
         # cannot take an overlay (`builder._check_table_events` says the same at build time).
         if scenario.get("rates_table") is not None:
@@ -319,7 +331,7 @@ def _apply_value(dimension: str, value: Any, scenario: dict, place_label) -> Non
             event = {"id": "downturn", "kind": "downturn"}
             scenario.setdefault("events", []).append(event)
         event["sequence"] = value["sequence"]
-        event["start"] = _start_ref(value["start"], "sequence: start")
+        event["start"] = _start_ref(value["start"], "sequence: start", _event_ids(scenario))
         return
 
 
@@ -352,10 +364,11 @@ def plan_variants(scenario: dict, dimensions: dict) -> list:
             _check_value(dimension, value, scenario)
 
     keys = list(dimensions)
+    ids = _event_ids(scenario)
     variants = []
     for combo in itertools.product(*(dimensions[key] for key in keys)):
         child = copy.deepcopy(scenario)
-        labels = {key: _value_label(key, value) for key, value in zip(keys, combo, strict=True)}
+        labels = {key: _value_label(key, value, ids) for key, value in zip(keys, combo, strict=True)}
         place_label = labels.get("place")
         for key, value in zip(keys, combo, strict=True):
             _apply_value(key, value, child, place_label)

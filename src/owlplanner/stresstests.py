@@ -704,6 +704,7 @@ def lift_regret_baselines(result):
     out["v_star_solved"] = result.get("v_star_solved", np.array(result["v_star"], dtype=float))
     out["x_star_solved"] = result.get("x_star_solved", np.array(result["x_star"], dtype=float))
     out["v_star"], out["x_star"], out["v_star_lift"] = v_star, x_star, lift
+    out["v_at"] = v_at  # ndarray: a saved and re-loaded result reads back the same (AF5)
     if vso is not None:
         out["v_star_osc"] = vso
     return out
@@ -1021,7 +1022,7 @@ def summarize_conversion_regret(
     grid = np.array(result["grid"])
     v_star = result["v_star"]
     ok = ~np.isnan(v_star)
-    R = v_star[ok, None] - result["v_at"][ok, :]
+    R = v_star[ok, None] - np.asarray(result["v_at"], dtype=float)[ok, :]
     x_star = result["x_star"][ok]
     n_scenarios = int(ok.sum())
 
@@ -1132,7 +1133,7 @@ def summarize_conversion_regret(
         "asymmetry": asymmetry,
     }
     if result["v_noconv"] is not None:
-        r_nc = v_star[ok] - result["v_noconv"][ok]
+        r_nc = v_star[ok] - np.asarray(result["v_noconv"], dtype=float)[ok]
         out["never_convert_regret"] = _stats(r_nc)
 
     # A case can forbid conversions outright - maxRothConversion of zero, no tax-deferred

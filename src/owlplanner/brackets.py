@@ -63,7 +63,8 @@ def bracket_view(p) -> dict:
     `Plan.G_n`), `conversion` (the Roth conversion layer within it), `magi`, and the year's
     lines. The IRMAA edges are the *premium* year's tier amounts -- the MAGI of year m sets
     the premiums of m + 2 (`tax_federal.mediCosts`, 20 CFR 418.1135(a)) -- and are read in
-    the tax year's dollars, as `thresholds._irmaa_entries` reads them. The ACA lines are
+    the tax year's dollars, as `thresholds._irmaa_entries` reads them; a tax year whose
+    premium year leaves the plan has none (review AF4). The ACA lines are
     the poverty line of the year's tax household (`tax_federal._aca_fpl`) times the
     Medicaid limit, 1.0 (where the credit starts) and 4.0 (the cliff).
     """
@@ -85,11 +86,14 @@ def bracket_view(p) -> dict:
         edges = _edges(ordinary, n)
         fills, room = _fill(income, edges)
 
-        n_prem = min(n + 2, N - 1)  # the premium year this tax year's MAGI sets
-        irmaa = tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n, n_prem, thisyear)
-        irmaa_edges = [{"label": f"IRMAA tier {k}", "amount": round(float(edge) / g, 2),
-                        "premium_year": int(p.year_n[n_prem])}
-                       for k, edge in enumerate(irmaa, start=1)]
+        irmaa_edges = []
+        n_prem = n + 2  # the premium year this tax year's MAGI sets (20 CFR 418.1135(a))
+        if n_prem < N:  # a premium year past the plan has no edges to name (as `thresholds`
+            # `_irmaa_entries` skips it; review AF4)
+            irmaa = tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n, n_prem, thisyear)
+            irmaa_edges = [{"label": f"IRMAA tier {k}", "amount": round(float(edge) / g, 2),
+                            "premium_year": int(p.year_n[n_prem])}
+                           for k, edge in enumerate(irmaa, start=1)]
 
         aca_lines = []
         if getattr(p, "slcsp_annual", 0.0) > 0 and n >= aca_start and parts_n[n]:

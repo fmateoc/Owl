@@ -262,6 +262,13 @@ class TestMemberValues:
         with pytest.raises(ScenarioError, match="not one of the dimensions"):
             vt.member_values("yaer: 2027; place: yonkers")
 
+    def test_the_tornado_s_mover_key_round_trips(self, vt):
+        # AF2: the sensitivity tornado's members store {"mover": label} -- the Values popover
+        # must accept and round-trip them.
+        values = {"mover": "returns -1 point"}
+        assert vt.member_values("mover: returns -1 point") == values
+        assert vt.member_values(vt.values_text(values)) == values
+
     def test_values_text_round_trips(self, vt):
         values = {"year": 2027, "place": "yonkers"}
         assert vt.member_values(vt.values_text(values)) == values

@@ -6644,9 +6644,42 @@ run against it): `test_builder.py`'s "leaves the plan one year is refused",
 Full suite (Windows, -n 4) over the folded second increment: **4350 passed, 2 skipped**
 (14:36; the pre-fold 4346 + the four new tests -- the fifth check re-pins the existing
 regret test, counted in the fold's five). The overnight `check_library_variants.py --full`
-(run 2) is still in flight; its verdict joins the pool entry above. `main` fast-forwarding
+(run 2) was still in flight; its verdict is in the pool entry below. `main` fast-forwarding
 to `claude/run-library-step6-inc2` stays the user's call (the core's pattern: once the
 reviews and their folds are done).
+
+
+## Run-library step 6: the second review's AF1-AF5, AF7 folded (2026-11-05)
+
+The user's call: fold AF1-AF5 and AF7 (the four defects in the approved AE/move work plus
+AF3/AF4); AF6 (a duplicate `year:` key keeps the last silently) and AF8 (`gains_edge_0`'s
+measure undocumented) stand.
+
+- **AF1**: `build`'s no-events return runs `check_death_window` too -- AE1's door for a
+  hand document (the named refusal instead of the model's own "Plan needs more than 1
+  years." at solve time).
+- **AF2**: `variants.VALUE_KEYS` (`DIMENSIONS` plus the tornado's `mover`) is what
+  `member_values` accepts; the sensitivity members' "Values" popover round-trips again
+  (AE2's door bolted over).
+- **AF3**: `variants._start_ref` passes the scenario's event ids to `parse_year_ref` (X5's
+  rule): `event:buy-2027` resolves to the id `buy-2027`, not id `buy` + offset -2027 --
+  at the door and in the applied child alike.
+- **AF4**: `brackets.bracket_view` drops the `min(n + 2, N - 1)` clamp -- a tax year whose
+  premium year leaves the plan has no IRMAA edges (`thresholds._irmaa_entries` skips
+  those years).
+- **AF5**: `lift_regret_baselines` returns `v_at` normalized and
+  `summarize_conversion_regret` reads `v_at`/`v_noconv` as arrays -- a saved `regret.json`
+  round-trips back into `summarize_conversion_regret` (AE3's premise).
+- **AF7**: `presets.py`'s stale "moving it into `src/owlplanner` stays open" (the move's
+  missed docstring).
+
+Tests +5, **all five checked to fail before their fix** (the source stashed): the
+no-events window (`test_builder.py`), the `event:<id>` anchor against the ids
+(`test_variants.py`), the mover round-trip (`test_variant_tables.py`), the premium year
+past the plan (`test_brackets.py`), the saved result (`test_regret_sweep.py`). One
+test-hygiene fix the AF3 test exposed: `test_variants.py`'s AD1 test edited the shared
+`BUY_CASH` fixture in place (order-dependent pollution); it deep-copies now. The five
+touched test files: **230 passed** (43 s). flake8/ruff clean.
 
 
 ## Run-library step 6: the full-grid check's suite pool bounded (2026-11-05)
@@ -6662,5 +6695,12 @@ grid's 6 concurrent solves are the recorded 5/5. The check now passes `--jobs 6`
 (`SUITE_JOBS`) to the suite's subprocess: the same solves at the proven concurrency
 (the reduced grid's); scores do not depend on the job count (time-capped local search,
 within the noise rule). Re-run launched 2026-11-05 15:45
-(`check_library_variants_full_2026-11-05_run2.log` in the session's temp); the result
-joins this entry when it lands.
+(`check_library_variants_full_2026-11-05_run2.log` in the session's temp) and finished the
+same evening: **5/5 checks passed** -- the children 30/30 are `make_cases.py`'s grid
+scenarios, the ages preset and the suite's baseline both pick [70.0, 70.0], the reference
+score 112,862 vs 112,862 (tolerance 1,129), 30/30 grid cells within the noise rule, 30/30
+report cells parse as whole dollars. The grid is the check's `FULL` selection (3 places x
+5 purchase years x cash/mortgage: 30 rows, the children and cells counted at 30);
+`make_cases.py`'s six ARM rows (2027 arm5/arm30 per place) are outside it, and the
+prose's "42-cell" count (the design, the check's own docstring) matches neither the 30
+run nor the 36 variants `make_cases.py` writes -- the scope to reconcile with the user.

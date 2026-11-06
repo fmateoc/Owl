@@ -6847,4 +6847,4 @@ Removed: the schema field, `Plan.aca_table_year`, `tax_federal._aca_table`'s / `
 / `acaVals`'s `table_year` and its five call sites, both config bridges, `genDic`'s key, and
 `TestPinnedTableYear`. `tax_federal.py`, `thresholds.py`, `assistant/explain.py` and
 `tests/tax/test_aca.py` are identical to `e898f699` (before step 6) again. Checks: lint only
-upstream's items; `tests/config tests/tax tests/library tests/ui` + `test_brackets.py` 1662 passed; full suite pending at this commit (follow-up commit).
+upstream's items; `tests/config tests/tax tests/library tests/ui` + `test_brackets.py` 1662 passed; full suite **4380 passed, 1 skipped** (8:38, Linux; it covers this entry and the benchmark-jump entry above: 4378 + the jump's 3 tests and the Open in Owl test, - the rules mover's, + 4 round-trip cases for the two published fields, - 2 for `aca_table_year` and the 2 of `TestPinnedTableYear`).

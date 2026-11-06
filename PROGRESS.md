@@ -7003,3 +7003,9 @@ person's first open claiming age (`Plan._ssaOpenAges`; Ari 62y7m, Noa 62y1m on 2
 Tests: 14 new, three re-pinned; with `src/` and `ui/` stashed 13 of the 14 failed (the 14th
 guards AG5's switch). `tests/library tests/ui` + bracket/ACA/regret **1018 passed** (2:44);
 lint only upstream's listed items; full suite **4422 passed, 1 skipped** (11:47, Linux, `-n 4`; 4408 + the 14 new tests; two later edits, a docstring and the tornado axis label's escape, re-checked by the 8 tornado page tests).
+
+## `main` fast-forwarded to `claude/modest-gauss-6hg9z6` (2026-11-06)
+
+The user's call. `main` moves from `59bc8d9` (step 6 with the AI folds) to this branch: the
+fifth whole-step review of step 6 (AJ1-AJ4) and its folds. Full suite on the branch: 4422
+passed, 1 skipped.

@@ -609,6 +609,93 @@ class TestTheTornadoReview3:
         assert coll.member(parent.id).values == {"mover": tornado.BASE_LABEL}
 
 
+class TestTheTornadoReview4:
+    """`fork-notes/run-library-step6-review-4.md` AI3 and AI4 on the Run page."""
+
+    _open = staticmethod(TestTheTornadoReview3._open)
+
+    @staticmethod
+    def _make(run):
+        at = TestTheTornadoReview3._open(run)
+        next(b for b in at.button if b.label == "Make the sensitivity runs").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        return at
+
+    @staticmethod
+    def _table(at):
+        return next((str(m.value) for m in at.markdown
+                     if str(m.value).startswith("| mover | difference |")), None)
+
+    @staticmethod
+    def _solve_children(library, coll, parent, *, current=False):
+        """Hand-written exact-LP results for the children (scores 69,000, 68,000, ...; the
+        homes 150,000 + 1,000 x i); `current` stamps them today, by the code running now."""
+        from datetime import date
+
+        from owlplanner.version import engine_provenance
+
+        for i, member in enumerate(m for m in coll.members if m.run != parent.id):
+            child = library.get(member.run)
+            folder = _write_result(child, f"2026-11-04T10-00-0{i}_decision_exact",
+                                   preset="decision_exact", exact=True, score=69_000.0 - 1_000 * i,
+                                   home=150_000.0 + 1_000 * i,
+                                   finished=(f"{date.today().isoformat()}T10:00:00+00:00" if current
+                                             else "2026-11-04T10:00:00+00:00"))
+            if current:
+                record = json.loads((folder / R.RECORD_JSON).read_text(encoding="utf-8"))
+                record["engine"] = engine_provenance()
+                (folder / R.RECORD_JSON).write_text(json.dumps(record), encoding="utf-8")
+
+    def test_ai3_a_second_run_of_the_same_name_has_no_bars_of_the_first(self, library, monkeypatch):
+        from owlplanner.library import JobManager, import_case, tornado
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        first = next(r for r in library.runs() if r.name == "bill later")
+        self._make(first)
+        coll = tornado.collection_of(library, first.id)
+        assert coll.tornado_of == first.id
+        self._solve_children(library, coll, first)
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = "bill later, another case"
+        second = library.save_run(name="bill later", scenario=scenario).run
+        _write_result(second, "2026-11-02T12-30-00_decision_exact", preset="decision_exact",
+                      score=90_000.0, exact=True)
+        at = self._open(second)
+        assert not at.exception, [e.value for e in at.exception]
+        assert self._table(at) is None  # it used to draw the first run's children
+        assert tornado.collection_of(library, second.id) is None
+
+    def test_ai3_a_rename_keeps_the_bars_and_a_second_click_queues_no_current_child(
+            self, library, monkeypatch):
+        from owlplanner.library import JobManager, tornado
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        run = next(r for r in library.runs() if r.name == "bill later")
+        self._make(run)
+        coll = tornado.collection_of(library, run.id)
+        self._solve_children(library, coll, run, current=True)
+        run = library.rename_run(run, "bill baseline")
+        assert self._table(self._open(run)) is not None  # the bars survive the rename
+        before = {j.id for j in JobManager(library).jobs()}
+        self._make(run)
+        queued = [j for j in JobManager(library).jobs() if j.id not in before]
+        children = {m.run for m in coll.members if m.run != run.id}
+        assert not [j for j in queued if j.doc["run_id"] in children]
+        assert len([c for c in library.collections() if c.tornado_of == run.id]) == 1
+
+    def test_ai4_the_table_shows_the_home_at_the_end(self, library, monkeypatch):
+        from owlplanner.library import JobManager, tornado
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+        run = next(r for r in library.runs() if r.name == "bill later")
+        self._make(run)
+        self._solve_children(library, tornado.collection_of(library, run.id), run)
+        table = self._table(self._open(run))
+        assert "| home at the end |" in table.splitlines()[0]
+        # The base's exact-LP home is the fixture's 150,000; the children's 150,000 + 1,000 x i.
+        assert "| ±0 |" in table and "| +1,000 |" in table
+
+
 class TestConversionsAndBrackets:
     """I8 on the run page: the income, the conversion layer and the lines it fills
     (plan.json's `brackets` block), and the per-request regret sweep button."""
@@ -618,8 +705,45 @@ class TestConversionsAndBrackets:
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
         assert "Conversions and brackets" in text
-        assert "of which conversions" in text  # the table's column
+        assert "of which taxable" in text  # the table's column (review AI1)
         assert "Run the regret sweep" in [b.label for b in at.button]
+
+    def test_ai1_the_chart_stacks_the_taxable_part_and_draws_magi(self, library):
+        """Review AI1: a conversion larger than the year's taxable income (the deduction
+        absorbs the rest) is stacked at its taxable part, not gross, and MAGI is drawn for the
+        IRMAA and cliff lines to be read against (in 2028 on the synthetic household the bar
+        sat 33k under the cliff while MAGI was 37k over it). A plan.json from before the fold
+        (no `conversion_taxable`) gets the same cap."""
+        from streamlit.testing.v1 import AppTest
+
+        run = next(r for r in library.runs() if r.name == "bill later")
+        folder = next(p for p in (run.path / "results").iterdir() if p.name.endswith("_decision"))
+        plan = json.loads((folder / R.PLAN_JSON).read_text(encoding="utf-8"))
+        rows = plan["brackets"]["years"]
+        for row in rows:
+            row.update({"ordinary_taxable_income": 24_800.0, "conversion": 51_455.0,
+                        "magi": 121_355.0, "room_to_next_edge": 76_000.0,
+                        "fills_bracket": "10% (full)",
+                        "aca_lines": [{"label": "400% FPL (the subsidy cliff)", "amount": 84_202.0}]})
+        rows[0]["conversion_taxable"] = 24_800.0  # the second row is a pre-fold one
+        (folder / R.PLAN_JSON).write_text(json.dumps(plan), encoding="utf-8")
+        at = AppTest.from_file(str(UI_DIR / "Run.py"), default_timeout=90)
+        at.session_state["cases"] = {}
+        at.session_state["currentCase"] = None
+        at.session_state["library_selected_run"] = run.id
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        charts = [json.loads(c.proto.spec) for c in at.get("plotly_chart")]
+        chart = next(c for c in charts if any(t.get("name", "").startswith("Roth conversions")
+                                              for t in c.get("data") or []))
+        traces = {t["name"]: t for t in chart["data"]}
+        conv = traces["Roth conversions (their taxable part)"]["y"]
+        ex = traces["taxable income, ex conversions"]["y"]
+        assert list(conv) == [24_800.0, 24_800.0] and list(ex) == [0.0, 0.0]
+        magi = next(t for name, t in traces.items() if name.startswith("MAGI"))
+        assert list(magi["y"]) == [121_355.0, 121_355.0]
+        table = next(str(m.value) for m in at.markdown if "| of which taxable |" in str(m.value))
+        assert "| 51,455 | 24,800 | 121,355 | 10% (full) |" in table
 
     def test_ag7_ag10_the_caption_reads_the_valley_and_names_the_person(self, library):
         """Review AG7: the summary's key is `mean_regret` (the caption always said 0);

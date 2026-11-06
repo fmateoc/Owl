@@ -525,6 +525,51 @@ def check_death_window(scenario: dict, person: str = None, age=None, where: str 
             "plan needs more than one (the last life horizon is at the plan start)")
 
 
+def check_death_after_work(scenario: dict, person: str = None, age=None, where: str = "") -> None:
+    """No one works past their own death (review AI6).
+
+    The plan's years are checked against the *last* life horizon, so a work year after the
+    person's own death passed; Owl then dropped the wages after the horizon without a word,
+    while the marketplace start the work events generate still followed the dead person's
+    work (the widowed survivor paid no premium in the gap). A death year is the year of birth
+    plus the age (the last year of the person's horizon). The scenario's own death events
+    are checked, with `person` dying at `age` in their place when given (a variant value or
+    a mover, checked at the door before it applies)."""
+    case = scenario.get("case") or {}
+    info = case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    births = {}
+    for name, dob in zip(names, info.get("date_of_birth") or [], strict=False):
+        try:
+            births[name] = int(str(dob)[:4])
+        except ValueError:
+            continue
+    deaths = {}
+    for event in scenario.get("events") or []:
+        if isinstance(event, dict) and event.get("kind") == "death" and event.get("age") is not None:
+            deaths[event.get("person")] = (int(event["age"]), event.get("id"))
+    if person is not None:
+        deaths[person] = (int(age), None)
+    prefix = f"{where}: " if where else ""
+    for event in scenario.get("events") or []:
+        if not (isinstance(event, dict) and event.get("kind") == "work"):
+            continue
+        who = event.get("person")
+        if who not in deaths or who not in births:
+            continue
+        try:
+            end = int(event.get("end"))
+        except (TypeError, ValueError):
+            continue
+        died, did = deaths[who]
+        if end > births[who] + died:
+            name = f" ({did})" if did else ""
+            raise ScenarioError(
+                f"{prefix}{who!r} would die at {died}{name}, in {births[who] + died}, but works "
+                f"to {end} ({event.get('id')}): end the work by the death year, or move the death"
+            )
+
+
 def resolve_years(events: list[dict], case: dict) -> dict[str, dict[str, int]]:
     """The calendar year of every event's year field (the I1 anchors resolved).
 
@@ -853,6 +898,7 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
         provenance["case_fields"]["basic_info.life_expectancy"] = deaths[0]["id"]
     end_year = max((b + e for b, e in zip(births, life, strict=False)), default=None)
     check_death_window(scenario)
+    check_death_after_work(scenario)
     for eid, fields in years.items():
         for field, year in fields.items():
             if year < plan_start or (end_year is not None and year > end_year):

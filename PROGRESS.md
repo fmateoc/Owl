@@ -6925,3 +6925,22 @@ dead person's work, so the widowed survivor pays no premium in 2027. Checks: `te
 tests/ui` + the bracket/ACA/regret tests **987 passed** (1:27, Linux); full suite **4391 passed, 1 skipped** (9:22, Linux);
 lint only upstream's listed items. The review changed nothing in `src/`, `ui/` or `tests/`.
 Folds are the user's call.
+
+## Run-library step 6: the fourth review's AI1-AI6 folded (2026-11-06)
+
+The user's call: fold AI1-AI6 (`fork-notes/run-library-step6-review-4.md`, "Dispositions";
+`fork-notes/CHANGELOG-fork.md` has the entry). **AI1**: the I8 chart stacks the conversion's
+taxable part (`brackets` row `conversion_taxable`) and draws MAGI as its own line; the table
+gives the gross conversion beside its taxable part. **AI2**: "bracket" names the bracket the
+income is in, "(full)" within a dollar of its top (on `yonkers-2027-cash`, 2028-2033 now all
+read "10% (full)", room 76,000). **AI3**: the tornado is the run's by id
+(`Collection.tornado_of`, `tornado.collection_of`; an older collection found by its base
+member), and the button queues no run already queued or solved today by the running code
+(`tornado.is_current`). **AI4**: the tornado's table and hover show the home at the end.
+**AI5**: "condo price +10%" moves the property tax with the price, HOA and insurance held
+(the agent's reading of the fold): -4,650 / -4,833 (cash / mortgage), were -3,640 / -3,830.
+**AI6**: `builder.check_death_after_work` refuses a work year after the person's own death
+(build, the death dimension, `plan_variants`' children, the tornado's death movers). Tests: 17
+new, three re-pinned; with `src/` and `ui/` stashed the 19 selected failed. `tests/library
+tests/ui` + bracket/ACA/regret **1004 passed** (1:18, Linux); `check_library_builder.py`
+46/46; lint only upstream's listed items; full suite running at this commit (its result in the next commit).

@@ -106,17 +106,55 @@ class TestOneYear:
         fpl = tx._aca_fpl(THISYEAR, 2, np.asarray(p.gamma_n, dtype=float), THISYEAR)
         assert lines[-1]["amount"] == pytest.approx(round(4.0 * fpl / float(p.gamma_n[0]), 2))
 
-    def test_the_bracket_the_income_fills_and_the_room_to_the_next(self):
+    def test_the_bracket_the_income_is_in_and_the_room_to_its_top(self):
+        """Review AI2: each edge is the top of the bracket it names, so an income 5,000 under
+        the 12/15% edge is in the 12/15% bracket (it read "10%", the bracket below)."""
         p = FakePlan()
         # The 12/15% edge of a couple in 2026 (the OBBBA table, base dollars).
         edge = float(tx.taxBrackets(2, N_YEARS, N_YEARS)["12/15%"][0])
         p.G_n = np.full(N_YEARS, (edge - 5_000.0) * float(p.gamma_n[0]))
         row = bracket_view(p)["years"][0]
-        assert row["fills_bracket"] == "10%"
+        assert row["fills_bracket"] == "12/15%"
         assert row["room_to_next_edge"] == pytest.approx(5_000.0)
+        first = float(tx.taxBrackets(2, N_YEARS, N_YEARS)["10%"][0])
+        p.G_n = np.full(N_YEARS, 0.5 * first * float(p.gamma_n[0]))
+        row = bracket_view(p)["years"][0]
+        assert row["fills_bracket"] == "10%"
+        assert row["room_to_next_edge"] == pytest.approx(0.5 * first)
         p.G_n = np.full(N_YEARS, 1e9)
         row = bracket_view(p)["years"][0]
-        assert row["room_to_next_edge"] is None  # above every edge
+        assert row["fills_bracket"] == tx.taxBracketNames[-1]  # the top bracket, no limit
+        assert row["room_to_next_edge"] is None
+        p.G_n = np.zeros(N_YEARS)
+        assert bracket_view(p)["years"][0]["fills_bracket"] == "none (no taxable income)"
+
+    @pytest.mark.parametrize("noise", [-0.003, 0.0, 0.002])
+    def test_a_filled_bracket_reads_full_whatever_the_solver_noise(self, noise):
+        """Review AI2: a plan that fills the 10% bracket sits on its top to within solver
+        noise; 24,799.997 and 24,800.002 read "below the first bracket, room 0" and "10%,
+        room 76,000". Both now read the bracket full, with the room to the next top."""
+        p = FakePlan()
+        edges = tx.taxBrackets(2, N_YEARS, N_YEARS)
+        top10, top12 = float(edges["10%"][0]), float(edges["12/15%"][0])
+        p.G_n = np.full(N_YEARS, (top10 + noise) * float(p.gamma_n[0]))
+        row = bracket_view(p)["years"][0]
+        assert row["fills_bracket"] == "10% (full)"
+        assert row["room_to_next_edge"] == pytest.approx(top12 - top10)
+
+    def test_the_conversion_s_taxable_part_is_capped_by_the_taxable_income(self):
+        """Review AI1: the deduction absorbs part of a conversion, so the gross conversion can
+        exceed the year's taxable income (51,455 against 24,800 on the synthetic household);
+        the taxable part is the conversion taken as the income's last layer."""
+        p = FakePlan()
+        g = float(p.gamma_n[0])
+        p.G_n = np.full(N_YEARS, 24_800.0 * g)
+        p.x_in = np.zeros((2, N_YEARS))
+        p.x_in[0] = 51_455.0 * g
+        row = bracket_view(p)["years"][0]
+        assert row["conversion"] == pytest.approx(51_455.0)
+        assert row["conversion_taxable"] == pytest.approx(24_800.0)
+        p.x_in[0] = 10_000.0 * g  # a conversion inside the taxable income counts in full
+        assert bracket_view(p)["years"][0]["conversion_taxable"] == pytest.approx(10_000.0)
 
 
 # ---------------------------------------------------------------------------

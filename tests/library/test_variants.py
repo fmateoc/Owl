@@ -318,6 +318,22 @@ class TestDeath:
         with pytest.raises(ScenarioError, match="not more than one year"):
             v.plan_variants(doc, {"death": [{"person": "Ari", "age": 62}]})
 
+    def test_ai6_a_death_before_the_person_s_own_work_end_is_refused(self):
+        """Review AI6: a death value before the person's last work year is refused at the
+        door, and so is a death and a work end varied together that disagree."""
+        late = dict(WORK_ARI, start=2027, end=2027, id="w27")
+        with pytest.raises(ScenarioError, match="works to 2027"):
+            v.plan_variants(_scenario([WORK_ARI, late, WORK_NOA]),
+                            {"death": [{"person": "Ari", "age": 62}]})
+        with pytest.raises(ScenarioError, match="works to 2028"):
+            v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                            {"death": [{"person": "Ari", "age": 63}],
+                             "work": [{"person": "Ari", "end": 2027}, {"person": "Ari", "end": 2028}]})
+        out = v.plan_variants(_scenario([WORK_ARI, WORK_NOA]),
+                              {"death": [{"person": "Ari", "age": 63}],
+                               "work": [{"person": "Ari", "end": 2027}]})
+        assert len(out) == 1
+
     def test_one_death_event_per_person(self):
         doc = _scenario([WORK_ARI, WORK_NOA,
                          {"id": "d1", "kind": "death", "person": "Ari", "age": 80},

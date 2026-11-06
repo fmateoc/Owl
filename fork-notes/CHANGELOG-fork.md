@@ -7,6 +7,29 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library, build step 6: the fourth whole-step review's AI1-AI6 folded (2026-11-06)
+
+- **The conversion chart stacks what is taxable and draws MAGI**: the conversion layer is its
+  share of the taxable income (`brackets` row `conversion_taxable`, the conversion taken as the
+  income's last layer; the gross amount stays in the table), and MAGI is a line of its own,
+  the measure the IRMAA and 400% FPL lines are read against. On the synthetic household the
+  2028-2032 bars showed 51-62k for a taxable income of 24,800, and the 2028 bar sat under the
+  cliff while MAGI was 37k over it.
+- **"Bracket" names the bracket the income is in**, and a bracket filled to its top reads
+  "10% (full)" within a dollar of the edge: an income in the 12% bracket read "10%", and five
+  conversion years on the 10% edge read "below the first bracket, room 0" or "10%, room
+  76,000" on fractions of a cent.
+- **The sensitivity tornado is the run's, by id** (`Collection.tornado_of`;
+  `tornado.collection_of`): a second run of the same name drew the first run's children as
+  its bars, and a rename lost them. "Make the sensitivity runs" queues no run whose exact-LP
+  solve is queued or was solved today by the running code.
+- **The tornado shows the home at the end beside the score** (R3's other number, never added).
+- **"Condo price +10%" moves the property tax with the price** (the HOA and the insurance
+  held): -4,650 on the synthetic household's cash purchase, where the price alone gave -3,640.
+- **A death before the person's own last work year is refused** (the builder, the death
+  dimension and the tornado's death movers): Owl dropped the wages after the death, and the
+  marketplace start still followed the dead person's work.
+
 ### Run library, build step 6: the third review of the second increment, AH1-AH6 folded (2026-11-06)
 
 - **"Ages, thorough" publishes the plan its sweep decided on**: the final solve re-solves the

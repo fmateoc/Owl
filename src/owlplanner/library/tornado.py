@@ -12,7 +12,8 @@ the two the user called for (2026-11-05):
   second copy of the returns bar (review AG3); the shift is in the table's own units
   (`in_percent`, review AG1);
 - ``medical inflation +2 points``: `optimization_parameters.medical_inflation_excess`;
-- ``condo price +10%``: the purchase event's price (today's $);
+- ``condo price +10%``: the purchase event's price and its property tax (today's $; review AI5:
+  the tax is assessed on the value, the HOA and the insurance are held);
 - ``benchmark premium +10%`` / ``-10%``: `aca_settings.slcsp_annual`, the marketplace's
   benchmark Silver plan;
 - ``the <year> benchmark jump``: the published benchmark Silver premium of a later year
@@ -159,12 +160,25 @@ def _medical_plus_2(scenario: dict) -> None:
     params["medical_inflation_excess"] = round(current + MEDICAL_STEP, 4)
 
 
+# The purchase's yearly costs that follow its price (review AI5): the property tax is
+# assessed on the home's value, so a dearer condo in the same place carries a proportionally
+# larger one (the scenario holds it as an amount, not a rate). The HOA and the insurance are
+# the building's and the policy's, held.
+PRICE_LINKED_COSTS = ("property tax",)
+
+
 def _condo_plus_10(scenario: dict) -> None:
     found = [e for e in (scenario.get("events") or [])
              if isinstance(e, dict) and e.get("kind") == "purchase"]
     if not found:
         raise ScenarioError("this run buys no home: there is no condo price to move")
-    found[0]["price"] = round(float(found[0]["price"]) * (1.0 + PRICE_STEP), 2)
+    event = found[0]
+    event["price"] = round(float(event["price"]) * (1.0 + PRICE_STEP), 2)
+    costs = event.get("costs")
+    if isinstance(costs, dict):
+        for field in PRICE_LINKED_COSTS:
+            if field in costs:
+                costs[field] = round(float(costs[field]) * (1.0 + PRICE_STEP), 2)
 
 
 def _slcsp(factor: float) -> Callable[[dict], None]:
@@ -257,6 +271,8 @@ def _death(person: str, scenario: dict) -> None:
         raise ScenarioError(f"this case already has {person} die at {DEATH_AGE}")
     builder.check_death_window(scenario, person, DEATH_AGE,
                                where=f"{person!r} dies at {DEATH_AGE}")
+    builder.check_death_after_work(scenario, person, DEATH_AGE,
+                                   where=f"{person!r} dies at {DEATH_AGE}")
     event = next((e for e in (scenario.get("events") or [])
                   if isinstance(e, dict) and e.get("kind") == "death" and e.get("person") == person),
                  None)
@@ -297,7 +313,8 @@ def movers(scenario: dict) -> list:
               "medical_inflation_excess, 2 points higher",
               _medical_plus_2),
         Mover("condo+10", "condo price +10%",
-              "the home purchase's price, 10% higher (today's $)",
+              "the home purchase's price and its property tax, 10% higher (today's $; the HOA "
+              "and the insurance held)",
               _condo_plus_10),
         Mover("slcsp+10", "benchmark premium +10%",
               "aca_settings.slcsp_annual, 10% higher (the marketplace's benchmark Silver plan)",
@@ -359,7 +376,9 @@ def bars(parent_result, rows) -> list:
 
     `rows` is [(label, result or None)] over the movers' runs. Each bar carries the
     difference's tolerance in dollars (`compare.pair_tolerance`) beside the verdict, so the
-    chart can draw both ("bars sorted by effect, each with its tolerance"). Both sides must
+    chart can draw both ("bars sorted by effect, each with its tolerance"), and the home at
+    the end's difference beside it (`home_delta`, R3's other number, never added to the
+    score: review AI4). The bars are sorted by the score's effect. Both sides must
     be exact-LP results (review AG2): the children solve under the exact LP, and a parent
     result under another model put the model change -- +4,381 to +4,534 on the synthetic
     household, four times the noise band -- into every bar. Without the parent's own
@@ -376,14 +395,20 @@ def bars(parent_result, rows) -> list:
                     else "no exact-LP result yet" if result is None or not exact
                     else "no score")
             out.append({"label": label, "delta": None, "tolerance": None, "verdict": "-",
-                        "note": note, "result": result})
+                        "note": note, "result": result, "home_delta": None, "home_verdict": "-"})
             continue
         judgment = compare.difference("score", base, got, ta=parent_result, tb=result)
         tolerance, why = compare.pair_tolerance(parent_result, result, base)
+        # R3's other number (review AI4): "condo price +10%" costs the score 3,640 and leaves
+        # 76,086 more in the home on the synthetic household. Judged as the grid judges it:
+        # the inputs set it, so only the fifty-cent rule applies.
+        home = compare.difference("home at the end", view.home_at_end(parent_result),
+                                  view.home_at_end(result), ta=parent_result, tb=result,
+                                  from_inputs=True)
         out.append({"label": label, "delta": judgment.delta, "tolerance": tolerance,
                     "verdict": judgment.verdict,
                     "note": judgment.note or (why if judgment.resolved else ""),
-                    "result": result})
+                    "result": result, "home_delta": home.delta, "home_verdict": home.verdict})
     out.sort(key=lambda row: (row["delta"] is None,
                               -abs(row["delta"]) if row["delta"] is not None else 0.0))
     return out
@@ -406,6 +431,44 @@ def bar_flags(parent_result, rows) -> list:
     if ages:
         out.append(ages)
     return list(dict.fromkeys(out))
+
+
+def collection_of(lib, run_id: str):
+    """The run's sensitivity collection, by the run's id (review AI3), or None.
+
+    The collection made for it (`tornado_of`); else one made before the field (step 6's
+    second increment, AG5): its reference is the run and the run is its member with the
+    `BASE_LABEL` mover. Never by name -- runs share names and are renamed, and a name match
+    drew one run's children as another's bars."""
+    colls = list(lib.collections())
+    found = next((c for c in colls if c.tornado_of == run_id), None)
+    if found is not None:
+        return found
+    for coll in colls:
+        member = coll.member(run_id)
+        if (coll.tornado_of is None and coll.reference == run_id and member is not None
+                and (member.values or {}).get("mover") == BASE_LABEL):
+            return coll
+    return None
+
+
+def is_current(run_path, *, today=None, engine=None) -> bool:
+    """Does the run have an exact-LP result that a new solve would only repeat (review AI3)?
+    Solved today, by the code running now (version and commit): plans start today, and a
+    result from another day or another code would differ."""
+    from datetime import date
+
+    from owlplanner.version import engine_provenance
+
+    result = base_result(run_path)
+    if result is None:
+        return False
+    day = ((result.record.get("solve_date") or {}).get("finished") or "")[:10]
+    today = (today or date.today()).isoformat()
+    engine = engine if engine is not None else engine_provenance()
+    stamp = result.record.get("engine") or {}
+    return (day == today and stamp.get("version") == engine.get("version")
+            and stamp.get("commit") == engine.get("commit"))
 
 
 def base_result(run_path) -> Optional[view.Result]:

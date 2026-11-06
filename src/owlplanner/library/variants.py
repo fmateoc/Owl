@@ -236,6 +236,7 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
         builder.check_death_age(person, age, scenario.get("case") or {}, scenario,
                                 where=f"death: {person!r}")
         builder.check_death_window(scenario, person, age, where=f"death: {person!r}")
+        builder.check_death_after_work(scenario, person, age, where=f"death: {person!r}")
     elif dimension == "sequence":
         sequence = value.get("sequence")
         if sequence is None:
@@ -373,6 +374,9 @@ def plan_variants(scenario: dict, dimensions: dict) -> list:
         for key, value in zip(keys, combo, strict=True):
             _apply_value(key, value, child, place_label)
         label = "-".join(_slug(labels[key]) for key in keys)
+        # A death and a work end varied together must still agree (review AI6): each is
+        # checked against the parent at the door, the pair only here.
+        builder.check_death_after_work(child, where=label)
         validate(child)  # the child is a scenario like any other
         variants.append(Variant(label=label, values=labels, scenario=child))
     return variants

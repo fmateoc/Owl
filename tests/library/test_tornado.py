@@ -239,7 +239,8 @@ class TestBars:
     def test_a_bar_without_a_result_is_listed_last(self):
         bars = tornado.bars(self._result(100_000.0), [("gone", None)])
         assert bars == [{"label": "gone", "delta": None, "tolerance": None, "verdict": "-",
-                         "note": "no exact-LP result yet", "result": None}]
+                         "note": "no exact-LP result yet", "result": None,
+                         "home_delta": None, "home_verdict": "-"}]
 
 
 class TestReview3Fixes:
@@ -368,3 +369,102 @@ class TestReview4:
         made, skipped = tornado.tornado_variants(_scenario([part, BUY], aca_start=2027))
         assert not any(v.label == "slcsp-published" for v in made)
         assert any("start in 2026, before the published 2027 benchmark" in s for s in skipped)
+
+
+class TestReview5:
+    """`fork-notes/run-library-step6-review-4.md` AI3-AI6 in the tornado's own module."""
+
+    @staticmethod
+    def _result(score_value, home, *, finished="2026-01-01T09:00:00+00:00", engine=None):
+        record = {"status": "solved", "preset": "decision_exact", "gap": None,
+                  "method": {"breakpoint_method": "loop", "options": dict(TestBars.EXACT),
+                             "objective": "maxSpending"},
+                  "convergence": {"objective_error_bar_today_dollars": 0.0},
+                  "solve_date": {"finished": finished},
+                  "engine": engine or {"version": "v", "commit": "c"}}
+        summary = {"discretionary_year1": score_value,
+                   "final_bequest_today": home, "final_bequest_savings_today": 0.0}
+        return view.Result(results_id="r", results_dir=Path("."), record=record,
+                           summary=summary, plan={"objective": "maxSpending", "by_year": []})
+
+    def test_ai4_a_bar_carries_the_home_at_the_end_beside_the_score(self):
+        """R3's other number: "condo price +10%" costs the score 3,640 and leaves 76,086 more
+        in the home on the synthetic household; the bar says both, never added."""
+        base = self._result(116_034.0, 760_861.0)
+        bars = tornado.bars(base, [("condo price +10%", self._result(112_394.0, 836_947.0)),
+                                   ("returns -1 point", self._result(108_970.0, 760_861.0))])
+        condo = next(b for b in bars if b["label"] == "condo price +10%")
+        assert condo["delta"] == pytest.approx(-3_640.0)
+        assert condo["home_delta"] == pytest.approx(76_086.0) and condo["home_verdict"] == "resolved"
+        returns = next(b for b in bars if b["label"] == "returns -1 point")
+        assert returns["home_delta"] == 0.0 and returns["home_verdict"] == "no difference"
+        assert [b["label"] for b in bars] == ["returns -1 point", "condo price +10%"]  # by score
+
+    def test_ai5_the_condo_mover_moves_the_property_tax_with_the_price(self, stub_plan):
+        condo, _ = _made(_scenario(), "condo price +10%")
+        buy = next(e for e in condo.scenario["events"] if e["kind"] == "purchase")
+        assert buy["price"] == 770_000.0
+        assert buy["costs"] == {"property tax": 10_450.0, "hoa": 9600, "insurance": 900}
+        note = next(m.note for m in tornado.movers(_scenario()) if m.key == "condo+10")
+        assert "property tax" in note and "held" in note
+
+    def test_ai6_a_death_before_the_person_s_own_work_end_is_skipped(self, stub_plan):
+        long_work = dict(WORK_ARI, end=2045)  # Ari is 81 in 2045, would die at 80 in 2044
+        made, skipped = tornado.tornado_variants(_scenario([long_work, WORK_NOA, BUY]))
+        assert "death-ari" not in [v.label for v in made] and "death-noa" in [v.label for v in made]
+        assert any(s.startswith("Ari dies at 80") and "works to 2045" in s for s in skipped)
+
+    def test_ai3_a_result_is_current_only_today_and_by_this_code(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr(tornado, "base_result", lambda path: self._result(
+            1.0, 1.0, finished="2026-03-04T10:00:00-05:00", engine={"version": "v", "commit": "c"}))
+        engine = {"version": "v", "commit": "c"}
+        assert tornado.is_current(tmp_path, today=date(2026, 3, 4), engine=engine)
+        assert not tornado.is_current(tmp_path, today=date(2026, 3, 5), engine=engine)
+        assert not tornado.is_current(tmp_path, today=date(2026, 3, 4),
+                                      engine={"version": "v", "commit": "d"})
+        monkeypatch.setattr(tornado, "base_result", lambda path: None)
+        assert not tornado.is_current(tmp_path, today=date(2026, 3, 4), engine=engine)
+
+
+class TestReview5Collection:
+    """AI3: the run's tornado is found by the run's id, never by the collection's name."""
+
+    @pytest.fixture()
+    def lib(self, tmp_path):
+        from owlplanner.library import Library
+
+        lib = Library.open(tmp_path / "library")
+
+        def generate(scenario, inputs_dir):
+            (inputs_dir / "Case.toml").write_text("generated", encoding="utf-8")
+
+        def save(name, marker):
+            return lib.save_run(name=name, generate=generate,
+                                scenario={"schema_version": 1, "plan_year": 2026,
+                                          "case": {"case_name": marker}, "hfp": {}}).run
+
+        lib.test_save = save
+        return lib
+
+    def test_two_runs_of_one_name_have_their_own_tornado(self, lib):
+        a, b_run = lib.test_save("bill", "a"), lib.test_save("bill", "b")
+        coll = lib.create_collection("Sensitivity: bill", tornado_of=a.id)
+        assert lib.collection(coll.id).tornado_of == a.id
+        assert tornado.collection_of(lib, a.id).id == coll.id
+        assert tornado.collection_of(lib, b_run.id) is None
+
+    def test_a_rename_keeps_the_tornado(self, lib):
+        a = lib.test_save("bill", "a")
+        coll = lib.create_collection("Sensitivity: bill", tornado_of=a.id)
+        lib.rename_run(a, "bill baseline")
+        assert tornado.collection_of(lib, a.id).id == coll.id
+
+    def test_a_collection_made_before_the_field_is_found_by_its_base_member(self, lib):
+        a, b_run = lib.test_save("bill", "a"), lib.test_save("bill", "b")
+        old = lib.create_collection("Sensitivity: bill")  # no tornado_of (step 6, AG5)
+        lib.add_member(old.id, a, {"mover": tornado.BASE_LABEL})
+        lib.set_reference(old.id, a)
+        assert tornado.collection_of(lib, a.id).id == old.id
+        assert tornado.collection_of(lib, b_run.id) is None  # the same name is not enough

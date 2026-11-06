@@ -561,6 +561,17 @@ class TestDeathEvents:
         with pytest.raises(ScenarioError, match="not more than one year"):
             b.build(_scenario([], case=case))
 
+    def test_ai6_a_death_before_the_person_s_own_work_end_is_refused(self):
+        """Review AI6: the years were checked against the last horizon only, so Ari dying at
+        62 (2026) while working to 2027 built; Owl dropped the 2027 wages and the generated
+        marketplace start (2028) left the widowed survivor without a premium in 2027."""
+        work = dict(WORK_ARI, start=2027, end=2027, id="w27")
+        with pytest.raises(ScenarioError, match="works to 2027"):
+            b.build(_scenario([WORK_ARI, work, dict(self.DEATH, age=62)]))
+        b.build(_scenario([WORK_ARI, work, dict(self.DEATH, age=63)]))  # works through 2027
+        b.build(_scenario([WORK_ARI, work,  # the spouse's death does not count
+                           {"id": "d2", "kind": "death", "person": "Noa", "age": 62}]))
+
     def test_the_window_shrinks_with_the_last_death(self):
         # Both people die young: a care line past the window is refused (U7).
         events = [dict(self.DEATH), {"id": "d2", "kind": "death", "person": "Noa", "age": 63},

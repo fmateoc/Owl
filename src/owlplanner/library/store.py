@@ -233,6 +233,10 @@ class Collection:
     reference: Optional[str]
     members: tuple
     grid: dict
+    # The run whose sensitivity tornado this collection holds (I9), by id: the Run page finds
+    # its tornado through it, never by the collection's name, which a second run of the same
+    # name or a rename would break (review AI3). None for every other collection.
+    tornado_of: Optional[str] = None
 
     def member(self, run_id: str) -> Optional[Member]:
         for member in self.members:
@@ -595,6 +599,7 @@ class Library:
             reference=doc.get("reference") if isinstance(doc.get("reference"), str) else None,
             members=tuple(members),
             grid=dict(grid) if isinstance(grid, dict) else {},
+            tornado_of=doc.get("tornado_of") if isinstance(doc.get("tornado_of"), str) else None,
         )
 
     def collections(self) -> list:
@@ -617,8 +622,12 @@ class Library:
             raise LibraryError(f"no collection with id {cid!r}")
         return coll
 
-    def create_collection(self, name: str, *, question: str = "", rule: str = "") -> Collection:
-        """A new, empty collection (section 4). The id is its folder-free identity."""
+    def create_collection(self, name: str, *, question: str = "", rule: str = "",
+                          tornado_of: Optional[str] = None) -> Collection:
+        """A new, empty collection (section 4). The id is its folder-free identity.
+
+        `tornado_of` (a run id) marks the collection as that run's sensitivity tornado (I9,
+        review AI3)."""
         if not name.strip():
             raise LibraryError("a collection needs a name")
         cid = uuid.uuid4().hex
@@ -634,6 +643,8 @@ class Library:
                 "members": [],
                 "grid": {},
             }
+            if tornado_of is not None:
+                doc["collections"][cid]["tornado_of"] = str(tornado_of)
             doc["collection_order"].append(cid)
             self._write_json(self.root / LIBRARY_JSON, doc)
         return self.collection(cid)

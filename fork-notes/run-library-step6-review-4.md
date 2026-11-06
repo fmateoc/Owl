@@ -231,3 +231,41 @@ the year after the death).
 - `check_library_variants.py` (reduced and `--full`): PROGRESS records 5/5 for both.
 - An "Ages, thorough" or "regret" job end to end through the worker.
 - A browser session of the pages (AppTest only); Windows.
+
+## Dispositions (2026-11-06, the user's call: fold AI1-AI6)
+
+- **AI1 folded:** `bracket_view` rows carry `conversion_taxable` = min(conversion, taxable
+  income), the conversion taken as the income's last layer; the chart stacks it (the page
+  applies the same cap to a `plan.json` written before the fold), draws MAGI as a solid line
+  named as the IRMAA and cliff lines' measure, and the table gives the gross conversion and
+  its taxable part side by side ("conversions | of which taxable").
+- **AI2 folded:** `_fill` names the bracket the income is in (the first edge above it), "(full)"
+  within `EDGE_TOLERANCE` = 1 dollar of an edge with the room to the next top, "none (no
+  taxable income)" at zero, the top bracket above every edge. Probe p5 again: 2028-2033 all
+  read "10% (full)", room 76,000; 2035 (91,493) reads "12/15%"; 2026 (280,674) "24/28%". The
+  page's column is "bracket" / "room to the top". The test that pinned "10%" is re-pinned.
+- **AI3 folded:** `Collection.tornado_of` (the run id, written by `create_collection`) and
+  `tornado.collection_of(lib, run_id)` find a run's tornado; a collection made before the
+  field is found by its base member (reference = the run, mover = `BASE_LABEL`), never by
+  name. The button queues neither the run nor a child whose exact-LP solve is waiting or
+  running, or was solved today by the code running now (`tornado.is_current`: the finished
+  day and the engine's version and commit), and says how many it left alone.
+- **AI4 folded:** each bar carries `home_delta` / `home_verdict` (judged with
+  `from_inputs=True`, as the grid does); the table's last column and the bar's hover show it.
+  The bars stay sorted by the score.
+- **AI5 folded** (the agent's reading of "fold": the property tax follows the price, the HOA
+  and the insurance are held; `tornado.PRICE_LINKED_COSTS`; the mover's note says so). Probe p2
+  again: cash -4,650 (was -3,640), mortgage -4,833 (was -3,830).
+- **AI6 folded:** `builder.check_death_after_work` refuses a work event that ends after its
+  person's death year (birth year + age), in `build`, at the death dimension's door, for each
+  child of `plan_variants` (a death and a work end varied together) and for the tornado's
+  death movers (skipped with the reason). Probe p3 again: "'Ari' would die at 62, in 2026,
+  but works to 2027 (work-ari-full)".
+
+Tests: 17 new (`test_brackets.py` +4 counting the three noise cases, `test_tornado.py` +7,
+`test_builder.py` +1, `test_variants.py` +1, `test_library_pages.py` +4) and three re-pinned
+(the bracket test, the page's column name, the bar test's dict with the two home keys). With
+the `src/` and `ui/` changes stashed, the 17 new tests and the first two re-pinned ones failed
+(19 failures; the third was not in that run). `tests/library
+tests/ui` + the bracket/ACA/regret tests **1004 passed** (1:18); `check_library_builder.py`
+46/46; lint only upstream's listed items; full suite running at this commit (its result in the next commit).

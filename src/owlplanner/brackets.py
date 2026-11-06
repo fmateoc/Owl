@@ -49,22 +49,45 @@ def _edges(ordinary: dict, n: int) -> list:
             for name, values in ordinary.items()]
 
 
-def _fill(income: float, edges: list) -> tuple:
-    """(the bracket the income fills, room to the next edge) from the ordinary edges."""
-    above = [e for e in edges if e["amount"] > income]
-    below = [e for e in edges if e["amount"] <= income]
-    fills = below[-1]["label"] if below else "below the first bracket"
-    if not above:
-        return fills, None
-    return fills, round(above[0]["amount"] - income, 2)
+# An income within this many (today's) dollars of an edge is at the edge: a plan that fills a
+# bracket exactly sits on its top to within solver noise (review AI2: 24,799.997 and
+# 24,800.002 read "below the first bracket, room 0" and "10%, room 76,000").
+EDGE_TOLERANCE = 1.0
+
+
+def _fill(income: float, edges: list, top: str = None) -> tuple:
+    """(the bracket the income is in, room to the top of it) from the ordinary edges.
+
+    Each edge is the **top** of the bracket it is labelled with (`tax_federal.taxBrackets`:
+    "10%" is the 10% bracket's upper limit; `taxParams` builds bracket t as (edge[t-1],
+    edge[t]]), so the income is in the bracket of the first edge above it (review AI2: the
+    label used to be the last edge below, the bracket under the income's own). An income at an
+    edge (within `EDGE_TOLERANCE`) has filled that bracket to the top: "10% (full)", with the
+    room to the top of the next one. Above every edge it is in `top` (the last bracket, which
+    has no upper limit): no room to name. No taxable income is "none".
+    """
+    if income <= EDGE_TOLERANCE:
+        room = round(edges[0]["amount"] - max(income, 0.0), 2) if edges else None
+        return "none (no taxable income)", room
+    for i, edge in enumerate(edges):
+        if abs(income - edge["amount"]) <= EDGE_TOLERANCE:
+            room = round(edges[i + 1]["amount"] - edge["amount"], 2) if i + 1 < len(edges) else None
+            return f"{edge['label']} (full)", room
+        if income < edge["amount"]:
+            return edge["label"], round(edge["amount"] - income, 2)
+    return (top or "above the last edge"), None
 
 
 def bracket_view(p) -> dict:
     """The per-year view (today's dollars) of a solved plan: income, conversions and lines.
 
     Rows follow the plan's years; each holds `ordinary_taxable_income` (the bracket base,
-    `Plan.G_n`), `conversion` (the Roth conversion layer within it), `magi`, and the year's
-    lines. The IRMAA edges are the *premium* year's tier amounts -- the MAGI of year m sets
+    `Plan.G_n`, after the deduction), `conversion` (the gross Roth conversion),
+    `conversion_taxable` (its share of the taxable income, as the income's last layer: the
+    rest is absorbed by the deduction; review AI1), `magi` (what the IRMAA and ACA lines are
+    read against), `fills_bracket` (the bracket the income is in, "(full)" at its top; review
+    AI2) with `room_to_next_edge` (to the top of that bracket, or of the next one when full),
+    and the year's lines. The IRMAA edges are the *premium* year's tier amounts -- the MAGI of year m sets
     the premiums of m + 2 (`tax_federal.mediCosts`, 20 CFR 418.1135(a)) -- and are read in
     the tax year's dollars, as `thresholds._irmaa_entries` reads them; a tax year whose
     premium year leaves the plan has none (review AF4). The ACA lines are
@@ -91,7 +114,8 @@ def bracket_view(p) -> dict:
         g = float(gamma[n])
         income = float(p.G_n[n]) / g
         edges = _edges(ordinary, n)
-        fills, room = _fill(income, edges)
+        fills, room = _fill(income, edges, top=tx.taxBracketNames[len(edges)])
+        conversion = float(np.sum(np.asarray(p.x_in[:, n], dtype=float))) / g
 
         irmaa_edges = []
         n_prem = n + 2  # the premium year this tax year's MAGI sets (20 CFR 418.1135(a))
@@ -117,7 +141,12 @@ def bracket_view(p) -> dict:
             "year": year,
             "ages": [int(year - int(p.yobs[i])) for i in range(p.N_i)],
             "ordinary_taxable_income": round(income, 2),
-            "conversion": round(float(np.sum(np.asarray(p.x_in[:, n], dtype=float))) / g, 2),
+            "conversion": round(conversion, 2),
+            # The conversion's share of the taxable income, the conversion taken as the
+            # income's last layer (review AI1): the gross conversion is larger when the
+            # deduction absorbs part of it (51,455 against 24,800 of taxable income on the
+            # synthetic household), and stacking it gross drew twice the year's income.
+            "conversion_taxable": round(min(conversion, max(income, 0.0)), 2),
             "magi": round(float(p.MAGI_n[n]) / g, 2),
             "fills_bracket": fills,
             "room_to_next_edge": room,

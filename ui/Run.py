@@ -278,29 +278,37 @@ def _conversions_and_brackets(run, result):
         return
     st.markdown("### Conversions and brackets")
     st.caption(
-        "Ordinary taxable income per year with the Roth conversion as the layer that fills "
-        "the bracket (today's \\$). The dotted lines are what the year is measured against: "
-        "the next ordinary bracket edge (taxable income), the IRMAA tier 1 line and the "
-        "marketplace's 400% FPL cliff (both MAGI; the MAGI of a year sets the Medicare "
-        "premiums two years later). The conversions are optimized in the model -- IRMAA, "
-        "ACA, SS taxability and state tax priced together -- so this view explains them "
-        "(design 14.1, I8).")
+        "Ordinary taxable income per year (after the deduction), the Roth conversion's share "
+        "of it as the top layer (today's \\$): a conversion the deduction absorbs is not "
+        "taxable income, so the table gives the gross conversion beside its taxable part "
+        "(review AI1). The dotted lines are what the year is measured against: the top of "
+        "the ordinary bracket the income is in (taxable income), and the IRMAA tier 1 line "
+        "and the marketplace's 400% FPL cliff, which are read against **MAGI**, the solid "
+        "line (the MAGI of a year sets the Medicare premiums two years later). The "
+        "conversions are optimized in the model -- IRMAA, ACA, SS taxability and state tax "
+        "priced together -- so this view explains them (design 14.1, I8).")
     xs = [row["year"] for row in years]
-    income = [row.get("ordinary_taxable_income") for row in years]
+    income = [row.get("ordinary_taxable_income") or 0.0 for row in years]
     conv = [row.get("conversion") or 0.0 for row in years]
+    # A plan.json written before the fold has no taxable share: the same rule here.
+    taxable_conv = [row["conversion_taxable"] if row.get("conversion_taxable") is not None
+                    else min(c, max(i, 0.0)) for row, i, c in zip(years, income, conv, strict=True)]
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=xs, y=[max(0.0, i - c) for i, c in zip(income, conv, strict=True)],
+    fig.add_trace(go.Bar(x=xs, y=[max(0.0, i - c) for i, c in zip(income, taxable_conv, strict=True)],
                          name="taxable income, ex conversions"))
-    fig.add_trace(go.Bar(x=xs, y=conv, name="Roth conversions"))
+    fig.add_trace(go.Bar(x=xs, y=taxable_conv, name="Roth conversions (their taxable part)"))
     fig.add_trace(go.Scatter(
-        x=xs, name="next bracket edge", line=dict(dash="dot"),
+        x=xs, name="MAGI (the IRMAA and cliff lines' measure)", mode="lines+markers",
+        y=[row.get("magi") for row in years]))
+    fig.add_trace(go.Scatter(
+        x=xs, name="top of the bracket", line=dict(dash="dot"),
         y=[None if row.get("room_to_next_edge") is None
            else row["ordinary_taxable_income"] + row["room_to_next_edge"] for row in years]))
     fig.add_trace(go.Scatter(
-        x=xs, name="IRMAA tier 1", line=dict(dash="dot"),
+        x=xs, name="IRMAA tier 1 (MAGI)", line=dict(dash="dot"),
         y=[(row.get("irmaa_edges") or [{}])[0].get("amount") for row in years]))
     fig.add_trace(go.Scatter(
-        x=xs, name="400% FPL (the cliff)", line=dict(dash="dot"),
+        x=xs, name="400% FPL, the cliff (MAGI)", line=dict(dash="dot"),
         y=[next((line["amount"] for line in row.get("aca_lines") or []
                  if "cliff" in line["label"]), None) for row in years]))
     fig.update_layout(barmode="stack", yaxis_title="$ per year (today's $)",
@@ -310,16 +318,16 @@ def _conversions_and_brackets(run, result):
     def _usd2(value):
         return "-" if value is None else f"{value:,.0f}"
 
-    lines = ["| year | taxable income | of which conversions | MAGI | bracket filled | "
-             "room to the next edge | IRMAA tier 1 | 400% FPL |",
-             "|---|---:|---:|---:|---|---:|---:|---:|"]
-    for row in years:
+    lines = ["| year | taxable income | conversions | of which taxable | MAGI | bracket | "
+             "room to the top | IRMAA tier 1 | 400% FPL |",
+             "|---|---:|---:|---:|---:|---|---:|---:|---:|"]
+    for row, part in zip(years, taxable_conv, strict=True):
         tier = (row.get("irmaa_edges") or [{}])[0].get("amount")
         cliff = next((line["amount"] for line in row.get("aca_lines") or []
                       if "cliff" in line["label"]), None)
         lines.append(
             f"| {row['year']} | {_usd2(row.get('ordinary_taxable_income'))} | "
-            f"{_usd2(row.get('conversion'))} | {_usd2(row.get('magi'))} | "
+            f"{_usd2(row.get('conversion'))} | {_usd2(part)} | {_usd2(row.get('magi'))} | "
             f"{row.get('fills_bracket') or '-'} | {_usd2(row.get('room_to_next_edge'))} | "
             f"{_usd2(tier)} | {_usd2(cliff)} |")
     st.markdown("\n".join(lines))
@@ -600,23 +608,30 @@ with st.expander("Solve this run"):
 # -- the sensitivity tornado (design 14.1, I9) --------------------------
 
 
-def _tornado_collection(run, name):
+def _tornado_collection(run):
     """The collection the sensitivity runs live in (created on first use): one child per
     mover, queued under the exact LP, "run the collection again" re-solves them all. The run
     itself is a member and the reference (review AG5: the grid's cells are differences from
-    it, as the bars are)."""
-    coll = next((c for c in lib.collections() if c.name == name), None)
+    it, as the bars are). Found by the run's id, never by its name (review AI3)."""
+    coll = tornado.collection_of(lib, run.id)
     if coll is None:
         coll = lib.create_collection(
-            name,
+            f"Sensitivity: {run.name}",
             question=f"What moves {run.name}'s score? (one key input at a time)",
             rule="each child re-solved under the exact LP, against this run's own exact-LP "
-                 "solve; bars sorted by effect, each with its tolerance (R2)")
+                 "solve; bars sorted by effect, each with its tolerance (R2)",
+            tornado_of=run.id)
     if coll.member(run.id) is None:
         lib.add_member(coll.id, run, {"mover": tornado.BASE_LABEL})
     if coll.reference is None:
         lib.set_reference(coll.id, run)
     return lib.collection(coll.id)
+
+
+def _live_exact_runs():
+    """The runs with an exact-LP solve waiting or running (review AI3: not queued twice)."""
+    return {str(j.doc.get("run_id")) for j in manager.jobs()
+            if j.state in (R.WAITING, R.RUNNING) and j.doc.get("preset") == "decision_exact"}
 
 
 with st.expander("Sensitivity (tornado)"):
@@ -626,9 +641,11 @@ with st.expander("Sensitivity (tornado)"):
         ". Each child is solved under the exact LP (for speed) and measured against this "
         "run's own exact-LP solve, which the button queues when the run has none (review "
         "AG2); the bars below are sorted by the size of the effect, each with its tolerance "
-        "(R2). A mover that does not fit this scenario, or that no plan year would see, is "
-        "skipped and says why. The runs land in the collection "
-        f"*Sensitivity: {run.name}*."
+        "(R2), the home at the end beside it (R3's other number, never added). A mover that "
+        "does not fit this scenario, or that no plan year would see, is skipped and says why. "
+        "A child already solved today by this code, or with its solve queued, is not queued "
+        "again. The runs land in the collection "
+        f"*{getattr(tornado.collection_of(lib, run.id), 'name', None) or 'Sensitivity: ' + run.name}*."
     )
     if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado"):
         made, skipped = tornado.tornado_variants(lib.scenario(run.id))
@@ -637,10 +654,13 @@ with st.expander("Sensitivity (tornado)"):
         if not made:
             libraryjobs.flash("error", "No sensitivity run fits this scenario.")
             st.rerun()
-        coll = _tornado_collection(run, f"Sensitivity: {run.name}")
-        queued = 0
-        if tornado.base_result(run.path) is None:
-            # The bars measure from this run's own exact-LP result only (review AG2).
+        coll = _tornado_collection(run)
+        queued, current = 0, 0
+        live = _live_exact_runs()
+        # The bars measure from this run's own exact-LP result only (review AG2), queued unless
+        # it is already queued or was solved today by this code (review AI3): the bars then
+        # compare solves of one day, the children's rule too.
+        if not (run.id in live or tornado.is_current(run.path)):
             try:
                 manager.enqueue(run, preset="decision_exact")
             except (ScenarioError, JobsError) as exc:  # another plan year (R1)
@@ -656,15 +676,20 @@ with st.expander("Sensitivity (tornado)"):
                 continue
             child = saved.run if saved.created else saved.identical_to
             lib.add_member(coll.id, child, variant.values)
+            if child.id in live or tornado.is_current(child.path):
+                current += 1  # solved today by this code, or queued (review AI3)
+                continue
             try:
                 manager.enqueue(child, preset="decision_exact")
             except (ScenarioError, JobsError) as exc:  # another plan year (R1)
                 libraryjobs.flash("error", f"{child.name}: not queued ({exc})")
                 continue
             queued += 1
-        libraryjobs.flash("success", f"{queued} sensitivity run(s) queued under the exact LP.")
+        libraryjobs.flash("success", f"{queued} sensitivity run(s) queued under the exact LP"
+                          + (f"; {current} already solved today or queued, not queued again."
+                             if current else "."))
         st.rerun()
-    _coll = next((c for c in lib.collections() if c.name == f"Sensitivity: {run.name}"), None)
+    _coll = tornado.collection_of(lib, run.id)  # by the run's id (review AI3)
     if _coll is not None:
         _base = tornado.base_result(run.path)
         _rows = []
@@ -704,18 +729,26 @@ with st.expander("Sensitivity (tornado)"):
                     error_x=dict(type="data", array=[b["tolerance"] or 0.0 for b in _shown][::-1],
                                  visible=True),
                     marker_color=["#c62828" if b["delta"] < 0 else "#2e7d32" for b in _shown][::-1],
+                    customdata=[b.get("home_delta") or 0.0 for b in _shown][::-1],
+                    hovertemplate="%{y}: score %{x:+,.0f}; home at the end %{customdata:+,.0f}"
+                                  "<extra></extra>",
                 ))
                 fig.update_layout(height=max(240, 40 * len(_shown) + 120),
                                   xaxis_title="score's difference from this run (today's $)",
                                   showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
-            lines = ["| mover | difference | tolerance | verdict |",
-                     "|---|---:|---:|---|"]
+            # The home at the end beside the score (review AI4: R3's other number, never added;
+            # "condo price +10%" moves it by about the price change).
+            lines = ["| mover | difference | tolerance | verdict | home at the end |",
+                     "|---|---:|---:|---|---:|"]
             for b in _bars:
                 delta = f"{b['delta']:+,.0f}" if b["delta"] is not None else "-"
                 tol = f"{b['tolerance']:,.0f}" if b["tolerance"] is not None else "-"
+                home = b.get("home_delta")
+                home = "-" if home is None else ("±0" if b.get("home_verdict") == "no difference"
+                                                 else f"{home:+,.0f}")
                 lines.append(f"| {b['label']} | {delta} | ±{tol} | {b['verdict']}"
-                             + (f" ({b['note']})" if b["note"] else "") + " |")
+                             + (f" ({b['note']})" if b["note"] else "") + f" | {home} |")
             st.markdown("\n".join(lines))
         else:
             st.caption("No sensitivity result yet: the Queue page shows their progress "

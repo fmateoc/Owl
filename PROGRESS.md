@@ -7009,3 +7009,48 @@ lint only upstream's listed items; full suite **4422 passed, 1 skipped** (11:47,
 The user's call. `main` moves from `59bc8d9` (step 6 with the AI folds) to this branch: the
 fifth whole-step review of step 6 (AJ1-AJ4) and its folds. Full suite on the branch: 4422
 passed, 1 skipped.
+
+## UX review of the browser UI (2026-11-07)
+
+Branch `claude/optimistic-mccarthy-pidkig` (from `main` `1623d2e`). The user asked for a UX and
+ergonomics audit from the spouse's point of view (a physician: analytical, no interest in solver
+internals), **report first, no code change**: `fork-notes/ux-review.md`. The app was run in
+library mode and driven with Playwright through the four journeys:
+
+- cold start;
+- a what-if against the baseline;
+- the tax, ACA and IRMAA thresholds;
+- one year's cash flow.
+
+The case was the synthetic household (`Case_ari+noa_condo.toml` + the Yonkers 2029 cash
+workbook), never the real one. Every finding is tagged [seen] / [ran] / [code].
+
+Solves made:
+
+- library "decision": 4 min 49 s, with its exact companion in 9 s;
+- a Roth-cap what-if: 5 min 25 s;
+- the classic Graphs page, which solves in the page request: not done after 22 minutes, with
+  only the page header showing.
+
+Defects found on the way (not fixed; the report's Q3, Q5, Q21, S4):
+
+- the Queue page's "decision" queues no exact companion (the Run page's does), and Compare
+  then tells the user to solve with Decision;
+- a purchase event added to an imported run gives two residences, and its blank default
+  school district overwrites the case's (STAR lost) [ran: `builder.build`];
+- `owlbridge.runPlan` solves after `prepareRun` failed to apply the configuration (an ACA
+  start year of 1999 gave the setACA error "e.g. 4025", then a misleading "No plan satisfies
+  all the constraints");
+- the Scenario page's "Property tax ($/yr, today's $)" label renders as math.
+
+Also verified:
+
+- Scenario edits are lost on navigation;
+- the classic pages lose everything on a reload;
+- the first click on *Create collection* is swallowed;
+- "Things to look at" misses the 2029 IRMAA tier-2 crossing (2031 Medicare \$13,158 vs
+  \$6,284 in 2032) and the 2027-28 marketplace-cliff overshoot, because it lists only years
+  within 5% of a line.
+
+Not walked: the Stress Tests pages, Settings, Logs, Documentation, the tornado and regret
+sweep, a solved collection grid. Next: the user's call on which remediation items to build.

@@ -7373,3 +7373,40 @@ and AL2. AL3-AL6 stand.
 ## Three issue drafts filed; `main` fast-forwarded (2026-11-07)
 
 The user filed the three drafts on `mdlacasse/Owl`: **#245** (`issue-prepare-run-failure.md`, B3: the UI solves after "Failed to apply configuration"), **#246** (`issue-create-case.md`, Q18/Q11: Create Case's lost first click and the missing upload confirmation), **#247** (`issue-slcsp-field.md`, Q20: the SLCSP field's decimals and step). Numbers found with `gh api search/issues`. `main` fast-forwarded to `claude/review-ux-q10-q20` (Q10-Q20, the review, AL1-AL2 folded).
+
+## Ergonomics review QW-1 to QW-8: the work order (2026-11-07)
+
+Branch `claude/upbeat-planck-c731oy` (from `main` `0770124`). The user pasted an independent
+review of the browser UI's ergonomics: eight quick wins, QW-1 to QW-8. Each was checked against
+the code at `0770124` and against `upstream/dev` `73dc881` (fetched the same day).
+
+- **What the check found.**
+  - Most of the claims that could be checked hold.
+  - Several identifiers the review names do not exist (`_SUMMARY_USE_NAMES`,
+    `cash_flow_summary_text`, `_PURCHASE_SWEEP_CONFIG`, `_render_headline`,
+    `_sensitivity_frame`, `distance_frac`; grep of `src ui tests fork-notes`).
+  - Its figures (\$161,016 / \$108,516, the \$3-\$26 recapture rows, ~\$6.9k of IRMAA) come
+    from our own `fork-notes/ux-review.md` (lines 122, 222-233, 328-329, [seen]).
+  - QW-2.3 (the IRMAA payment year) was already in the entries (`affects`, the note), but under
+    an opaque column name.
+- **Re-read for ergonomics (the user's call).** The first answer argued from earlier decisions
+  and the code's structure; the user asked for an ergonomics reading, with earlier decisions
+  open. That reopens AL3 and AL4 (`ux-q10-q20-review.md`) and parts of S5, S6 and S9
+  (`ux-review.md` section 4).
+  - Changed on that reading: QW-5's total as the Run page's headline; QW-1.2's group nodes
+    always drawn; QW-6.2's "model" column dropped, with a † on the one bar measured
+    differently; QW-8.2's marker and QW-8.3's toggle.
+- **Found while checking, not in the review:**
+  - The Collections financing table has no range check (`builder.py` 421-423, `variants.py`
+    217-219), so `down = 20` typed as a percent builds a negative loan (`builder.py` 972; the
+    solve was not run).
+  - [inferred, not run] Every run from one import carries the import's `case_name`, and
+    `sskeys.createCaseFromFile` refuses a name already in the session. *Edit as new run* on a
+    run and then on its child, in one session, would stop at "Case name already exists".
+- **Work order** `fork-notes/ux-qw-handoff.md`.
+  - The items are in the reader's order: QW-2, QW-5, QW-1, QW-4, QW-6, QW-3, QW-7, QW-8.
+  - Four decisions for the user come first: upstream pages; QW-2's rules; QW-5's headline;
+    QW-8.4's threshold.
+  - Each item gives file:line evidence, what to do, its tests and its check.
+  - QW-2 and QW-3 add fields to `plan.json` for new solves only; no item moves an inputs hash.
+- Docs only: nothing built, no test run.

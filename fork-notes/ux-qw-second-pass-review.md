@@ -25,7 +25,7 @@ real solve of the synthetic household; **[probe]** a script or AppTest on small 
 | What | Result |
 |---|---|
 | Targeted suites (`tests/library tests/ui tests/plan/test_thresholds.py tests/plan/test_brackets.py`) on `d64ec67` | **1103 passed** (78 s), as PROGRESS.md says |
-| Full suite on `d64ec67` (`-n 4`) | see "Full suite" at the end |
+| Full suite on `d64ec67` (`-n 4`) | **4595 passed, 1 skipped** (11:24) |
 | `flake8 src tests ui --max-line-length=120`, `ruff check src tests ui` | only upstream's listed items; ruff's B905 in `ui/Run_Options.py` at line 340, as CLAUDE.md says |
 | QW-2's `test_thresholds.py` at `0aa42b3` on the build's code (`686521e`, worktree, `PYTHONPATH` set; the new `GROUPS` import stubbed, since the build lacks it) | **10 failed, 21 passed**: the "10 fail on the build" claim holds |
 | N1, N4: the three repro scripts on a stock `dev` `73dc8815` worktree, then each patch applied | output identical to the drafts' (below) |
@@ -222,5 +222,5 @@ not show.
 
 ## Full suite
 
-Running on `d64ec67` (`-n 4`, Linux) when this note was first committed; the result follows in
-the next commit.
+**4595 passed, 1 skipped** on `d64ec67` (11:24, `-n 4`, Linux). This is the count PROGRESS.md
+records for `fa7255d`; `3c839e9` added and removed no tests.

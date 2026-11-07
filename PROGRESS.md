@@ -7758,3 +7758,33 @@ merged build, with `PYTHONPATH` set to its `src`):
   `ui-remediation-qw-review.md` (AM4-AM7 closed); the work order records the decisions.
 - **Next:** the user's call on an independent review, on fast-forwarding `main`, and on
   filing the three drafts.
+
+## Ergonomics quick wins: independent review of the second pass (2026-11-07)
+
+Branch `claude/upbeat-planck-c731oy`, on `d64ec67`. Report:
+`fork-notes/ux-qw-second-pass-review.md`, findings AO1-AO8. Report only: nothing in `src`, `ui`
+or `tests` changed.
+
+- **AO1 (medium, QW-2).** A cliff crossed inside the 5% band is `group="near"` and drawn under
+  *Close to a line*.
+  - Seen in 3 of 10 Quick looks of the synthetic baseline with the taxable balances moved.
+  - Variant -200: the over table lists only 2029 (\$4,824) "largest cost first", while 2027
+    (\$12,547) and 2028 (\$12,864) are near rows [seen in the browser].
+  - AppTest: with only an in-band crossing, the over table says no year is over a line and
+    the next table lists one.
+  - It comes from the work order's own group definition.
+- **AO2 (low).** The one-year paragraph's savings total is on no Sankey node (210 of 280
+  paragraphs). The built test covers the tax sentence only.
+- **AO3 (low/nit).** Create Case's "(from *run*)" follows the case, not the workbook.
+- **AO4-AO8 (nits).** A cut Note column; "no Medicare premiums" for premium years after the
+  plan; a failed *Edit as new run* leaves another case current; the ACA toggle forgets a typed
+  year; one repro line in the year-fields draft can be misread.
+- **Held.**
+  - The three upstream drafts reproduce line for line on stock `dev` `73dc8815`, their patches
+    apply, and their tests fail on stock and pass patched.
+  - QW-2's "10 fail on the build" holds.
+  - QW-3's limits mirror the LP [code].
+- **Run (Linux).** Targeted suites 1103 passed; **full suite 4595 passed, 1 skipped** (11:24,
+  `-n 4`); lint as recorded.
+- **Next.** The user's call on which AO items to fold, on fast-forwarding `main`, and on filing
+  the three drafts.

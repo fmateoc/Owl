@@ -14,7 +14,7 @@ root = Path(sys.argv[1])
 try:
     owl.Plan(["Joe"], ["1961-01-15"], [80], "t", verbose=False).setACA(slcsp=10, start_year=1999)
 except ValueError as e:
-    print("setACA:", e)
+    print("setACA error:", e)
 
 st.page_link = lambda *a, **k: None
 case_file = root / "examples" / "Case_jack+jill.toml"

@@ -394,7 +394,7 @@ class TestDropGenerated:
             *base["events"],
             {"id": "buy", "kind": "purchase", "name": "h", "price": 700000, "year": 2027,
              "pay_on": "Jack",
-             "place": {"state": "NY", "locality": "", "school_district": "City of X / X", "move": True},
+             "place": {"state": "NY", "locality": "", "school_district": "City of Yonkers / Yonkers", "move": True},
              "financing": {"kind": "cash", "closing": 0.03}},
             {"id": "claim", "kind": "claim", "person": "Jack", "age": 62.0},
         ]

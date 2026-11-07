@@ -260,13 +260,20 @@ with st.expander("Home purchase", expanded=buy is not None):
     costs = (buy or {}).get("costs") or {}
     p1, p2, p3, p4 = st.columns(4)
     place_state = p1.text_input("State", value=place["state"], key=f"scn_place_state_{key}").strip().upper()
+    if buy is not None and str(event_place.get("state") or "").strip().upper() == place_state:
+        place_state = event_place["state"]  # the event's own spelling: no phantom edit (AK6)
+    # The pre-filled locality and district belong to the state they came from: another state
+    # starts both pickers at "(none)" (independent review AK2: the case's Yonkers stayed under
+    # CT, and the run failed only at solve time).
+    if place_state.upper() != str(place["state"] or "").strip().upper():
+        place = {**place, "locality": "", "school_district": ""}
     place_move = p4.checkbox("Move there", value=bool(place.get("move")), key=f"scn_place_move_{key}",
                              help="The household moves to the new home in the purchase year (a "
                                   "move in the case). Without it, the home is where the case "
                                   "already lives: its locality stays, its school district is the one "
                                   "picked here.")
-    _localities = _choices(_locality_choices(place_state), place["locality"])
-    _districts = _choices(_district_choices(place_state), place["school_district"])
+    _localities = _choices(_locality_choices(place_state.upper()), place["locality"])
+    _districts = _choices(_district_choices(place_state.upper()), place["school_district"])
     for _k, _opts in ((f"scn_place_locality_{key}", _localities), (f"scn_place_district_{key}", _districts)):
         if _k in st.session_state and st.session_state[_k] not in _opts:
             st.session_state.pop(_k)  # another state's value: start over from the default

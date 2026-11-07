@@ -225,8 +225,21 @@ amounts are built from the table's inflation path when there is one.
   of by the event's year: `yod`, a disposition at the start of that year, zero or negative
   counted from the plan's end) is refused with a `ScenarioError` naming the row. A refusal,
   not a warning: two homes are never what an imported case plus a purchase means, and the
-  page already shows a refusal as "Not buildable yet". A hand home sold by the purchase year,
-  an inactive row and the event's own row (kept by name from a pages save) are allowed.
+  page already shows a refusal as "Not buildable yet". A hand home sold by the purchase year
+  and an inactive row (an `active` cell set and falsy, as `utils.is_row_active` reads it) are
+  allowed. A hand home **with the event's name is refused too** (independent review AK1): the
+  hand tables never hold the event's own rows (a pages save drops them), so such a row is the
+  case's own home, which the event's row would replace by name while its loan, down payment
+  and budget lines stayed. Rows are read as the plan reads them (AK3): a blank `year`, or no
+  `year` column, is the plan's first year; a blank or absent `yod` is 0 (kept).
+- A move's locality and district are checked against the move's state when the scenario is
+  built (`residency.normalize`; AK2), so an unknown one is "Not buildable yet" rather than a
+  failed solve. The page starts the pickers at "(none)" when the State shown is not the one the
+  pre-filled place came from.
+- Runs saved before builder version 6 whose purchase (without a move) holds a blank district
+  meant "none" then and mean "keep the case's" now; stored scenarios are not rewritten
+  (AK4). The version bump marks them as built with an older builder, and their frozen files
+  are unchanged, but a child saved from one builds with the case's district.
 - Turning an imported case's home rows into a purchase event is S4 of the UX review, not
   built: "make variants" on such a run says to start from a rent-only run.
 

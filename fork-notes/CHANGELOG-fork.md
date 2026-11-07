@@ -14,8 +14,13 @@ has) is logged in `PROGRESS.md` only.
 - **A home purchase keeps the case's school district** unless it states another one (`-` for
   none), and **a purchase over a home the imported workbook already holds is refused** ("the
   plan would hold two homes") instead of building two residences; the Scenario page starts the
-  purchase from the case's own state, locality and district, with dropdowns. Runs built before
-  carry an older builder version (6) (B2).
+  purchase from the case's own state, locality and district, with dropdowns; a move whose
+  locality or district is unknown for its state is refused when the scenario is built, and
+  another state starts the pickers at "(none)". The builder is now version 6, so runs built
+  before are marked as built with an older builder. A run saved before this change whose
+  purchase (without a move) holds a blank district now builds with the case's district: a
+  blank used to mean "none", and stored scenarios are not rewritten (B2; independent review
+  AK1-AK6).
 - **The classic pages no longer solve a case whose inputs failed to apply**: Reports and
   Graphs show one message ("The case was not solved: one of its inputs could not be applied.
   ...") instead of the error followed by a solve of a half-applied case. `setACA`'s hint for a
@@ -34,7 +39,8 @@ has) is logged in `PROGRESS.md` only.
   case asks for no bequest, claiming ages "held at these" or "chosen by Owl"; **the Queue says
   what a job is doing** in words, the log line in a tooltip (Q8); **change summaries in words**,
   and a page default (`noLateSurplus` off, `timePreference` 0) is not reported as a change
-  (Q9; inputs hashes unchanged).
+  (Q9). Q9 moves no inputs hash; the builder version bump (B2) moves every run's, as every
+  bump does.
 
 ### Run library, build step 6: the fifth whole-step review's AJ1-AJ4 folded (2026-11-06)
 

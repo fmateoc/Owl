@@ -83,3 +83,41 @@ def test_a_second_home_is_refused_on_the_page(tmp_path, monkeypatch):
     assert any("Not buildable yet" in e and "two homes" in e and "yonkers condo" in e for e in errors), errors
     save = at.button[[b.label for b in at.button].index("Save as a new run")]
     assert save.disabled
+
+
+def test_another_state_resets_the_pre_filled_place(tmp_path, monkeypatch):
+    """Independent review AK2: with Move there and State CT, the case's Yonkers stayed and the
+    run failed only at solve time. Another state starts both pickers at (none)."""
+    lib = _library(tmp_path, monkeypatch)
+    at = _page()
+    key = _run_key(lib)
+    at.checkbox(key=f"scn_buy_on_{key}").check().run()
+    at.checkbox(key=f"scn_place_move_{key}").check().run()
+    at.text_input(key=f"scn_place_state_{key}").set_value("CT").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.selectbox(key=f"scn_place_locality_{key}").value == ""
+    assert at.selectbox(key=f"scn_place_district_{key}").value == ""
+    assert "Yonkers" not in at.selectbox(key=f"scn_place_locality_{key}").options
+    assert not [e.value for e in at.error]
+
+
+def test_an_unedited_save_keeps_a_lowercase_state(tmp_path, monkeypatch):
+    """AK6: the State field upper-cases what is typed; an event stored with "ny" is not a
+    change when nothing was edited."""
+    lib = _library(tmp_path, monkeypatch)
+    run = lib.runs()[0]
+    scenario = lib.scenario(run.id)
+    scenario["events"] = [{"id": "buy", "kind": "purchase", "name": "condo", "price": 700000,
+                           "year": 2027, "place": {"state": "ny", "school_district": YONKERS},
+                           "costs": {"property tax": 9500}, "financing": {"kind": "cash"}}]
+    child = lib.save_run(name="lowercase", scenario=scenario, parent=run.id).run
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(UI_DIR / "Scenario.py"), default_timeout=90)
+    at.session_state["cases"] = {}
+    at.session_state["currentCase"] = None
+    at.session_state["library_selected_run"] = child.id
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    captions = [c.value for c in at.caption]
+    assert any(c == "Changes against this run: none yet" for c in captions), captions

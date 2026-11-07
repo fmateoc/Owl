@@ -985,6 +985,8 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
             place = {**PLACE_DEFAULTS, **(purchase.get("place") or {})}
             if place["move"]:
                 # A move states its new place: a blank or "-" field there is none.
+                _check_place(purchase["id"], place["state"], place_text(place["locality"]),
+                             place_text(place["school_district"]))
                 _set_path(case, "basic_info.moves", [{
                     "year": year,
                     "state": place["state"],
@@ -1060,31 +1062,67 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
         provenance["cells"].append([sheet, column, year, eid])
 
     if purchase is not None:
-        _check_one_home(hand_hfp, purchase, years[purchase["id"]], end_year)
+        _check_one_home(hand_hfp, purchase, years[purchase["id"]], end_year, plan_start)
     hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life)
     return case, hfp, provenance
 
 
-def _check_one_home(hand_hfp: dict, purchase: dict, where: dict, end_year) -> None:
+def _check_place(eid: str, state: str, locality: str, district: str) -> None:
+    """A move's place as the plan will read it (independent review AK2): an unknown
+    locality or district for the move's state is refused here ("Not buildable yet" on the
+    page) instead of stopping the solve (`residency.normalize`'s "Unknown locality ...").
+    A purchase without a move is not checked here: its district is read with the case's own
+    state, as any hand district is."""
+    from owlplanner import residency
+
+    try:
+        residency.normalize(state, locality, district)
+    except ValueError as exc:
+        raise ScenarioError(f"{eid}.place: {exc}") from None
+
+
+def _blank(value) -> bool:
+    """A missing cell as the plan reads one: None, NaN or blank text."""
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    return isinstance(value, str) and not value.strip()
+
+
+def _check_one_home(hand_hfp: dict, purchase: dict, where: dict, end_year, plan_start) -> None:
     """Refuse a purchase event over a hand Fixed Assets home still owned while the event's
     home is (UX review B2): an imported case whose workbook holds its own purchase got a
     second residence, with no warning. A hand home sold (`yod`, disposed at the start of
-    that year) by the event's year, an inactive row and the event's own row (kept by name
-    from a pages save, regenerated) are not a second home."""
+    that year) by the event's year and an inactive row are not a second home.
+
+    A hand home with the event's name is no exception (independent review AK1): the hand
+    tables never hold the event's own rows (a pages save drops them, `casefiles._drop_generated`),
+    so such a row is a home of the case's, which the event's row would replace by name while its
+    loan, down payment and budget lines stayed. Rows are read as the plan reads them
+    (AK3, AK5): a blank `year` (or no `year` column) is the plan's first year, a blank or
+    absent `yod` is 0 (kept), and an `active` cell is inactive only when it is set and falsy
+    (`utils.is_row_active`)."""
     table = hand_hfp.get("Fixed Assets") or {}
     columns = list(table.get("columns") or ASSET_COLUMNS)
-    if not all(c in columns for c in ("name", "type", "year", "yod")):
-        return
+    if "type" not in columns:
+        return  # no row can say it is a residence
     at = {c: columns.index(c) for c in ("active", "name", "type", "year", "yod") if c in columns}
+
+    def cell(row, column):
+        return row[at[column]] if column in at and at[column] < len(row) else None
+
     start = where["year"]
     stop = where.get("sale") or None  # the event's home is gone from its sale year
     for row in table.get("rows") or []:
-        if "active" in at and row[at["active"]] is False:
+        active = cell(row, "active")
+        if not _blank(active) and not active:
             continue
-        if row[at["name"]] == purchase["name"] or str(row[at["type"]]).strip().lower() != "residence":
+        if str(cell(row, "type") or "").strip().lower() != "residence":
             continue
         try:
-            bought, yod = int(row[at["year"]]), int(row[at["yod"]] or 0)
+            bought = plan_start if _blank(cell(row, "year")) else int(cell(row, "year"))
+            yod = 0 if _blank(cell(row, "yod")) else int(cell(row, "yod"))
         except (TypeError, ValueError):
             continue
         if yod <= 0:  # zero or negative: counted from the plan's end (fixedassets' rule)
@@ -1092,7 +1130,7 @@ def _check_one_home(hand_hfp: dict, purchase: dict, where: dict, end_year) -> No
         if (yod is None or start < yod) and (stop is None or bought < stop):
             sold = f"sold in {yod}" if yod is not None and yod <= (end_year or yod) else "kept to the end"
             raise ScenarioError(
-                f"the case already holds a home, {row[at['name']]!r} (Fixed Assets, from {bought}, "
+                f"the case already holds a home, {cell(row, 'name')!r} (Fixed Assets, from {bought}, "
                 f"{sold}), owned while the purchase event's {purchase['name']!r} is (from {start}): "
                 "the plan would hold two homes. Drop the purchase event, or start from a run with "
                 "no home in its workbook (a rent-only case: no home in Fixed Assets, no loan for "

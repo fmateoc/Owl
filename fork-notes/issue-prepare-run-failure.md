@@ -6,7 +6,7 @@ to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). P
 there: `tests/ui` and `tests/tax/test_aca.py` 233 passed). Repro script:
 `fork-notes/issue-prepare-run-failure-repro.py` (run with the repo root as argument). The
 output below is from real runs of that script in this container on stock `dev` and on `dev`
-with the patch.
+with the patch (re-run 2026-11-07 after the script's label changed; upstream `dev` still `73dc8815`).
 
 ---
 
@@ -36,7 +36,7 @@ suits a small offset (3 -> 2029) but gives *"e.g. 4025"* for 1999.
 
 ```text
 $ PYTHONPATH=$PWD/src python issue-prepare-run-failure-repro.py $PWD
-setACA: setACA: start_year=1999 looks like an offset rather than a calendar year. Use a 4-digit calendar year (e.g. 4025).
+setACA error: setACA: start_year=1999 looks like an offset rather than a calendar year. Use a 4-digit calendar year (e.g. 4025).
 solves: 1
 caseStatus: solved
 error: Failed to apply configuration: setACA: start_year=1999 looks like an offset rather than a calendar year. Use a 4-digit calendar year (e.g. 4025).
@@ -49,7 +49,7 @@ benchmark premium and *ACA start year* 1999 on the ACA settings, open **Reports*
 **With the patch:**
 
 ```text
-setACA: setACA: start_year=1999 is before 2000. Use a 4-digit calendar year such as 2027.
+setACA error: setACA: start_year=1999 is before 2000. Use a 4-digit calendar year such as 2027.
 solves: 0
 caseStatus: invalid input
 error: The case was not solved: one of its inputs could not be applied. start_year=1999 is before 2000. Use a 4-digit calendar year such as 2027.

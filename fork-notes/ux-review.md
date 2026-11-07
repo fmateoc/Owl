@@ -4,10 +4,11 @@ Audit only: no code was changed. The yardstick is the user's spouse, a physician
 reads longitudinal charts and probability ranges, wants to know *why* the plan does what it does,
 and has no interest in the solver, TOML keys, tracebacks or sign conventions.
 
-## Status of the fixes (2026-11-07, branch `claude/ux-fixes`)
+## Status of the fixes (2026-11-07, branches `claude/ux-fixes` and `claude/dazzling-gauss-69epxn`)
 
-Work order `fork-notes/ux-fixes-handoff.md`; details in PROGRESS.md "UX review: the four bugs"
-and "UX review: quick wins Q1-Q9".
+Work orders `fork-notes/ux-fixes-handoff.md` and `fork-notes/ux-q10-q20-handoff.md`; details in
+PROGRESS.md "UX review: the four bugs", "UX review: quick wins Q1-Q9" and "UX review: quick wins
+Q10-Q20, and B3's issue reworked".
 
 | Item | State |
 |---|---|
@@ -22,7 +23,18 @@ and "UX review: quick wins Q1-Q9".
 | Q7 headline wording | **Done** (`view.claiming_ages_phrase`, `view.spent_down_by_design`) |
 | Q8 Queue phase in words | **Done** (`libraryjobs.job_phase`) |
 | Q9 change summaries | **Done in the diff** (`scenario.PATH_LABELS`, `NO_OP_DEFAULTS`); `scenario_from_ui` unchanged, so no inputs hash moves |
-| Q10-Q20, S1-S10 | Not started (the user's call) |
+| Q10 import form | **Done**: companions named by the case, refusal by name, no temp path, form kept open (`ui/library_import.py`) |
+| Q11 workbook confirmation | **Done** (for everyone; "(Optional)" dropped for a budget profile, fork only); issue draft `fork-notes/issue-create-case.md`, not filed |
+| Q12 after Open in Owl | **Done** in `owlbridge.openCaseFromPlan` (fork only: no upstream route reaches it) |
+| Q13 Edit as new run | **Done**: switches to Run Options, message under the title bar |
+| Q14 library-mode chrome | **Done**: `--client.toolbarMode=viewer` (not `minimal`, which also hides Print), Welcome's AI paragraph hidden; *Connect your AI* kept (the user's call, W9) |
+| Q15 brackets chart | **Done** (`ui/run_charts.py`) |
+| Q16 taxes and premiums, income sources | **Done**; the purchase year from `cash_flow`, `plan.json` unchanged |
+| Q17 one-year Sankey | **Done**: paragraph and Sankey from the same groups |
+| Q18 buttons gated on a text field | **Done** on Collections and Create Case (reproduced with Playwright first); issue draft `fork-notes/issue-create-case.md`, not filed; duplicate collection names refused |
+| Q19 purchase box | **Done** (the dropdowns were B2's) |
+| Q20 Goals / Run Options wording | **Done**: Goals in library mode only; the SLCSP field for everyone, issue draft `fork-notes/issue-slcsp-field.md`, not filed |
+| S1-S10 | Not started (the user's call) |
 
 ## How this was checked
 

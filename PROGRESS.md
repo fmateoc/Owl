@@ -7217,3 +7217,126 @@ The user's call. `main` moves from `1623d2e` to this branch. The branch carries 
 (`claude/optimistic-mccarthy-pidkig`), its four bugs and quick wins Q1-Q9, and the independent
 review's AK1-AK7 folds. Full suite on the branch: 4472 passed, 1 skipped. B3's upstream issue
 (`fork-notes/issue-prepare-run-failure.md`) is still unfiled.
+
+## UX review: quick wins Q10-Q20, and B3's issue reworked (2026-11-07)
+
+Branch `claude/dazzling-gauss-69epxn`, from `claude/ux-fixes` `eaadfb7` (the work order
+`fork-notes/ux-q10-q20-handoff.md`). Upstream `dev` still `73dc8815`.
+
+**B3's issue draft reworked first (the user's call).** The draft's second point, `setACA`'s
+hint for an ACA start year before 2000 ("e.g. 4025"), and its trigger, a start year of 1999,
+answered an input nobody enters ("why not before 1900?"). Dropped from the issue, the patch and
+the fork (`plan.py` `setACA` and `tests/tax/test_aca.py` are upstream's again; the method-name
+stripping in `owlbridge._applyConfig` went with it). The new trigger is a move to the starting
+state, which Create Case warns about but keeps: on stock `dev`, `Case_dana.toml` (CA) with the
+state set to FL and a move to FL in 2031, plus \$50,000 of wages added for 2026, Reports showed
+the error and then the results of a solve in CA (\$29,910 of state tax, for an FL case) with
+\$0 of wages (the control, the same edit with the case left in CA, shows \$50,000: the skipped
+`_setContributions`). Patched: no solve, one message, `invalid input`. The new test fails on
+stock `dev` (one solve) and passes patched (`tests/ui` + `test_aca.py` 231 passed). Not filed.
+
+**Decisions (the user's calls).** (1) Upstream pages split by kind: plain defects for everyone
+with an issue draft, household-aimed wording in library mode only. (2) *Connect your AI* stays
+in library mode (W9 stands). (3) *Edit as new run* goes to Run Options.
+
+**The items.**
+- **Q14** `owlplanner-library.sh`/`.cmd` pass `--client.toolbarMode=viewer`, not `minimal`:
+  both drop Deploy, Rerun and Clear cache, and `minimal` would also drop the menu's Print and
+  theme entries (the app sets no `menu_items`; option checked in Streamlit 1.66's `config
+  show`). Welcome leaves out its AI-assistant paragraph in library mode.
+- **Q18** reproduced with Playwright before the fix, on both buttons: typing the name and then
+  clicking with the mouse hit a still-disabled button (the field commits on blur), and only the
+  second click created. *Create collection* (fork) and *Create case* (upstream) are now enabled
+  and name what is missing on a blank click. Re-drive afterwards: one click creates. The
+  re-drive also showed a pre-existing twin: the name stays in the field after a create and a
+  second click made a second collection with the same name; a taken name is now refused.
+- **Q13** *Edit as new run* flashes where the inputs are and switches to Run Options;
+  `sskeys.titleBar` draws a queued library message in library mode (the library pages do not
+  call it, so only the classic pages are affected). New `sskeys.library_mode()`.
+- **Q12** `owlbridge.openCaseFromPlan` sets `stHFP` from the plan's workbook name and marks the
+  eight Case Setup pages visited. Not an upstream defect: every upstream workbook load goes
+  through `readHFP`, which sets `stHFP` (and upstream's `genDic` is dead code). Both tests
+  failed before the fix ("not yet been uploaded" shown; strip "(12%)").
+- **Q10** `casefiles.case_references` and `ui/library_import.py` (the form's logic without
+  Streamlit): a caption under each companion uploader ("Required: this case names
+  *HFP_ari+noa.xlsx*"), an import missing a named file refused by name before anything is read
+  (`_resolve_ref` would otherwise also look in the server's working directory), errors without
+  the temporary folder, the form open after a failure with its files, cleared after a success
+  (key counter). The uploaders keep fixed labels: a changed label can reset a widget.
+- **Q11** Create Case confirms the workbook read ("loaded: wages and contributions for Ari and
+  Noa; 0 debts, 1 fixed asset, 10 budget lines"; the Budget count only for a filled sheet or a
+  budget profile) and drops "(Optional)" for a budget profile (fork part).
+- **Q19** *Paid from* is a dropdown ("default (Ari)" keeps the event's `None`); the shares are
+  shown in percent and the event keeps its own value while the shown percent is unchanged
+  (0.029 does not survive x100/100: the two share tests fail with a plain `/100`); the event ids
+  of rent, purchase, care and the downturn are in an "Advanced" popover (expanders cannot nest);
+  a warning when property tax, HOA and insurance are all 0.
+- **Q15-Q17** `ui/run_charts.py`. Brackets: every IRMAA tier on the chart's scale with the
+  premium year in the hover (the tiers no year comes near are named in a caption: tier 5 on the
+  synthetic case), the bracket tops as faint steps, red dashes for IRMAA and a purple dash-dot
+  for the 400% FPL line; the table is a dataframe. *Taxes and premiums*: Medicare (IRMAA
+  included) and marketplace premiums beside the taxes. *Income sources*: all-zero series left
+  out; a big-ticket purchase year (found from `cash_flow`'s "Big-ticket purchases" use;
+  `plan.json` unchanged) runs off the top with its total written on it. One year: a paragraph
+  built from the same groups the Sankey draws (each side's groups add up to its total, tested),
+  and a Sankey with the amounts in the node labels (Plotly 7.1's Sankey has no node text
+  template), a labelled hub and Spending / Taxes / Health premiums nodes carrying totals.
+- **Q20** Run Options (for everyone): the SLCSP field shows two decimals and steps by 1 (stock
+  `dev`, in a browser: 20.84 typed showed 20.8, + went to 30.8). Goals (library mode only):
+  Profile slack and Time preference behind "Advanced" with a sentence each; the profile axis
+  reads "spending relative to the first year" where the profile starts at 1 (flat, budget) and
+  "relative scale" where it does not (the smile starts at 1.094 on jack+jill, so the work
+  order's "relative to year 1" would have been wrong there).
+
+**Found.** Streamlit 1.66's `NumberColumn(format="plain")` shows 2028 as 2027.9999999999998
+and 2034 as 2034.0000000000002 (a probe app, int64 column; `%d` is right). Q6's *Things to
+look at* table used it for its years; both tables use `%d` now, and a source test keeps
+`plain` out of `ui/`. Financial Profile's own "loaded" line after Open in Owl prints the plan's
+full workbook path (`otherFiles/library/runs/.../inputs/HFP.xlsx`); left as is (upstream's
+line, and `hfpFileName` feeds a saved case).
+
+**Upstream issue drafts, not filed.** `fork-notes/issue-create-case.*` (Q18's lost click and
+Q11's confirmation; stock patch, its test file 2 of 3 failing on stock `dev`, patched `tests/ui`
+162 passed, a Playwright repro run on a stock server and a patched one) and
+`fork-notes/issue-slcsp-field.*` (one call and a test failing on stock `dev`; patched
+`tests/ui` 160 passed; Playwright repro on both). The fork carries both test files as is. The
+stock Create Case test puts Streamlit's own `date` class back in its date widget: stock
+`dev`'s test date freeze rebinds it there, and a rerun of a page with a birth date then fails
+("Provided type: date"); the fork's conftest already handles it.
+
+**Re-driven with Playwright** on the synthetic household in library mode, after the changes:
+- Q10: with a run in the library the form starts closed; importing `Case_ari+noa.toml` alone
+  says *"Not imported: this case names HFP_ari+noa.xlsx (choose it under Household workbook).
+  Add it and import again."*, and the form stays open with the case file chosen.
+- Q11: *"Upload Financial Profile"*, *"This case's spending profile is budget: its lines come
+  from the workbook's Budget sheet."*, then *"✅ HFP_ari+noa_condo_yonkers_2027_cash.xlsx loaded:
+  wages and contributions for Ari and Noa; 0 debts, 1 fixed asset, 10 budget lines."*
+- Q12: Financial Profile shows no warning; the strip reads *"Case Setup Progress: (100%)"*.
+- Q13: lands on Run Options with *"The inputs of Case_ari+noa_condo are open as the case
+  ari+noa. Change them here or on any Case Setup page, then save them on the Library page
+  (Save the current case): a new run, with Case_ari+noa_condo as its parent."*
+- Q14: no Deploy button; the menu holds System / Light / Dark, Print, Record screen; Welcome
+  has no AI headline.
+- Q15: legend *IRMAA tier 1-4 (MAGI; premiums two years later)*, *400% FPL, the marketplace
+  cliff (MAGI)*; caption *"Above the chart, never reached: IRMAA tier 5 (from 771,000)."*;
+  the table's years read 2026, 2027, 2028 ... (after the `%d` fix).
+- Q16: tab *Taxes and premiums* with *Marketplace premiums* and *Medicare premiums (with
+  IRMAA)*; *Income sources* lists Wages, Social Security, Withdrawals from savings, and 2027
+  carries *"↑ 974,971 incl. a 741,188 purchase"*.
+- Q17: *"2027: spending \$141,369 plus big-ticket purchases \$741,188. All of it comes from
+  savings: the taxable (brokerage) accounts \$888,582, the tax-deferred accounts (IRAs)
+  \$86,389. Taxes \$70,669: capital gains \$36,187, state and local \$22,499, federal income
+  tax \$7,072, NIIT \$4,911. Health premiums \$21,745 (marketplace \$21,745)."*; nodes
+  *"2027 cash flow: \$974,971"*, *"Taxes: \$70,669"*, *"Spending: \$141,369"*.
+- Q18: both buttons enabled at the click; one click creates.
+- Q19: *Down payment (%)* 20.00, *Closing costs (% of the price)* 3.00, *Paid from* options
+  *default (Ari)*, *Ari*, *Noa*; *Advanced* holds *Event id* "buy"; the all-zero warning shows.
+- Q20: Goals' *Advanced* holds the two inputs and their sentences; the axis reads *spending
+  relative to the first year*; the SLCSP field shows 20.84 with step 1.
+
+**Checks.** Full suite on `bdfebd9` (all items built): 4507 passed, 1 skipped (11:11, Linux,
+`-n 4`). Three UI-only commits followed (the tables' `%d` and whole dollars, the twin
+collection); the full suite on the final code is recorded below. `check_library_builder.py`
+46/46, `check_library_roundtrip.py` 39/39, `check_library_compare.py` 9/9. Lint: flake8 and
+ruff report only upstream's listed items (the B905 in `ui/Run_Options.py` is at line 263 now).
+The three upstream patches apply to stock `dev` `73dc8815` alone and together.

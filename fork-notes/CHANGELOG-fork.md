@@ -7,6 +7,39 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library and classic pages: the UX review's quick wins Q10-Q20 (2026-11-07)
+
+- **The Library page's import form names the files a case needs** ("Required: this case
+  names HFP_x.xlsx"), refuses an import missing one by name, shows no temporary folder in its
+  errors, and stays open with its files after a failure (Q10).
+- **Create Case confirms a workbook upload** ("loaded: wages and contributions for ...; 1 debt,
+  1 fixed asset") and, for a budget spending profile, no longer calls the workbook optional
+  (Q11).
+- **Open in Owl** no longer says the run's workbook "has not yet been uploaded", and its case
+  counts as fully set up (Q12). **Edit as new run** goes to Run Options with a message saying
+  where the inputs are and how to save them (Q13).
+- **Library mode** hides Streamlit's Deploy, Rerun and Clear cache menu items (Print and the
+  theme stay) and Welcome's pitch for an AI assistant (Q14).
+- **The Run page explains more**: every IRMAA tier with the year whose premiums it sets, the
+  bracket tops as faint steps, distinct lines for IRMAA and the marketplace cliff, a table with
+  separators (Q15); Medicare and marketplace premiums beside the taxes, income charts without
+  empty series and with a purchase year that no longer sets the scale (Q16); one year's cash
+  flow as a paragraph above a Sankey that shows its amounts, a labelled hub and a taxes total
+  (Q17). Years in the Run page's tables are whole numbers (Streamlit's "plain" format showed
+  2028 as 2027.9999999999998).
+- **Create collection and Create case take the first click** after typing a name (the button
+  used to be still disabled when that click landed), and say what is missing on a blank one; a
+  collection name already taken is refused (Q18).
+- **The Scenario page's purchase box**: *Paid from* a dropdown of the people, down payment and
+  closing costs in percent (no change stored unless edited), event ids under "Advanced", a
+  warning when property tax, HOA and insurance are all 0 (Q19).
+- **Goals** (library mode) puts Profile slack and Time preference under "Advanced" with a
+  sentence each and titles the profile axis in words; **Run Options** shows the benchmark
+  premium to the cent and steps it by \$1k (Q20).
+- Upstream issue drafts, not filed: `fork-notes/issue-create-case.*` (Q18/Q11) and
+  `fork-notes/issue-slcsp-field.*` (Q20's SLCSP field); B3's draft
+  (`issue-prepare-run-failure.*`) reworked around a realistic trigger.
+
 ### Run library and classic pages: the UX review's four bugs and quick wins Q1-Q9 (2026-11-07)
 
 - **The Queue page's Careful preset ("decision") queues its exact-model companion** too, as the
@@ -23,9 +56,10 @@ has) is logged in `PROGRESS.md` only.
   AK1-AK6).
 - **The classic pages no longer solve a case whose inputs failed to apply**: Reports and
   Graphs show one message ("The case was not solved: one of its inputs could not be applied.
-  ...") instead of the error followed by a solve of a half-applied case. `setACA`'s hint for a
-  year before 2000 no longer says "e.g. 4025". Upstream code; issue draft and stock-`dev` patch
-  in `fork-notes/issue-prepare-run-failure.*`, not filed (B3).
+  ...") instead of the error followed by a solve of a half-applied case. Upstream code; issue
+  draft and stock-`dev` patch in `fork-notes/issue-prepare-run-failure.*`, not filed (B3). (A
+  new `setACA` hint for a year before 2000 was part of this change and was dropped the same day:
+  `setACA` is upstream's again.)
 - **Dollar labels no longer render as math** on the Scenario page ("Property tax (\$/yr,
   today's \$)"), with a source check over the pages (B4).
 - **Plain words on the library pages** (Q1): design and review codes and file names are gone

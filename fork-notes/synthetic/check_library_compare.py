@@ -21,9 +21,10 @@ comparison page do (`owlplanner.library.view` / `compare`, from the durable file
 
 And, for the step-3 second increment (design 14.1: I3/I6/I7):
 
-7. plan.json carries "Things to look at" (I3): the thresholds block, every entry inside its
-   band (its amount at most `near_band_fraction` x its `boundary_today_dollars`) and with the
-   fields the run page shows;
+7. plan.json carries "Things to look at" (I3): the thresholds block, its groups named, every
+   "near" entry inside its band (its amount at most `near_band_fraction` x its
+   `boundary_today_dollars`), every "over" entry a crossed cliff beyond it (QW-2), each with
+   the fields the run page shows;
 8. plan.json carries the one-year cash flow (I6): sources equal to uses in every year, both
    in the signed rows and as the Sankey draws them (`view.cash_flow_year`: a negative row,
    such as the state tax in a STAR-refund year, drawn on the other side -- review 3, W1),
@@ -178,15 +179,19 @@ def main() -> int:
         report = a2.plan.get("thresholds") or {}
         entries = report.get("entries") or []
         fields = {"year", "kind", "label", "side", "amount_today_dollars", "cost_today_dollars",
-                  "boundary_today_dollars"}
+                  "boundary_today_dollars", "group"}
         band = report.get("near_band_fraction")
-        ok = (band == 0.05
+
+        def inside(e):
+            return e["amount_today_dollars"] <= band * e["boundary_today_dollars"] + 0.01
+
+        ok = (band == 0.05 and report.get("groups") == ["near", "over"]
               and all(fields <= set(e) and e["side"] in ("over", "under") for e in entries)
-              # review AM2: a near miss inside its band (review 2, Q5), or a crossed discrete
-              # cliff listed wherever the year sits (QW-2, `thresholds._keep`).
-              and all(e["amount_today_dollars"] <= band * e["boundary_today_dollars"] + 0.01
-                      or (e["side"] == "over"
-                          and (e["kind"] == "irmaa" or "cliff" in e["label"]))
+              # A near miss inside its band (review 2, Q5); a crossed cliff (QW-2: an IRMAA
+              # tier, the 400% FPL line, the Enhanced STAR limit) beyond it, on the over side.
+              and all((e["group"] == "near" and inside(e))
+                      or (e["group"] == "over" and not inside(e) and e["side"] == "over"
+                          and (e["kind"] in ("irmaa", "star") or "cliff" in e["label"]))
                       for e in entries))
         failures += 0 if ok else 1
         kinds = sorted({e["kind"] for e in entries})

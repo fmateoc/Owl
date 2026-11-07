@@ -234,6 +234,12 @@ def thresholds(result: Result) -> list:
     return list((result.plan.get("thresholds") or {}).get("entries") or [])
 
 
+def threshold_groups_marked(result: Result) -> bool:
+    """Whether the report names its groups (QW-2): False for a result solved before crossings
+    were reported, whose list holds near lines only (or the build's partial crossings)."""
+    return bool((result.plan.get("thresholds") or {}).get("groups"))
+
+
 def threshold_band(result: Result) -> float:
     """The proximity band the report used (a fraction of each boundary; 0.05 when absent)."""
     band = (result.plan.get("thresholds") or {}).get("near_band_fraction")

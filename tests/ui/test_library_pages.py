@@ -455,12 +455,40 @@ class TestRunPageDetails:
     and I7 (the claiming-age map), run-library-design.md 14.1."""
 
     def test_things_to_look_at_shows_the_years_near_a_threshold(self, library):
+        """The fixture's result is an older one (no groups marked): its near line is drawn
+        under "Close to a line", and the page asks for a new solve (QW-2)."""
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
         assert "Things to look at" in text
-        assert "within 5% of a threshold" in text
-        assert any("IRMAA tier 1" in str(d.value) for d in at.dataframe)
+        assert "within 5% of a line the model knows" in text
+        assert "Solved before crossings were reported: solve again to see them." in text
+        assert any("IRMAA tier 1" in set(d.value.get("Line", [])) for d in at.dataframe)
+
+    def test_things_to_look_at_splits_a_new_result_into_two_tables_and_a_fold(self, library):
+        """QW-2 (ux-qw-handoff-2.md): a new result's crossings, near lines and small items."""
+        run = library.runs()[-1]  # the page's default run
+        folder = sorted(p for p in (run.path / "results").iterdir() if p.name.endswith("_decision"))[-1]
+        plan = json.loads((folder / R.PLAN_JSON).read_text(encoding="utf-8"))
+        cliff = "marketplace subsidy cliff (400% FPL)"
+        plan["thresholds"] = {"near_band_fraction": 0.05, "groups": ["near", "over"], "entries": [
+            {"year": y, "kind": "aca", "label": cliff, "side": "over", "amount_today_dollars": a,
+             "boundary_today_dollars": 84_202.0, "cost_today_dollars": c, "affects": None,
+             "note": "above 400% FPL no subsidy is paid", "group": "over"}
+            for y, a, c in ((2027, 48_000.0, 12_547.0), (2028, 49_000.0, 12_865.0))] + [
+            {"year": 2028, "kind": "state_recapture", "label": "NY benefit recapture starts",
+             "side": "over", "amount_today_dollars": 400.0, "boundary_today_dollars": 107_650.0,
+             "cost_today_dollars": 26.48, "affects": None, "note": "tiers", "group": "near"}]}
+        (folder / R.PLAN_JSON).write_text(json.dumps(plan), encoding="utf-8")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert "Where the plan pays for being over a line" in text
+        assert "Solved before crossings were reported" not in text
+        assert "1 smaller item" in [e.label for e in at.expander]
+        (over,) = [d.value for d in at.dataframe if cliff in set(d.value.get("Line", []))]
+        assert list(over["Year of income"]) == ["2027-2028"]
+        assert list(over["Costs"]) == ["$12,547-$12,865"]
 
     def test_the_one_year_cash_flow_sankey_has_its_year_and_caption(self, library):
         at = _page("Run.py")

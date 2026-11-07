@@ -75,36 +75,48 @@ def _usd(value):
 
 
 def _things_to_look_at(result):
-    """I3: the years just below or just over a threshold the model knows (plan.json)."""
+    """I3: the years over a cliff or close to a line the model knows (plan.json; QW-2's
+    parts from `run_charts.threshold_parts`)."""
     entries = view.thresholds(result)
     if not entries:
         return
     st.markdown("### Things to look at")
     band = view.threshold_band(result)
+    parts = run_charts.threshold_parts(entries, band, view.threshold_groups_marked(result))
     st.caption(
-        f"Years whose income sits within {100 * band:.0f}% of a threshold the model knows, "
-        "and every year that has crossed one of the big cliffs -- an IRMAA tier or the "
-        "marketplace's 400% FPL line -- wherever it now sits (today's dollars). Edges whose "
-        "crossing costs under \\$100 (a small state-recapture step) are left out as noise. "
-        "*Cost* is what closing that gap costs where the model prices the crossing; empty "
-        "where the boundary is a ramp. The plan may be parked at a boundary on purpose (the "
-        "optimizer fills a bracket to its edge): read this as a list of margins, not of errors."
+        "The optimizer prices each of these lines, so being over one can be the cheaper "
+        "choice: this list shows where the money goes, not mistakes. Today's dollars."
     )
-    rows = [{
-        "Year": e["year"],
-        "Threshold": e["label"],
-        "Side": e["side"],
-        "Amount ($)": round(e["amount_today_dollars"]),
-        "Cost ($)": None if e.get("cost_today_dollars") is None else round(e["cost_today_dollars"]),
-        "Affects": e.get("affects") or "-",
-        "Note": e.get("note") or "",
-    } for e in entries]
-    money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q6)
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
-                 # "%d", not "plain": Streamlit 1.66 shows 2028 as 2027.9999999999998 in "plain".
-                 column_config={"Year": st.column_config.NumberColumn(format="%d"),
-                                "Amount ($)": money, "Cost ($)": money,
-                                "Affects": st.column_config.TextColumn()})
+    if parts["older"]:
+        st.caption("Solved before crossings were reported: solve again to see them.")
+    text = st.column_config.TextColumn
+    columns = {"Year of income": text(width="small"), "Line": text(width="large"),
+               "Where": text(), "Costs": text(width="medium",
+                                              help="Over a line: what being over costs that year "
+                                                   "(getting back under would save it). Under a "
+                                                   "line: what going over by the same distance "
+                                                   "would cost."),
+               "Paid in": text(width="small"), "Note": text(width="large")}
+    st.markdown("#### Where the plan pays for being over a line")
+    if parts["over"].empty:
+        st.caption("No year's income is over an IRMAA tier, the marketplace's 400% FPL line or "
+                   "the Enhanced STAR limit." if not parts["older"] else
+                   "None in this result's list.")
+    else:
+        st.caption("Years whose income is over an IRMAA tier, the marketplace's 400% FPL line or "
+                   "the Enhanced STAR limit, wherever it sits; consecutive years over the same "
+                   "line are one row, the largest cost first.")
+        st.dataframe(parts["over"], width="stretch", hide_index=True, column_config=columns)
+    if not parts["near"].empty:
+        st.markdown("#### Close to a line")
+        st.caption(f"Years whose income sits within {100 * band:.0f}% of a line the model knows.")
+        st.dataframe(parts["near"], width="stretch", hide_index=True, column_config=columns)
+    if not parts["small"].empty:
+        n = len(parts["small"])
+        with st.expander(f"{n} smaller item{'s' if n != 1 else ''}"):
+            st.caption(f"Lines priced under \\${run_charts.SMALL_ITEM:,.0f} a year, and the ramps "
+                       "(the taxable share of Social Security rises through a band: no cliff).")
+            st.dataframe(parts["small"], width="stretch", hide_index=True, column_config=columns)
 
 
 def _cash_flow_sankey(result, by_year):

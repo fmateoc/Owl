@@ -18,7 +18,7 @@ from owlplanner.budget import Budget
 from owlplanner.cli.formatters import plan_to_dict, plan_to_json
 from owlplanner.export import budget_spending, cash_flow_split
 from owlplanner.star import StarSchedule
-from owlplanner.thresholds import CROSSING_COST, NEAR_BAND, SMALL_PRICE, threshold_proximity
+from owlplanner.thresholds import GROUPS, NEAR_BAND, threshold_proximity
 
 THISYEAR = 2026  # the frozen test date (tests/conftest.py)
 N_YEARS = 12
@@ -249,15 +249,18 @@ class TestTheOtherKinds:
         assert e["amount_today_dollars"] == pytest.approx(6_000.0 / p.gamma_n[n], abs=0.01)
         assert e["cost_today_dollars"] == pytest.approx(0.038 * 6_000.0 / p.gamma_n[n], rel=0.01)
 
-    def test_a_pricing_under_a_hundred_dollars_is_noise_and_is_not_listed(self):
-        """QW-2: a continuous edge (the NY benefit-recapture start, the NIIT kink) whose
-        crossing costs under `SMALL_PRICE` -- the $3-$26 recapture edges of a year parked
-        just over the start -- is noise, not a thing to look at."""
+    def test_a_small_pricing_stays_in_the_report_for_the_page_to_fold(self):
+        """QW-2, decision 2b (ux-qw-handoff-2.md): the floor lives on the run page, so a
+        continuous edge priced under $100 -- the $3-$26 recapture edges of a year parked just
+        over the start -- is kept in plan.json (the page folds it into "N smaller items").
+        The build had dropped it at solve time (review AN3)."""
         p = FakePlan()
         n = 4
         p.I_n[n] = 60_000.0
         p.MAGI_n[n] = 250_000.0 + 2_000.0  # 3.8% of $2,000 is about $69 today
-        assert _by_kind(threshold_proximity(p), "niit") == []
+        (e,) = _by_kind(threshold_proximity(p), "niit")
+        assert e["group"] == "near"
+        assert 0.005 < e["cost_today_dollars"] < 100.0
 
     def test_the_niit_line_counts_gains_only_investment_income(self):
         """Review 2, Q2: the gate read I_n only, so a year whose investment income is all
@@ -285,8 +288,7 @@ class TestTheOtherKinds:
 
     def test_the_state_recapture_start(self):
         N = N_YEARS
-        # A phase-in narrow enough that crossing the start costs real money: with the wide
-        # one below the crossing is priced in single digits and QW-2 filters it as noise.
+        # A phase-in narrow enough that crossing the start costs real money.
         p = FakePlan(
             _str_active=True,
             st_recap=(np.full(N, 107_650.0), np.full(N, 3_000.0), np.full(N, 5_000_000.0)),
@@ -301,7 +303,8 @@ class TestTheOtherKinds:
         assert e[0]["label"].endswith("benefit recapture starts")
         assert e[0]["side"] == "over"
         assert e[0]["amount_today_dollars"] == pytest.approx(2_500.0 / p.gamma_n[n], abs=0.01)
-        assert e[0]["cost_today_dollars"] > SMALL_PRICE  # priced above the noise floor
+        assert e[0]["cost_today_dollars"] > 100.0
+        assert e[0]["group"] == "near"
 
     def test_the_enhanced_star_limit_loses_the_enhanced_credit(self):
         N = N_YEARS
@@ -334,6 +337,9 @@ class TestTheOtherKinds:
         report = threshold_proximity(FakePlan())
         assert report["near_band_fraction"] == NEAR_BAND == 0.05
         assert report["entries"] == []
+        # QW-2: the block names its groups, so the page tells an older result (no key) from
+        # a new one with no crossings.
+        assert report["groups"] == list(GROUPS) == ["near", "over"]
 
     def test_every_entry_carries_its_boundary_and_reads_as_a_near_miss_or_a_crossed_cliff(self):
         """Review 2, Q5: the acceptance check claimed "every entry inside its band" with no
@@ -349,15 +355,17 @@ class TestTheOtherKinds:
         assert {e["kind"] for e in entries} >= {"irmaa", "niit"}
         for e in entries:
             near = e["amount_today_dollars"] <= NEAR_BAND * e["boundary_today_dollars"] + 0.01
-            cliff = e["kind"] == "irmaa" or "cliff" in e["label"]
+            cliff = e["kind"] in ("irmaa", "star") or "cliff" in e["label"]
+            assert e["group"] == ("near" if near else "over"), e
             assert near or (cliff and e["side"] == "over"), e
         (near_irmaa,) = [e for e in entries if e["kind"] == "irmaa" and e["year"] == THISYEAR + 2]
         assert near_irmaa["boundary_today_dollars"] == pytest.approx(edge / p.gamma_n[2], abs=0.01)
 
 
 class TestCrossedCliffs:
-    """QW-2: a crossed discrete cliff is listed wherever the year sits over it, not only
-    inside the near band, and the tier the year is actually in speaks for the ones below."""
+    """QW-2: a crossed discrete cliff -- an IRMAA tier, the 400% FPL line, the Enhanced STAR
+    limit (decision 2a) -- is listed wherever the year sits over it, in the "over" group, and
+    the tier the year is actually in speaks for the ones below. No floor on crossings (2d)."""
 
     def test_a_year_deep_in_an_irmaa_tier_is_listed_wherever_it_sits(self):
         p = FakePlan()
@@ -366,20 +374,96 @@ class TestCrossedCliffs:
         p.MAGI_n[m] = float(edges[1]) + 20_000.0  # in tier 2, far over both tier edges
         e = _by_kind(threshold_proximity(p), "irmaa")
         assert [x["label"] for x in e] == ["IRMAA tier 2"]  # not tier 1 beside it
-        assert e[0]["side"] == "over"
-        assert e[0]["cost_today_dollars"] > CROSSING_COST
+        assert e[0]["side"] == "over" and e[0]["group"] == "over"
         assert e[0]["affects"] == THISYEAR + n_prem
         # QW-2: the payment year is labelled on the row (the two-year lookback).
         assert f"paid in {THISYEAR + n_prem}" in e[0]["note"]
+        # The cost is tier 2's own step (getting back under tier 2); the total is the year's
+        # whole surcharge, tiers 1 and 2, both for two people on Medicare (today's $).
+        step2 = float(tx.partB_irmaa_fees[2] + tx.partD_irmaa_fees[2])
+        step1 = float(tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1])
+        assert e[0]["cost_today_dollars"] == pytest.approx(2 * step2, rel=0.01)
+        assert e[0]["total_today_dollars"] == pytest.approx(2 * (step1 + step2), rel=0.01)
+
+    def test_a_year_under_every_tier_has_no_surcharge_total(self):
+        p = FakePlan()
+        m, n_prem = 2, 4
+        edge = float(tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n,
+                                        n_prem, THISYEAR)[0])
+        p.MAGI_n[m] = edge - 2_000.0
+        (e,) = _by_kind(threshold_proximity(p), "irmaa")
+        assert e["group"] == "near" and e["total_today_dollars"] == pytest.approx(0.0, abs=0.01)
 
     def test_the_marketplace_cliff_is_listed_wherever_the_year_sits(self):
-        p = FakePlan(yobs=[1975, 1977], slcsp_annual=12_000.0)
+        """Its cost is the subsidy lost, checked against `tx.acaCosts` called directly at the
+        MAGI and at the line; the note says no subsidy is paid above it (review AN3)."""
+        p = FakePlan(yobs=[1975, 1977], slcsp_annual=30_000.0)
         n = 1
         fpl = float(tx._aca_fpl(THISYEAR + n, 2, p.gamma_n, THISYEAR))
         p.MAGI_aca_n[n] = 6.0 * fpl  # far over the cliff, outside every band
         e = _by_kind(threshold_proximity(p), "aca")
         assert [x["label"] for x in e] == ["marketplace subsidy cliff (400% FPL)"]
-        assert e[0]["side"] == "over" and e[0]["cost_today_dollars"] > CROSSING_COST
+        assert e[0]["side"] == "over" and e[0]["group"] == "over"
+
+        def direct(magi_at_n):
+            magi = np.array(p.MAGI_aca_n, dtype=float)
+            magi[n] = magi_at_n
+            return float(tx.acaCosts(
+                p.yobs, p.horizons, magi, p.gamma_n[:N_YEARS], p.slcsp_annual, N_YEARS,
+                thisyear=THISYEAR, n_aca_start=0, medical_n=p._medical_n(p.gamma_n[:N_YEARS]),
+                mobs=p.mobs, tobs=p.tobs, medicaid_n=p._medicaid_n(), gap="approx",
+                slack=1.0)[n])
+
+        lost = direct(6.0 * fpl) - direct(4.0 * fpl)
+        assert lost > 0
+        assert e[0]["cost_today_dollars"] == pytest.approx(lost / p.gamma_n[n], abs=0.01)
+        assert "no subsidy" in e[0]["note"] and "whichever is less" not in e[0]["note"]
+
+    def test_the_enhanced_star_limit_is_listed_wherever_the_year_sits(self):
+        """Decision 2a (review AN3: the baseline's 2029 STAR income was $323,486 against a
+        $126,812 limit and not listed). The cost is `implied_credit`'s difference."""
+        N = N_YEARS
+        limit = np.full(N, 110_750.0)
+        sched = StarSchedule(np.full(N, 600.0), np.full(N, 1_500.0), limit, 500_000.0, 2)
+        income = np.zeros(N)
+        m, b = 3, 5
+        income[m] = 320_000.0  # far over the enhanced limit, under the basic one
+        p = FakePlan(_star_on=True, _star=sched, _star_income=income)
+        (e,) = _by_kind(threshold_proximity(p), "star")
+        assert e["group"] == "over" and e["side"] == "over"
+        assert e["year"] == THISYEAR + m and e["affects"] == THISYEAR + b
+        at = np.zeros(N)
+        at[m] = 320_000.0
+        under = np.zeros(N)
+        under[m] = 110_750.0
+        lost = float(sched.implied_credit(under, p.prevSTAR)[b] - sched.implied_credit(at, p.prevSTAR)[b])
+        assert lost == pytest.approx(900.0)
+        assert e["cost_today_dollars"] == pytest.approx(lost / p.gamma_n[b], abs=0.01)
+
+    def test_the_enhanced_star_line_is_priced_without_the_basic_credit(self):
+        """An income over the basic credit's own limit too loses the basic credit as well;
+        that is not the enhanced line's cost."""
+        N = N_YEARS
+        sched = StarSchedule(np.full(N, 600.0), np.full(N, 1_500.0), np.full(N, 110_750.0),
+                             500_000.0, 2)
+        income = np.zeros(N)
+        income[3] = 700_000.0
+        p = FakePlan(_star_on=True, _star=sched, _star_income=income)
+        (e,) = _by_kind(threshold_proximity(p), "star")
+        assert e["cost_today_dollars"] == pytest.approx(900.0 / p.gamma_n[5], abs=0.01)
+
+    def test_a_cheap_crossing_is_kept(self):
+        """Decision 2d: no floor on crossings (the build's `CROSSING_COST` of $500 dropped a
+        crossing that cost less). A $40 STAR crossing stays in the report."""
+        N = N_YEARS
+        sched = StarSchedule(np.full(N, 600.0), np.full(N, 650.0), np.full(N, 110_750.0),
+                             500_000.0, 2)
+        income = np.zeros(N)
+        income[3] = 200_000.0
+        p = FakePlan(_star_on=True, _star=sched, _star_income=income)
+        (e,) = _by_kind(threshold_proximity(p), "star")
+        assert e["group"] == "over"
+        assert e["cost_today_dollars"] == pytest.approx(50.0 / p.gamma_n[5], abs=0.01)
 
 
 # ---------------------------------------------------------------------------

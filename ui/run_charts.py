@@ -13,6 +13,8 @@ The Run page's "why" views as figures and words, without Streamlit (UX review Q1
   groups with the amounts on the nodes and a labelled hub, and the two sides beside each
   other (Q17). One set of words for the paragraph and the nodes; a refunded tax is a tax
   offset, never income (UX remediation QW-1).
+- `threshold_parts`: "Things to look at" as the page shows it (QW-2, `ux-qw-handoff-2.md`):
+  the crossed cliffs, the near lines, and the small items folded away, with plain columns.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -32,6 +34,114 @@ TODAY_PER_YEAR = "$ per year (today's $)"
 _IRMAA = "#d62728"
 _ACA = "#9467bd"
 _EDGE = "rgba(120, 120, 120, 0.45)"
+
+
+# -- QW-2: "Things to look at" ---------------------------------------------------------------
+
+# An entry priced under this (today's $) -- a crossing or a near line alike -- and every ramp
+# (no price) fold into "N smaller items" (decisions 2b-2d). plan.json keeps them all, so this
+# floor can move without a re-solve.
+SMALL_ITEM = 100.0
+
+THRESHOLD_COLUMNS = ("Year of income", "Line", "Where", "Costs", "Paid in", "Note")
+
+# A note for a row merging several years whose own notes name each year (QW-2's merge).
+_MERGED_NOTES = {
+    "irmaa": "each year's MAGI sets the Medicare premiums two years later (the lookback)",
+    "star": "each year's income sets the STAR credit two years later",
+}
+
+
+def _entry_group(entry, band):
+    """The entry's group: plan.json's own, or, for a result solved before QW-2 marked them,
+    "near" inside its band and "over" beyond it."""
+    group = entry.get("group")
+    if group in ("near", "over"):
+        return group
+    boundary = entry.get("boundary_today_dollars")
+    if boundary is None:
+        return "near"
+    return "near" if entry["amount_today_dollars"] <= band * abs(boundary) + 0.01 else "over"
+
+
+def _span(values, fmt):
+    lo, hi = min(values), max(values)
+    return fmt(lo) if fmt(lo) == fmt(hi) else f"{fmt(lo)}-{fmt(hi)}"
+
+
+def _dollars(value):
+    return f"${value:,.0f}"
+
+
+def _years(values):
+    values = sorted(values)
+    return str(values[0]) if values[0] == values[-1] else f"{values[0]}-{values[-1]}"
+
+
+def _threshold_row(entries):
+    """One table row for consecutive years over (or near) the same line."""
+    first = entries[0]
+    side = first["side"]
+    where = f"{_span([e['amount_today_dollars'] for e in entries], _dollars)} {side}"
+    costs = [e["cost_today_dollars"] for e in entries]
+    if any(c is None for c in costs):
+        cost_text = "-"
+    else:
+        cost_text = _span(costs, _dollars)
+        totals = [e.get("total_today_dollars") for e in entries]
+        if first["kind"] == "irmaa" and side == "over" and None not in totals:
+            cost_text += f" (the year's whole surcharge {_span(totals, _dollars)})"
+    paid = [e.get("affects") or e["year"] for e in entries]
+    notes = {e.get("note") or "" for e in entries}
+    note = notes.pop() if len(notes) == 1 else _MERGED_NOTES.get(first["kind"], first.get("note") or "")
+    return {"Year of income": _years([e["year"] for e in entries]), "Line": first["label"],
+            "Where": where, "Costs": cost_text, "Paid in": _years(paid), "Note": note,
+            "_cost": sum(c or 0.0 for c in costs), "_year": first["year"]}
+
+
+def _merged_rows(entries):
+    """Consecutive years on the same side of the same line, as one row each."""
+    runs = []
+    for e in sorted(entries, key=lambda e: (e["kind"], e["label"], e["side"], e["year"])):
+        last = runs[-1][-1] if runs else None
+        if (last is not None and (last["kind"], last["label"], last["side"]) == (e["kind"], e["label"], e["side"])
+                and e["year"] == last["year"] + 1):
+            runs[-1].append(e)
+        else:
+            runs.append([e])
+    return [_threshold_row(run) for run in runs]
+
+
+def _table(rows):
+    return pd.DataFrame([{k: r[k] for k in THRESHOLD_COLUMNS} for r in rows], columns=list(THRESHOLD_COLUMNS))
+
+
+def threshold_parts(entries, band, has_groups=True) -> dict:
+    """plan.json's threshold entries as the page shows them (QW-2):
+
+    - "over": the cliffs crossed beyond the band (an IRMAA tier, the 400% FPL line, the
+      Enhanced STAR limit), consecutive years over the same line merged into one row, the
+      largest cost first;
+    - "near": the lines the year sits within the band of, by year;
+    - "small": everything priced under `SMALL_ITEM`, and the ramps, folded away;
+    - "older": True for a result solved before the groups were marked (`has_groups` False).
+
+    Each part is a DataFrame with `THRESHOLD_COLUMNS` (today's dollars).
+    """
+    over, near, small = [], [], []
+    for e in entries:
+        cost = e.get("cost_today_dollars")
+        if cost is None or cost < SMALL_ITEM:
+            small.append(e)
+        elif _entry_group(e, band) == "over":
+            over.append(e)
+        else:
+            near.append(e)
+    over_rows = sorted(_merged_rows(over), key=lambda r: (-r["_cost"], r["_year"]))
+    near_rows = sorted((_threshold_row([e]) for e in near), key=lambda r: (r["_year"], r["Line"]))
+    small_rows = sorted((_threshold_row([e]) for e in small), key=lambda r: (r["_year"], r["Line"]))
+    return {"over": _table(over_rows), "near": _table(near_rows), "small": _table(small_rows),
+            "older": not has_groups}
 
 
 # -- Q15: conversions and brackets ------------------------------------------------------------

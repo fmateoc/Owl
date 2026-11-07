@@ -217,3 +217,96 @@ def test_no_page_uses_the_plain_number_format():
     2027.9999999999998, 2034 as 2034.0000000000002; seen in a browser, 2026-11-07)."""
     offenders = [p.name for p in UI_DIR.glob("*.py") if 'format="plain"' in p.read_text(encoding="utf-8")]
     assert offenders == []
+
+
+def _threshold(year, kind, label, side, amount, cost, *, boundary, group=None, affects=None,
+               note="a note", total=None):
+    e = {"year": year, "kind": kind, "label": label, "side": side, "amount_today_dollars": amount,
+         "boundary_today_dollars": boundary, "cost_today_dollars": cost, "affects": affects, "note": note}
+    if group is not None:
+        e["group"] = group
+    if total is not None:
+        e["total_today_dollars"] = total
+    return e
+
+
+CLIFF = "marketplace subsidy cliff (400% FPL)"
+
+
+def _baseline_like(groups=True):
+    """The Careful baseline's shape (ux-qw-handoff-2.md): three years over the 400% line,
+    2029 in IRMAA tier 2, over the Enhanced STAR limit, four small recapture rows, a ramp."""
+    g = (lambda name: name) if groups else (lambda name: None)
+    return [
+        _threshold(2027, "aca", CLIFF, "over", 48_000.0, 12_547.0, boundary=84_202.0, group=g("over")),
+        _threshold(2028, "aca", CLIFF, "over", 49_000.0, 12_865.0, boundary=84_202.0, group=g("over")),
+        _threshold(2029, "aca", CLIFF, "over", 20_000.0, 4_824.0, boundary=84_202.0, group=g("over")),
+        _threshold(2029, "irmaa", "IRMAA tier 2", "over", 38_466.0, 3_741.0, boundary=289_559.0,
+                   group=g("over"), affects=2031, total=6_215.0, note="paid in 2031 via the lookback"),
+        _threshold(2029, "star", "Enhanced STAR limit", "over", 180_000.0, 1_546.0, boundary=110_000.0,
+                   group=g("over"), affects=2031),
+        _threshold(2030, "irmaa", "IRMAA tier 1", "under", 9_000.0, 2_200.0, boundary=230_000.0,
+                   group=g("near"), affects=2032),
+        *[_threshold(2034 + k, "state_recapture", "NY benefit recapture starts", "over", 400.0, cost,
+                     boundary=107_650.0, group=g("near"))
+          for k, cost in enumerate((26.48, 19.19, 4.42, 3.03))],
+        _threshold(2040, "ss_taxability", "SS 85% taxation starts", "over", 1_000.0, None,
+                   boundary=44_000.0, group=g("near")),
+    ]
+
+
+class TestThingsToLookAt:
+    """QW-2's page side (ux-qw-handoff-2.md, decisions 2b-2d): the floor, the fold, the merge,
+    the plain columns, and an older result."""
+
+    def test_the_columns_are_in_plain_words(self, rc):
+        parts = rc.threshold_parts(_baseline_like(), 0.05)
+        for name in ("over", "near", "small"):
+            assert list(parts[name].columns) == ["Year of income", "Line", "Where", "Costs", "Paid in", "Note"]
+
+    def test_consecutive_years_over_the_same_line_are_one_row_largest_cost_first(self, rc):
+        over = rc.threshold_parts(_baseline_like(), 0.05)["over"]
+        assert list(over["Line"]) == [CLIFF, "IRMAA tier 2", "Enhanced STAR limit"]
+        cliff = over.iloc[0]
+        assert cliff["Year of income"] == "2027-2029"
+        assert cliff["Where"] == "$20,000-$49,000 over"
+        assert cliff["Costs"] == "$4,824-$12,865"
+        assert cliff["Paid in"] == "2027-2029"
+
+    def test_the_irmaa_row_carries_its_step_its_year_total_and_its_payment_year(self, rc):
+        over = rc.threshold_parts(_baseline_like(), 0.05)["over"]
+        irmaa = over[over["Line"] == "IRMAA tier 2"].iloc[0]
+        assert irmaa["Costs"] == "$3,741 (the year's whole surcharge $6,215)"
+        assert irmaa["Paid in"] == "2031" and irmaa["Year of income"] == "2029"
+
+    def test_the_floor_folds_small_items_and_ramps_instead_of_dropping_them(self, rc):
+        parts = rc.threshold_parts(_baseline_like(), 0.05)
+        small = parts["small"]
+        assert len(small) == 5  # the four recapture rows and the ramp
+        assert sorted(small["Costs"]) == sorted(["$26", "$19", "$4", "$3", "-"])
+        assert list(parts["near"]["Line"]) == ["IRMAA tier 1"]
+        # Everything is somewhere: nothing the report holds is lost on the page.
+        assert len(parts["over"]) + len(parts["near"]) + len(small) == 3 + 1 + 5
+
+    def test_a_cheap_crossing_folds_with_the_small_items(self, rc):
+        cheap = [_threshold(2030, "star", "Enhanced STAR limit", "over", 50_000.0, 40.0, boundary=110_000.0,
+                            group="over", affects=2032)]
+        parts = rc.threshold_parts(cheap, 0.05)
+        assert parts["over"].empty and len(parts["small"]) == 1
+
+    def test_years_apart_are_not_merged(self, rc):
+        entries = [_threshold(y, "aca", CLIFF, "over", 40_000.0, 10_000.0, boundary=84_202.0, group="over")
+                   for y in (2027, 2029)]
+        assert list(rc.threshold_parts(entries, 0.05)["over"]["Year of income"]) == ["2027", "2029"]
+
+    def test_a_new_result_is_not_older(self, rc):
+        assert rc.threshold_parts(_baseline_like(), 0.05)["older"] is False
+
+    def test_an_older_result_is_marked_and_split_by_its_band(self, rc):
+        """A result solved before the groups were marked: the page says so (and asks for a new
+        solve); its entries still land in the right table, read against their band."""
+        parts = rc.threshold_parts(_baseline_like(groups=False), 0.05, has_groups=False)
+        assert parts["older"] is True
+        assert list(parts["over"]["Line"]) == [CLIFF, "IRMAA tier 2", "Enhanced STAR limit"]
+        assert list(parts["near"]["Line"]) == ["IRMAA tier 1"]
+        assert len(parts["small"]) == 5

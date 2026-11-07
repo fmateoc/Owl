@@ -7788,3 +7788,46 @@ or `tests` changed.
   `-n 4`); lint as recorded.
 - **Next.** The user's call on which AO items to fold, on fast-forwarding `main`, and on filing
   the three drafts.
+
+## Ergonomics quick wins: the second-pass review's AO1 and AO2 folded (2026-11-07)
+
+The user's call: fold AO1 and AO2 of `fork-notes/ux-qw-second-pass-review.md`. AO3-AO8 stand.
+
+- **AO1** (`thresholds.py`, `run_charts._entry_group`).
+  - A crossing of one of the three cliffs is `"over"` wherever it sits, inside the 5% band
+    included: the tier the year is in for IRMAA, the 400% FPL line, the Enhanced STAR limit.
+  - `"near"` is the under side of those lines and every continuous edge (a contribution step
+    crossed inside its band stays "near").
+  - The page regroups by side and line, so results solved at `d64ec67` (in-band crossings
+    marked "near") and older ones are drawn right.
+  - `check_library_compare.py` check 7 follows the rule.
+- **Re-checked on the review's ten Quick looks** (the baseline with each taxable balance moved
+  by -300 to +500 $k).
+  - The stored `d64ec67` results through the new page: variant -200 shows one row, "2027-2029,
+    marketplace subsidy cliff (400% FPL), \$2,399-\$76,979 over, \$4,824-\$12,864", with no
+    *Close to a line* table [seen, Playwright].
+  - +100: the Enhanced STAR limit is one row, 2027-2029, \$145-\$250,411 over.
+  - Re-solved with the new model, the same three variants mark their in-band crossings
+    `"over"`: -200 (2027, 2028, the cliff), +100 (2028 STAR), +500 (2028 IRMAA tier 1).
+- **AO2** (`run_charts.sankey_figure`).
+  - A source group of two or more lines gets a node with its total ("From savings: \$940,176"),
+    as the uses side does. It is drawn only when there is more than one source group: alone,
+    the hub carries the same number and the paragraph names no total.
+  - On the ten Quick looks, 0 of 280 one-year paragraphs name a figure that is on no node
+    (210 did).
+  - Seen in the browser: variant -200, 2029.
+- **Tests** (7 new or changed; 6 fail on the previous code, run in a worktree of `63f710f`):
+  - `test_thresholds.py`: the band-rule assertion and
+    `test_a_cliff_crossed_inside_its_band_is_over_not_near`;
+  - `test_run_charts.py`: the in-band merge, the under-side guard (passes on both, a guard),
+    `test_every_figure_the_paragraph_names_is_on_a_sankey_node`;
+  - `test_library_pages.py`: an AppTest of the in-band-only case (no "No year's income is
+    over ..." caption), and the older-result test, whose \$1,200 IRMAA crossing is now in the
+    over table.
+- **Run (Linux).**
+  - Targeted suites (`tests/library tests/ui test_thresholds.py test_brackets.py`): 1108 passed.
+  - **Full suite: 4600 passed, 1 skipped** (10:27, `-n 4`).
+  - `check_library_compare.py` 9/9.
+  - Lint: only upstream's listed items.
+- **Next.** The user's call on fast-forwarding `main`, and on filing the three drafts
+  (`issue-crlf-upload`, `issue-year-fields`, `issue-balance-units`).

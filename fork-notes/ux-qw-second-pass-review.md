@@ -4,6 +4,9 @@ Branch `claude/upbeat-planck-c731oy` at `d64ec67`: the second pass of QW-1-QW-8 
 (`0aa42b3..d64ec67`), built against `fork-notes/ux-qw-handoff-2.md`. Findings are prefixed
 AO (after AN). Report only: nothing in `src`, `ui` or `tests` changed.
 
+**Status (2026-11-07, the user's call): AO1 and AO2 folded** on this branch (PROGRESS.md
+"Ergonomics quick wins: the second-pass review's AO1 and AO2 folded"); AO3-AO8 stand.
+
 Tags, as in the work order: **[seen]** Playwright on the running app; **[ran]** a script on a
 real solve of the synthetic household; **[probe]** a script or AppTest on small inputs;
 **[code]** read, not exercised; **[inferred]** follows from the code, not reproduced.

@@ -7,6 +7,18 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run page: the second-pass review's AO1 and AO2 (2026-11-07)
+
+- **A year just over a cliff is "over".** A year over an IRMAA tier, the 400% FPL line or the
+  Enhanced STAR limit by less than 5% of the line pays the whole step. It is now listed under
+  *Where the plan pays for being over a line*, merged with its neighbouring years. It was
+  under *Close to a line*: a crossing costing \$12,547 sat there while the first table held a
+  \$4,824 one "largest cost first", and with only such a crossing the first table said no year
+  was over a line. Results already solved are regrouped on the page (review AO1).
+- **Every figure the one-year paragraph names is on the Sankey.** Where the money comes from
+  several accounts or several incomes, and from more than one kind of source, the Sankey
+  draws a "From savings" / "Income" node with the total the paragraph names (review AO2).
+
 ### Run page and case pages: the quick wins' second pass (2026-11-07)
 
 - **"Things to look at" in two tables and a fold.** *Where the plan pays for being over a

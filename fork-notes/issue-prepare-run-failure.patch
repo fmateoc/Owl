@@ -1,0 +1,260 @@
+diff --git a/src/owlplanner/plan.py b/src/owlplanner/plan.py
+index 220c0fa7..5002cd8a 100644
+--- a/src/owlplanner/plan.py
++++ b/src/owlplanner/plan.py
+@@ -1973,10 +1973,12 @@ class Plan:
+         if start_year is not None and int(start_year) > 0:
+             sy = int(start_year)
+             if sy < 2000:
+-                raise ValueError(
+-                    f"setACA: start_year={sy} looks like an offset rather than a calendar year. "
+-                    f"Use a 4-digit calendar year (e.g. {date.today().year + sy})."
+-                )
++                if sy < 100:  # an offset from this year: the hint adds it
++                    hint = ("looks like an offset rather than a calendar year. "
++                            f"Use a 4-digit calendar year (e.g. {date.today().year + sy}).")
++                else:  # 1999 used to get "e.g. 4025"
++                    hint = f"is before 2000. Use a 4-digit calendar year such as {date.today().year + 1}."
++                raise ValueError(f"setACA: start_year={sy} {hint}")
+             self.aca_start_year = sy
+             self.mylog.vprint(f"ACA coverage starts in calendar year {self.aca_start_year}.")
+         self.caseStatus = "modified"
+diff --git a/tests/tax/test_aca.py b/tests/tax/test_aca.py
+index 660ebee0..5f01c7ef 100644
+--- a/tests/tax/test_aca.py
++++ b/tests/tax/test_aca.py
+@@ -635,9 +635,13 @@ class TestACAStartYear:
+     def test_start_year_offset_raises_for_typical_offsets(self):
+         """Common user mistakes (1–10 year offsets) should all raise ValueError."""
+         p = _make_plan(dob1="1975-06-15", le1=88)
+-        for bad_year in [1, 2, 3, 5, 10, 100, 1999]:
++        for bad_year in [1, 2, 3, 5, 10]:
+             with pytest.raises(ValueError, match="looks like an offset"):
+                 p.setACA(slcsp=15.0, start_year=bad_year)
++        # A year before 2000 is refused too, with a calendar-year hint (1999 got "e.g. 4025").
++        for bad_year in [100, 1999]:
++            with pytest.raises(ValueError, match="is before 2000"):
++                p.setACA(slcsp=15.0, start_year=bad_year)
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/tests/ui/test_prepare_run_failure.py b/tests/ui/test_prepare_run_failure.py
+new file mode 100644
+index 00000000..c05d1720
+--- /dev/null
++++ b/tests/ui/test_prepare_run_failure.py
+@@ -0,0 +1,76 @@
++"""
++A case whose inputs cannot be applied is not solved.
++
++`prepareRun` used to show "Failed to apply configuration" and return, and every caller solved
++anyway, on a plan that held only part of the case: Reports then showed the solve's verdict too
++(an ACA start year of 1999 gave "No plan satisfies all the constraints"). And setACA's hint
++added the year to today's ("e.g. 4025") whatever the number.
++
++Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
++
++This program is free software: you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation, either version 3 of the License, or
++(at your option) any later version.
++"""
++
++import io
++from datetime import date
++from pathlib import Path
++
++import pytest
++
++import owlplanner as owl
++from owlplanner import readConfig
++from owlplanner.config import config_to_ui, load_toml
++
++UI_DIR = Path(__file__).resolve().parents[2] / "ui"
++CASE = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
++
++
++def _plan():
++    return owl.Plan(["Joe"], ["1961-01-15"], [80], "test", verbose=False)
++
++
++def test_set_aca_hint_for_an_offset():
++    with pytest.raises(ValueError, match=rf"offset.*e\.g\. {date.today().year + 2}"):
++        _plan().setACA(slcsp=10, start_year=2)
++
++
++def test_set_aca_hint_for_an_old_year():
++    with pytest.raises(ValueError) as info:
++        _plan().setACA(slcsp=10, start_year=1999)
++    assert "offset" not in str(info.value)
++    assert f"such as {date.today().year + 1}" in str(info.value)
++    assert str(date.today().year + 1999) not in str(info.value)
++
++
++@pytest.mark.toml
++def test_reports_shows_one_message_and_does_not_solve(monkeypatch):
++    import streamlit as st
++    from streamlit.testing.v1 import AppTest
++
++    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
++    solves = []
++    monkeypatch.setattr(owl.Plan, "solve", lambda self, *a, **k: solves.append(1))
++    plan = readConfig(str(CASE), verbose=False, logstreams=[io.StringIO()])
++    diconf, _, _ = load_toml(str(CASE))
++    case = config_to_ui(diconf)
++    case.update({
++        "plan": plan, "id": "t1", "name": "t", "caseStatus": "modified", "summaryDf": None,
++        "timeList0": plan.timeLists["Jack"], "timeList1": plan.timeLists["Jill"],
++        "houseListDebts": plan.houseLists["Debts"], "houseListFixedAssets": plan.houseLists["Fixed Assets"],
++        "hfpAbsentCols": dict(getattr(plan, "hfpAbsentCols", {})), "logs": io.StringIO(),
++        "slcspAnnual": 20.0, "acaStartYear": 1999,
++    })
++    at = AppTest.from_file(str(UI_DIR / "Reports.py"), default_timeout=120)
++    at.session_state["cases"] = {"t": case}
++    at.session_state["currentCase"] = "t"
++    at.run()
++    assert not at.exception, [str(e.message) for e in at.exception]
++    assert solves == []
++    errors = [e.value for e in at.error]
++    assert len(errors) == 1, errors
++    assert "start_year=1999" in errors[0] and "setACA:" not in errors[0]
++    assert not at.warning, [w.value for w in at.warning]
++    assert at.session_state["cases"]["t"]["caseStatus"] == "invalid input"
+diff --git a/ui/owlbridge.py b/ui/owlbridge.py
+index b9127acf..a3b9a584 100644
+--- a/ui/owlbridge.py
++++ b/ui/owlbridge.py
+@@ -21,6 +21,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ """
+ # flake8: noqa: E402
+ 
++import re
++
+ import streamlit as st
+ import numpy as np
+ import pandas as pd
+@@ -187,7 +189,8 @@ def _checkPlan(func):
+     return wrapper
+ 
+ 
+-def prepareRun(plan):
++def _applyConfig(plan):
++    """Apply the case's inputs to plan. Return None, or the reason they could not be applied."""
+     from owlplanner.config import apply_config_to_plan, ui_to_config
+ 
+     try:
+@@ -195,10 +198,21 @@ def prepareRun(plan):
+         diconf = ui_to_config(uidic, mylog=_get_case_logger())
+         apply_config_to_plan(plan, diconf)
+     except Exception as e:
+-        st.error(f"Failed to apply configuration: {e}", icon=":material/error:")
+-        return
++        # "setACA: start_year=..." -> "start_year=...": the method name means nothing on a page.
++        return re.sub(r"^set\w+: ", "", str(e))
+ 
+     _setContributions(plan, "set")
++    return None
++
++
++def prepareRun(plan):
++    """Apply the case's inputs to plan. Return False (after saying why) if they could not be
++    applied: the caller must not solve a plan that holds only part of them."""
++    error = _applyConfig(plan)
++    if error is not None:
++        st.error(f"Failed to apply configuration: {error}", icon=":material/error:")
++        return False
++    return True
+ 
+ 
+ def runAllCases():
+@@ -211,7 +225,15 @@ def runAllCases():
+ 
+ @_checkPlan
+ def runPlan(plan):
+-    prepareRun(plan)
++    error = _applyConfig(plan)
++    if error is not None:
++        # Not solved: one message, shown by showCaseStatus(), instead of this one followed by
++        # the verdict of a solve on a half-applied configuration.
++        kz.storeCaseKey("caseStatus", "invalid input")
++        kz.storeCaseKey("solverMessage", error)
++        kz.storeCaseKey("summaryDf", None)
++        kz.storeCaseKey("casetoml", "")
++        return
+ 
+     objective, options = kz.getSolveParameters()
+     try:
+@@ -252,6 +274,9 @@ def showCaseStatus():
+     message = kz.getCaseKey("solverMessage")
+     if status == "infeasible":
+         st.warning(message, icon=":material/warning:")
++    elif status == "invalid input":
++        st.error(f"The case was not solved: one of its inputs could not be applied. {message}",
++                 icon=":material/error:")
+     elif status in ("solver error", "exception"):
+         st.error(f"{message} The solver is selected under *Solver* on the **Run Options** page.",
+                  icon=":material/error:")
+@@ -264,7 +289,8 @@ def runHistorical(plan):
+     if _refuseOverBudget(histRangeCost):
+         return
+     plan1 = owl.clone(plan)
+-    prepareRun(plan1)
++    if not prepareRun(plan1):
++        return
+ 
+     hyfrm = kz.getCaseKey("hyfrm")
+     hyto = kz.getCaseKey("hyto")
+@@ -308,7 +334,8 @@ def runMC(plan):
+     if _refuseOverBudget(monteCarloCost):
+         return
+     plan1 = owl.clone(plan)
+-    prepareRun(plan1)
++    if not prepareRun(plan1):
++        return
+ 
+     N = kz.getCaseKey("MC_cases")
+     log_x = kz.getCaseKey("histogram_log_x_mc")
+@@ -608,7 +635,8 @@ def runStochasticSpending(plan):
+     if _refuseOverBudget(stochasticSpendingCost):
+         return
+     plan1 = owl.clone(plan)
+-    prepareRun(plan1)
++    if not prepareRun(plan1):
++        return
+ 
+     scenario_method = kz.getCaseKey("stoch_scenario_method") or "historical"
+     target_sr_pct = kz.getCaseKey("stoch_target_success_rate_pct")
+@@ -857,7 +885,8 @@ def runSpendingBequestFrontier(plan):
+     if _refuseOverBudget(frontierCost):
+         return
+     plan1 = owl.clone(plan)
+-    prepareRun(plan1)
++    if not prepareRun(plan1):
++        return
+ 
+     try:
+         grid = _parse_bequest_grid(kz.getCaseKey("frontier_bequest_grid"))
+@@ -2659,7 +2688,8 @@ def runConversionRegret(plan):
+         return
+ 
+     plan1 = owl.clone(plan)
+-    prepareRun(plan1)
++    if not prepareRun(plan1):
++        return
+     objective, options = kz.getSolveParameters()
+ 
+     preset = kz.getCaseKey("regret_preset") or "Standard"
+diff --git a/ui/sskeys.py b/ui/sskeys.py
+index 9345ede6..e2bf6d56 100644
+--- a/ui/sskeys.py
++++ b/ui/sskeys.py
+@@ -181,7 +181,8 @@ def isIncomplete():
+ 
+ 
+ def caseHasNotRun():
+-    return getCaseKey("caseStatus") not in ["solved", "infeasible", "solver error", "unsuccessful", "exception"]
++    return getCaseKey("caseStatus") not in ["solved", "infeasible", "solver error", "unsuccessful", "exception",
++                                            "invalid input"]
+ 
+ 
+ def isCaseUnsolved():

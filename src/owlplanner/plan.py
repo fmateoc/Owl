@@ -2147,10 +2147,12 @@ class Plan:
         if start_year is not None and int(start_year) > 0:
             sy = int(start_year)
             if sy < 2000:
-                raise ValueError(
-                    f"setACA: start_year={sy} looks like an offset rather than a calendar year. "
-                    f"Use a 4-digit calendar year (e.g. {date.today().year + sy})."
-                )
+                if sy < 100:  # an offset from this year: the hint adds it
+                    hint = ("looks like an offset rather than a calendar year. "
+                            f"Use a 4-digit calendar year (e.g. {date.today().year + sy}).")
+                else:  # 1999 used to get "e.g. 4025"
+                    hint = f"is before 2000. Use a 4-digit calendar year such as {date.today().year + 1}."
+                raise ValueError(f"setACA: start_year={sy} {hint}")
             self.aca_start_year = sy
             self.mylog.vprint(f"ACA coverage starts in calendar year {self.aca_start_year}.")
         self.caseStatus = "modified"

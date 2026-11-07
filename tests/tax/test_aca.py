@@ -635,8 +635,12 @@ class TestACAStartYear:
     def test_start_year_offset_raises_for_typical_offsets(self):
         """Common user mistakes (1–10 year offsets) should all raise ValueError."""
         p = _make_plan(dob1="1975-06-15", le1=88)
-        for bad_year in [1, 2, 3, 5, 10, 100, 1999]:
+        for bad_year in [1, 2, 3, 5, 10]:
             with pytest.raises(ValueError, match="looks like an offset"):
+                p.setACA(slcsp=15.0, start_year=bad_year)
+        # A year before 2000 is refused too, with a calendar-year hint (1999 got "e.g. 4025").
+        for bad_year in [100, 1999]:
+            with pytest.raises(ValueError, match="is before 2000"):
                 p.setACA(slcsp=15.0, start_year=bad_year)
 
 

@@ -74,6 +74,9 @@ with st.expander("New collection", expanded=not lib.collections()):
     if st.button("Create collection", type="primary"):
         if not name.strip():
             st.warning("Give the collection a name.", icon=":material/warning:")
+        elif name.strip() in [c.name for c in lib.collections()]:
+            # The field keeps its text after a create: a second click made a twin.
+            st.warning(f"A collection named *{name.strip()}* exists already.", icon=":material/warning:")
         else:
             coll = lib.create_collection(name.strip(), question=question.strip(), rule=rule.strip())
             _open_collection(coll.id)

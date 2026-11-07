@@ -136,6 +136,18 @@ class TestCollections:
         assert any(w.value == "Give the collection a name." for w in at.warning)
         assert len(library.collections()) == before
 
+    def test_a_second_click_does_not_make_a_twin(self, library):
+        """Found in the Q18 re-drive: the name stays in the field after a create, and a
+        second click made a second collection with the same name."""
+        at = _page()
+        at.text_input(key="col_new_name").set_value("A second question")
+        at.run()
+        next(b for b in at.button if b.label == "Create collection").click().run()
+        next(b for b in at.button if b.label == "Create collection").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert [c.name for c in library.collections()].count("A second question") == 1
+        assert any("exists already" in w.value for w in at.warning)
+
     def test_ac3_create_collection_opens_the_new_collection(self, library):
         # Review AC3: `_open_collection` stored the collection's id where the picker holds
         # labels, so the rerun fell back to the first collection instead of opening the new

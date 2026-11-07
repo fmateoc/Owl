@@ -103,6 +103,19 @@ class TestEmptyCellsKeepTheParents:
         # "-" cleared the parent's Yonkers locality in the move (White Plains has no local tax).
         assert case["basic_info"]["moves"][0]["locality"] == ""
 
+    def test_b2_a_dash_district_clears_and_a_blank_one_keeps_the_case_s(self, vt, flat_gamma):
+        # UX review B2: without a move, the builder reads a blank district as "keep the
+        # case's", so the table's "-" must reach it as "-" (none), not as a blank.
+        places = _edited(vt.places_table(), [{"label": "none", "school_district": "-", "move": False},
+                                             {"label": "keep", "price": "720000", "move": False}])
+        dims, _ = _dims(vt, places=places)
+        none, keep = dims["place"]
+        assert none["place"]["school_district"] == "-"
+        children = variants.plan_variants(_scenario(), dims)
+        districts = [build(c.scenario)[0]["basic_info"].get("school_district") for c in children]
+        assert districts[0] == ""
+        assert districts[1] == _scenario()["case"]["basic_info"].get("school_district")
+
     def test_ad1_one_cost_typed_changes_that_cost_only(self, vt):
         places = _edited(vt.places_table(), [{"label": "wp", "property tax": "11500"}])
         dims, _ = _dims(vt, places=places)

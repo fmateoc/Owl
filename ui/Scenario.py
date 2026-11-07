@@ -108,6 +108,55 @@ care = next((e for e in events if e.get("kind") == "care"), None)
 down = next((e for e in events if e.get("kind") == "downturn"), None)
 
 
+@st.cache_data
+def _locality_choices(state):
+    from owlplanner import tax_local
+
+    return [""] + tax_local.valid_localities(state) if state else [""]
+
+
+@st.cache_data
+def _district_choices(state):
+    from owlplanner import star
+
+    try:
+        return [""] + star.valid_districts(state) if state else [""]
+    except (KeyError, ValueError):  # a state with no STAR data
+        return [""]
+
+
+def _choices(options, value):
+    """The dropdown's options, with the event's own value kept when the data lacks it."""
+    return list(options) + ([value] if value and value not in options else [])
+
+
+def _none_label(value):
+    return value or "(none)"
+
+
+def _place_to_store(locality, district, move, case_district, original):
+    """The place's locality and district as the event stores them.
+
+    A district picked as none is "-" on a purchase without a move where the case has a
+    district (a blank keeps the case's, UX review B2). Where the picked value builds the same
+    as the event's own spelling, the event keeps its spelling: an unedited save changes
+    nothing (review X4)."""
+    if not move and not district and case_district:
+        district = builder.NO_PLACE
+
+    def built_district(value):
+        if move or str(value or "").strip():
+            return builder.place_text(value)
+        return case_district
+
+    if original is not None:
+        if built_district(original.get("school_district")) == built_district(district):
+            district = original.get("school_district", "")
+        if not move or builder.place_text(original.get("locality")) == builder.place_text(locality):
+            locality = original.get("locality", "")
+    return locality, district
+
+
 def _blank_rows(rows, columns):
     """A table to edit: the events' rows, and one empty row to type into."""
     return pd.DataFrame([*rows, {c: None for c in columns}], columns=columns)
@@ -190,15 +239,49 @@ with st.expander("Home purchase", expanded=buy is not None):
                                   key=f"scn_buy_closing_{key}")
     buy_extra = f5.number_input("Loan closing (share)", value=float(terms["extra"]),
                                 key=f"scn_buy_extra_{key}")
-    place = {**builder.PLACE_DEFAULTS, **((buy or {}).get("place") or {})}
+    # The place starts from the case's own residence (UX review B2): a new purchase shows the
+    # case's state, locality and district, and a purchase without a move that leaves its
+    # district blank builds with the case's, so it shows that one. A district picked as none
+    # is saved as "-" where the case has one (a blank would keep it).
+    hand_info = (scenario.get("case") or {}).get("basic_info") or {}
+    case_place = {"state": hand_info.get("state") or builder.PLACE_DEFAULTS["state"],
+                  "locality": hand_info.get("locality") or "",
+                  "school_district": hand_info.get("school_district") or ""}
+    event_place = dict((buy or {}).get("place") or {})
+    if buy is None:
+        place = {**builder.PLACE_DEFAULTS, **case_place}
+    else:
+        place = {**builder.PLACE_DEFAULTS, **event_place}
+        if not place["move"] and not str(place["school_district"] or "").strip():
+            place["school_district"] = case_place["school_district"]
+    for field in ("locality", "school_district"):
+        if place[field] == builder.NO_PLACE:
+            place[field] = ""
     costs = (buy or {}).get("costs") or {}
     p1, p2, p3, p4 = st.columns(4)
-    place_state = p1.text_input("State", value=place["state"], key=f"scn_place_state_{key}")
-    place_locality = p2.text_input("Locality", value=place["locality"],
-                                   key=f"scn_place_locality_{key}")
-    place_district = p3.text_input("School district", value=place["school_district"],
-                                   key=f"scn_place_district_{key}")
-    place_move = p4.checkbox("Move there", value=bool(place.get("move")), key=f"scn_place_move_{key}")
+    place_state = p1.text_input("State", value=place["state"], key=f"scn_place_state_{key}").strip().upper()
+    place_move = p4.checkbox("Move there", value=bool(place.get("move")), key=f"scn_place_move_{key}",
+                             help="The household moves to the new home in the purchase year (a "
+                                  "move in the case). Without it, the home is where the case "
+                                  "already lives: its locality stays, its school district is the one "
+                                  "picked here.")
+    _localities = _choices(_locality_choices(place_state), place["locality"])
+    _districts = _choices(_district_choices(place_state), place["school_district"])
+    for _k, _opts in ((f"scn_place_locality_{key}", _localities), (f"scn_place_district_{key}", _districts)):
+        if _k in st.session_state and st.session_state[_k] not in _opts:
+            st.session_state.pop(_k)  # another state's value: start over from the default
+    place_locality = p2.selectbox(
+        "Locality (with a move)", _localities, index=_localities.index(place["locality"]),
+        format_func=_none_label, key=f"scn_place_locality_{key}", disabled=not place_move,
+        help="Local income tax at the new home. Without a move the case's own locality stays.")
+    place_district = p3.selectbox(
+        "School district", _districts, index=_districts.index(place["school_district"]),
+        format_func=_none_label, key=f"scn_place_district_{key}",
+        help="For the NY STAR credit, in the years with a property tax line. Starts from the "
+             "case's own district.")
+    place_locality, place_district = _place_to_store(
+        place_locality, place_district, bool(place_move), case_place["school_district"],
+        event_place if buy is not None else None)
     c1, c2, c3, c4, c5 = st.columns(5)
     cost_tax = c1.number_input("Property tax ($/yr, today's $)",
                                value=float(costs.get("property tax", 0)), key=f"scn_cost_tax_{key}")

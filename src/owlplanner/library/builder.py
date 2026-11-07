@@ -112,6 +112,16 @@ FINANCING_DEFAULTS = {
     "loan": {"down": 0.20, "closing": 0.0, "extra": 0.0},
 }
 PLACE_DEFAULTS = {"state": "NY", "locality": "", "school_district": "", "move": False}
+# A place's text field that states "none" (no local income tax, no STAR district): the
+# variants tables' spelling (`ui/variant_tables.CLEAR`). A blank district on a purchase
+# without a move keeps the case's own district (UX review B2: blank used to wipe it).
+NO_PLACE = "-"
+
+
+def place_text(value) -> str:
+    """A place's locality or district as the case stores it ("-" stated as none)."""
+    text = "" if value is None else str(value).strip()
+    return "" if text == NO_PLACE else text
 
 # "That event's year" for an `event:` anchor, by the target's kind (review X6): a work span's
 # end, a rent's start, a purchase's or care span's year, a downturn's placement. A claim or a
@@ -973,15 +983,17 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
                 rows["Budget"].append((row, purchase["id"]))
             place = {**PLACE_DEFAULTS, **(purchase.get("place") or {})}
             if place["move"]:
+                # A move states its new place: a blank or "-" field there is none.
                 _set_path(case, "basic_info.moves", [{
                     "year": year,
                     "state": place["state"],
-                    "locality": place["locality"],
-                    "school_district": place["school_district"],
+                    "locality": place_text(place["locality"]),
+                    "school_district": place_text(place["school_district"]),
                 }])
                 provenance["case_fields"]["basic_info.moves"] = purchase["id"]
-            else:
-                _set_path(case, "basic_info.school_district", place["school_district"])
+            elif str(place["school_district"] or "").strip():
+                # Stated ("-" for none); a blank field keeps the case's district (B2).
+                _set_path(case, "basic_info.school_district", place_text(place["school_district"]))
                 provenance["case_fields"]["basic_info.school_district"] = purchase["id"]
         elif kind == "rent":
             # Rent to the year before the purchase (section 6.2, I1).
@@ -1046,8 +1058,44 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
     for sheet, column, year, _value, eid in cells:
         provenance["cells"].append([sheet, column, year, eid])
 
+    if purchase is not None:
+        _check_one_home(hand_hfp, purchase, years[purchase["id"]], end_year)
     hfp = _merge_tables(hand_hfp, rows, cells, names, plan_start, births, life)
     return case, hfp, provenance
+
+
+def _check_one_home(hand_hfp: dict, purchase: dict, where: dict, end_year) -> None:
+    """Refuse a purchase event over a hand Fixed Assets home still owned while the event's
+    home is (UX review B2): an imported case whose workbook holds its own purchase got a
+    second residence, with no warning. A hand home sold (`yod`, disposed at the start of
+    that year) by the event's year, an inactive row and the event's own row (kept by name
+    from a pages save, regenerated) are not a second home."""
+    table = hand_hfp.get("Fixed Assets") or {}
+    columns = list(table.get("columns") or ASSET_COLUMNS)
+    if not all(c in columns for c in ("name", "type", "year", "yod")):
+        return
+    at = {c: columns.index(c) for c in ("active", "name", "type", "year", "yod") if c in columns}
+    start = where["year"]
+    stop = where.get("sale") or None  # the event's home is gone from its sale year
+    for row in table.get("rows") or []:
+        if "active" in at and row[at["active"]] is False:
+            continue
+        if row[at["name"]] == purchase["name"] or str(row[at["type"]]).strip().lower() != "residence":
+            continue
+        try:
+            bought, yod = int(row[at["year"]]), int(row[at["yod"]] or 0)
+        except (TypeError, ValueError):
+            continue
+        if yod <= 0:  # zero or negative: counted from the plan's end (fixedassets' rule)
+            yod = (end_year + yod + 1) if end_year is not None else None
+        if (yod is None or start < yod) and (stop is None or bought < stop):
+            sold = f"sold in {yod}" if yod is not None and yod <= (end_year or yod) else "kept to the end"
+            raise ScenarioError(
+                f"the case already holds a home, {row[at['name']]!r} (Fixed Assets, from {bought}, "
+                f"{sold}), owned while the purchase event's {purchase['name']!r} is (from {start}): "
+                "the plan would hold two homes. Drop the purchase event, or start from a scenario "
+                "without that row (the rent-only baseline) and add the purchase on the Scenario page."
+            )
 
 
 def _searched_names(option, names) -> set:

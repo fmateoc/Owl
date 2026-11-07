@@ -29,13 +29,14 @@ import math
 import pandas as pd
 
 from owlplanner.library import ScenarioError
+from owlplanner.library import builder
 from owlplanner.library.variants import DIMENSIONS, VALUE_KEYS
 
 PLACE_COLUMNS = ["label", "name", "price", "state", "locality", "school_district", "move",
                  "property tax", "hoa", "insurance"]
 FINANCING_COLUMNS = ["label", "kind", "term", "rate", "down", "closing", "extra", "name"]
 SEQUENCE_COLUMNS = ["label", "sequence", "start"]
-# A place's text fields: an empty cell keeps the parent's; "-" clears it (a place with no
+# A place's text fields: an empty cell keeps the parent's; "-" clears it (= builder.NO_PLACE) (a place with no
 # local income tax, from a parent that has one: White Plains from Yonkers).
 CLEAR = "-"
 # A sequence cell that clears the downturn overlay instead of naming one ("no downturn"):
@@ -164,7 +165,11 @@ def _place_value(row) -> dict:
     for field in ("state", "locality", "school_district"):
         if row.get(field) is not None:
             text = str(row[field])
-            place[field] = "" if text == CLEAR else text
+            if text == CLEAR:
+                # A cleared district stays "-": the builder reads a blank one as "keep the
+                # case's" (UX review B2), "-" as none. A blank locality is none already.
+                text = builder.NO_PLACE if field == "school_district" else ""
+            place[field] = text
     if row.get("move") is not None:
         place["move"] = flag(row["move"], f"place {label}: move")
     if place:

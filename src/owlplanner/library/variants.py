@@ -97,9 +97,16 @@ def _one_event(scenario: dict, kind: str, dimension: str, person: str = None) ->
              and (person is None or e.get("person") == person)]
     if not found:
         who = f" for {person!r}" if person else ""
+        # How to get one (UX review B2): an imported case holds its purchase as hand rows,
+        # which no dimension can vary.
+        how = {
+            "purchase": " An imported case holds its home as Fixed Assets rows, not as an event: "
+                        "start from a run without the home (the rent-only baseline) and add the "
+                        "purchase on the Scenario page (\"Edit the scenario\" on the Run page).",
+        }.get(kind, " Add one on the Scenario page (\"Edit the scenario\" on the Run page).")
         raise ScenarioError(
             f"the {dimension!r} dimension needs a {kind} event{who} in the scenario: "
-            "nothing to vary"
+            f"nothing to vary.{how}"
         )
     if len(found) > 1:
         who = "" if person is None else f" for {person!r}"

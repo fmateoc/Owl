@@ -78,3 +78,19 @@ def test_a_run_from_another_year_is_refused_with_a_message(library):
     solve[0].click().run()
     assert not at.exception, [e.value for e in at.exception]
     assert any("plan year is 2025" in e.value for e in at.error)
+
+
+def test_decision_queues_its_exact_companion(library, monkeypatch):
+    """UX review B1: "decision" from the Queue page queues local search and its exact-model
+    companion, as the Run and Collections pages do (`preset_solves`)."""
+    from owlplanner.library import JobManager
+
+    monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)  # no real worker
+    at = _page()
+    at.selectbox(key="queue_preset").set_value("decision").run()
+    [b for b in at.button if b.label == "Solve"][0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    run = library.runs()[0]
+    presets = sorted(R.JobRecord.read(d).doc["preset"]
+                     for d in (run.path / "results").iterdir() if (d / "status.json").exists())
+    assert presets == ["decision", "decision_exact"], presets

@@ -22,11 +22,12 @@ import streamlit as st
 
 import libraryjobs
 import sskeys as kz
-from owlplanner.library import PRESETS, ScenarioError
+from owlplanner.library import JobsError, PRESETS, ScenarioError, preset_solves
 from owlplanner.library import results as R
 
 st.markdown("# :material/schedule: Queue")
 kz.divider("orange")
+libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
 _ICON = {"waiting": ":material/hourglass_top:", "running": ":material/autorenew:",
          "done": ":material/check_circle:", "failed": ":material/error:",
@@ -61,13 +62,16 @@ with st.expander("Solve a run", expanded=not manager.jobs()):
                                      "(no MIP, no local search), claiming ages held at the "
                                      "scenario's values. custom: the case's own options.")
         if col3.button("Solve", type="primary", use_container_width=True):
-            try:
-                job = manager.enqueue(labels[choice], preset=preset)
-            except ScenarioError as exc:  # a run from another plan year (R1)
-                st.error(str(exc), icon=":material/event_busy:")
-            else:
-                st.toast(f"Queued {job.id}")
-                st.rerun()
+            # Every solve the preset stands for: "decision" is local search and its exact
+            # companion (UX review B1; the Run and Collections pages do the same).
+            for solve in preset_solves(preset):
+                try:
+                    job = manager.enqueue(labels[choice], preset=solve)
+                except (ScenarioError, JobsError) as exc:  # a run from another plan year (R1)
+                    libraryjobs.flash("error", f"Not queued: {exc}")  # shown after the rerun
+                    break
+                st.toast(f"Queued {job.id} ({solve})")
+            st.rerun()
 
 
 @st.fragment(run_every=2.0)

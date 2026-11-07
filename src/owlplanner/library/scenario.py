@@ -37,7 +37,10 @@ SCHEMA_VERSION = 3
 # 4 (step 5b): the run's rates.csv (a downturn sequence generates it; D11).
 # 5 (step 5b, third review AB1): a downturn run's case resets the hand case's reverse_sequence /
 # roll_sequence, which its generated table already carries.
-BUILDER_VERSION = 5
+# 6 (UX review B2): a purchase without a move whose school district is blank keeps the case's
+# district (it used to set it to ""; "-" now states none), and a purchase over a hand home
+# still owned is refused.
+BUILDER_VERSION = 6
 
 
 class ScenarioError(ValueError):

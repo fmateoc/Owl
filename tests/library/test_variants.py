@@ -202,8 +202,10 @@ class TestRefusals:
             v.plan_variants(_scenario(), {"year": []})
 
     def test_a_purchase_dimension_without_a_purchase(self):
-        with pytest.raises(ScenarioError, match="nothing to vary"):
+        with pytest.raises(ScenarioError, match="nothing to vary") as info:
             v.plan_variants(_scenario([WORK_ARI, WORK_NOA, RENT]), {"year": [2029]})
+        # UX review B2: the message says how to get a purchase event.
+        assert "rent-only baseline" in str(info.value) and "Scenario page" in str(info.value)
 
     def test_a_child_that_would_not_build_is_refused_where_it_is_saved(self, monkeypatch):
         # plan_variants checks the scenario's shape; the plan window is the builder's

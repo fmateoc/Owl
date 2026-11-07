@@ -24,15 +24,13 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import tempfile
-from pathlib import Path
-
 import streamlit as st
 
+import library_import
 import libraryjobs
 import owlbridge as owb
 import sskeys as kz
-from owlplanner.library import import_case, scenario_from_ui
+from owlplanner.library import scenario_from_ui
 
 st.markdown("# :material/database: Library")
 kz.divider("orange")
@@ -84,25 +82,16 @@ def _add_to_collection(collection, result):
 
 
 def _save_uploaded_run(name, notes, tags, uploaded, collection=None):
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        paths = {}
-        for key, up in uploaded.items():
-            if up is None:
-                continue
-            path = tmp / up.name
-            path.write_bytes(up.getvalue())
-            paths[key] = path
-        try:
-            scenario = import_case(paths["case"], hfp_path=paths.get("hfp"),
-                                   budget_path=paths.get("budget"), rates_path=paths.get("rates"))
-            result = lib.save_run(name=name or Path(paths["case"]).stem, scenario=scenario,
-                                  notes=notes, tags=tuple(t for t in tags if t.strip()))
-        except Exception as exc:  # noqa: BLE001 - shown to the user, not raised
-            libraryjobs.flash("error", f"Cannot import this case: {exc}")
-            return
-        _report_saved(result)
-        _add_to_collection(collection, result)
+    """Import the uploaded case as a new run. Returns whether it was saved; on False the
+    reason is flashed and the form stays open with its files (UX review Q10)."""
+    result, reason = library_import.import_uploaded(lib, name=name, notes=notes, tags=tags,
+                                                    uploaded=uploaded)
+    if reason:
+        libraryjobs.flash("error", reason)
+        return False
+    _report_saved(result)
+    _add_to_collection(collection, result)
+    return True
 
 
 def _save_current_case(name, notes, tags, collection=None):
@@ -151,33 +140,44 @@ def _save_current_case(name, notes, tags, collection=None):
 
 # -- getting a run in -------------------------------------------------
 
-with st.expander("Add a run to the library", expanded=not lib.runs()):
+# Open while the library is empty, and after an import that failed (UX review Q10: it closed
+# again, and the error was the only thing left on screen).
+_import_open = not lib.runs() or bool(st.session_state.get("lib_import_failed"))
+with st.expander("Add a run to the library", expanded=_import_open):
     tab1, tab2 = st.tabs(["_Import a case_", "_Save the current case_"])
     with tab1:
         col1, col2 = st.columns([3, 2], gap="large")
         with col1:
-            case_up = st.file_uploader("Case file (TOML)", type=["toml"], key="lib_case_up")
-            hfp_up = st.file_uploader("Household workbook (optional)", type=["xlsx"],
-                                      key="lib_hfp_up")
-            budget_up = st.file_uploader("Budget file (optional)", type=["json"],
-                                         key="lib_budget_up")
-            rates_up = st.file_uploader("Rates table (optional, CSV)", type=["csv"],
-                                        key="lib_rates_up")
+            # The uploaders' keys carry a counter that a successful import bumps: the next
+            # import starts from an empty form; a failed one keeps the files chosen.
+            _n = st.session_state.get("lib_import_round", 0)
+            case_up = st.file_uploader("Case file (TOML)", type=["toml"], key=f"lib_case_up{_n}")
+            _refs = library_import.case_refs(case_up)
+            hfp_up = st.file_uploader("Household workbook (xlsx)", type=["xlsx"], key=f"lib_hfp_up{_n}")
+            st.caption(library_import.companion_caption("hfp", _refs, case_up))
+            budget_up = st.file_uploader("Budget file (JSON)", type=["json"], key=f"lib_budget_up{_n}")
+            st.caption(library_import.companion_caption("budget", _refs, case_up))
+            rates_up = st.file_uploader("Rates table (CSV)", type=["csv"], key=f"lib_rates_up{_n}")
+            st.caption(library_import.companion_caption("rates", _refs, case_up))
         with col2:
-            name = st.text_input("Run name", key="lib_import_name",
+            name = st.text_input("Run name", key=f"lib_import_name{_n}",
                                  placeholder="from the file name when empty")
-            notes = st.text_area("Notes (optional)", key="lib_import_notes")
-            tags = st.text_input("Tags (optional, comma separated)", key="lib_import_tags")
+            notes = st.text_area("Notes (optional)", key=f"lib_import_notes{_n}")
+            tags = st.text_input("Tags (optional, comma separated)", key=f"lib_import_tags{_n}")
             collection = st.selectbox(
                 "Collection (optional)", [None] + list(lib.collections()),
                 format_func=lambda c: "(none)" if c is None else c.name,
-                key="lib_import_collection",
+                key=f"lib_import_collection{_n}",
                 help="The run joins this collection as it is; its variant values are set "
                      "on the Collections page.")
         if st.button("Import as a new run", type="primary", disabled=case_up is None):
-            _save_uploaded_run(name.strip(), notes.strip(), tags.split(","),
-                               {"case": case_up, "hfp": hfp_up, "budget": budget_up,
-                                "rates": rates_up}, collection)
+            if _save_uploaded_run(name.strip(), notes.strip(), tags.split(","),
+                                  {"case": case_up, "hfp": hfp_up, "budget": budget_up,
+                                   "rates": rates_up}, collection):
+                st.session_state.pop("lib_import_failed", None)
+                st.session_state["lib_import_round"] = _n + 1
+            else:
+                st.session_state["lib_import_failed"] = True
             st.rerun()
     with tab2:
         if not kz.has_current_case():

@@ -25,6 +25,7 @@ from .scenario import (  # noqa: F401
 )
 from .casefiles import (  # noqa: F401
     canonical_case,
+    case_references,
     canonicalize,
     check_plan_year,
     df_to_table,

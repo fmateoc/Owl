@@ -708,6 +708,17 @@ def _read_budget_text(ref: str, *, base=None, explicit=None):
     return {"ref": ref, "text": path.read_text(encoding="utf-8")}
 
 
+def case_references(case: dict) -> dict:
+    """The files a case dict names besides itself, as written: {"hfp", "budget", "rates"},
+    "" for none. The Library page's import form asks for them by name (UX review Q10); a
+    'table' case without a rates_file names none here and is refused by `import_case`."""
+    try:
+        rates = _rates_reference(case)
+    except ScenarioError:
+        rates = ""
+    return {"hfp": _hfp_reference(case) or "", "budget": _budget_reference(case), "rates": rates}
+
+
 def import_case(case_path, hfp_path=None, budget_path=None, rates_path=None) -> dict:
     """Read a case file and its HFP workbook into a scenario (section 6.4: hand rows only).
 

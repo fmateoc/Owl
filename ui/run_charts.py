@@ -144,13 +144,13 @@ def brackets_table(years) -> pd.DataFrame:
             "400% FPL": _cliff(row),
         })
     table = pd.DataFrame(rows)
-    # Years as nullable integers and amounts as floats: a None left in a column made it an
-    # object column that the page showed as "None", and years as floats.
+    # Years as nullable integers and amounts as whole-dollar floats: a None left in a column
+    # made it an object column that the page showed as "None", and years as floats.
     for column in ("Year", "Sets premiums of"):
         table[column] = pd.to_numeric(table[column], errors="coerce").round().astype("Int64")
     for column in table.columns:
         if column not in ("Year", "Sets premiums of", "Bracket"):
-            table[column] = pd.to_numeric(table[column], errors="coerce").astype(float)
+            table[column] = pd.to_numeric(table[column], errors="coerce").astype(float).round(0)
     return table
 
 

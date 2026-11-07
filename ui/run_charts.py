@@ -3,13 +3,16 @@ The Run page's "why" views as figures and words, without Streamlit (UX review Q1
 
 - `brackets_figure` / `brackets_table`: income, the Roth conversion layer and MAGI against the
   ordinary bracket tops (faint steps, one per bracket), every IRMAA tier with its premium year,
-  and the marketplace's 400% FPL line, in distinct hues and dashes (Q15).
+  and the marketplace's 400% FPL line, in distinct hues and dashes (Q15). The table names the
+  active (or next) IRMAA tier and the binding ceiling per year (UX remediation QW-3).
 - `taxes_and_premiums_figure`, `income_sources_figure`: the taxes with the Medicare and
   marketplace premiums beside them; the income sources with all-zero series left out and a
   big-ticket purchase year annotated instead of setting the scale (Q16).
-- `year_breakdown`, `year_summary`, `sankey_figure`: one year's sources and uses grouped as
-  the paragraph above the Sankey tells them, and the Sankey drawn from the same groups, with
-  the amounts on the nodes, a labelled hub and a taxes total (Q17).
+- `year_breakdown`, `year_summary`, `sankey_figure`, `flows_table`: one year's sources and
+  uses grouped as the paragraph above the Sankey tells them, the Sankey drawn from the same
+  groups with the amounts on the nodes and a labelled hub, and the two sides beside each
+  other (Q17). One set of words for the paragraph and the nodes; a refunded tax is a tax
+  offset, never income (UX remediation QW-1).
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -126,11 +129,16 @@ def brackets_figure(years):
 
 
 def brackets_table(years) -> pd.DataFrame:
-    """The table under the chart: numbers as numbers (the page formats them), no index."""
+    """The table under the chart: numbers as numbers (the page formats them), no index.
+
+    QW-3: the IRMAA columns are one text column naming the active (or next) tier for the
+    year's MAGI -- "IRMAA Tier 2 ($266,000) — crossed (+$6,884 in 2031)" -- and a *Binding
+    ceiling* column saying which ceiling sits closest above the year's income (the plan's
+    max-Roth-conversion cap when the year is already at it).
+    """
     taxable_conv = _taxable_conversions(years)
     rows = []
     for row, part in zip(years, taxable_conv, strict=True):
-        tier1 = (row.get("irmaa_edges") or [{}])[0]
         rows.append({
             "Year": row["year"],
             "Taxable income": row.get("ordinary_taxable_income"),
@@ -139,19 +147,80 @@ def brackets_table(years) -> pd.DataFrame:
             "MAGI": row.get("magi"),
             "Bracket": row.get("fills_bracket") or "-",
             "Room to its top": row.get("room_to_next_edge"),
-            "IRMAA tier 1": tier1.get("amount"),
-            "Sets premiums of": tier1.get("premium_year"),
+            "IRMAA tier": _irmaa_tier_text(row),
             "400% FPL": _cliff(row),
+            "Binding ceiling": _binding_ceiling(row),
         })
     table = pd.DataFrame(rows)
     # Years as nullable integers and amounts as whole-dollar floats: a None left in a column
     # made it an object column that the page showed as "None", and years as floats.
-    for column in ("Year", "Sets premiums of"):
-        table[column] = pd.to_numeric(table[column], errors="coerce").round().astype("Int64")
+    table["Year"] = pd.to_numeric(table["Year"], errors="coerce").round().astype("Int64")
     for column in table.columns:
-        if column not in ("Year", "Sets premiums of", "Bracket"):
+        if column not in ("Year", "Bracket", "IRMAA tier", "Binding ceiling"):
             table[column] = pd.to_numeric(table[column], errors="coerce").astype(float).round(0)
     return table
+
+
+def _irmaa_tier_text(row) -> str:
+    """The active IRMAA tier for the year's MAGI, or the next one (QW-3): the year is in
+    the highest tier whose edge its MAGI has crossed ("Tier 2 ($266,000) — crossed
+    (+$6,884 in 2031)"), or, below every edge, the first tier above ("Tier 1 ($218,000) —
+    $30,000 below (sets 2031)"). "-" where the rows carry no IRMAA edges (a premium year
+    past the plan, or an older result)."""
+    edges = row.get("irmaa_edges") or []
+    magi = row.get("magi")
+    if not edges or magi is None:
+        return "-"
+    crossed = [k for k, edge in enumerate(edges, start=1) if magi > edge["amount"]]
+    k = max(crossed) if crossed else 1
+    edge = edges[k - 1]
+    gap = magi - edge["amount"]
+    prem = edge.get("premium_year")
+    if crossed:
+        where = f" in {prem}" if prem is not None else ""
+        return f"IRMAA Tier {k} (${edge['amount']:,.0f}) — crossed (+${gap:,.0f}{where})"
+    where = f"sets {prem}" if prem is not None else "no premium year on the row"
+    return f"IRMAA Tier {k} (${edge['amount']:,.0f}) — ${-gap:,.0f} below ({where})"
+
+
+def _binding_ceiling(row) -> str:
+    """What sits closest above the year's income (QW-3's "binding ceiling"): the ceiling
+    with the least room left -- the top of an ordinary bracket (read against the taxable
+    income, as the chart does), the first IRMAA tier above MAGI, or the marketplace's 400%
+    FPL cliff (both against MAGI). When the year's Roth conversion is already at the case's
+    cap (`conversion_cap`, today's $; results written before it carry none), the cap is the
+    answer: it is what stops the conversion. "-" when nothing sits above."""
+    magi = row.get("magi")
+    income = row.get("ordinary_taxable_income") or 0.0
+    cap = row.get("conversion_cap")
+    if cap is not None and (row.get("conversion") or 0.0) >= cap - 1.0:
+        return f"Conversion cap (${cap:,.0f})"
+    candidates = []
+    for edge in row.get("ordinary_edges") or []:
+        if edge["amount"] > income:
+            candidates.append((edge["amount"] - income, f"{edge['label']} bracket (${edge['amount']:,.0f})"))
+    for k, edge in enumerate(row.get("irmaa_edges") or [], start=1):
+        if magi is not None and edge["amount"] > magi:
+            candidates.append((edge["amount"] - magi,
+                               f"IRMAA Tier {k} (${edge['amount']:,.0f})"))
+    cliff = _cliff(row)
+    if cliff is not None and magi is not None and cliff > magi:
+        candidates.append((cliff - magi, f"ACA 400% FPL (${cliff:,.0f})"))
+    return min(candidates)[1] if candidates else "-"
+
+
+def flows_table(sources: dict, uses: dict) -> pd.DataFrame:
+    """Sources beside Uses under the Sankey (QW-1): one row per line, largest first, each
+    cell the line's name and amount. The sides balance, so the columns run out together."""
+    left = sorted(sources.items(), key=lambda kv: -kv[1])
+    right = sorted(uses.items(), key=lambda kv: -kv[1])
+    rows = max(len(left), len(right), 1)
+
+    def cell(side, n):
+        return "" if n >= len(side) else f"{flow_label(side[n][0])}  ${side[n][1]:,.0f}"
+
+    return pd.DataFrame({"Sources": [cell(left, n) for n in range(rows)],
+                         "Uses": [cell(right, n) for n in range(rows)]})
 
 
 # -- Q16: taxes and premiums, income sources ---------------------------------------------------
@@ -219,9 +288,16 @@ def income_sources_figure(by_year, purchases=None):
 
 # -- Q17: one year's cash flow ------------------------------------------------------------------
 
-TAX_USES = {"Federal income tax": "federal income tax", "Gains tax": "capital gains",
-            "NIIT": "NIIT", "Payroll tax": "payroll tax", "State and local tax": "state and local"}
-PREMIUM_USES = {"ACA premiums": "marketplace", "Medicare premiums": "Medicare"}
+# One set of words for the paragraph and the Sankey's nodes (QW-1: the paragraph said
+# "marketplace" / "Medicare" / "capital gains" where the nodes said "ACA premiums" /
+# "Medicare premiums" / "Gains tax").
+TAX_USES = {"Federal income tax": "Federal income tax", "Gains tax": "Capital gains tax",
+            "NIIT": "NIIT", "Payroll tax": "Payroll tax", "State and local tax": "State and local tax"}
+PREMIUM_USES = {"ACA premiums": "ACA marketplace premiums", "Medicare premiums": "Medicare premiums"}
+# A tax that came out negative (a refundable credit larger than the tax: NY's STAR) lands on
+# the sources side under "..., net refund". QW-1: it is a tax offset, never "income".
+FLOW_WORDS = {**TAX_USES, **PREMIUM_USES,
+              "State and local tax, net refund": "State and local tax refund"}
 SAVINGS_SOURCES = {"Taxable-account withdrawals": "the taxable (brokerage) accounts",
                    "Tax-deferred withdrawals": "the tax-deferred accounts (IRAs)",
                    "Roth withdrawals": "the Roth accounts", "HSA withdrawals": "the HSAs"}
@@ -233,7 +309,16 @@ _USE_GROUPS = (("spending", "Spending"), ("big_ticket", "Big-ticket purchases"),
                ("debt", "Debt payments"), ("taxes", "Taxes"), ("premiums", "Health premiums"),
                ("conversions", "Roth conversions"), ("surplus", "Back into savings"),
                ("other", "Other outflows"))
-_SOURCE_GROUPS = (("savings", "From savings"), ("income", "Income"), ("conversions", "Roth conversions"))
+_SOURCE_GROUPS = (("savings", "From savings"), ("income", "Income"),
+                  ("conversions", "Roth conversions"), ("tax_offsets", "Tax refunds"))
+# A group that always carries its total in a node of its own, even with one line (QW-1: the
+# Health premiums node disappeared whenever a year had a single premium line).
+_NAMED_USE_GROUPS = ("spending", "taxes", "premiums")
+
+
+def flow_label(name: str) -> str:
+    """One cash-flow row's name in the words the paragraph and the Sankey share (QW-1)."""
+    return FLOW_WORDS.get(name, name)
 
 
 def _use_group(name):
@@ -259,6 +344,8 @@ def _source_group(name):
         return "savings"
     if name == CONVERSION_SOURCE:
         return "conversions"
+    if name.endswith(", net refund"):  # QW-1: a refunded tax is a tax offset, not income
+        return "tax_offsets"
     return "income"
 
 
@@ -285,7 +372,11 @@ def _parts(rows: dict, words: dict | None = None) -> str:
 
 def year_summary(year: int, sources: dict, uses: dict) -> str:
     """The paragraph above the Sankey (UX review section 3), in nominal dollars of *year*,
-    from the same rows the Sankey draws."""
+    from the same rows the Sankey draws.
+
+    QW-1: a refunded tax (the "..., net refund" rows) is a tax offset, never income: the
+    taxes sentence nets it ("taxes net of a \\$714 state and local tax refund took \\$25,650").
+    """
     b = year_breakdown(sources, uses)
     u, s = b["uses"], b["sources"]
     total = lambda rows: sum(rows.values())  # noqa: E731
@@ -299,13 +390,25 @@ def year_summary(year: int, sources: dict, uses: dict) -> str:
         text.append(f"The money comes from savings, {_usd(savings)} ({_parts(s['savings'], SAVINGS_SOURCES)}), "
                     f"and from income, {_usd(income)} ({_parts(s['income'], INCOME_WORDS)}).")
     elif savings:
-        text.append(f"All of it comes from savings: {_parts(s['savings'], SAVINGS_SOURCES)}.")
+        if s["conversions"] or s["tax_offsets"]:  # not "all of it": the rest is named below
+            text.append(f"The money comes from savings, {_usd(savings)} "
+                        f"({_parts(s['savings'], SAVINGS_SOURCES)}).")
+        else:
+            text.append(f"All of it comes from savings: {_parts(s['savings'], SAVINGS_SOURCES)}.")
     elif income:
         text.append(f"All of it comes from income: {_parts(s['income'], INCOME_WORDS)}.")
     taxes = dict(u["taxes"])
-    taxes.setdefault("Federal income tax", 0.0)  # "federal income tax $0" is worth saying
-    if total(taxes):
-        text.append(f"Taxes {_usd(total(taxes))}: {_parts(taxes, TAX_USES)}.")
+    taxes.setdefault("Federal income tax", 0.0)  # "Federal income tax $0" is worth saying
+    refunds, refund = dict(s["tax_offsets"]), total(s["tax_offsets"])
+    if total(taxes) or refund:
+        if refund:
+            back = " and ".join(f"a {_usd(v)} {flow_label(k).lower()}"
+                                for k, v in sorted(refunds.items(), key=lambda kv: -kv[1]))
+            net = total(taxes) - refund
+            lead = f"Taxes net of {back} {'took' if net >= 0 else 'gave back'} {_usd(abs(net))}"
+        else:
+            lead = f"Taxes {_usd(total(taxes))}"
+        text.append(f"{lead}: {_parts(taxes, TAX_USES)}.")
     else:
         text.append("No taxes.")
     if u["premiums"]:
@@ -323,9 +426,10 @@ def year_summary(year: int, sources: dict, uses: dict) -> str:
 def sankey_figure(year: int, sources: dict, uses: dict):
     """Sources → the year's hub → the use groups → their lines, amounts on every node.
 
-    A group of one line goes straight from the hub; Spending, Taxes and Health premiums with
-    several lines get a node of their own carrying the group's total (Q17: the taxes were five
-    nodes with no total)."""
+    Spending, Taxes and Health premiums always get a node of their own carrying the group's
+    total, even with one line (QW-1: the Health premiums node disappeared whenever a year
+    had a single premium line); a group of one line goes straight from the hub. Every line
+    node carries `flow_label`'s words, the ones the paragraph above uses (QW-1)."""
     b = year_breakdown(sources, uses)
     labels, colors = [], []
     src, tgt, val = [], [], []
@@ -336,7 +440,7 @@ def sankey_figure(year: int, sources: dict, uses: dict):
         return len(labels) - 1
 
     total = sum(sources.values())
-    in_nodes = [(node(name, v, "#4c78a8"), v) for name, v in sources.items()]
+    in_nodes = [(node(flow_label(name), v, "#4c78a8"), v) for name, v in sources.items()]
     hub = node(f"{year} cash flow", total, "#555555")
     for i, v in in_nodes:
         src.append(i)
@@ -346,10 +450,10 @@ def sankey_figure(year: int, sources: dict, uses: dict):
         rows = b["uses"][group]
         if not rows:
             continue
-        if len(rows) == 1:
+        if len(rows) == 1 and group not in _NAMED_USE_GROUPS:
             (name, v), = rows.items()
             src.append(hub)
-            tgt.append(node(name, v, "#f58518"))
+            tgt.append(node(flow_label(name), v, "#f58518"))
             val.append(v)
             continue
         g = node(title, sum(rows.values()), "#e45756" if group == "taxes" else "#f58518")
@@ -358,7 +462,7 @@ def sankey_figure(year: int, sources: dict, uses: dict):
         val.append(sum(rows.values()))
         for name, v in sorted(rows.items(), key=lambda kv: -kv[1]):
             src.append(g)
-            tgt.append(node(name, v, "#ffbb78"))
+            tgt.append(node(flow_label(name), v, "#ffbb78"))
             val.append(v)
     fig = go.Figure(go.Sankey(
         arrangement="snap",

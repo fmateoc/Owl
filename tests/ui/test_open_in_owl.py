@@ -139,3 +139,13 @@ def test_the_progress_strip_counts_the_runs_pages_as_visited(monkeypatch, cached
     at = _financial_profile(dic)
     strip = "\n".join(m.value for m in at.markdown if "Case Setup Progress" in m.value)
     assert "(100%)" in strip, strip
+
+
+def test_the_workbook_is_named_without_its_folder(cached_workbook_results):
+    """UX remediation QW-7 (review AL3): after "Open in Owl" the pages showed -- and the next
+    save kept -- the run folder's workbook path. The pages know a file name."""
+    plan = R.load_plan(cached_workbook_results)
+    plan.hfpFileName = str(Path("runs") / "2026-11-07_x" / "inputs" / "HFP.xlsx")
+    _, dic = owlbridge.openCaseFromPlan(plan)
+    assert dic["hfpFileName"] == "HFP.xlsx"
+    assert dic["stHFP"] == "HFP.xlsx"

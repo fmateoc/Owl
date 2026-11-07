@@ -338,18 +338,80 @@ def quality_line(result: Result) -> str:
 
 # -- method and the noise tolerance (design 9.2, R2, S13) -------------
 
+# The presets as people know them (UX remediation QW-6; the same words as the run library's
+# picker, `ui/librarypresets.NAMES`). The codes stay in `method_details`.
+PRESET_PHRASES = {
+    "quick": "Quick look",
+    "decision": "Careful",
+    "decision_exact": "Careful: the exact-model check",
+    "exact_medicare": "Exact model with Medicare priced",
+    "ages": "Let Owl choose the claiming ages",
+    "ages_thorough": "Claiming ages, every pair tried",
+    "custom": "The case's own solver options",
+    "regret": "Roth conversion regret sweep",
+}
+
 
 def method_text(result: Result) -> str:
-    """"preset · breakpoint method · Owl version+commit" for the run page's header."""
+    """"How the solve was made", in plain English (UX remediation QW-6): the preset as people
+    know it, and what was optimized exactly -- "Careful — exact tax & Medicare optimization".
+    The raw codes (the preset id, the binary families, "branch-and-bound at gap 1e-5", the
+    version and commit) are `method_details`, shown in a collapsed expander."""
     rec = result.record
     method = rec.get("method") or {}
-    parts = [str(rec.get("preset") or "?"), str(method.get("breakpoint_method") or "loop")]
+    raw = str(method.get("breakpoint_method") or "loop")
+    preset = str(rec.get("preset") or "?")
+    head = PRESET_PHRASES.get(preset, preset)
+    companion = record_companion(rec)
+    if companion == "decision_exact":
+        return f"{head} — a simpler exact model, used as a check"
+    if companion == "exact_medicare":
+        return f"{head} — the exact model with Medicare premiums priced"
+    kind = method_kind(result)
+    if kind == "no solve":
+        return head
+    if kind == "loop":
+        tail = ("the fast approximate method" if "-> loop" not in raw
+                else "the fast approximate method (the exact search kept its plan)")
+    else:
+        tail = ("exact tax & Medicare optimization" if ("IRMAA" in raw or "Medicare" in raw)
+                else "exact tax optimization")
+        if kind == "proved":
+            tail += ", proved optimal"
+    return f"{head} — {tail}"
+
+
+def method_details(result: Result) -> str:
+    """The solve's technical details, markdown for a collapsed expander (QW-6): the raw
+    preset id and breakpoint method (with the binary families), the branch-and-bound gap,
+    the engine's version and commit, and what an exact-model companion is."""
+    rec = result.record
+    method = rec.get("method") or {}
     engine = rec.get("engine") or {}
+    lines = [f"- Preset (its code): `{rec.get('preset') or '?'}`",
+             f"- Breakpoint method (the binary families): `{method.get('breakpoint_method') or 'loop'}`"]
+    try:
+        gap = float(rec.get("gap"))
+    except (TypeError, ValueError):
+        gap = None
+    if gap is not None and gap >= 0:
+        lines.append(f"- Proved by branch-and-bound at gap {gap:g} (the plan is proven only "
+                     "to gap x objective)")
     version = str(engine.get("version") or "")
     commit = str(engine.get("commit") or "")
-    if version:
-        parts.append(f"Owl {version}" + (f" ({commit})" if commit else ""))
-    return " \u00b7 ".join(parts)
+    if version or commit:
+        lines.append(f"- Engine: Owl {version}" + (f" (`{commit}`)" if commit else ""))
+    if method.get("options"):
+        lines.append(f"- Solver options: `{method['options']}`")
+    companion = record_companion(rec)
+    if companion == "decision_exact":
+        lines.append("- Solved under the exact LP (a check on the headline solve: Medicare "
+                     "off, the Social Security taxable fraction pinned at 0.85, capital gains "
+                     "priced exactly)")
+    elif companion == "exact_medicare":
+        lines.append("- Solved under the exact LP with Medicare premiums priced exactly "
+                     "(the sensitivity's medical-inflation model)")
+    return "\n".join(lines)
 
 
 def method_kind(result: Result) -> str:

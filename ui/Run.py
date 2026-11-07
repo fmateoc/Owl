@@ -82,11 +82,13 @@ def _things_to_look_at(result):
     st.markdown("### Things to look at")
     band = view.threshold_band(result)
     st.caption(
-        f"Years whose income sits within {100 * band:.0f}% of a threshold the model knows "
-        "(today's dollars). *Cost* is what closing that gap costs where the model prices the "
-        "crossing; empty where the boundary is a ramp. The plan may be parked at a boundary on "
-        "purpose (the optimizer fills a bracket to its edge): read this as a list of margins, "
-        "not of errors."
+        f"Years whose income sits within {100 * band:.0f}% of a threshold the model knows, "
+        "and every year that has crossed one of the big cliffs -- an IRMAA tier or the "
+        "marketplace's 400% FPL line -- wherever it now sits (today's dollars). Edges whose "
+        "crossing costs under \\$100 (a small state-recapture step) are left out as noise. "
+        "*Cost* is what closing that gap costs where the model prices the crossing; empty "
+        "where the boundary is a ramp. The plan may be parked at a boundary on purpose (the "
+        "optimizer fills a bracket to its edge): read this as a list of margins, not of errors."
     )
     rows = [{
         "Year": e["year"],
@@ -134,9 +136,11 @@ def _cash_flow_sankey(result, by_year):
         return
 
     # UX review Q17: the year in words first, from the very rows the Sankey draws; then the
-    # Sankey with the amounts on its nodes, a labelled hub and the taxes' total.
+    # Sankey with the amounts on its nodes, a labelled hub and the taxes' total; then the two
+    # sides beside each other (UX remediation QW-1).
     st.markdown(run_charts.year_summary(years[n], sources, uses))
     st.plotly_chart(run_charts.sankey_figure(years[n], sources, uses), width="stretch")
+    st.dataframe(run_charts.flows_table(sources, uses), width="stretch", hide_index=True)
     st.caption(
         f"{years[n]}: \\${sum(sources.values()):,.0f} in, \\${sum(uses.values()):,.0f} out (nominal "
         "dollars of that year; the two differ only by rounding). A Roth conversion is a move between "
@@ -300,9 +304,20 @@ def _conversions_and_brackets(run, result):
     table = run_charts.brackets_table(years)
     st.dataframe(table, width="stretch", hide_index=True,
                  column_config={c: money for c in table.columns
-                                if c not in ("Year", "Bracket", "Sets premiums of")}
+                                if c not in ("Year", "Bracket", "IRMAA tier", "Binding ceiling")}
                  | {"Year": st.column_config.NumberColumn(format="%d"),
-                    "Sets premiums of": st.column_config.NumberColumn(format="%d")})
+                    # UX remediation QW-3: the active (or next) IRMAA tier per year, and the
+                    # ceiling the year is closest to.
+                    "IRMAA tier": st.column_config.TextColumn(
+                        "IRMAA tier",
+                        help="The tier the year's MAGI is in (or the next one): its edge, the "
+                             "overshoot, and the premium year those premiums are paid."),
+                    "Binding ceiling": st.column_config.TextColumn(
+                        "Binding ceiling",
+                        help="What sits closest above the year's income: the ceiling with the "
+                             "least room left (a bracket top read against taxable income, an "
+                             "IRMAA tier or the 400% FPL cliff against MAGI), or the case's "
+                             "Roth conversion cap when the year is already at it.")})
 
     # -- the regret sweep (I8: "what a different conversion would have cost") -----
     regret = result.record.get("regret")
@@ -403,21 +418,22 @@ if entries:
     job, result = next((e[1], e[2]) for e in entries if e[0] == chosen)
     record = result.record
     finished = (record.get("solve_date") or {}).get("finished") or ""
+    # UX remediation QW-6: the header in plain English; the raw codes (preset id, binary
+    # families, branch-and-bound gap, commit) in a collapsed expander below.
     st.markdown(f"**Solved** {finished[:16].replace('T', ' ') or job.state} · "
                 f"{view.method_text(result)}")
     search = record.get("age_search")
     if search:
         decided = search.get("decided")
         if decided:
-            # "Ages, thorough" (review AH1): the sweep's scorer, and the published plan re-solved
-            # the same way; both values shown, so a gap between them is visible.
-            how = ("local search" if decided.get("used") == "local search"
-                   else "branch-and-bound at gap 1e-5")
+            # "Ages, thorough" (review AH1): the published plan re-solved the same way as the
+            # decided cell; both values shown, so a gap between them is visible. The scorer
+            # itself ("branch-and-bound at gap 1e-5") is technical detail (QW-6).
             published = search.get("published_value")
             st.caption("Claiming ages searched (every pair tried): picked "
                        f"{view.claiming_ages_text(result)} from "
                        f"{len(search.get('candidates') or [])} whole-year pair(s), each scored "
-                       f"at fixed ages by {how}; this plan is the decided cell "
+                       "at fixed ages; this plan is the decided cell "
                        "re-solved the same way"
                        + (f" (objective {published:,.2f}; the sweep's cell {decided['value']:,.2f})"
                           if published is not None and decided.get("value") is not None else "")
@@ -427,6 +443,14 @@ if entries:
                        f"{view.claiming_ages_text(result)} from "
                        f"{len(search.get('candidates') or [])} candidate(s), scored at fixed ages "
                        "under the case's own model.")
+    with st.expander("Technical solve details"):
+        st.markdown(view.method_details(result))
+        if search and search.get("decided"):
+            how = ("local search" if search["decided"].get("used") == "local search"
+                   else "branch-and-bound at gap 1e-5")
+            st.markdown(f"- The claiming-age candidates were scored at fixed ages by {how}")
+        st.markdown("- The sensitivity children are solved under the exact LP (for speed); "
+                    "the medical-inflation child with Medicare priced exactly.")
     if record.get("status") != "solved":
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),
@@ -442,13 +466,30 @@ if entries:
 
     # -- headline numbers (design 9.1; run_suite.py's score rule) -------
     value = view.score(result)
+    _m = result.summary
     case_options = _frozen_solver_options(run)
     cols = st.columns(6)
     # The score's own words as its label (UX review Q7); under maxBequest it is the final
     # bequest, and the savings left is the number differences are read on (view.first_number).
+    # UX remediation QW-5: with essential budget lines the score is only the discretionary
+    # part, while bar 1 of the Spending chart shows the first year's whole spending. The
+    # headline then shows that total, with the split under it: the two no longer look like a
+    # missing essential budget.
     _score_words = view.score_label(result)
-    cols[0].metric(_score_words[:1].upper() + _score_words[1:], _usd(value),
-                   help="The score: the number the solve maximizes, today's dollars.")
+    _split = (result.plan.get("objective") == "maxSpending"
+              and "discretionary_year1" in _m and "essential_year1" in _m)
+    if _split:
+        _total = _m.get("spending_year1") or (_m["discretionary_year1"] + _m["essential_year1"])
+        cols[0].metric(
+            "First year's total spending", _usd(_total),
+            delta=f"${_m['discretionary_year1']:,.0f} discretionary + "
+                  f"${_m['essential_year1']:,.0f} essential budget",
+            delta_color="off", delta_arrow="off",
+            help="Bar 1 of the Spending chart. The score is the discretionary part alone: "
+                 "the number the solve maximizes.")
+    else:
+        cols[0].metric(_score_words[:1].upper() + _score_words[1:], _usd(value),
+                       help="The score: the number the solve maximizes, today's dollars.")
     cols[1].metric("Home at the end", _usd(view.home_at_end(result)),
                    help="The home net of commission and of any loan still owed: the reserve "
                         "for care, today's dollars. Never added to the savings.")
@@ -467,6 +508,7 @@ if entries:
     cols[5].markdown("**SS withheld by the earnings test**  \n"
                      + (f"\\${withheld:,.0f}" if withheld is not None else "-"))
     st.caption(view.score_label(result)
+               + (f" ({value:,.0f})" if value is not None else "")
                + " is the score; the two end-of-plan numbers are reported side by side and "
                  "never added together.")
 
@@ -554,7 +596,16 @@ if entries:
                 if hfp.exists():
                     import owlbridge as owb
 
-                    owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx")
+                    if not owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx"):
+                        # UX remediation QW-7: a workbook that could not be read must not be
+                        # announced as open and followed by a page switch (the error readHFP
+                        # shows would not survive it).
+                        libraryjobs.flash(
+                            "error",
+                            f"The workbook of *{run.name}* could not be read: the run's "
+                            "household tables are not loaded.",
+                        )
+                        st.rerun()
                 kz.setRunBase(run.id)  # saved on the Library page as its child
                 # Review AL2: a run's case is complete, as after "Open in Owl" (Q12); the
                 # progress strip on Run Options read "(25%) - Step 2 of 8".
@@ -638,9 +689,9 @@ with st.expander("Sensitivity (tornado)"):
     st.caption(
         "One child run per key input moved by a set step: " +
         "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
-        ". Each child is solved under the exact LP (for speed) -- the medical-inflation child "
-        "with Medicare priced exactly, since the exact LP has no Medicare premiums -- and "
-        "measured against this run's own solve under the same model, which the button queues "
+        ". Each child is re-solved in a simpler, faster model -- the medical-inflation child "
+        "keeps its Medicare premiums -- and measured against this run's own solve in that same "
+        "model, which the button queues "
         "when the run has none; the bars below are sorted by the size of the effect, each with "
         "its tolerance (the noise rule), the home at the end beside it (the other number, never "
         "added). A mover that does not fit this scenario, or that no plan "
@@ -746,19 +797,19 @@ with st.expander("Sensitivity (tornado)"):
                 st.plotly_chart(fig, use_container_width=True)
             # The home at the end beside the first number (review AI4: R3's other number,
             # never added; "condo price +10%" moves it by about the price change). Under
-            # maxBequest the first number is the savings left (review AJ3).
-            lines = ["| mover | difference | tolerance | verdict | home at the end | model |",
-                     "|---|---:|---:|---|---:|---|"]
+            # maxBequest the first number is the savings left (review AJ3). The "model"
+            # column is gone (UX remediation QW-6): which model solved each bar is technical
+            # detail, in the header's "Technical solve details".
+            lines = ["| mover | difference | tolerance | verdict | home at the end |",
+                     "|---|---:|---:|---|---:|"]
             for b in _bars:
                 delta = f"{b['delta']:+,.0f}" if b["delta"] is not None else "-"
                 tol = f"{b['tolerance']:,.0f}" if b["tolerance"] is not None else "-"
                 home = b.get("home_delta")
                 home = "-" if home is None else ("±0" if b.get("home_verdict") == "no difference"
                                                  else f"{home:+,.0f}")
-                model = ("exact LP" if tornado.preset_of(b["label"]) == tornado.EXACT_PRESET
-                         else "exact LP, Medicare priced exactly")
                 lines.append(f"| {b['label']} | {delta} | ±{tol} | {b['verdict']}"
-                             + (f" ({b['note']})" if b["note"] else "") + f" | {home} | {model} |")
+                             + (f" ({b['note']})" if b["note"] else "") + f" | {home} |")
             st.markdown("\n".join(lines))
         else:
             st.caption("No sensitivity result yet: the Queue page shows their progress "

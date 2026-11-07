@@ -42,6 +42,7 @@ from datetime import date
 import numpy as np
 
 from . import tax_federal as tx
+from . import utils
 
 
 def _edges(ordinary: dict, n: int) -> list:
@@ -85,7 +86,10 @@ def bracket_view(p) -> dict:
     `Plan.G_n`, after the deduction), `conversion` (the gross Roth conversion),
     `conversion_taxable` (its share of the taxable income, as the income's last layer: the
     rest is absorbed by the deduction; review AI1), `magi` (what the IRMAA and ACA lines are
-    read against), `fills_bracket` (the bracket the income is in, "(full)" at its top; review
+    read against), `conversion_cap` (the couple's Roth conversion cap this year in today's
+    dollars, where the case sets one -- `maxRothConversion`, nominal and per person -- QW-3's
+    "binding ceiling"; uncapped cases and older results carry none), `fills_bracket` (the
+    bracket the income is in, "(full)" at its top; review
     AI2) with `room_to_next_edge` (to the top of that bracket, or of the next one when full),
     and the year's lines. The IRMAA edges are the *premium* year's tier amounts -- the MAGI of year m sets
     the premiums of m + 2 (`tax_federal.mediCosts`, 20 CFR 418.1135(a)) -- and are read in
@@ -109,6 +113,22 @@ def bracket_view(p) -> dict:
         if getattr(p, "aca_start_year", 0) > 0 else 0
 
     rows = []
+    # QW-3's "binding ceiling" reads the year's Roth conversion cap where the case sets one:
+    # `maxRothConversion` is a nominal per-person amount (`utils.get_monetary_option`, $k as
+    # the pages enter it), capped on each individual's own conversions (`plan.py`'s Roth
+    # ranges). Written as `conversion_cap`, today's dollars of the couple's total; a result
+    # written before it, or an uncapped case, carries none.
+    cap_each = None
+    options = getattr(p, "solverOptions", None) or {}
+    if "maxRothConversion" in options:
+        try:
+            cap_each = float(utils.get_monetary_option(options, "maxRothConversion", 0))
+        except (TypeError, ValueError):
+            cap_each = None
+    excluded = str(options.get("noRothConversions") or "none")
+    excluded = None if excluded in ("none", "None") else excluded
+    inames = list(getattr(p, "inames", []) or [])
+    horizons = list(getattr(p, "horizons", [N] * p.N_i))
     for n in range(N):
         year = int(p.year_n[n])
         g = float(gamma[n])
@@ -116,6 +136,9 @@ def bracket_view(p) -> dict:
         edges = _edges(ordinary, n)
         fills, room = _fill(income, edges, top=tx.taxBracketNames[len(edges)])
         conversion = float(np.sum(np.asarray(p.x_in[:, n], dtype=float))) / g
+        converters = sum(1 for i in range(p.N_i)
+                         if i < len(horizons) and n < horizons[i]
+                         and (i >= len(inames) or inames[i] != excluded))
 
         irmaa_edges = []
         n_prem = n + 2  # the premium year this tax year's MAGI sets (20 CFR 418.1135(a))
@@ -147,6 +170,8 @@ def bracket_view(p) -> dict:
             # deduction absorbs part of it (51,455 against 24,800 of taxable income on the
             # synthetic household), and stacking it gross drew twice the year's income.
             "conversion_taxable": round(min(conversion, max(income, 0.0)), 2),
+            # QW-3: the couple's conversion cap this year (today's $), None when uncapped.
+            "conversion_cap": None if cap_each is None else round(cap_each * converters / g, 2),
             "magi": round(float(p.MAGI_n[n]) / g, 2),
             "fills_bracket": fills,
             "room_to_next_edge": room,

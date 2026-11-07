@@ -171,6 +171,32 @@ class TestMoveAndKind:
             _dims(vt, fins=fins)
 
 
+class TestFinancingPercentages:
+    """UX remediation QW-4: `down`, `closing` and `extra` are typed as percentages on the
+    page (as Scenario.py's purchase box shows them) and stored as the shares the purchase
+    events hold."""
+
+    def test_the_percent_cells_become_shares(self, vt):
+        fins = _edited(vt.financing_table(), [{"label": "mortgage", "kind": "loan", "term": "30",
+                                               "rate": "5.9", "down": "20", "closing": "2.5",
+                                               "extra": "1"}])
+        dims, _ = _dims(vt, fins=fins)
+        assert dims["financing"] == [{"label": "mortgage",
+                                      "financing": {"kind": "loan", "term": 30.0, "rate": 5.9,
+                                                    "down": 0.2, "closing": 0.025, "extra": 0.01}}]
+
+    def test_an_empty_percent_cell_keeps_the_parent_s(self, vt):
+        fins = _edited(vt.financing_table(), [{"label": "mortgage", "kind": "loan", "down": "25"}])
+        dims, _ = _dims(vt, fins=fins)
+        assert dims["financing"] == [{"label": "mortgage",
+                                      "financing": {"kind": "loan", "down": 0.25}}]
+
+    def test_a_bad_percent_cell_is_a_scenario_error(self, vt):
+        fins = _edited(vt.financing_table(), [{"label": "m", "kind": "loan", "down": "lots"}])
+        with pytest.raises(ScenarioError, match="down"):
+            _dims(vt, fins=fins)
+
+
 class TestGridLayout:
     def test_ad2_the_condo_grid_places_every_dimension(self, vt):
         assert vt.grid_layout(["financing", "place", "year"]) == (["place", "financing"], ["year"])

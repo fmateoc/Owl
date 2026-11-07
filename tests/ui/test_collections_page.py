@@ -499,3 +499,12 @@ class TestASensitivityCollection:
         text = _text(at)
         assert "exact-LP" in text and "-2,000" in text  # the grid stays on the exact LP
         assert "solved with Medicare priced exactly" in text
+
+
+def test_the_financing_percents_are_shown_as_percents():
+    """UX remediation QW-4: `down`, `closing` and `extra` are percentages in the make-variants
+    editor (matching Scenario.py's purchase box) and shares in the events. AppTest cannot
+    read a data editor's column config, so the format is checked at the source; the
+    percent-to-share conversion is unit-tested in `test_variant_tables.py`."""
+    source = (UI_DIR / "Collections.py").read_text(encoding="utf-8")
+    assert 'format="%.2f%%"' in source

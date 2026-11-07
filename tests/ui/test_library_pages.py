@@ -180,6 +180,24 @@ class TestLibraryPage:
         assert len(boxes) == 2  # the import tab and "save the current case"
         assert all(b.options[0] == "(none)" and "Where to live" in b.options for b in boxes)
 
+    def test_saving_a_modified_run_defaults_to_a_variant_name(self, library):
+        """UX remediation QW-8: a save of a run's edited inputs is a run of its own, so the
+        default name says so -- not the parent's own name again."""
+        from streamlit.testing.v1 import AppTest
+
+        opened = library.runs()[-1]
+
+        def saved_name(case):
+            at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=90)
+            at.session_state["cases"] = {"draft": case}
+            at.session_state["currentCase"] = "draft"
+            at.run()
+            assert not at.exception, [e.value for e in at.exception]
+            return at.text_input(key="lib_save_name").value
+
+        assert saved_name({"name": "draft", "library_base_run_id": opened.id}) == "draft variant"
+        assert saved_name({"name": "draft"}) == "draft"  # nobody's variant: the plain name
+
     def test_open_switches_to_the_run_page(self, library, monkeypatch):
         opened = []
         monkeypatch.setattr("streamlit.switch_page", lambda page: opened.append(page))
@@ -284,27 +302,68 @@ class TestTheRunBaseFollowsItsCase:
         assert kz.runBase() is None
 
 
+class TestTheCurrentCaseMark:
+    """UX remediation QW-8: the current case in the case selector is marked with a check
+    mark (it was a red triangle, which read as a warning)."""
+
+    @pytest.fixture
+    def kz(self, monkeypatch):
+        import sskeys
+
+        session = _Session(cases={"edited": {}, "other": {}}, currentCase="edited")
+        monkeypatch.setattr(sskeys, "ss", session)
+        return sskeys
+
+    def test_the_current_case_is_marked_with_a_check(self, kz):
+        assert kz.flagCurrentCase("edited") == "edited ✓"
+        assert kz.flagCurrentCase("other") == "other"
+
+    def test_a_mark_leaked_into_a_case_name_is_stripped(self, kz):
+        kz.ss["pick"] = "other ✓"
+        kz.switchToCase("pick")
+        assert kz.ss.currentCase == "other"
+        kz.ss["pick"] = "edited🔻"  # a session opened before the change
+        kz.switchToCase("pick")
+        assert kz.ss.currentCase == "edited"
+
+
 class TestRunPage:
     def test_the_headline_numbers_come_from_the_result(self, library):
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
-        metrics = {m.label: m.value for m in at.metric}
+        metrics = {m.label: m for m in at.metric}
         # The newest run's main solve (its exact-model companion is not the headline, R2).
-        # UX review Q7: the score's own words are its label.
-        assert metrics["First year's discretionary spending (\\$/yr, today's)"] == "84,000"
-        assert metrics["Home at the end"] == "120,000"
-        assert metrics["Savings left"] == "350,000"
-        assert metrics["Total taxes"] == "180,000"
+        # UX remediation QW-5: with essential budget lines the headline is the first year's
+        # whole spending (bar 1 of the Spending chart), with the score's split under it.
+        assert metrics["First year's total spending"].value == "102,000"
+        assert metrics["First year's total spending"].delta == \
+            "$84,000 discretionary + $18,000 essential budget"
+        assert metrics["Home at the end"].value == "120,000"
+        assert metrics["Savings left"].value == "350,000"
+        assert metrics["Total taxes"].value == "180,000"
         text = _text(at)
         assert "Noa 66y2m, Avi 70y0m" in text
         assert "settled" in text
-        assert "local search" in text and "abcdef1" in text
+        # The score stays named, with its value (the caption under the metrics).
+        assert "first year's discretionary spending (\\$/yr, today's) (84,000) is the score" in text
+        # UX remediation QW-6: the raw codes are in the collapsed technical expander.
+        assert any(e.label == "Technical solve details" for e in at.expander)
+        details = "\n".join(str(m.value) for m in at.markdown)
+        assert "local search" in details and "abcdef1" in details
 
     def test_charts_and_the_solve_expander_render(self, library):
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
         assert at.get("plotly_chart"), "the charts from plan.json did not render"
         assert any("Solve this run" in e.label for e in at.expander)
+
+    def test_the_cash_flow_shows_the_two_sides_beside_each_other(self, library):
+        """UX remediation QW-1: a compact Sources vs. Uses table under the Sankey."""
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        flows = [d.value for d in at.dataframe if list(d.value.columns) == ["Sources", "Uses"]]
+        assert flows, "no Sources vs. Uses table under the Sankey"
+        assert any("Taxable-account withdrawals" in str(v) for v in flows[0]["Sources"])
 
     def test_the_quality_line_warns_when_the_loop_did_not_settle(self, library):
         run = library.runs()[-1]  # "bill later": the run page's default
@@ -782,8 +841,10 @@ class TestTheTornadoReview5:
         rows = {line.split("|")[1].strip(): line for line in self._table(at).splitlines()[2:]}
         medical = rows[tornado.MEDICAL_LABEL]
         # Its child is the third mover (69,000 - 2 x 1,000 = 67,000), against 70,000, not 72,500.
-        assert "| -3,000 |" in medical and "Medicare priced exactly" in medical
-        assert "| exact LP |" in rows["returns -1 point"]
+        assert "| -3,000 |" in medical
+        # UX remediation QW-6: no "model" column -- which model solved each bar is technical
+        # detail, in the header's collapsed expander.
+        assert "model" not in self._table(at).splitlines()[0]
         # The headline stays the case's own model: the newest solve is the companion's.
         assert "decision" in str(at.selectbox(key="run_page_result").value)
         assert "exact_medicare" not in str(at.selectbox(key="run_page_result").value)
@@ -874,10 +935,11 @@ class TestConversionsAndBrackets:
         assert any("mean regret" in json.dumps(((c.get("layout") or {}).get("yaxis") or {}).get("title"))
                    for c in charts), "the regret curve was not drawn"
 
-    def test_ah1_the_ages_thorough_caption_names_the_sweep_s_scorer(self, library):
-        """Review AH1: an "Ages, thorough" result says the candidates were scored by
-        branch-and-bound and that the plan is the decided cell re-solved the same way, with
-        both values."""
+    def test_ah1_the_sweep_s_scorer_is_named_in_the_technical_details(self, library):
+        """Review AH1's substance (the scorer is named), moved by UX remediation QW-6 into
+        the collapsed "Technical solve details" expander: the caption says the candidates
+        were scored at fixed ages and the plan is the decided cell re-solved the same way,
+        with both values."""
         from streamlit.testing.v1 import AppTest
 
         run = next(r for r in library.runs() if r.name == "bill later")
@@ -896,9 +958,11 @@ class TestConversionsAndBrackets:
         at.run()
         assert not at.exception, [e.value for e in at.exception]
         caption = next(c.value for c in at.caption if "Claiming ages searched" in c.value)
-        assert "(every pair tried)" in caption and "branch-and-bound at gap 1e-5" in caption
+        assert "(every pair tried)" in caption and "branch-and-bound" not in caption
         assert "re-solved the same way" in caption and "165,361.78" in caption
         assert "under the case's own model" not in caption
+        details = "\n".join(str(m.value) for m in at.markdown)
+        assert "branch-and-bound at gap 1e-5" in details  # the scorer (QW-6)
 
     def test_the_regret_button_queues_one_job(self, library, monkeypatch):
         from owlplanner.library import JobManager

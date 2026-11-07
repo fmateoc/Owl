@@ -192,8 +192,12 @@ with st.expander("Add a run to the library", expanded=_import_open):
             st.caption(f"The case **{kz.currentCaseName()}** will be saved as a new run{base_note}.")
             col1, col2 = st.columns([3, 2], gap="large")
             with col1:
-                name = st.text_input("Run name", key="lib_save_name",
-                                     value=kz.currentCaseName() or "")
+                # UX remediation QW-8: a save of a run's modified inputs is a run of its own,
+                # so the default name says so ("bill later variant"), not the parent's own.
+                _name = kz.currentCaseName() or ""
+                if base_run_id and _name:
+                    _name = f"{_name} variant"
+                name = st.text_input("Run name", key="lib_save_name", value=_name)
                 notes = st.text_area("Notes (optional)", key="lib_save_notes")
                 tags = st.text_input("Tags (optional, comma separated)", key="lib_save_tags")
             collection = st.selectbox(

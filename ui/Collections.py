@@ -178,10 +178,17 @@ if runs:
             column_config={"move": st.column_config.CheckboxColumn(
                 "move", help="A move at the purchase (the place's locality and district from that "
                              "year); unchecked: the district only")})
-        st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`)")
+        st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`; "
+                    "`down`, `closing` and `extra` are **percentages**, as on the Scenario "
+                    "page: type 20 for 20%)")
         fins = st.data_editor(
             vt.financing_table(), num_rows="dynamic", key="col_variant_fins",
-            column_config={"kind": st.column_config.SelectboxColumn("kind", options=["cash", "loan"])})
+            column_config={"kind": st.column_config.SelectboxColumn("kind", options=["cash", "loan"]),
+                           # Percentages shown and typed as such, stored as shares (QW-4).
+                           **{field: st.column_config.NumberColumn(label, format="%.2f%%")
+                              for field, label in (("down", "down (% of the price)"),
+                                                   ("closing", "closing (% of the price)"),
+                                                   ("extra", "extra (% of the loan)"))}})
         c1, c2 = st.columns(2)
         work_person = c1.selectbox("Last work year, for", ["(none)"] + names, key="col_variant_work_person")
         work_years = c2.text_input("their last year(s)", key="col_variant_work_years", placeholder="2026, 2027")

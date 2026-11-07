@@ -59,9 +59,12 @@ def missing_companions(refs: dict, uploaded: dict) -> str | None:
 
 
 def without_folder(message: str, folder) -> str:
-    """*message* without the temporary folder the uploads were written to."""
+    """*message* without the temporary folder the uploads were written to (either separator:
+    a message may name the folder with "/" on Windows too)."""
     for form in {str(folder), str(Path(folder).resolve())}:
-        message = message.replace(form + os.sep, "").replace(form, "the uploaded files")
+        for sep in {os.sep, "/"}:
+            message = message.replace(form + sep, "")
+        message = message.replace(form, "the uploaded files")
     return message
 
 

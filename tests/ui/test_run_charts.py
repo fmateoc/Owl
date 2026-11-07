@@ -75,7 +75,7 @@ class TestBrackets:
                                                   "Roth conversions (their taxable part)",
                                                   "MAGI (what IRMAA and the cliff read)"]
         table = rc.brackets_table(years)
-        assert table["IRMAA tier 1"].isna().all() and list(table["Of which taxable"]) == [5_000.0, 0.0]
+        assert (table["IRMAA tier"] == "-").all() and list(table["Of which taxable"]) == [5_000.0, 0.0]
 
 
 class TestTaxesAndIncome:
@@ -124,35 +124,92 @@ class TestOneYear:
         assert sum(sum(g.values()) for g in b["sources"].values()) == sum(self.SOURCES.values())
         assert set(b["uses"]["taxes"]) == {"Gains tax", "State and local tax", "NIIT"}
         assert set(b["uses"]["spending"]) == {"core", "rent"}
+        # QW-1: a refunded tax is a tax offset, never income.
+        assert set(b["sources"]["tax_offsets"]) == {"State and local tax, net refund"}
+        assert b["sources"]["income"] == {}
 
     def test_the_paragraph_reads_the_same_rows(self, rc):
         text = rc.year_summary(2027, self.SOURCES, self.USES)
         assert text.startswith("**2027**: spending \\$141,369 plus big-ticket purchases \\$741,188.")
-        assert ("Taxes \\$63,597: capital gains \\$36,187, state and local \\$22,499, NIIT \\$4,911, "
-                "federal income tax \\$0.") in text
-        assert "Health premiums \\$21,745 (marketplace \\$21,745)." in text
+        # QW-1: one set of words for the paragraph and the Sankey, and the refund netted
+        # against the taxes instead of listed as income.
+        assert "Taxes net of a \\$1,000 state and local tax refund took \\$62,597" in text
+        assert ("Capital gains tax \\$36,187, State and local tax \\$22,499, NIIT \\$4,911, "
+                "Federal income tax \\$0.") in text
+        assert "comes from income" not in text and "net refund" not in text
+        assert "Health premiums \\$21,745 (ACA marketplace premiums \\$21,745)." in text
         assert "\\$8,072 goes back into savings." in text
         assert "the taxable (brokerage) accounts \\$888,582" in text
+
+    def test_a_refund_bigger_than_the_taxes_gives_money_back(self, rc):
+        sources = {"Wages": 10_000.0, "State and local tax, net refund": 4_000.0}
+        uses = {"core": 14_000.0}
+        text = rc.year_summary(2028, sources, uses)
+        assert "Taxes net of a \\$4,000 state and local tax refund gave back \\$4,000" in text
 
     def test_the_sankey_carries_the_amounts_and_the_taxes_total(self, rc):
         fig = rc.sankey_figure(2027, self.SOURCES, self.USES)
         sankey = fig.data[0]
         labels = list(sankey.node.label)
         hub = labels.index(f"2027 cash flow: ${sum(self.SOURCES.values()):,.0f}")
-        assert "Taxes: $63,597" in labels and "Gains tax: $36,187" in labels
+        assert "Taxes: $63,597" in labels and "Capital gains tax: $36,187" in labels
+        assert "ACA marketplace premiums: $21,745" in labels
+        assert "State and local tax refund: $1,000" in labels
         links = list(zip(sankey.link.source, sankey.link.target, sankey.link.value, strict=True))
         into_hub = sum(v for s, t, v in links if t == hub)
         out_of_hub = sum(v for s, t, v in links if s == hub)
         assert into_hub == pytest.approx(sum(self.SOURCES.values()))
         assert out_of_hub == pytest.approx(sum(self.USES.values()))
 
+    def test_one_premium_line_still_gets_the_health_premiums_node(self, rc):
+        """QW-1: the node vanished whenever a year had a single premium line."""
+        uses = {"core": 90_000.0, "ACA premiums": 21_745.0}
+        labels = list(rc.sankey_figure(2027, {"Wages": 111_745.0}, uses).data[0].node.label)
+        assert "Health premiums: $21,745" in labels and "ACA marketplace premiums: $21,745" in labels
+
+    def test_the_two_sides_beside_each_other(self, rc):
+        table = rc.flows_table(self.SOURCES, self.USES)
+        assert list(table.columns) == ["Sources", "Uses"]
+        assert len(table) == max(len(self.SOURCES), len(self.USES))
+        assert table["Sources"][0] == "Taxable-account withdrawals  $888,582"  # largest first
+        assert "State and local tax refund  $1,000" in list(table["Sources"])
+        assert "Capital gains tax  $36,187" in list(table["Uses"])
+
 
 def test_the_table_keeps_years_whole_and_empty_cells_empty(rc):
     years = [_bracket_row(2027, 120_000.0), {**_bracket_row(2052, 90_000.0), "irmaa_edges": [], "aca_lines": []}]
     table = rc.brackets_table(years)
-    assert str(table["Year"].dtype) == "Int64" and str(table["Sets premiums of"].dtype) == "Int64"
-    assert table["Sets premiums of"].isna().tolist() == [False, True]
+    assert str(table["Year"].dtype) == "Int64"
     assert table["400% FPL"].dtype == float and table["400% FPL"].isna().tolist() == [False, True]
+    assert table["IRMAA tier"][1] == "-" and table["Binding ceiling"][1] != ""
+
+
+class TestTheActiveTierAndCeiling:
+    """QW-3: the Brackets table names the active (or next) IRMAA tier for the year's MAGI and
+    the ceiling sitting closest above it."""
+
+    def test_the_active_tier_is_the_highest_crossed(self, rc):
+        table = rc.brackets_table([_bracket_row(2027, 300_000.0)])
+        assert table["IRMAA tier"][0] == "IRMAA Tier 2 ($274,000) — crossed (+$26,000 in 2029)"
+
+    def test_below_every_tier_the_next_one_is_named_with_the_room(self, rc):
+        table = rc.brackets_table([_bracket_row(2027, 120_000.0)])
+        assert table["IRMAA tier"][0] == "IRMAA Tier 1 ($218,000) — $98,000 below (sets 2029)"
+
+    def test_the_binding_ceiling_is_the_closest_line_above(self, rc):
+        # MAGI 300,000, taxable income 60,000: the 12/15% top ($40,800 of room) is closer
+        # than IRMAA Tier 3 ($42,000 of room).
+        table = rc.brackets_table([_bracket_row(2027, 300_000.0)])
+        assert table["Binding ceiling"][0] == "12/15% bracket ($100,800)"
+
+    def test_the_conversion_cap_is_the_ceiling_when_it_binds(self, rc):
+        row = {**_bracket_row(2027, 300_000.0), "conversion": 50_000.0, "conversion_cap": 50_000.0}
+        assert rc.brackets_table([row])["Binding ceiling"][0] == "Conversion cap ($50,000)"
+
+    def test_nothing_above_says_so(self, rc):
+        row = {**_bracket_row(2027, 300_000.0), "ordinary_edges": [], "irmaa_edges": [],
+               "aca_lines": []}
+        assert rc.brackets_table([row])["Binding ceiling"][0] == "-"
 
 
 def test_no_page_uses_the_plain_number_format():

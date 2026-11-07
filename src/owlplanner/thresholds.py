@@ -13,9 +13,16 @@ model prices the crossing, what crossing it costs. An invented example from the 
 call, 2026-11-02). Amounts are reported in today's dollars. The cost of a boundary is the
 model's own charge evaluated at the boundary plus the gap, less the charge at the boundary
 (`cost` below): the price of closing that gap, one year, wherever the model lands it (IRMAA
-is priced just outside the premium functions' $1 slack on each side). A priced crossing that
-costs nothing here is not listed. Where the boundary is a ramp rather than a cliff (the SS
-taxability bands) no cost is reported.
+is priced just outside the premium functions' $1 slack on each side). Where the boundary is
+a ramp rather than a cliff (the SS taxability bands) no cost is reported.
+
+Two rules decide what is listed (UX remediation QW-2): a **crossed discrete cliff** -- the
+IRMAA tier the year is in (the highest tier its MAGI has crossed) or the marketplace's 400%
+FPL subsidy cliff -- is listed wherever the year sits over it, once crossing it costs more
+than `CROSSING_COST`, not only inside the near band; and a **continuous edge** (a bracket
+edge, the NY benefit-recapture start, the NIIT kink) is listed only inside the near band, and
+only when its price clears `SMALL_PRICE` -- the $3-$26 recapture edges of a year parked just
+over the start are noise, not things to look at.
 
 Everything here reads the solved arrays of a `Plan`; `cli.formatters.plan_to_dict` writes the
 report into `plan.json`, so the run library shows it from the durable files alone (D7). No
@@ -34,6 +41,15 @@ from . import tax_state
 # A year is "just below" or "just over" a boundary when its distance is within this fraction
 # of the boundary amount (today's $, as reported).
 NEAR_BAND = 0.05
+
+# QW-2: a continuous edge (a bracket edge, the NY recapture start, the NIIT kink) whose
+# crossing costs less than this (today's $) is noise -- the $3-$26 recapture edges of a year
+# parked just over the start -- and is not listed.
+SMALL_PRICE = 100.0
+
+# QW-2: a crossed discrete cliff (an IRMAA tier, the marketplace's 400% FPL cliff) is listed
+# wherever the year sits over it, once crossing it costs more than this (today's $).
+CROSSING_COST = 500.0
 
 # The kinds the report knows, in the order the run page explains them.
 KINDS = ("irmaa", "gains_0", "ss_taxability", "aca", "state_recapture", "star", "niit")
@@ -102,8 +118,15 @@ def _irmaa_entries(p):
         for k, edge in enumerate(thresholds, start=1):
             edge = float(edge)
             distance = magi - edge
-            if not _near(distance, edge):
-                continue
+            near = _near(distance, edge)
+            # QW-2: the near-band rows of every tier, plus the tier the year is actually in
+            # (the highest crossed), wherever it sits. A lower tier the year is far over is
+            # not a separate thing to look at once a higher one is crossed too.
+            if not near:
+                if distance <= 0:
+                    continue
+                if k < len(thresholds) and magi > float(thresholds[k]):
+                    continue
             below = np.array(p.MAGI_n[:N], dtype=float)
             below[m] = edge - 2 * _SLACK
             across = below.copy()
@@ -113,8 +136,9 @@ def _irmaa_entries(p):
                 p.year_n[m], "irmaa", f"IRMAA tier {k}",
                 "over" if distance > 0 else "under", abs(distance) / float(p.gamma_n[m]),
                 cost / float(p.gamma_n[n_prem]), p.year_n[n_prem],
-                f"the MAGI of {int(p.year_n[m])} sets the Medicare premiums of "
-                f"{int(p.year_n[n_prem])}",
+                # QW-2: the payment year is named explicitly (the two-year lookback).
+                f"paid in {int(p.year_n[n_prem])} via the 2-year Medicare lookback: the "
+                f"MAGI of {int(p.year_n[m])} sets those premiums",
                 boundary=edge / float(p.gamma_n[m]),
             ))
     return entries
@@ -243,9 +267,12 @@ def _aca_entries(p):
         for ratio in sorted(r for r in ratios if r > 0):
             edge = ratio * fpl
             distance = float(magi[n]) - edge
-            if not _near(distance, edge):
+            cliff = abs(ratio - 4.0) < 1e-9
+            # QW-2: the cliff is a discrete crossing, listed wherever the year sits over it;
+            # the steps and the Medicaid line stay near-band rows.
+            if not _near(distance, edge) and not (cliff and distance > 0):
                 continue
-            if abs(ratio - 4.0) < 1e-9:
+            if cliff:
                 label = "marketplace subsidy cliff (400% FPL)"
             elif abs(ratio - float(medicaid_n[n])) < 1e-9:
                 label = f"Medicaid line ({ratio:g}x FPL)"
@@ -382,22 +409,40 @@ def _niit_entries(p):
     return entries
 
 
+def _is_cliff(entry):
+    """A discrete cliff (QW-2): an IRMAA tier or the marketplace's subsidy cliff."""
+    return entry["kind"] == "irmaa" or "cliff" in entry["label"]
+
+
+def _keep(entry):
+    """QW-2's two listing rules.
+
+    A near miss (inside `NEAR_BAND`) is listed when its price is worth naming: a continuous
+    edge priced under `SMALL_PRICE` is noise (a $3-$26 NY recapture edge). A crossed discrete
+    cliff is listed wherever the year sits over it, once crossing it costs more than
+    `CROSSING_COST`. Ramps (cost None) stay as near misses.
+    """
+    cost = entry["cost_today_dollars"]
+    if _near(entry["amount_today_dollars"], entry["boundary_today_dollars"]):
+        return cost is None or cost > SMALL_PRICE
+    return (entry["side"] == "over" and _is_cliff(entry)
+            and cost is not None and cost > CROSSING_COST)
+
+
 def threshold_proximity(plan) -> dict:
-    """The report of one solved plan: every boundary its income sits just below or just over.
+    """The report of one solved plan: every boundary its income sits just below or just over,
+    and every discrete cliff it has crossed (QW-2).
 
     Returns `{"near_band_fraction": NEAR_BAND, "entries": [...]}` with the entries sorted by
     year. Each entry: year, kind (KINDS), label, side ("over"/"under"),
     amount_today_dollars (the distance), cost_today_dollars (the price of closing the gap, or
     None at a ramp), affects (the year the crossing bites: the IRMAA premium year, the STAR
-    benefit year) and a note. Today's dollars.
+    benefit year) and a note. Today's dollars. `_keep` above says which rows make it in.
     """
     entries = []
     for build in (_irmaa_entries, _gains_entries, _ss_entries, _aca_entries,
                   _recapture_entries, _star_entries, _niit_entries):
         entries.extend(build(plan))
-    # A priced crossing that costs nothing here is not a thing to look at (review 2, Q7: only
-    # the marketplace and NIIT kinds filtered them). Ramps (cost None) stay.
-    entries = [e for e in entries
-               if e["cost_today_dollars"] is None or e["cost_today_dollars"] > 0.005]
+    entries = [e for e in entries if _keep(e)]
     entries.sort(key=lambda e: (e["year"], e["kind"], e["label"]))
     return {"near_band_fraction": NEAR_BAND, "entries": entries}

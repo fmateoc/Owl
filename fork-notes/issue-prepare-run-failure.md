@@ -1,6 +1,6 @@
 # Issue draft: the interface solves a case whose configuration failed to apply
 
-Status: **draft, not filed** (2026-11-07, UX review B3, `fork-notes/ux-review.md`). For the user
+Status: **filed as #245** by the user (2026-11-07); was a draft, (2026-11-07, UX review B3, `fork-notes/ux-review.md`). For the user
 to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-prepare-run-failure.patch` (applies to stock `dev` with `git apply`; verified
 there: `tests/ui` and `tests/tax/test_aca.py` 231 passed; the new test fails on stock `dev`).

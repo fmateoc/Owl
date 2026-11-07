@@ -7369,3 +7369,7 @@ and AL2. AL3-AL6 stand.
 - Full suite on the fold (`abc473c2`): **4512 passed, 1 skipped** (8:59, Linux, `-n 4`); on
   `3617bb5` before it, 4510 passed / 1 skipped (9:55), the count the Q10-Q20 section promised
   and did not record (review AL6).
+
+## Three issue drafts filed; `main` fast-forwarded (2026-11-07)
+
+The user filed the three drafts on `mdlacasse/Owl`: **#245** (`issue-prepare-run-failure.md`, B3: the UI solves after "Failed to apply configuration"), **#246** (`issue-create-case.md`, Q18/Q11: Create Case's lost first click and the missing upload confirmation), **#247** (`issue-slcsp-field.md`, Q20: the SLCSP field's decimals and step). Numbers found with `gh api search/issues`. `main` fast-forwarded to `claude/review-ux-q10-q20` (Q10-Q20, the review, AL1-AL2 folded).

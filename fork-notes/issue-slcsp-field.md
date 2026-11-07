@@ -1,6 +1,6 @@
 # Issue draft: Run Options shows the benchmark premium to one decimal and steps it by \$10k
 
-Status: **draft, not filed** (2026-11-07, UX review Q20, `fork-notes/ux-review.md`). For the
+Status: **filed as #247** by the user (2026-11-07); was a draft, (2026-11-07, UX review Q20, `fork-notes/ux-review.md`). For the
 user to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-slcsp-field.patch` (one call in `ui/Run_Options.py` and a test; applies to
 stock `dev` with `git apply`; verified there: `tests/ui` 160 passed, and the new test fails on

@@ -1,6 +1,6 @@
 # Issue draft: Create Case loses the first click on *Create case*, and says nothing after an upload
 
-Status: **draft, not filed** (2026-11-07, UX review Q18 and Q11, `fork-notes/ux-review.md`). For
+Status: **filed as #246** by the user (2026-11-07); was a draft, (2026-11-07, UX review Q18 and Q11, `fork-notes/ux-review.md`). For
 the user to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-create-case.patch` (applies to stock `dev` with `git apply`; verified there:
 `tests/ui` 162 passed; its new test file fails on stock `dev`, 2 of 3). Repro script:

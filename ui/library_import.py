@@ -15,7 +15,6 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
-import os
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -59,10 +58,14 @@ def missing_companions(refs: dict, uploaded: dict) -> str | None:
 
 
 def without_folder(message: str, folder) -> str:
-    """*message* without the temporary folder the uploads were written to (either separator:
-    a message may name the folder with "/" on Windows too)."""
-    for form in {str(folder), str(Path(folder).resolve())}:
-        for sep in {os.sep, "/"}:
+    """*message* without the temporary folder the uploads were written to, whichever
+    separator spells the folder or follows it (a message may name the folder with "/" on
+    Windows too; review AM5: the folder itself spelled with the other separator was left in)."""
+    forms = set()
+    for spelled in {str(folder), str(Path(folder).resolve())}:
+        forms |= {spelled, spelled.replace("\\", "/"), spelled.replace("/", "\\")}
+    for form in sorted(forms, key=len, reverse=True):
+        for sep in ("\\", "/"):
             message = message.replace(form + sep, "")
         message = message.replace(form, "the uploaded files")
     return message

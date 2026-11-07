@@ -101,6 +101,15 @@ def test_without_folder_strips_the_folder(library_import, tmp_path):
         "HFP workbook 'HFP_x.xlsx' not found for Case_x.toml"
 
 
+def test_without_folder_strips_a_folder_spelled_with_the_other_separator(library_import):
+    """Review AM5: a message spelling the folder itself with "/" while the folder holds "\\"
+    (or the reverse) kept it: "cannot read C:/tmp/xyz123/HFP.xlsx missing"."""
+    for folder, message in ((r"C:\tmp\xyz123", "cannot read C:/tmp/xyz123/HFP.xlsx missing"),
+                            ("/tmp/xyz123", "cannot read \\tmp\\xyz123\\HFP.xlsx missing"),
+                            (r"C:\tmp\xyz123", r"cannot read C:\tmp\xyz123\HFP.xlsx missing")):
+        assert library_import.without_folder(message, folder) == "cannot read HFP.xlsx missing", message
+
+
 def test_the_form_stays_open_after_a_failed_import(tmp_path, monkeypatch):
     from streamlit.testing.v1 import AppTest
 

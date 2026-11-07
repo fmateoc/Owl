@@ -276,6 +276,32 @@ def _loadHFPExample(file):
             owb.readHFP(mybytesio, file=hfp_name)
 
 
+def _count(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
+def _hfpLoadedText():
+    """What the workbook just read brought in (UX review Q11): once read, the uploader below
+    disappears, and nothing said that the upload had worked."""
+    name = str(kz.getCaseKey("hfpFileName") or kz.getCaseKey("stHFP") or "the workbook")
+    name = name[:-2] if name.endswith(" *") else name
+    people = [kz.getCaseKey("iname0")]
+    if kz.getCaseKey("status") == "married":
+        people.append(kz.getCaseKey("iname1"))
+    tables = []
+    for key, one, many in (("houseListDebts", "debt", "debts"),
+                           ("houseListFixedAssets", "fixed asset", "fixed assets"),
+                           ("houseListBudget", "budget line", "budget lines")):
+        df = kz.getCaseKey(key)
+        if df is None:
+            continue
+        if key == "houseListBudget" and len(df) == 0 and kz.getCaseKey("spendingProfile") != "budget":
+            continue  # fork: the Budget sheet matters to a budget profile only
+        tables.append(_count(len(df), one, many))
+    text = f":white_check_mark: *{name}* loaded: wages and contributions for {' and '.join(people)}"
+    return text + (f"; {', '.join(tables)}." if tables else ".")
+
+
 def _createCase():
     """`Create case`, or what is still missing. The button is enabled before the names are in:
     disabled until then, it was still disabled when the click that leaves the last name field
@@ -571,7 +597,13 @@ Once changes are complete, click the `Create case` button.""")
 
     # HFP uploader section: shown when plan exists but no HFP has been loaded yet.
     if kz.caseHasPlan() and kz.getCaseKey("stHFP") is None:
-        st.markdown("#### :orange[Upload Financial Profile (Optional)]")
+        # Fork: the budget spending profile reads its lines from the workbook (UX review Q11).
+        if kz.getCaseKey("spendingProfile") == "budget":
+            st.markdown("#### :orange[Upload Financial Profile]")
+            st.caption("This case's spending profile is *budget*: its lines come from the "
+                       "workbook's Budget sheet.")
+        else:
+            st.markdown("#### :orange[Upload Financial Profile (Optional)]")
         hfp_col1, hfp_col2 = st.columns(2, gap="large")
         with hfp_col1:
             st.markdown("##### :orange[Upload *Household Financial Profile* Workbook]")
@@ -606,6 +638,8 @@ Once changes are complete, click the `Create case` button.""")
                     args=[tomlexcase],
                 )
         st.divider()
+    elif kz.caseHasPlan():
+        st.caption(_hfpLoadedText())
 
     col1, col2, col3 = st.columns(3, gap="small", vertical_alignment="top")
     with col1:

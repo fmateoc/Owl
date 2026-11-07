@@ -18,18 +18,18 @@ the Free Software Foundation, either version 3 of the License, or
 import streamlit as st
 
 from owlplanner.library import PRESETS
+from owlplanner.library.presets import PRESET_NAMES
 
-NAMES = {
-    "quick": "Quick look (about a second)",
-    "decision": "Careful (about 5 minutes)",
-    "ages": "Let Owl choose the claiming ages (slow)",
-    "ages_thorough": "Claiming ages, every pair tried (very slow)",
-    "custom": "The case's own solver options",
-    # Solves a choice queues, or a page's own button does (shown in the queue and result lists).
-    "decision_exact": "Careful: the exact-model check",
-    "exact_medicare": "Exact model with Medicare priced",
-    "regret": "Roth conversion regret sweep",
+# The picker's time hints on top of the one list of names (QW-6, review AN8: two lists used
+# to be kept in step by hand). Solves a choice queues, or a page's own button does, have none.
+TIME_HINTS = {
+    "quick": "about a second",
+    "decision": "about 5 minutes",
+    "ages": "slow",
+    "ages_thorough": "very slow",
 }
+NAMES = {preset: f"{words} ({TIME_HINTS[preset]})" if preset in TIME_HINTS else words
+         for preset, words in PRESET_NAMES.items()}
 
 # Behind the "Expert" toggle: the slowest search and the case's own options.
 EXPERT = ("ages_thorough", "custom")

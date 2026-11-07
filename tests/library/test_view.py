@@ -216,15 +216,17 @@ class TestMethodAndTolerance:
         assert tolerance(proved_no_gap) == 0.0
 
     def test_method_text_is_plain_english_and_the_codes_are_details(self):
-        """UX remediation QW-6: the header in plain English ("Careful — exact tax & Medicare
-        optimization"); the preset code, the binary families, the gap and the commit live in
-        `method_details` (a collapsed expander on the run page)."""
+        """UX remediation QW-6: the header in plain English; the preset code, the binary
+        families, the gap and the commit live in `method_details` (a collapsed expander on the
+        run page). Second pass (review AN8): a local search is not called "exact ...
+        optimization", which promised more than the comparison's 1% band grants it."""
         result = make_result(record={"method": {
             "objective": "maxSpending", "breakpoint_method": "local search (SS, IRMAA, LTCG)",
             "options": {"breakpointMethod": "local-search", "withSSAges": "fixed"}}})
         text = method_text(result)
-        assert text == "Careful — exact tax & Medicare optimization"
-        assert "abcdef1" not in text and "local search" not in text
+        assert text == "Careful — taxes and premiums priced exactly, the plan found by a local search"
+        assert "abcdef1" not in text and "exact tax" not in text and "optimization" not in text
+        assert "(SS, IRMAA, LTCG)" not in text
         details = method_details(result)
         assert "`decision`" in details and "local search (SS, IRMAA, LTCG)" in details
         assert "abcdef1" in details and "2026.11.2" in details
@@ -234,13 +236,24 @@ class TestMethodAndTolerance:
         assert method_text(looped) == "Careful — the fast approximate method"
         proved = make_result(record={"method": {"breakpoint_method": "branch-and-bound"},
                                      "gap": 1e-5})
-        assert method_text(proved) == "Careful — exact tax optimization, proved optimal"
+        assert method_text(proved) == "Careful — taxes priced exactly, proved optimal within its gap"
         assert "branch-and-bound at gap" in method_details(proved)
         exact = make_result(record={"method": {"breakpoint_method": "loop", "options": {
             "breakpointMethod": "loop", "withMedicare": "none", "withSSTaxability": 0.85,
             "withLTCG": "optimize"}}})
-        assert "used as a check" in method_text(exact)
+        assert method_text(exact) == ("Careful: the exact-model check (a simpler model solved beside "
+                                      "the Careful one, to check the order of the variants)")
         assert "exact LP" in method_details(exact)
+        # Review AM4: the Medicare-priced companion's name is not said twice.
+        medicare = make_result(record={"preset": "exact_medicare"})
+        assert method_text(medicare) == "Exact model with Medicare priced"
+
+    def test_every_preset_has_a_name_in_the_one_list(self):
+        """Review AN8: one list of names (`presets.PRESET_NAMES`) for the method line and the
+        picker, every stored preset in it."""
+        from owlplanner.library.presets import PRESET_NAMES, PRESETS, SOLVE_PRESETS
+
+        assert set(PRESETS) | set(SOLVE_PRESETS) <= set(PRESET_NAMES)
 
 
 class TestIsExactLp:

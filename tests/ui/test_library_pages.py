@@ -356,6 +356,13 @@ class TestRunPage:
         assert any(e.label == "Technical solve details" for e in at.expander)
         details = "\n".join(str(m.value) for m in at.markdown)
         assert "local search" in details and "abcdef1" in details
+        # QW-6's second pass (review AN8): the header names the preset in words and promises
+        # no "exact optimization" for a local search; no preset id outside the expander.
+        header = next(m.value for m in at.markdown if str(m.value).startswith("**Solved**"))
+        assert header.endswith("Careful — taxes priced exactly, the plan found by a local search")
+        assert "`decision`" not in header and "decision" not in header.split("·", 1)[1]
+        # No sensitivity results in this fixture: the expander does not speak of them.
+        assert "sensitivity children" not in details
 
     def test_charts_and_the_solve_expander_render(self, library):
         at = _page("Run.py")
@@ -880,12 +887,23 @@ class TestTheTornadoReview5:
         at = self._open(run)
         assert not at.exception, [e.value for e in at.exception]
         rows = {line.split("|")[1].strip(): line for line in self._table(at).splitlines()[2:]}
-        medical = rows[tornado.MEDICAL_LABEL]
+        # QW-6 (review AN8): the bar measured in its own model carries a dagger, and one
+        # footnote under the table says what it means.
+        medical = rows[tornado.MEDICAL_LABEL + " \u2020"]
         # Its child is the third mover (69,000 - 2 x 1,000 = 67,000), against 70,000, not 72,500.
         assert "| -3,000 |" in medical
+        assert not any(label.endswith("\u2020") for label in rows if label != tornado.MEDICAL_LABEL + " \u2020")
+        assert tornado.DAGGER_NOTE in [c.value for c in at.caption]
         # UX remediation QW-6: no "model" column -- which model solved each bar is technical
         # detail, in the header's collapsed expander.
         assert "model" not in self._table(at).splitlines()[0]
+        # No caption carries a config path or a solver option (the codes are the button's help).
+        import re
+
+        code = re.compile(r"\w+\.\w+_\w+|\bwith[A-Z]\w* =|medical_inflation_excess")
+        assert not [c.value for c in at.caption if code.search(c.value)]
+        help_text = next(b for b in at.button if b.label == "Make the sensitivity runs").help
+        assert "withMedicare = optimize" in help_text and "slcsp_annual" in help_text
         # The headline stays the case's own model: the newest solve is the companion's.
         assert "decision" in str(at.selectbox(key="run_page_result").value)
         assert "exact_medicare" not in str(at.selectbox(key="run_page_result").value)

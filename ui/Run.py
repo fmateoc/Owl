@@ -476,8 +476,10 @@ if entries:
             how = ("local search" if search["decided"].get("used") == "local search"
                    else "branch-and-bound at gap 1e-5")
             st.markdown(f"- The claiming-age candidates were scored at fixed ages by {how}")
-        st.markdown("- The sensitivity children are solved under the exact LP (for speed); "
-                    "the medical-inflation child with Medicare priced exactly.")
+        if tornado.collection_of(lib, run.id) is not None:  # QW-6: only once there are any
+            st.markdown("- The sensitivity children are solved under the exact LP (for speed); "
+                        "the medical-inflation child with Medicare priced exactly "
+                        "(`exact_medicare`).")
     if record.get("status") != "solved":
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),
@@ -719,20 +721,21 @@ def _queue_unless_current(target, preset, live):
 
 
 with st.expander("Sensitivity (tornado)"):
+    _movers = tornado.movers(lib.scenario(run.id))
+    # QW-6 (review AN8): one sentence on what a bar is, one on the tolerance, the movers in
+    # plain words; their exact edits, in the case file's terms, are the button's help.
     st.caption(
-        "One child run per key input moved by a set step: " +
-        "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
-        ". Each child is re-solved in a simpler, faster model -- the medical-inflation child "
-        "keeps its Medicare premiums -- and measured against this run's own solve in that same "
-        "model (named under *Technical solve details*, above), which the button queues "
-        "when the run has none; the bars below are sorted by the size of the effect, each with "
-        "its tolerance (the noise rule), the home at the end beside it (the other number, never "
-        "added). A mover that does not fit this scenario, or that no plan "
-        "year would see, is skipped and says why. A solve already made today by this code, or "
-        "queued, is not queued again. The runs land in the collection "
+        "Each bar is one key input moved by a set step, solved again and compared with this "
+        "run solved the same way; the whisker is the noise rule's tolerance, and the home at "
+        "the end is shown beside it, never added. The movers: "
+        + "; ".join(f"**{tornado.shown_label(m.label)}** ({m.note})" for m in _movers)
+        + ". A mover that does not fit this scenario is skipped and says why; a solve already "
+          "made today, or queued, is not queued again. The runs land in the collection "
         f"*{getattr(tornado.collection_of(lib, run.id), 'name', None) or 'Sensitivity: ' + run.name}*."
     )
-    if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado"):
+    _exactly = "\n".join(f"- **{m.label}**: {m.detail}" for m in _movers if m.detail)
+    if st.button("Make the sensitivity runs", type="primary", key="run_page_tornado",
+                 help="What each mover changes, in the case file's terms:\n\n" + _exactly):
         made, skipped = tornado.tornado_variants(lib.scenario(run.id))
         for note in skipped:
             libraryjobs.flash("caption", f"Skipped {note}.")
@@ -815,7 +818,7 @@ with st.expander("Sensitivity (tornado)"):
             _shown = [b for b in _bars if b["delta"] is not None]
             if _shown:
                 fig = go.Figure(go.Bar(
-                    y=[b["label"] for b in _shown][::-1],
+                    y=[tornado.shown_label(b["label"]) for b in _shown][::-1],
                     x=[b["delta"] for b in _shown][::-1],
                     orientation="h",
                     error_x=dict(type="data", array=[b["tolerance"] or 0.0 for b in _shown][::-1],
@@ -843,9 +846,11 @@ with st.expander("Sensitivity (tornado)"):
                 home = b.get("home_delta")
                 home = "-" if home is None else ("±0" if b.get("home_verdict") == "no difference"
                                                  else f"{home:+,.0f}")
-                lines.append(f"| {b['label']} | {delta} | ±{tol} | {b['verdict']}"
+                lines.append(f"| {tornado.shown_label(b['label'])} | {delta} | ±{tol} | {b['verdict']}"
                              + (f" ({b['note']})" if b["note"] else "") + f" | {home} |")
             st.markdown("\n".join(lines))
+            if any(tornado.shown_label(b["label"]) != b["label"] for b in _bars):
+                st.caption(tornado.DAGGER_NOTE)
         else:
             st.caption("No sensitivity result yet: the Queue page shows their progress "
                        "(each is one solve in the simpler, faster model, the medical-inflation "

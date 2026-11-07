@@ -239,7 +239,7 @@ class TestBars:
     def test_a_bar_without_a_result_is_listed_last(self):
         bars = tornado.bars(self._result(100_000.0), [("gone", None)])
         assert bars == [{"label": "gone", "delta": None, "tolerance": None, "verdict": "-",
-                         "note": "no exact-LP result yet", "result": None,
+                         "note": "no simpler-model result yet", "result": None,
                          "home_delta": None, "home_verdict": "-"}]
 
 
@@ -312,7 +312,7 @@ class TestReview3Bars:
         by = {b["label"]: b for b in bars}
         assert by["returns -1 point"]["delta"] == pytest.approx(-7_064.0)
         assert by["re-run by hand"]["delta"] is None
-        assert by["re-run by hand"]["note"] == "no exact-LP result yet"
+        assert by["re-run by hand"]["note"] == "no simpler-model result yet"
 
     def test_ag2_the_flags_name_children_at_other_claiming_ages(self):
         base = self._result(116_034.0)
@@ -498,7 +498,24 @@ class TestReview5Folds:
             assert tornado.preset_of(variant) == movers[variant.label].preset
             assert tornado.preset_of(variant.values["mover"]) == movers[variant.label].preset
         assert tornado.presets_needed(made) == ["decision_exact", "exact_medicare"]
-        assert "Medicare priced exactly" in movers["medical+2"].note
+        assert "measured with Medicare premiums priced" in movers["medical+2"].note
+        assert "withMedicare = optimize" in movers["medical+2"].detail  # the code, in the help
+
+    def test_qw6_the_notes_are_plain_words_and_the_codes_are_details(self, stub_plan):
+        """QW-6 (review AN8): the caption carried "medical_inflation_excess", "(withMedicare
+        = optimize)", "aca_settings.slcsp_annual" and "rates_selection.obbba_expiration_year =
+        2032"; the notes are plain words now, the codes each mover's `detail`."""
+        import re
+
+        code = re.compile(r"[a-z]+_[a-z_]+|\bwith[A-Z]\w*|\w+\.\w+ =|`")
+        for mover in tornado.movers(_scenario()):
+            assert not code.search(mover.note), (mover.key, mover.note)
+            assert mover.detail, mover.key
+
+    def test_qw6_the_medical_bar_is_marked_and_the_others_are_not(self):
+        assert tornado.shown_label(tornado.MEDICAL_LABEL) == tornado.MEDICAL_LABEL + " \u2020"
+        assert tornado.shown_label("returns -1 point") == "returns -1 point"
+        assert tornado.DAGGER_NOTE.startswith("\u2020 measured against this run's solve with Medicare")
 
     def test_aj1_the_medical_bar_reads_the_base_under_its_own_model(self):
         """Measured on the synthetic household: -83 under the exact LP (no Medicare), -1,842

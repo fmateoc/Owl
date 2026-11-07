@@ -356,46 +356,36 @@ def quality_line(result: Result) -> str:
 
 # -- method and the noise tolerance (design 9.2, R2, S13) -------------
 
-# The presets as people know them (UX remediation QW-6; the same words as the run library's
-# picker, `ui/librarypresets.NAMES`). The codes stay in `method_details`.
-PRESET_PHRASES = {
-    "quick": "Quick look",
-    "decision": "Careful",
-    "decision_exact": "Careful: the exact-model check",
-    "exact_medicare": "Exact model with Medicare priced",
-    "ages": "Let Owl choose the claiming ages",
-    "ages_thorough": "Claiming ages, every pair tried",
-    "custom": "The case's own solver options",
-    "regret": "Roth conversion regret sweep",
-}
-
-
 def method_text(result: Result) -> str:
     """"How the solve was made", in plain English (UX remediation QW-6): the preset as people
-    know it, and what was optimized exactly -- "Careful — exact tax & Medicare optimization".
-    The raw codes (the preset id, the binary families, "branch-and-bound at gap 1e-5", the
-    version and commit) are `method_details`, shown in a collapsed expander."""
+    know it (`presets.PRESET_NAMES`, the one list) and what the method promises, no more --
+    "Careful — taxes and premiums priced exactly, the plan found by a local search". Review
+    AN8: "exact ... optimization" claimed more for a local search than the comparison grants
+    it (its 1% band). The raw codes (the preset id, the binary families, "branch-and-bound at
+    gap 1e-5", the version and commit) are `method_details`, shown in a collapsed expander."""
+    from .presets import preset_name
+
     rec = result.record
     method = rec.get("method") or {}
     raw = str(method.get("breakpoint_method") or "loop")
     preset = str(rec.get("preset") or "?")
-    head = PRESET_PHRASES.get(preset, preset)
+    head = preset_name(preset)
     companion = record_companion(rec)
-    if companion == "decision_exact":
-        return f"{head} — a simpler exact model, used as a check"
+    if companion == "decision_exact":  # by its options, whatever preset it was recorded under
+        return (f"{preset_name(companion)} (a simpler model solved beside the Careful one, to "
+                "check the order of the variants)")
     if companion == "exact_medicare":
-        return f"{head} — the exact model with Medicare premiums priced"
+        return preset_name(companion)  # review AM4: its name says it all
     kind = method_kind(result)
     if kind == "no solve":
         return head
     if kind == "loop":
         tail = ("the fast approximate method" if "-> loop" not in raw
-                else "the fast approximate method (the exact search kept its plan)")
+                else "the fast approximate method (the local search found nothing better)")
     else:
-        tail = ("exact tax & Medicare optimization" if ("IRMAA" in raw or "Medicare" in raw)
-                else "exact tax optimization")
-        if kind == "proved":
-            tail += ", proved optimal"
+        what = "taxes and premiums" if ("IRMAA" in raw or "Medicare" in raw) else "taxes"
+        tail = (f"{what} priced exactly, proved optimal within its gap" if kind == "proved"
+                else f"{what} priced exactly, the plan found by a local search")
     return f"{head} — {tail}"
 
 

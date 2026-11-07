@@ -83,6 +83,26 @@ PRESETS = ("quick", "decision", "ages", "ages_thorough", "custom")
 SOLVE_PRESETS = ("quick", "decision", "decision_exact", "exact_medicare", "ages", "ages_thorough",
                  "regret", "custom")
 
+# Every solve preset as people know it (UX remediation QW-6, review AN8: one list; the run
+# page's method line, `view.method_text`, reads it, and the picker, `ui/librarypresets.NAMES`,
+# adds the time hints). The ids above stay what is stored.
+PRESET_NAMES = {
+    "quick": "Quick look",
+    "decision": "Careful",
+    "decision_exact": "Careful: the exact-model check",
+    "exact_medicare": "Exact model with Medicare priced",
+    "ages": "Let Owl choose the claiming ages",
+    "ages_thorough": "Claiming ages, every pair tried",
+    "custom": "The case's own solver options",
+    "regret": "Roth conversion regret sweep",
+}
+
+
+def preset_name(preset) -> str:
+    """A preset id in people's words (the id itself when it has no name)."""
+    return PRESET_NAMES.get(preset, str(preset))
+
+
 # The solve presets of a model companion: a model other than the case's own, read beside a
 # run's headline result and never as it (`view.record_companion`).
 COMPANION_PRESETS = ("decision_exact", "exact_medicare")

@@ -94,7 +94,7 @@ MEDICAL_LABEL = "medical inflation +2 points"
 # label, `values["mover"]`, so the bars find a child's preset from it).
 _PRESET_BY_LABEL = {MEDICAL_LABEL: MEDICARE_PRESET}
 # What a bar waits for, per preset.
-_MODEL_WORDS = {EXACT_PRESET: "exact-LP", MEDICARE_PRESET: "Medicare-priced (exact_medicare)"}
+_MODEL_WORDS = {EXACT_PRESET: "simpler-model", MEDICARE_PRESET: "Medicare-priced"}
 
 
 @dataclass(frozen=True)
@@ -103,9 +103,23 @@ class Mover:
 
     key: str  # the collection member's values key ("returns-1")
     label: str  # "returns -1 point" (the bar's and the run name's label)
-    note: str  # what moves, in plain terms (the page's caption)
+    note: str  # what moves, in plain words (the page's caption; no config codes, QW-6)
     edit: Callable[[dict], None]  # the scenario edit; ScenarioError when it cannot apply
     preset: str = EXACT_PRESET  # the solve preset the child and its base solve under (AJ1)
+    detail: str = ""  # the same edit in the case file's own terms (the button's help, QW-6)
+
+
+# The mark on a bar measured in another model than the others (QW-6, review AN8: its
+# "model" column was dropped and nothing said which bar differed), and its footnote.
+DAGGER = "\u2020"
+DAGGER_NOTE = (f"{DAGGER} measured against this run's solve with Medicare premiums priced; the "
+               "other bars use the faster model without them.")
+
+
+def shown_label(label: str) -> str:
+    """A bar's label as the chart and the table show it: "†" on a bar measured in its own
+    model (`MEDICARE_PRESET`, the medical-inflation mover)."""
+    return f"{label} {DAGGER}" if preset_of(label) != EXACT_PRESET else label
 
 
 def preset_of(mover) -> str:
@@ -339,45 +353,58 @@ def movers(scenario: dict) -> list:
     """One `Mover` per key input moved by its set step, this run's own people included."""
     out = [
         Mover("returns-1", "returns -1 point",
-              "every return of the run's own rate path, 1 point lower",
-              _returns_minus_1),
+              "every year's return 1 point lower",
+              _returns_minus_1,
+              detail="the run's own rate path, every return -1 point (a shifted rates table)"),
         Mover("inflation+1", "inflation +1 point",
-              "the rate path's inflation, 1 point higher, with every return 1 point higher "
-              "too (the same real returns: inflation's own effect)",
-              _inflation_plus_1),
+              "inflation 1 point higher, and every return 1 point higher too (the same real "
+              "returns: inflation's own effect)",
+              _inflation_plus_1,
+              detail="the rate path's inflation +1 point and every return +1 point (a shifted "
+                     "rates table)"),
         Mover("medical+2", MEDICAL_LABEL,
-              "medical_inflation_excess, 2 points higher; solved with Medicare priced exactly "
-              "(withMedicare = optimize), the run's base for this bar too: the simpler model "
-              "prices no Medicare premiums, and they are what medical inflation grows",
-              _medical_plus_2, preset=MEDICARE_PRESET),
+              f"medical prices growing 2 points a year faster; measured with Medicare premiums "
+              f"priced, since they are what medical inflation grows ({DAGGER})",
+              _medical_plus_2, preset=MEDICARE_PRESET,
+              detail="`medical_inflation_excess` +2; this child and its base solve with "
+                     "`withMedicare = optimize` (the `exact_medicare` preset)"),
         Mover("condo+10", "condo price +10%",
-              "the home purchase's price and its property tax, 10% higher (today's $; the HOA "
-              "and the insurance held)",
-              _condo_plus_10),
+              "the home's price and its property tax 10% higher (today's dollars; the HOA and "
+              "the insurance held)",
+              _condo_plus_10,
+              detail="the purchase event's `price` and its `property tax` cost x 1.10"),
         Mover("slcsp+10", "benchmark premium +10%",
-              "aca_settings.slcsp_annual, 10% higher (the marketplace's benchmark Silver plan)",
-              _slcsp(1.0 + SLCSP_STEP)),
+              "the marketplace's benchmark Silver plan 10% dearer",
+              _slcsp(1.0 + SLCSP_STEP),
+              detail="`aca_settings.slcsp_annual` x 1.10"),
         Mover("slcsp-10", "benchmark premium -10%",
-              "aca_settings.slcsp_annual, 10% lower",
-              _slcsp(1.0 - SLCSP_STEP)),
+              "the benchmark Silver plan 10% cheaper",
+              _slcsp(1.0 - SLCSP_STEP),
+              detail="`aca_settings.slcsp_annual` x 0.90"),
         Mover("slcsp-published", _benchmark_label(scenario),
-              "aca_settings.slcsp_annual set so the plan's benchmark in the published year is "
-              "the published one (slcsp_published_annual), growing with (medical) inflation "
-              "after it",
-              _benchmark_jump),
+              "the benchmark set to the published premium in its year, growing with medical "
+              "inflation after it",
+              _benchmark_jump,
+              detail="`aca_settings.slcsp_annual` set so the plan's benchmark in "
+                     "`slcsp_published_year` is `slcsp_published_annual`"),
         Mover("reversion-2032", "the 2032 reversion",
-              f"rates_selection.obbba_expiration_year = {REVERSION_YEAR} (as scheduled)",
-              _obbba(REVERSION_YEAR)),
+              f"the federal brackets and standard deduction go back to the pre-2018 ones in "
+              f"{REVERSION_YEAR} (Owl's default)",
+              _obbba(REVERSION_YEAR),
+              detail=f"`rates_selection.obbba_expiration_year = {REVERSION_YEAR}`"),
         Mover("no-reversion", "no 2032 reversion",
-              f"rates_selection.obbba_expiration_year = {NO_REVERSION_YEAR} (made permanent)",
-              _obbba(NO_REVERSION_YEAR)),
+              "today's federal brackets and standard deduction kept to the end (the law as "
+              "enacted)",
+              _obbba(NO_REVERSION_YEAR),
+              detail=f"`rates_selection.obbba_expiration_year = {NO_REVERSION_YEAR}`"),
     ]
     names = list(((scenario.get("case") or {}).get("basic_info") or {}).get("names") or [])
     for person in names:
         out.append(Mover(
             f"death-{_slug(person)}", f"{person} dies at {DEATH_AGE}",
-            f"the first death at {DEATH_AGE}: {person}'s life horizon ({person} only)",
-            lambda scenario, person=person: _death(person, scenario)))
+            f"the first death, {person}'s, at {DEATH_AGE}",
+            lambda scenario, person=person: _death(person, scenario),
+            detail=f"`basic_info.life_expectancy` for {person} = {DEATH_AGE}"))
     return out
 
 
@@ -405,7 +432,7 @@ def tornado_variants(scenario: dict) -> tuple:
     return made, skipped
 
 
-WAITING_FOR_BASE = "waiting for this run's own exact-LP solve"
+WAITING_FOR_BASE = "waiting for this run's own simpler-model solve"
 
 
 def _waiting(preset: str) -> str:

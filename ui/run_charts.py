@@ -238,13 +238,13 @@ def brackets_figure(years):
     return fig, note
 
 
-def brackets_table(years) -> pd.DataFrame:
+def brackets_table(years, window=None, names=()) -> pd.DataFrame:
     """The table under the chart: numbers as numbers (the page formats them), no index.
 
-    QW-3: the IRMAA columns are one text column naming the active (or next) tier for the
-    year's MAGI -- "IRMAA Tier 2 ($266,000) — crossed (+$6,884 in 2031)" -- and a *Binding
-    ceiling* column saying which ceiling sits closest above the year's income (the plan's
-    max-Roth-conversion cap when the year is already at it).
+    QW-3: one IRMAA text column, the tier the year's MAGI is in or its room below tier 1,
+    with the premium year (`_irmaa_tier_text`), and *Next limit* (`_next_limit`): the case's
+    limits on the year's conversions (plan.json's `conversion_window` is `window`, the
+    people's names `names`), then the closest line above the income.
     """
     taxable_conv = _taxable_conversions(years)
     rows = []
@@ -259,64 +259,134 @@ def brackets_table(years) -> pd.DataFrame:
             "Room to its top": row.get("room_to_next_edge"),
             "IRMAA tier": _irmaa_tier_text(row),
             "400% FPL": _cliff(row),
-            "Binding ceiling": _binding_ceiling(row),
+            "Next limit": _next_limit(row, window, names),
         })
     table = pd.DataFrame(rows)
     # Years as nullable integers and amounts as whole-dollar floats: a None left in a column
     # made it an object column that the page showed as "None", and years as floats.
     table["Year"] = pd.to_numeric(table["Year"], errors="coerce").round().astype("Int64")
     for column in table.columns:
-        if column not in ("Year", "Bracket", "IRMAA tier", "Binding ceiling"):
+        if column not in ("Year", "Bracket", "IRMAA tier", "Next limit"):
             table[column] = pd.to_numeric(table[column], errors="coerce").astype(float).round(0)
     return table
 
 
+def _medicare_in_premium_year(row):
+    """Whether anyone has Medicare in the premium year the row's MAGI sets: the row's own flag
+    (new solves), else judged from its ages two years on (65 or more), else unknown (None)."""
+    flag = row.get("medicare_in_premium_year")
+    if flag is not None:
+        return bool(flag)
+    ages = row.get("ages")
+    if ages:
+        return any(int(age) + 2 >= 65 for age in ages)
+    return None
+
+
 def _irmaa_tier_text(row) -> str:
-    """The active IRMAA tier for the year's MAGI, or the next one (QW-3): the year is in
-    the highest tier whose edge its MAGI has crossed ("Tier 2 ($266,000) — crossed
-    (+$6,884 in 2031)"), or, below every edge, the first tier above ("Tier 1 ($218,000) —
-    $30,000 below (sets 2031)"). "-" where the rows carry no IRMAA edges (a premium year
-    past the plan, or an older result)."""
+    """The IRMAA tier the year's MAGI is in, or how far below tier 1 it is, with the premium
+    year (QW-3; review AN5's words): "tier 2 ($38,466 over its $289,559 edge): 2031
+    premiums", "below tier 1 by $97,333: 2029 premiums", "no Medicare premiums in 2028". The
+    overshoot is never put where a premium is expected. "-" with nothing to say."""
     edges = row.get("irmaa_edges") or []
     magi = row.get("magi")
+    prem = (edges[0].get("premium_year") if edges else None) or (row["year"] + 2 if "year" in row else None)
+    if _medicare_in_premium_year(row) is False:
+        return f"no Medicare premiums in {prem}" if prem is not None else "-"
     if not edges or magi is None:
         return "-"
     crossed = [k for k, edge in enumerate(edges, start=1) if magi > edge["amount"]]
-    k = max(crossed) if crossed else 1
-    edge = edges[k - 1]
-    gap = magi - edge["amount"]
-    prem = edge.get("premium_year")
+    when = f": {prem} premiums" if prem is not None else ""
     if crossed:
-        where = f" in {prem}" if prem is not None else ""
-        return f"IRMAA Tier {k} (${edge['amount']:,.0f}) — crossed (+${gap:,.0f}{where})"
-    where = f"sets {prem}" if prem is not None else "no premium year on the row"
-    return f"IRMAA Tier {k} (${edge['amount']:,.0f}) — ${-gap:,.0f} below ({where})"
+        k = max(crossed)
+        edge = edges[k - 1]["amount"]
+        return f"tier {k} (${magi - edge:,.0f} over its ${edge:,.0f} edge){when}"
+    return f"below tier 1 by ${edges[0]['amount'] - magi:,.0f}{when}"
 
 
-def _binding_ceiling(row) -> str:
-    """What sits closest above the year's income (QW-3's "binding ceiling"): the ceiling
-    with the least room left -- the top of an ordinary bracket (read against the taxable
-    income, as the chart does), the first IRMAA tier above MAGI, or the marketplace's 400%
-    FPL cliff (both against MAGI). When the year's Roth conversion is already at the case's
-    cap (`conversion_cap`, today's $; results written before it carry none), the cap is the
-    answer: it is what stops the conversion. "-" when nothing sits above."""
+def _joined(names):
+    return ", ".join(names)
+
+
+def _conversion_limit_text(row, window, names) -> list:
+    """The case's own limits on this year's conversions (QW-3), one phrase per kind, the
+    people it holds named: "conversion cap reached (Ari)", "no conversions before 2028 (the
+    case's window)". [] for a row written before the limits were recorded."""
+    limits = row.get("conversion_limit")
+    if not limits:
+        return []
+    window = window or {}
+    year = row.get("year")
+    who = {}
+    for i, limit in enumerate(limits):
+        if limit not in (None, "not alive"):
+            who.setdefault(limit, []).append(names[i] if i < len(names) else f"person {i + 1}")
+    out = []
+    for kind in ("cap", "window", "swap", "last years", "pinned", "excluded"):
+        people = who.get(kind)
+        if not people:
+            continue
+        if kind == "cap":
+            out.append(f"conversion cap reached ({_joined(people)})")
+        elif kind == "window":
+            start, stop = window.get("start"), window.get("stop")
+            if start and year is not None and year < start:
+                out.append(f"no conversions before {start} (the case's window)")
+            elif stop and year is not None and year >= stop:
+                out.append(f"no conversions from {stop} on (the case's window)")
+            else:
+                out.append("no conversions this year (the case's window)")
+        elif kind == "swap":
+            out.append(f"no conversions for {_joined(people)} this year (the case's swap"
+                       + (f" in {window['swap']}" if window.get("swap") else "") + ")")
+        elif kind == "last years":
+            out.append(f"no conversions in the last two years of life ({_joined(people)})")
+        elif kind == "pinned":
+            out.append(f"conversion held at the case's amount ({_joined(people)}, Roth conv fixed)")
+        else:
+            out.append(f"no conversions for {_joined(people)} (the case excludes them)")
+    return out
+
+
+def _nearest_line(row) -> str | None:
+    """The closest line above the year's income, each read on its own measure (a bracket top
+    against taxable income; an IRMAA tier, where someone has Medicare in its premium year,
+    and the 400% FPL line against MAGI), as "IRMAA tier 2: $38,000 away (2031 premiums)"."""
     magi = row.get("magi")
     income = row.get("ordinary_taxable_income") or 0.0
-    cap = row.get("conversion_cap")
-    if cap is not None and (row.get("conversion") or 0.0) >= cap - 1.0:
-        return f"Conversion cap (${cap:,.0f})"
     candidates = []
     for edge in row.get("ordinary_edges") or []:
         if edge["amount"] > income:
-            candidates.append((edge["amount"] - income, f"{edge['label']} bracket (${edge['amount']:,.0f})"))
-    for k, edge in enumerate(row.get("irmaa_edges") or [], start=1):
-        if magi is not None and edge["amount"] > magi:
-            candidates.append((edge["amount"] - magi,
-                               f"IRMAA Tier {k} (${edge['amount']:,.0f})"))
+            candidates.append((edge["amount"] - income, f"{edge['label']} bracket top"))
+    if _medicare_in_premium_year(row) is not False:
+        for k, edge in enumerate(row.get("irmaa_edges") or [], start=1):
+            if magi is not None and edge["amount"] > magi:
+                prem = edge.get("premium_year")
+                candidates.append((edge["amount"] - magi, f"IRMAA tier {k}", prem))
     cliff = _cliff(row)
     if cliff is not None and magi is not None and cliff > magi:
-        candidates.append((cliff - magi, f"ACA 400% FPL (${cliff:,.0f})"))
-    return min(candidates)[1] if candidates else "-"
+        candidates.append((cliff - magi, "400% FPL line"))
+    if not candidates:
+        return None
+    room, label, *prem = min(candidates, key=lambda c: c[0])
+    tail = f" ({prem[0]} premiums)" if prem and prem[0] is not None else ""
+    return f"{label}: ${room:,.0f} away{tail}"
+
+
+def _next_limit(row, window=None, names=()) -> str:
+    """QW-3's *Next limit*, as a sentence: the case's own limits on the year's conversions,
+    then -- while anyone may still convert -- the closest line above the income. Named "next",
+    not "binding": the table cannot know which constraint holds the plan (the caption says
+    the plan may stop short for another reason). A row written before the limits were
+    recorded gets the lines only."""
+    parts = _conversion_limit_text(row, window, list(names))
+    limits = row.get("conversion_limit")
+    free = not limits or any(limit is None for limit in limits)
+    if free:
+        line = _nearest_line(row)
+        if line:
+            parts.append(line)
+    return "; ".join(parts) if parts else "-"
 
 
 _LINE = "\u2003"  # an em space: a line under its group in the table

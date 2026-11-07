@@ -230,35 +230,71 @@ def test_the_table_keeps_years_whole_and_empty_cells_empty(rc):
     table = rc.brackets_table(years)
     assert str(table["Year"].dtype) == "Int64"
     assert table["400% FPL"].dtype == float and table["400% FPL"].isna().tolist() == [False, True]
-    assert table["IRMAA tier"][1] == "-" and table["Binding ceiling"][1] != ""
+    assert table["IRMAA tier"][1] == "-" and table["Next limit"][1] != ""
 
 
-class TestTheActiveTierAndCeiling:
-    """QW-3: the Brackets table names the active (or next) IRMAA tier for the year's MAGI and
-    the ceiling sitting closest above it."""
+class TestTheActiveTierAndNextLimit:
+    """QW-3 (ux-qw-handoff-2.md, review AN5): the IRMAA column says the tier the MAGI is in,
+    or its room below tier 1, with the premium year -- never the overshoot where a premium is
+    expected, never a premium year with nobody on Medicare -- and *Next limit* names the
+    case's own limits on the year's conversions, then the closest line above the income."""
 
-    def test_the_active_tier_is_the_highest_crossed(self, rc):
+    def test_the_tier_the_magi_is_in_with_its_overshoot_and_premium_year(self, rc):
         table = rc.brackets_table([_bracket_row(2027, 300_000.0)])
-        assert table["IRMAA tier"][0] == "IRMAA Tier 2 ($274,000) — crossed (+$26,000 in 2029)"
+        assert table["IRMAA tier"][0] == "tier 2 ($26,000 over its $274,000 edge): 2029 premiums"
 
-    def test_below_every_tier_the_next_one_is_named_with_the_room(self, rc):
+    def test_below_every_tier_the_room_under_tier_1(self, rc):
         table = rc.brackets_table([_bracket_row(2027, 120_000.0)])
-        assert table["IRMAA tier"][0] == "IRMAA Tier 1 ($218,000) — $98,000 below (sets 2029)"
+        assert table["IRMAA tier"][0] == "below tier 1 by $98,000: 2029 premiums"
 
-    def test_the_binding_ceiling_is_the_closest_line_above(self, rc):
-        # MAGI 300,000, taxable income 60,000: the 12/15% top ($40,800 of room) is closer
-        # than IRMAA Tier 3 ($42,000 of room).
+    def test_a_premium_year_with_no_medicare_says_so(self, rc):
+        """Review AN5: 2026's cell read "crossed (+$12,802 in 2028)" with nobody on Medicare
+        in 2028 (both turn 65 in 2029)."""
+        row = {**_bracket_row(2026, 300_000.0), "irmaa_edges": [], "medicare_in_premium_year": False}
+        assert rc.brackets_table([row])["IRMAA tier"][0] == "no Medicare premiums in 2028"
+        # A row written before the flag: judged from its ages two years on.
+        old = {**_bracket_row(2026, 300_000.0), "ages": [62, 62]}
+        assert rc.brackets_table([old])["IRMAA tier"][0] == "no Medicare premiums in 2028"
+        old = {**_bracket_row(2026, 300_000.0), "ages": [62, 64]}
+        assert rc.brackets_table([old])["IRMAA tier"][0].startswith("tier 2")
+
+    def test_the_next_limit_is_the_closest_line_above_on_its_own_measure(self, rc):
+        # MAGI 300,000, taxable income 60,000: the 12/15% top ($40,800 of room on taxable
+        # income) is closer than IRMAA tier 3 ($42,000 of room on MAGI).
         table = rc.brackets_table([_bracket_row(2027, 300_000.0)])
-        assert table["Binding ceiling"][0] == "12/15% bracket ($100,800)"
+        assert table["Next limit"][0] == "12/15% bracket top: $40,800 away"
+        row = {**_bracket_row(2027, 330_000.0)}
+        assert rc.brackets_table([row])["Next limit"][0] == "IRMAA tier 3: $12,000 away (2029 premiums)"
 
-    def test_the_conversion_cap_is_the_ceiling_when_it_binds(self, rc):
-        row = {**_bracket_row(2027, 300_000.0), "conversion": 50_000.0, "conversion_cap": 50_000.0}
-        assert rc.brackets_table([row])["Binding ceiling"][0] == "Conversion cap ($50,000)"
+    def test_the_case_s_cap_is_named_with_the_person(self, rc):
+        row = {**_bracket_row(2027, 300_000.0), "conversion_limit": ["cap", "cap"]}
+        assert rc.brackets_table([row], names=["Ari", "Noa"])["Next limit"][0] == "conversion cap reached (Ari, Noa)"
+        # One person at the cap, the other free: the cap, then the line the other one meets.
+        row = {**_bracket_row(2027, 300_000.0), "conversion_limit": ["cap", None]}
+        assert rc.brackets_table([row], names=["Ari", "Noa"])["Next limit"][0] == (
+            "conversion cap reached (Ari); 12/15% bracket top: $40,800 away")
+
+    def test_a_year_before_the_window(self, rc):
+        row = {**_bracket_row(2027, 120_000.0), "conversion_limit": ["window", "window"]}
+        text = rc.brackets_table([row], {"start": 2028, "stop": None, "swap": None}, ["Ari", "Noa"])["Next limit"][0]
+        assert text == "no conversions before 2028 (the case's window)"
+
+    def test_the_last_years_and_the_pins(self, rc):
+        row = {**_bracket_row(2027, 120_000.0), "conversion_limit": ["last years", "pinned"]}
+        text = rc.brackets_table([row], names=["Ari", "Noa"])["Next limit"][0]
+        assert text == ("no conversions in the last two years of life (Ari); conversion held at "
+                        "the case's amount (Noa, Roth conv fixed)")
+
+    def test_an_older_row_gets_the_lines_only(self, rc):
+        """A build-era row carries the household's `conversion_cap`, which the page no longer
+        reads (review AN5: a documented "no cap" read "Conversion cap ($-2,000)")."""
+        row = {**_bracket_row(2027, 300_000.0), "conversion": 50_000.0, "conversion_cap": -2_000.0}
+        assert rc.brackets_table([row])["Next limit"][0] == "12/15% bracket top: $40,800 away"
 
     def test_nothing_above_says_so(self, rc):
         row = {**_bracket_row(2027, 300_000.0), "ordinary_edges": [], "irmaa_edges": [],
                "aca_lines": []}
-        assert rc.brackets_table([row])["Binding ceiling"][0] == "-"
+        assert rc.brackets_table([row])["Next limit"][0] == "-"
 
 
 def test_no_page_uses_the_plain_number_format():

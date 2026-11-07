@@ -79,6 +79,100 @@ def _fill(income: float, edges: list, top: str = None) -> tuple:
     return (top or "above the last edge"), None
 
 
+# What holds a person's Roth conversion this year, as `Plan._add_roth_conversion_constraints`
+# sets the LP's ranges (QW-3, review AN5), in its order of precedence; "not alive" past the
+# person's horizon.
+LIMITS = ("not alive", "excluded", "pinned", "last years", "window", "swap", "cap")
+
+
+def _options(p) -> dict:
+    return getattr(p, "solverOptions", None) or {}
+
+
+def limits_cap(p):
+    """The case's Roth conversion cap per person (nominal $, `maxRothConversion`), or None:
+    absent, unreadable, or negative ("no cap", info/PARAMETERS.md)."""
+    options = _options(p)
+    if "maxRothConversion" not in options:
+        return None
+    try:
+        cap = float(utils.get_monetary_option(options, "maxRothConversion", 0))
+    except (TypeError, ValueError):
+        return None
+    return cap if cap >= 0 else None
+
+
+def _year_option(p, key):
+    try:
+        value = int(utils.get_numeric_option(_options(p), key, 0))
+    except (TypeError, ValueError):
+        return 0
+    return value
+
+
+def conversion_window(p) -> dict:
+    """The case's conversion window in calendar years: {"start": first year allowed or None,
+    "stop": first year no longer allowed or None, "swap": the swap year or None}."""
+    options = _options(p)
+    start = _year_option(p, "startRothConversions") if "startRothConversions" in options else 0
+    stop = _year_option(p, "stopRothConversions") if "stopRothConversions" in options else 0
+    swap = _year_option(p, "swapRothConverters") if "swapRothConverters" in options else 0
+    return {"start": start or None, "stop": stop or None, "swap": abs(swap) or None}
+
+
+def conversion_limits(p) -> list:
+    """[person][year]: what the case holds that person's conversion to that year (`LIMITS`),
+    or None where only the taxes and the plan's own trade-offs decide it. Mirrors the LP's
+    ranges (plan.py `_add_roth_conversion_constraints`): noRothConversions excludes a person
+    (ignored beside a swap, as `solve` drops it); a "Roth conv fixed" year is pinned over
+    every policy; the last two years of a life allow none; the start/stop years and the swap
+    close the window; the cap holds where the conversion has reached it."""
+    N = p.N_n
+    thisyear = date.today().year
+    options = _options(p)
+    horizons = [int(h) for h in getattr(p, "horizons", [N] * p.N_i)]
+    inames = list(getattr(p, "inames", []) or [])
+    swap = _year_option(p, "swapRothConverters") if "swapRothConverters" in options else 0
+    excluded = str(options.get("noRothConversions") or "none")
+    i_x = inames.index(excluded) if (swap == 0 and excluded in inames) else -1
+    fixed = getattr(p, "rothXfixed_in", None)
+    cap = limits_cap(p)
+    start = max(_year_option(p, "startRothConversions") - thisyear, 0) if "startRothConversions" in options else 0
+    stop = (max(_year_option(p, "stopRothConversions") - thisyear, 0)
+            if "stopRothConversions" in options else None)
+    out = []
+    for i in range(p.N_i):
+        h = horizons[i] if i < len(horizons) else N
+        row = []
+        for n in range(N):
+            limit = None
+            if n >= h:
+                limit = "not alive"
+            elif i == i_x:
+                limit = "excluded"
+            elif fixed is not None and bool(np.asarray(fixed)[i, n]):
+                limit = "pinned"
+            elif n >= h - 2:
+                limit = "last years"
+            elif n < start or (stop is not None and n >= stop):
+                limit = "window"
+            elif swap and p.N_i == 2 and i_x == -1 and _swapped_out(swap, thisyear, i, n):
+                limit = "swap"
+            elif cap is not None and float(p.x_in[i, n]) >= cap - 1.0:
+                limit = "cap"
+            row.append(limit)
+        out.append(row)
+    return out
+
+
+def _swapped_out(swap, thisyear, i, n):
+    """Is person i barred in year n by swapRothConverters (plan.py: i_x converts before the
+    swap year, the other from it)?"""
+    yearn = max(abs(swap) - thisyear, 0)
+    i_x = 0 if swap > 0 else 1
+    return n >= yearn if i == i_x else n < yearn
+
+
 def bracket_view(p) -> dict:
     """The per-year view (today's dollars) of a solved plan: income, conversions and lines.
 
@@ -86,9 +180,12 @@ def bracket_view(p) -> dict:
     `Plan.G_n`, after the deduction), `conversion` (the gross Roth conversion),
     `conversion_taxable` (its share of the taxable income, as the income's last layer: the
     rest is absorbed by the deduction; review AI1), `magi` (what the IRMAA and ACA lines are
-    read against), `conversion_cap` (the couple's Roth conversion cap this year in today's
-    dollars, where the case sets one -- `maxRothConversion`, nominal and per person -- QW-3's
-    "binding ceiling"; uncapped cases and older results carry none), `fills_bracket` (the
+    read against), `conversion_by_person` (each person's conversion), `conversion_limit`
+    (per person, what the case holds it to this year: one of `LIMITS`, or None) and
+    `conversion_cap_each` (the cap per person, today's dollars; None uncapped) -- QW-3's
+    "Next limit", with the block's `conversion_window`; `medicare_in_premium_year` (whether
+    anyone has Medicare in the year this MAGI sets the premiums of: the IRMAA edges are given
+    only then); `fills_bracket` (the
     bracket the income is in, "(full)" at its top; review
     AI2) with `room_to_next_edge` (to the top of that bracket, or of the next one when full),
     and the year's lines. The IRMAA edges are the *premium* year's tier amounts -- the MAGI of year m sets
@@ -113,22 +210,8 @@ def bracket_view(p) -> dict:
         if getattr(p, "aca_start_year", 0) > 0 else 0
 
     rows = []
-    # QW-3's "binding ceiling" reads the year's Roth conversion cap where the case sets one:
-    # `maxRothConversion` is a nominal per-person amount (`utils.get_monetary_option`, $k as
-    # the pages enter it), capped on each individual's own conversions (`plan.py`'s Roth
-    # ranges). Written as `conversion_cap`, today's dollars of the couple's total; a result
-    # written before it, or an uncapped case, carries none.
-    cap_each = None
-    options = getattr(p, "solverOptions", None) or {}
-    if "maxRothConversion" in options:
-        try:
-            cap_each = float(utils.get_monetary_option(options, "maxRothConversion", 0))
-        except (TypeError, ValueError):
-            cap_each = None
-    excluded = str(options.get("noRothConversions") or "none")
-    excluded = None if excluded in ("none", "None") else excluded
-    inames = list(getattr(p, "inames", []) or [])
-    horizons = list(getattr(p, "horizons", [N] * p.N_i))
+    limits = conversion_limits(p)
+    months = tx.medicareMonths(p.yobs, p.horizons, N, p.mobs, p.tobs, thisyear)
     for n in range(N):
         year = int(p.year_n[n])
         g = float(gamma[n])
@@ -136,14 +219,15 @@ def bracket_view(p) -> dict:
         edges = _edges(ordinary, n)
         fills, room = _fill(income, edges, top=tx.taxBracketNames[len(edges)])
         conversion = float(np.sum(np.asarray(p.x_in[:, n], dtype=float))) / g
-        converters = sum(1 for i in range(p.N_i)
-                         if i < len(horizons) and n < horizons[i]
-                         and (i >= len(inames) or inames[i] != excluded))
+        by_person = [round(float(p.x_in[i, n]) / g, 2) for i in range(p.N_i)]
 
         irmaa_edges = []
         n_prem = n + 2  # the premium year this tax year's MAGI sets (20 CFR 418.1135(a))
-        if n_prem < N:  # a premium year past the plan has no edges to name (as `thresholds`
-            # `_irmaa_entries` skips it; review AF4)
+        # QW-3 (review AN5): edges only where someone has Medicare in the premium year, as
+        # `thresholds._irmaa_entries` reads them; "+$12,802 in 2028" was shown for a year
+        # nobody is on Medicare.
+        medicare = bool(n_prem < N and np.any(months[:, n_prem] > 0))
+        if medicare:  # a premium year past the plan has no edges to name either (review AF4)
             irmaa = tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n, n_prem, thisyear)
             irmaa_edges = [{"label": f"IRMAA tier {k}", "amount": round(float(edge) / g, 2),
                             "premium_year": int(p.year_n[n_prem])}
@@ -170,8 +254,14 @@ def bracket_view(p) -> dict:
             # deduction absorbs part of it (51,455 against 24,800 of taxable income on the
             # synthetic household), and stacking it gross drew twice the year's income.
             "conversion_taxable": round(min(conversion, max(income, 0.0)), 2),
-            # QW-3: the couple's conversion cap this year (today's $), None when uncapped.
-            "conversion_cap": None if cap_each is None else round(cap_each * converters / g, 2),
+            # QW-3 (review AN5): each person's conversion (today's $), the case's limit on it
+            # this year, and the cap per person (today's $; None uncapped, a negative
+            # maxRothConversion included -- "no cap" in PARAMETERS.md).
+            "conversion_by_person": by_person,
+            "conversion_limit": [limits[i][n] for i in range(p.N_i)],
+            "conversion_cap_each": (None if limits_cap(p) is None
+                                    else round(limits_cap(p) / g, 2)),
+            "medicare_in_premium_year": medicare,
             "magi": round(float(p.MAGI_n[n]) / g, 2),
             "fills_bracket": fills,
             "room_to_next_edge": room,
@@ -181,6 +271,7 @@ def bracket_view(p) -> dict:
             "aca_lines": aca_lines,
         })
     return {"units": "today's dollars",
+            "conversion_window": conversion_window(p),
             "gains_edge_0_measured_against":
                 "the QDCG worksheet's line-1 income (G_n + e_n + max(Q_n, 0) less the "
                 "deduction the ordinary income leaves unused; thresholds._gains_entries), "

@@ -156,13 +156,61 @@ class TestOneYear:
         p.x_in[0] = 10_000.0 * g  # a conversion inside the taxable income counts in full
         assert bracket_view(p)["years"][0]["conversion_taxable"] == pytest.approx(10_000.0)
 
-    def test_the_conversion_cap_travels_with_the_row(self):
-        """QW-3's "binding ceiling": `maxRothConversion` is nominal and per person (the LP
-        caps each individual's own conversions), so the couple's cap is their sum."""
+    def test_the_conversion_cap_is_per_person(self):
+        """QW-3 (review AN5): `maxRothConversion` is nominal and per person (the LP caps each
+        individual's own conversions); the build read it against a household total, so one
+        person at their own cap was never named."""
         p = FakePlan(solverOptions={"units": "k", "maxRothConversion": 50})
-        row = bracket_view(p)["years"][0]
-        assert row["conversion_cap"] == pytest.approx(100_000.0)  # two converters, year 0
-        assert bracket_view(FakePlan())["years"][0]["conversion_cap"] is None  # uncapped
+        row = bracket_view(p)["years"][1]
+        assert row["conversion_cap_each"] == pytest.approx(50_000.0 / p.gamma_n[1])
+        assert bracket_view(FakePlan())["years"][0]["conversion_cap_each"] is None  # uncapped
+        assert "conversion_cap" not in row  # the build's household total is gone
+
+    def test_a_negative_cap_is_no_cap(self):
+        """info/PARAMETERS.md: "omit, or give a negative value, for no cap". The build read
+        maxRothConversion = -1 as a cap of -$2,000 on every row."""
+        p = FakePlan(solverOptions={"units": "k", "maxRothConversion": -1})
+        rows = bracket_view(p)["years"]
+        assert all(r["conversion_cap_each"] is None for r in rows)
+        assert not any("cap" in (r["conversion_limit"] or []) for r in rows)
+
+    def test_a_person_at_their_own_cap_under_a_swap(self):
+        """swapRothConverters 2029: Ari (person 0) converts before 2029, Noa from it. Ari at
+        his $50k cap in 2027 is named; Noa, barred until 2029 by the swap, says so."""
+        p = FakePlan(solverOptions={"units": "k", "maxRothConversion": 50, "swapRothConverters": 2029},
+                     inames=["Ari", "Noa"])
+        p.x_in[0, 1] = 50_000.0  # nominal, at the cap
+        row = bracket_view(p)["years"][1]
+        assert row["conversion_limit"] == ["cap", "swap"]
+        assert row["conversion_by_person"] == pytest.approx([50_000.0 / p.gamma_n[1], 0.0])
+        later = bracket_view(p)["years"][4]  # 2030: Ari swapped out, Noa free
+        assert later["conversion_limit"] == ["swap", None]
+
+    def test_a_year_before_the_window_and_the_last_two_years(self):
+        p = FakePlan(solverOptions={"startRothConversions": 2028, "stopRothConversions": 2034})
+        view = bracket_view(p)
+        assert view["conversion_window"] == {"start": 2028, "stop": 2034, "swap": None}
+        limits = [row["conversion_limit"] for row in view["years"]]
+        assert limits[0] == ["window", "window"] and limits[1] == ["window", "window"]  # 2026, 2027
+        assert limits[2] == [None, None]  # 2028: open
+        assert limits[8] == ["window", "window"]  # 2034: closed
+        assert limits[N_YEARS - 1] == ["last years", "last years"]  # the last two years of life
+
+    def test_noroth_conversions_excludes_one_person_and_pins_win_over_policy(self):
+        p = FakePlan(solverOptions={"noRothConversions": "Noa"}, inames=["Ari", "Noa"],
+                     rothXfixed_in=np.zeros((2, N_YEARS), dtype=bool))
+        p.rothXfixed_in[0, N_YEARS - 1] = True  # a pin in Ari's last year beats the zeroing
+        limits = [row["conversion_limit"] for row in bracket_view(p)["years"]]
+        assert limits[0] == [None, "excluded"]
+        assert limits[N_YEARS - 1] == ["pinned", "excluded"]
+
+    def test_a_premium_year_with_nobody_on_medicare_has_no_irmaa_edges(self):
+        """Review AN5: the edges were given for every premium year inside the plan, so a year
+        whose premium year has nobody on Medicare read "crossed"."""
+        p = FakePlan(yobs=np.array([1964, 1964]))  # 65 in 2029: Medicare from 2029
+        rows = bracket_view(p)["years"]
+        assert rows[0]["medicare_in_premium_year"] is False and rows[0]["irmaa_edges"] == []  # 2028
+        assert rows[1]["medicare_in_premium_year"] is True and rows[1]["irmaa_edges"]  # 2029
 
 
 # ---------------------------------------------------------------------------

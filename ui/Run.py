@@ -328,23 +328,27 @@ def _conversions_and_brackets(run, result):
     if note:
         st.caption(note)
     money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q15)
-    table = run_charts.brackets_table(years)
+    table = run_charts.brackets_table(years, doc.get("conversion_window"),
+                                      result.plan.get("individuals") or [])
+    text = ("Year", "Bracket", "IRMAA tier", "Next limit")
     st.dataframe(table, width="stretch", hide_index=True,
-                 column_config={c: money for c in table.columns
-                                if c not in ("Year", "Bracket", "IRMAA tier", "Binding ceiling")}
+                 column_config={c: money for c in table.columns if c not in text}
                  | {"Year": st.column_config.NumberColumn(format="%d"),
-                    # UX remediation QW-3: the active (or next) IRMAA tier per year, and the
-                    # ceiling the year is closest to.
+                    # UX remediation QW-3: the IRMAA tier per year with its premium year, and
+                    # the next limit above the year's income.
                     "IRMAA tier": st.column_config.TextColumn(
-                        "IRMAA tier",
-                        help="The tier the year's MAGI is in (or the next one): its edge, the "
-                             "overshoot, and the premium year those premiums are paid."),
-                    "Binding ceiling": st.column_config.TextColumn(
-                        "Binding ceiling",
-                        help="What sits closest above the year's income: the ceiling with the "
-                             "least room left (a bracket top read against taxable income, an "
-                             "IRMAA tier or the 400% FPL cliff against MAGI), or the case's "
-                             "Roth conversion cap when the year is already at it.")})
+                        "IRMAA tier", width="medium",
+                        help="The tier the year's MAGI is in (how far over its edge), or how far "
+                             "below tier 1, and the year whose Medicare premiums it sets."),
+                    "Next limit": st.column_config.TextColumn(
+                        "Next limit", width="large",
+                        help="The case's own limits on the year's Roth conversions (its cap, its "
+                             "window, its last years), then the closest line above the income: "
+                             "a bracket top read against taxable income, an IRMAA tier or the "
+                             "400% FPL line against MAGI.")})
+    st.caption("*Next limit* is the closest line, not necessarily the one that stops the plan: "
+               "a conversion may stop short of it for another reason (state tax, the taxation "
+               "of Social Security).")
 
     # -- the regret sweep (I8: "what a different conversion would have cost") -----
     regret = result.record.get("regret")

@@ -42,6 +42,7 @@ import streamlit as st
 
 import libraryjobs
 import librarypresets
+import run_charts
 import sskeys as kz
 from owlplanner.library import JobsError, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
@@ -104,7 +105,8 @@ def _things_to_look_at(result):
 
 
 def _cash_flow_sankey(result, by_year):
-    """I6: one year's sources and uses as a Sankey (plan.json's `cash_flow`, nominal $)."""
+    """I6: one year's sources and uses as a paragraph and a Sankey (plan.json's `cash_flow`,
+    nominal $; `run_charts.year_summary` / `sankey_figure`, UX review Q17)."""
     cf = view.cash_flow(result)
     if not (cf.get("sources") and cf.get("uses")) or not by_year:
         st.caption("This solve's files carry no cash-flow detail (solved before this build).")
@@ -130,26 +132,13 @@ def _cash_flow_sankey(result, by_year):
         st.caption(f"{years[n]}: nothing to show.")
         return
 
-    total = sum(sources.values())
-    labels = list(sources) + [""] + list(uses)
-    hub = len(sources)
-    fig = go.Figure(go.Sankey(
-        arrangement="snap",
-        node=dict(label=labels, pad=12, thickness=14,
-                  color=["#4c78a8"] * len(sources) + ["#999999"] + ["#f58518"] * len(uses)),
-        link=dict(
-            source=list(range(len(sources))) + [hub] * len(uses),
-            target=[hub] * len(sources) + [len(sources) + 1 + j for j in range(len(uses))],
-            value=[sources[k] for k in sources] + [uses[k] for k in uses],
-            label=[f"{k}: ${v:,.0f}" for k, v in sources.items()] + [f"{k}: ${v:,.0f}" for k, v in uses.items()],
-            color=["#aec7e8"] * len(sources) + ["#ffbb78"] * len(uses),
-        ),
-    ))
-    fig.update_layout(height=430, font=dict(size=11))
-    st.plotly_chart(fig, width="stretch")
+    # UX review Q17: the year in words first, from the very rows the Sankey draws; then the
+    # Sankey with the amounts on its nodes, a labelled hub and the taxes' total.
+    st.markdown(run_charts.year_summary(years[n], sources, uses))
+    st.plotly_chart(run_charts.sankey_figure(years[n], sources, uses), width="stretch")
     st.caption(
-        f"{years[n]}: \\${total:,.0f} in, \\${sum(uses.values()):,.0f} out (nominal dollars of "
-        "that year; the two differ only by rounding). A Roth conversion is a move between "
+        f"{years[n]}: \\${sum(sources.values()):,.0f} in, \\${sum(uses.values()):,.0f} out (nominal "
+        "dollars of that year; the two differ only by rounding). A Roth conversion is a move between "
         "accounts: it appears on both sides. A tax that comes out negative (a refundable "
         "credit larger than the tax, such as STAR) is money in: it is drawn as a source. "
         "Spending is split along the budget's lines when the case has a budget sheet."
@@ -280,9 +269,10 @@ def _conversions_and_brackets(run, result):
     """Per year: taxable income, the Roth conversion layer, and the lines it fills (I8).
 
     Reads `plan.json`'s `brackets` block (`owlplanner.brackets`, durable: D7). The chart
-    stacks the conversion on the ordinary taxable income and steps the lines the year is
-    measured against: the next ordinary bracket edge (income), the IRMAA tier 1 line and
-    the marketplace's 400% FPL cliff (both against MAGI). Below it, the per-request regret
+    (`run_charts.brackets_figure`) stacks the conversion on the ordinary taxable income and
+    steps the lines the year is measured against: the ordinary bracket tops (income), every
+    IRMAA tier and the marketplace's 400% FPL cliff (both against MAGI; UX review Q15: tier 1
+    alone, a zigzag "top of the bracket" and two dotted greens before). Below it, the per-request regret
     sweep: what a different first-year conversion would have cost
     (`stresstests.run_conversion_regret_sweep`, one "regret" job per request).
     """
@@ -292,59 +282,26 @@ def _conversions_and_brackets(run, result):
         return
     st.markdown("### Conversions and brackets")
     st.caption(
-        "Ordinary taxable income per year (after the deduction), the Roth conversion's share "
-        "of it as the top layer (today's \\$): a conversion the deduction absorbs is not "
-        "taxable income, so the table gives the gross conversion beside its taxable part. "
-        "The dotted lines are what the year is measured against: the top of "
-        "the ordinary bracket the income is in (taxable income), and the IRMAA tier 1 line "
-        "and the marketplace's 400% FPL cliff, which are read against **MAGI**, the solid "
-        "line (the MAGI of a year sets the Medicare premiums two years later). The "
+        "Ordinary taxable income per year (after the deduction), with the Roth conversion's "
+        "taxable part as its top layer (today's \\$): a conversion the deduction absorbs is not "
+        "taxable income, so the table gives the gross conversion beside its taxable part. The "
+        "faint grey steps are the tops of the federal brackets, read against taxable income. "
+        "The red dashed lines are the IRMAA tiers and the purple dash-dot line the marketplace's "
+        "400% FPL cliff: both are read against **MAGI**, the black line, and a year's MAGI sets "
+        "the Medicare premiums two years later (hover a tier for the year it sets). The "
         "conversions are optimized in the model -- IRMAA, ACA, SS taxability and state tax "
         "priced together -- so this view explains them.")
-    xs = [row["year"] for row in years]
-    income = [row.get("ordinary_taxable_income") or 0.0 for row in years]
-    conv = [row.get("conversion") or 0.0 for row in years]
-    # A plan.json written before the fold has no taxable share: the same rule here.
-    taxable_conv = [row["conversion_taxable"] if row.get("conversion_taxable") is not None
-                    else min(c, max(i, 0.0)) for row, i, c in zip(years, income, conv, strict=True)]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=xs, y=[max(0.0, i - c) for i, c in zip(income, taxable_conv, strict=True)],
-                         name="taxable income, ex conversions"))
-    fig.add_trace(go.Bar(x=xs, y=taxable_conv, name="Roth conversions (their taxable part)"))
-    fig.add_trace(go.Scatter(
-        x=xs, name="MAGI (the IRMAA and cliff lines' measure)", mode="lines+markers",
-        y=[row.get("magi") for row in years]))
-    fig.add_trace(go.Scatter(
-        x=xs, name="top of the bracket", line=dict(dash="dot"),
-        y=[None if row.get("room_to_next_edge") is None
-           else row["ordinary_taxable_income"] + row["room_to_next_edge"] for row in years]))
-    fig.add_trace(go.Scatter(
-        x=xs, name="IRMAA tier 1 (MAGI)", line=dict(dash="dot"),
-        y=[(row.get("irmaa_edges") or [{}])[0].get("amount") for row in years]))
-    fig.add_trace(go.Scatter(
-        x=xs, name="400% FPL, the cliff (MAGI)", line=dict(dash="dot"),
-        y=[next((line["amount"] for line in row.get("aca_lines") or []
-                 if "cliff" in line["label"]), None) for row in years]))
-    fig.update_layout(barmode="stack", yaxis_title="$ per year (today's $)",
-                      xaxis_title="Year", height=420)
+    fig, note = run_charts.brackets_figure(years)
     st.plotly_chart(fig, width="stretch")
-
-    def _usd2(value):
-        return "-" if value is None else f"{value:,.0f}"
-
-    lines = ["| year | taxable income | conversions | of which taxable | MAGI | bracket | "
-             "room to the top | IRMAA tier 1 | 400% FPL |",
-             "|---|---:|---:|---:|---:|---|---:|---:|---:|"]
-    for row, part in zip(years, taxable_conv, strict=True):
-        tier = (row.get("irmaa_edges") or [{}])[0].get("amount")
-        cliff = next((line["amount"] for line in row.get("aca_lines") or []
-                      if "cliff" in line["label"]), None)
-        lines.append(
-            f"| {row['year']} | {_usd2(row.get('ordinary_taxable_income'))} | "
-            f"{_usd2(row.get('conversion'))} | {_usd2(part)} | {_usd2(row.get('magi'))} | "
-            f"{row.get('fills_bracket') or '-'} | {_usd2(row.get('room_to_next_edge'))} | "
-            f"{_usd2(tier)} | {_usd2(cliff)} |")
-    st.markdown("\n".join(lines))
+    if note:
+        st.caption(note)
+    money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q15)
+    table = run_charts.brackets_table(years)
+    st.dataframe(table, width="stretch", hide_index=True,
+                 column_config={c: money for c in table.columns
+                                if c not in ("Year", "Bracket", "Sets premiums of")}
+                 | {"Year": st.column_config.NumberColumn(format="plain"),
+                    "Sets premiums of": st.column_config.NumberColumn(format="plain")})
 
     # -- the regret sweep (I8: "what a different conversion would have cost") -----
     regret = result.record.get("regret")
@@ -519,7 +476,7 @@ if entries:
     by_year = result.plan.get("by_year") or []
     if by_year:
         years = [row["year"] for row in by_year]
-        tabs = st.tabs(["Spending", "Account balances", "Taxes by kind", "Income sources",
+        tabs = st.tabs(["Spending", "Account balances", "Taxes and premiums", "Income sources",
                         "Cash flow (one year)"])
         with tabs[0]:
             fig = go.Figure()
@@ -536,25 +493,17 @@ if entries:
             fig.update_layout(yaxis_title="nominal $", xaxis_title="Year", height=320)
             st.plotly_chart(fig, width="stretch")
         with tabs[2]:
-            fig = go.Figure()
-            for key, label in (("federal_income_tax", "Federal income tax"),
-                               ("ltcg_tax", "Gains tax"), ("niit", "NIIT"),
-                               ("payroll_tax", "Payroll tax"), ("state_tax", "State + local")):
-                fig.add_trace(go.Bar(x=years, y=[row.get(key) for row in by_year], name=label))
-            fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year",
-                              height=320)
-            st.plotly_chart(fig, width="stretch")
+            # UX review Q16: the Medicare (IRMAA included) and marketplace premiums beside the
+            # taxes; they were in plan.json and on no chart.
+            st.plotly_chart(run_charts.taxes_and_premiums_figure(by_year), width="stretch")
         with tabs[3]:
-            fig = go.Figure()
-            for key, label in (("wages", "Wages"), ("ss", "Social Security"),
-                               ("pension_income", "Pensions"), ("spia_income", "SPIAs"),
-                               ("portfolio_withdrawals", "Withdrawals from savings")):
-                values = ([sum(row.get("ss_income") or []) for row in by_year] if key == "ss"
-                          else [row.get(key) for row in by_year])
-                fig.add_trace(go.Bar(x=years, y=values, name=label))
-            fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year",
-                              height=320)
-            st.plotly_chart(fig, width="stretch")
+            # Q16: all-zero series left out; a purchase year runs off the top, annotated.
+            purchases = run_charts.big_ticket_years(view.cash_flow(result))
+            st.plotly_chart(run_charts.income_sources_figure(by_year, purchases), width="stretch")
+            if purchases:
+                st.caption("A year with a big-ticket purchase (from the cash flow's uses) is drawn "
+                           "off the top of the chart, its total written on it, so that it does not "
+                           "set the scale for the other years.")
         with tabs[4]:
             _cash_flow_sankey(result, by_year)
 

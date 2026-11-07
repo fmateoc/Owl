@@ -792,7 +792,8 @@ class TestConversionsAndBrackets:
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
         assert "Conversions and brackets" in text
-        assert "of which taxable" in text  # the table's column (review AI1)
+        # The table's column (review AI1), a dataframe since UX review Q15.
+        assert any("Of which taxable" in d.value.columns for d in at.dataframe)
         assert "Run the regret sweep" in [b.label for b in at.button]
 
     def test_ai1_the_chart_stacks_the_taxable_part_and_draws_magi(self, library):
@@ -829,8 +830,10 @@ class TestConversionsAndBrackets:
         assert list(conv) == [24_800.0, 24_800.0] and list(ex) == [0.0, 0.0]
         magi = next(t for name, t in traces.items() if name.startswith("MAGI"))
         assert list(magi["y"]) == [121_355.0, 121_355.0]
-        table = next(str(m.value) for m in at.markdown if "| of which taxable |" in str(m.value))
-        assert "| 51,455 | 24,800 | 121,355 | 10% (full) |" in table
+        table = next(d.value for d in at.dataframe if "Of which taxable" in d.value.columns)
+        for _, row in table.iterrows():  # the folded row and the pre-fold one read the same
+            assert (row["Conversions"], row["Of which taxable"], row["MAGI"], row["Bracket"]) == \
+                (51_455.0, 24_800.0, 121_355.0, "10% (full)")
 
     def test_ag7_ag10_the_caption_reads_the_valley_and_names_the_person(self, library):
         """Review AG7: the summary's key is `mean_regret` (the caption always said 0);

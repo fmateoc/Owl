@@ -7054,3 +7054,119 @@ Also verified:
 
 Not walked: the Stress Tests pages, Settings, Logs, Documentation, the tornado and regret
 sweep, a solved collection grid. Next: the user's call on which remediation items to build.
+
+## UX review: the four bugs (2026-11-07)
+
+Branch `claude/ux-fixes` (from `claude/optimistic-mccarthy-pidkig` `baf32e7`, which has the
+review and the work order `fork-notes/ux-fixes-handoff.md`; `main` does not). Synthetic
+household only. Each fix's test was run against the code before the fix and failed there
+(the "failed before" lines below are from those runs).
+
+- **B1 (= Q3), Queue's "decision" without its exact companion.** `ui/Queue.py` loops over
+  `preset_solves` and flashes `ScenarioError`/`JobsError` across the rerun.
+  `tests/ui/test_queue_page.py::test_decision_queues_its_exact_companion` failed before
+  (`['decision']`). Re-driven: the Queue page lists `…_decision` and `…_decision_exact`.
+- **B2, a purchase event on an imported run.** Semantics written in design 6.2 (amended):
+  - a purchase without a move whose district is blank **keeps the case's district**; `-`
+    states none (`builder.NO_PLACE`, the variants tables' clear spelling; `place_text`);
+    a move's blank or `-` locality/district is none, as before;
+  - a purchase over a hand Fixed Assets residence still owned while the event's home is
+    (`yod` = disposal at the start of that year; zero/negative from the plan end) is
+    **refused** (`_check_one_home`), a refusal rather than a warning because two homes are
+    never what an imported case plus a purchase means, and the page shows refusals as "Not
+    buildable yet"; a home sold by the purchase year, an inactive row and the event's own row
+    are allowed;
+  - the Scenario page pre-fills state, locality and district from the case, with dropdowns
+    (`star.valid_districts`, `tax_local.valid_localities`, as Create Case), and keeps an
+    event's own spelling when the pick builds the same (no phantom edit);
+  - the variants tables store a cleared district as `-` (a blank would now keep the case's);
+  - *Make variants*' "nothing to vary" names how to get a purchase event.
+  - `BUILDER_VERSION` 6. `check_library_builder.py` 46/46 (every synthetic place states its
+    district), `check_library_roundtrip.py` 39/39.
+  - Failed before: `tests/library/test_builder_purchase_place.py` 6 of 11 (the 5 others are
+    the allowed cases), `tests/ui/test_scenario_purchase_place.py` 3 of 3,
+    `test_variant_tables.py::…test_b2_…` 1.
+  - **Found on the way:** no synthetic workbook is rent-only: all 39 HFP files, including
+    `HFP_ari+noa.xlsx`, hold a condo in Fixed Assets (checked with openpyxl). The work order's
+    "start from the rent-only baseline" names nothing importable, so both messages describe the
+    state needed ("a run with no home in its workbook"). For the journey a rent-only run was
+    made by dropping the baseline's condo rows through the library API.
+  - Re-driven: on `condo import` (Yonkers 2029 cash) ticking *Buy a home* shows "Not buildable
+    yet: the case already holds a home, 'yonkers condo' (Fixed Assets, from 2029, kept to the
+    end), owned while the purchase event's 'home' is (from 2027): the plan would hold two
+    homes. …"; on the rent-only run the box shows *City of Yonkers / Yonkers* and *Yonkers*,
+    and the saved child's `Case.toml` keeps `school_district = "City of Yonkers / Yonkers"`.
+- **B3 (= Q21), a solve after the configuration failed (upstream code).** Re-checked on
+  upstream `dev` `73dc8815` (unchanged since the last merge). `prepareRun` returns whether it
+  applied; the five clone-and-solve callers stop; `runPlan` applies through `_applyConfig`,
+  records `caseStatus = "invalid input"` and does not solve; `showCaseStatus` says it once;
+  `sskeys.caseHasNotRun` lists the status. `setACA`: the offset hint only below 100, "is
+  before 2000 … such as <next year>" otherwise (upstream's
+  `test_start_year_offset_raises_for_typical_offsets` split accordingly). Issue draft
+  `fork-notes/issue-prepare-run-failure.md`, patch `.patch` (verified with `git apply` on stock
+  `dev`; stock `tests/ui` + `tests/tax/test_aca.py` 233 passed with it), repro script
+  `-repro.py` with real output on stock and patched `dev` (stock jack+jill: the error, one
+  solve, the half-applied case shown as solved). **Not filed.** Failed before (on stock
+  `dev`): 2 of the 3 new tests in `tests/ui/test_prepare_run_failure.py`. Re-driven: Reports
+  after *ACA start year* 1999 shows one alert, "The case was not solved: one of its inputs
+  could not be applied. start_year=1999 is before 2000. Use a 4-digit calendar year such as
+  2027.", and no solve.
+- **B4 (= Q5), dollar labels as math.** The two labels in `ui/Scenario.py` escaped. The test
+  is a source check (`tests/ui/test_ui_dollar_math.py`), chosen over rendering each label: it
+  covers every page without building each page's state and does not break on rewording; it
+  flags two unescaped `$` in a string passed to a Streamlit element or `help=`, unless they
+  wrap a short math token (`$N$`); `Documentation.py` is math on purpose and excluded. Failed
+  before (the two Scenario labels). Other hits checked by hand: `st.code` summaries in
+  `owlbridge`, a Plotly axis title, docstrings and plan log messages: not rendered as
+  Markdown. Re-driven: the label reads "Property tax ($/yr, today's $)".
+
+## UX review: quick wins Q1-Q9 (2026-11-07)
+
+Wording, display and defaults only: no solve, inputs hash or stored file format changes.
+
+- **Q1** design/review codes and file names out of rendered strings on Run, Compare,
+  Scenario, Collections, Library and Queue, and two notes from `library/compare.py`; meaning
+  kept in plain words, codes left in comments. The scores-file uploader keeps `scores.json` /
+  `work_sweep.py --json` in its help tooltip only. Test assertions on the old wording updated.
+- **Q2** `ui/librarypresets.py`: `NAMES` through `format_func` (ids unchanged), the expert
+  presets (`ages_thorough`, `custom`) behind an *Expert presets* toggle, one help text in plain
+  words; used on Run, Queue and both Collections pickers, and in the result and queue labels.
+  Times only as measured (quick 0.8 s, Careful 304-323 s on the condo case; this session's
+  Careful took 5 min 18 s with the test suite running beside it); Ages: "slow" (not timed).
+- **Q4** `compare.default_pair`: B the newest main solved result, A the newest main result of
+  B's parent run, else of another run, never B. Nothing in the library sets `pins` (grep:
+  only the delete path removes from it), so there is no pinned-baseline branch. The UI test
+  failed on the old default. Re-driven: A = `baseline` quick, B = its child `rent only` quick,
+  with `condo import` (another run, solved earlier) not chosen.
+- **Q6** the four `by_year` charts titled "nominal $ per year" / "nominal $" (`by_year` is
+  nominal: `cli/formatters.py`, "like every other by_year amount"); no today's-$ toggle
+  (`plan.json` has no deflator: structural). *Things to look at*: localized number columns,
+  an empty cell for a ramp. *What moved*: "(nominal $)" in the heading, separators,
+  `hide_index`.
+- **Q7** the score's own words as the metric label (`view.score_label`, so maxBequest reads
+  "Final bequest"); "spent down by design" under *Savings left* only for maxSpending with a
+  zero bequest target (`view.spent_down_by_design`); claiming ages "held at these: this solve
+  does not search them" when the solve fixed what the frozen case searches, "chosen by Owl"
+  after an age search (`view.claiming_ages_phrase`). Re-driven on `condo import`: "First
+  year's discretionary spending ($/yr, today's) 108,506", "Savings left 0 spent down by
+  design", "Ari 67y0m, Noa 67y0m (held at these: …)".
+- **Q8** `libraryjobs.job_phase`: "Waiting for another solve to finish", "Solving: searching
+  the tax breakpoints, step 12", "Solving, loop iteration 3", "Failed: <error>"; the raw line
+  in the tooltip. Re-driven: the Queue showed "Waiting for another solve to finish" and
+  "Solving".
+- **Q9** `scenario.PATH_LABELS` (case fields in words, list indices kept, unknown paths raw)
+  and `NO_OP_DEFAULTS` (`noLateSurplus` False, `timePreference` 0.0, `spendingSlack` 0: the
+  defaults `Plan.solve` reads with) — added, removed or 0 -> 0.0 at the default is not a
+  change. The safer fix only: `scenario_from_ui` still writes those keys, so no inputs hash
+  moves. `check_library_compare.py` asserted the raw path `taxable_savings_balances`; it now
+  reads the worded "taxable savings balances" (9/9; the script has nine checks now, not the
+  six the work order quotes). The case-pages save journey of the review's [seen] item was not
+  re-driven; the unit tests cover the diff.
+
+Checks: `check_library_builder.py` 46/46, `check_library_roundtrip.py` 39/39,
+`check_library_compare.py` 9/9, `check_library_jobs.py` 5/5. Lint: flake8 and ruff clean but
+upstream's listed items (`ui/Run_Options.py:260` is the `1bdc3b2` B905, moved from 257).
+Full suite: 4459 passed / 1 skipped (9:10, Linux, `-n 4`) on `aace7a1`, and again on the final code `b8b87db` (9:52; only docs changed after it).
+
+Not fixed, seen on the way: the Scenario page's Save *Name* field keeps the previous run's
+default when the run selector changes (its widget key is not per run).

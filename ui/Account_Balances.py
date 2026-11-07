@@ -26,6 +26,10 @@ import streamlit as st
 import sskeys as kz
 import case_progress as cp
 
+# A balance field (\$k) at or above this reads as \$20M or more: probably dollars typed into a
+# \$k field (UX remediation QW-8.4).
+BALANCE_WARNING_K = 20_000
+
 ret = kz.titleBar(":material/savings: Account Balances")
 
 if ret is None or kz.caseHasNoPlan():
@@ -78,23 +82,24 @@ else:
                 kz.initCaseKey(nkey, 0)
                 ret = kz.getNum(f"{iname1}'s {accounts[key]} accounts (\\$k)", nkey, help=hdetails[key] + kz.help1000)
 
-    # UX remediation QW-8: the fields are \\$k. A balance over 50,000 (\\$50M) is almost
-    # certainly dollars typed into a \\$k field: say so instead of solving it silently.
+    # UX remediation QW-8: the fields are \\$k. A balance of 20,000 or more (\\$20M) is most
+    # likely dollars typed into a \\$k field: say so instead of solving it silently (CLAUDE.md:
+    # such plans came back "infeasible" with no other hint). Second pass (decision 4, review
+    # AN11): \\$20M, so dollars typed for a \\$20,000-\\$49,999 balance are caught too, and the
+    # warning names the amount in dollars instead of "\\$60,000k".
     n_people = 2 if kz.getCaseKey("status") == "married" else 1
     too_big = []
     for i in range(n_people):
         for key, what in accounts.items():
             value = kz.getCaseKey(f"{key}{i}") or 0.0
-            if value > 50_000:
-                too_big.append(f"{kz.getCaseKey(f'iname{i}')}'s {what} \\${value:,.0f}k")
+            if value >= BALANCE_WARNING_K:
+                too_big.append(f"{kz.getCaseKey(f'iname{i}')}'s {what} accounts: {value:,.0f} here "
+                               f"means \\${value / 1000:,.4g} million (amounts are in thousands)")
     if too_big:
         warn_col, _ = st.columns([2, 1])
         with warn_col:
-            st.warning(
-                "Read as \\$50M or more (the fields are \\$k): " + "; ".join(too_big)
-                + ". If these are dollars rather than thousands, divide by 1,000.",
-                icon=":material/warning:",
-            )
+            st.warning("; ".join(too_big) + ". If you typed dollars, divide by 1,000.",
+                       icon=":material/warning:")
 
     st.divider()
     st.markdown("#### :orange[Taxable Account Cost Basis] *(optional)*")

@@ -182,7 +182,8 @@ class TestLibraryPage:
 
     def test_saving_a_modified_run_defaults_to_a_variant_name(self, library):
         """UX remediation QW-8: a save of a run's edited inputs is a run of its own, so the
-        default name says so -- not the parent's own name again."""
+        default name says so. Second pass (review AN4): the base run's own name ("bill later
+        variant"), not the case's -- the import's -- name."""
         from streamlit.testing.v1 import AppTest
 
         opened = library.runs()[-1]
@@ -193,10 +194,38 @@ class TestLibraryPage:
             at.session_state["currentCase"] = "draft"
             at.run()
             assert not at.exception, [e.value for e in at.exception]
-            return at.text_input(key="lib_save_name").value
+            return at.text_input(key="lib_save_name|draft").value
 
-        assert saved_name({"name": "draft", "library_base_run_id": opened.id}) == "draft variant"
+        assert saved_name({"name": "draft", "library_base_run_id": opened.id}) == "bill later variant"
         assert saved_name({"name": "draft"}) == "draft"  # nobody's variant: the plain name
+
+    def test_the_default_name_follows_a_switch_of_case(self, library):
+        """Review AN4's probe: draw the Library with case "draft", switch to "other": the field
+        still read "draft variant" under "The case **other** will be saved"."""
+        from streamlit.testing.v1 import AppTest
+
+        opened = library.runs()[-1]
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=90)
+        at.session_state["cases"] = {"draft": {"name": "draft", "library_base_run_id": opened.id},
+                                     "other": {"name": "other"}}
+        at.session_state["currentCase"] = "draft"
+        at.run()
+        assert at.text_input(key="lib_save_name|draft").value == "bill later variant"
+        at.session_state["currentCase"] = "other"
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("The case **other** will be saved" in c.value for c in at.caption)
+        assert at.text_input(key="lib_save_name|other").value == "other"
+
+    def test_a_name_already_taken_is_warned_about_not_refused(self, library):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(UI_DIR / "Library.py"), default_timeout=90)
+        at.session_state["cases"] = {"bill": {"name": "bill"}}
+        at.session_state["currentCase"] = "bill"
+        at.run()
+        assert any("A run is already called *bill*" in w.value for w in at.warning)
+        assert not next(b for b in at.button if b.label == "Save as a new run").disabled
 
     def test_open_switches_to_the_run_page(self, library, monkeypatch):
         opened = []

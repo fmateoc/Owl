@@ -1,7 +1,8 @@
 """
-Account Balances: a \\$k balance that reads as \\$50M or more is flagged (UX remediation QW-8).
+Account Balances: a \\$k balance that reads as \\$20M or more is flagged (UX remediation QW-8;
+second pass, decision 4: \\$20M, not \\$50M, and the amount named in dollars, review AN11).
 
-The fields are thousands of dollars. A balance over 50,000 in them is almost certainly
+The fields are thousands of dollars. A balance of 20,000 or more in them is most likely
 dollars typed into a \\$k field; the page says so instead of solving it silently.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
@@ -38,14 +39,22 @@ def _render(monkeypatch, **updates):
     return at.run()
 
 
-def test_a_balance_reading_as_fifty_million_warns(monkeypatch):
+def test_a_balance_reading_as_sixty_million_warns_in_dollars(monkeypatch):
     at = _render(monkeypatch, txbl0=60_000)
     assert not at.exception, [str(e.value) for e in at.exception]
-    warns = [w.value for w in at.warning if "50M" in w.value]
-    assert warns and "60,000k" in warns[0], warns
+    warns = [w.value for w in at.warning if "million" in w.value]
+    assert warns == ["Riley's taxable accounts: 60,000 here means \\$60 million (amounts are in "
+                     "thousands). If you typed dollars, divide by 1,000."], warns
+
+
+def test_a_balance_between_twenty_and_fifty_million_warns_too(monkeypatch):
+    """Dollars typed for a \\$25,000 balance: the build's \\$50M threshold missed it."""
+    at = _render(monkeypatch, txDef0=25_000)
+    warns = [w.value for w in at.warning if "million" in w.value]
+    assert warns and "25,000 here means \\$25 million" in warns[0], warns
 
 
 def test_ordinary_balances_do_not_warn(monkeypatch):
-    at = _render(monkeypatch, txbl0=5_000, txDef0=2_500)
+    at = _render(monkeypatch, txbl0=5_000, txDef0=19_999)
     assert not at.exception, [str(e.value) for e in at.exception]
-    assert not [w.value for w in at.warning if "50M" in w.value]
+    assert not [w.value for w in at.warning if "million" in w.value]

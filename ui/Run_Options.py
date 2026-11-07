@@ -41,6 +41,26 @@ def _onSSAgesChange(names):
     kz.setCaseKey("ssAgesMode", _ssAgesMode(names, selected))
 
 
+def _moved_text(label, old, new, low, high):
+    """A clamped year in words (review AN2): "Year to stop considering Roth conversions: 2500
+    is past the plan's last year, 2053; shown as 2053"."""
+    where = (f"past the plan's last year, {high}" if old > high
+             else f"before the plan's first year, {low}")
+    return f"{label}: {old} is {where}; shown as {new}"
+
+
+def _onAcaFromStart():
+    """The marketplace toggle (QW-8.3, decision 5): on stores 0, the code's "from the plan
+    start"; off stores next year (the plan's last at most) for the year box to show."""
+    on = st.session_state.get(kz.genCaseKey("acaFromPlanStart"))
+    plan = kz.getCaseKey("plan")
+    years = getattr(plan, "year_n", None) if plan is not None else None
+    end = int(years[-1]) if years is not None and len(years) else date.today().year + 40
+    year = 0 if on else min(date.today().year + 1, end)
+    kz.setCaseKey("acaStartYear", year)
+    st.session_state[kz.genCaseKey("acaStartYear")] = year
+
+
 def _bound_year(key, low, high):
     """Clamp a stored year field into [low, high] (UX remediation QW-8's input bounds).
 
@@ -98,18 +118,21 @@ else:
     _years = getattr(_plan, "year_n", None) if _plan is not None else None
     plan_end = int(_years[-1]) if _years is not None and len(_years) else thisyear + 40
     # QW-8 (review AM3): every stored year outside its field's range is set to the nearest
-    # allowed one here, once, and the page says which values moved.
+    # allowed one here, once, and the page says which values moved -- by the field's own
+    # label, never its key (QW-8's second pass, review AN2). The ACA start year's 0 means
+    # "from the plan start" (its toggle below) and is never moved.
     _moved = []
-    for _key, _low, _high in (("startRothConversions", thisyear, plan_end),
-                              ("stopRothConversions", thisyear, plan_end),
-                              ("swapRothConvertersYear", thisyear, plan_end),
-                              ("acaStartYear", thisyear, thisyear + 50)):
-        _old = _bound_year(_key, _low, _high)
+    for _key, _label in (("startRothConversions", "Year to start considering Roth conversions"),
+                         ("stopRothConversions", "Year to stop considering Roth conversions"),
+                         ("swapRothConvertersYear", "Year to switch converters"),
+                         ("acaStartYear", "ACA start year")):
+        if _key == "acaStartYear" and kz.getCaseKey(_key) in (0, None):
+            continue
+        _old = _bound_year(_key, thisyear, plan_end)
         if _old is not None:
-            _moved.append(f"{_key} {_old} \u2192 {kz.getCaseKey(_key)}")
+            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), thisyear, plan_end))
     if _moved:
-        st.caption("A stored year outside its field's range was set to the nearest allowed "
-                   "year: " + "; ".join(_moved) + ".")
+        st.caption("; ".join(_moved) + ".")
     st.markdown("#### :orange[Roth Conversions]")
     col1, col2, col3 = st.columns(3, gap="large", vertical_alignment="top")
     with col1:
@@ -232,25 +255,28 @@ else:
                   step=1.0, format="%.2f", help=helpmsg)
     with cols[1]:
         acaoff = (kz.getCaseKey("slcspAnnual") or 0) <= 0
-        helpmsg_start = (
-            "4-digit calendar year when marketplace (ACA) coverage begins (e.g. 2029 for the "
-            "year of retirement). Years before it are assumed employer-covered (zero ACA cost). "
-            "Defaults to this year -- the plan's first year -- for coverage from the start of "
-            "the plan. Do not enter an offset (e.g. 3); use the actual calendar year."
-        )
-        # UX remediation QW-8: no more "0 = plan start". The plan starts in the solve year, so
-        # a stored 0 (or any year before this one) reads as thisyear, and the field defaults
-        # to it (the move is named at the top of the page, review AM3).
-        kz.initCaseKey("acaStartYear", thisyear)
-        kz.getIntNum(
-            "ACA start year",
-            "acaStartYear",
-            min_value=thisyear,
-            max_value=thisyear + 50,
-            step=1,
-            help=helpmsg_start,
-            disabled=acaoff,
-        )
+        # QW-8.3's second pass (decision 5, review AN2): a toggle for "from the plan start",
+        # which stores 0, the code's own sentinel (no message, no change to a saved file); off,
+        # a year box bounded by the plan's first and last years. The build's year field stored
+        # this year in every case without the key and announced "acaStartYear 0 -> 2026".
+        _from_start = kz.getCaseKey("acaStartYear") in (0, None)
+        kz.initGlobalKey(kz.genCaseKey("acaFromPlanStart"), _from_start)
+        st.toggle("Marketplace coverage from the plan start", key=kz.genCaseKey("acaFromPlanStart"),
+                  on_change=_onAcaFromStart, disabled=acaoff,
+                  help="On: marketplace (ACA) coverage from the plan's first year. Off: from the "
+                       "year below; the years before it are assumed employer-covered (no ACA "
+                       "cost).")
+        if not _from_start:
+            kz.getIntNum(
+                "ACA start year",
+                "acaStartYear",
+                min_value=thisyear,
+                max_value=plan_end,
+                step=1,
+                help="The calendar year marketplace coverage begins (e.g. 2029 for the year of "
+                     "retirement).",
+                disabled=acaoff,
+            )
 
     st.markdown("##### Medicare")
     cols = st.columns(3, gap="large", vertical_alignment="top")

@@ -193,11 +193,16 @@ with st.expander("Add a run to the library", expanded=_import_open):
             col1, col2 = st.columns([3, 2], gap="large")
             with col1:
                 # UX remediation QW-8: a save of a run's modified inputs is a run of its own,
-                # so the default name says so ("bill later variant"), not the parent's own.
-                _name = kz.currentCaseName() or ""
-                if base_run_id and _name:
-                    _name = f"{_name} variant"
-                name = st.text_input("Run name", key="lib_save_name", value=_name)
+                # so the default name says so. Second pass (review AN4): "<base run's name>
+                # variant" -- the import's case name read "ari+noa variant" for "ari+noa
+                # condo baseline" -- and the widget is keyed by the case, so the default
+                # follows a switch of case (Streamlit keeps a drawn widget's value).
+                _case = kz.currentCaseName() or ""
+                _name = f"{base_name} variant" if base_name else _case
+                name = st.text_input("Run name", key=f"lib_save_name|{_case}", value=_name)
+                if name.strip() and name.strip() in {r.name for r in lib.runs()}:
+                    st.warning(f"A run is already called *{name.strip()}*: saving makes another "
+                               "one with the same name.", icon=":material/flag:")
                 notes = st.text_area("Notes (optional)", key="lib_save_notes")
                 tags = st.text_input("Tags (optional, comma separated)", key="lib_save_tags")
             collection = st.selectbox(

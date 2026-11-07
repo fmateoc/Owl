@@ -41,8 +41,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import libraryjobs
+import librarypresets
 import sskeys as kz
-from owlplanner.library import JobsError, PRESETS, ScenarioError, agemap, load_plan, preset_solves
+from owlplanner.library import JobsError, ScenarioError, agemap, load_plan, preset_solves
 from owlplanner.library import results as R
 from owlplanner.library import grid, tornado, view
 
@@ -50,15 +51,21 @@ st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
 libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
-_PRESET_HELP = (
-    "quick: the self-consistent loop for every tax family (no MIP, no local search), "
-    "claiming ages held at the scenario's values. decision: local search with the ages held, "
-    "plus its exact-model companion as a second result (the comparison's agreement check). "
-    "ages: the two-stage claiming-age search (run_suite.py's) when the scenario says 'let Owl "
-    "choose', then the final solve at the ages it picked. ages_thorough: work_sweep.py's "
-    "whole-year sweep, each pair scored by branch-and-bound at gap 1e-5 (slow: 29-51 min per "
-    "variant on the chris+pat dry run), then the final solve. custom: the case's own options."
-)
+# The four by-year charts read plan.json's `by_year`, which is in nominal dollars (each year's
+# own); plan.json carries no deflator, so the axes say so (UX review Q6).
+NOMINAL_PER_YEAR = "nominal $ per year"
+
+
+def _frozen_solver_options(run) -> dict:
+    """The `[solver_options]` of the run's frozen Case.toml (what its events generated
+    included), or {} when it cannot be read."""
+    import tomllib
+
+    try:
+        with open(run.path / "inputs" / "Case.toml", "rb") as fh:
+            return tomllib.load(fh).get("solver_options") or {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _usd(value):
@@ -76,7 +83,7 @@ def _things_to_look_at(result):
     st.caption(
         f"Years whose income sits within {100 * band:.0f}% of a threshold the model knows "
         "(today's dollars). *Cost* is what closing that gap costs where the model prices the "
-        "crossing; '-' where the boundary is a ramp. The plan may be parked at a boundary on "
+        "crossing; empty where the boundary is a ramp. The plan may be parked at a boundary on "
         "purpose (the optimizer fills a bracket to its edge): read this as a list of margins, "
         "not of errors."
     )
@@ -85,11 +92,15 @@ def _things_to_look_at(result):
         "Threshold": e["label"],
         "Side": e["side"],
         "Amount ($)": round(e["amount_today_dollars"]),
-        "Cost ($)": "-" if e.get("cost_today_dollars") is None else round(e["cost_today_dollars"]),
+        "Cost ($)": None if e.get("cost_today_dollars") is None else round(e["cost_today_dollars"]),
         "Affects": e.get("affects") or "-",
         "Note": e.get("note") or "",
     } for e in entries]
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q6)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
+                 column_config={"Year": st.column_config.NumberColumn(format="plain"),
+                                "Amount ($)": money, "Cost ($)": money,
+                                "Affects": st.column_config.TextColumn()})
 
 
 def _cash_flow_sankey(result, by_year):
@@ -203,18 +214,18 @@ def _claiming_age_map(run):
     """I7: the heat map over a work_sweep scores file (the run's, or one the user picks)."""
     st.markdown("### Claiming-age map")
     st.caption(
-        "The objective over the free claiming ages of one work variant (work_sweep.py output, "
-        "its --json file); cells tied within tolerance share a shade, the darkest being the "
-        "best. The `ages_thorough` preset (section 8.1's \"Ages, thorough\") writes this file "
-        "with its solve; the `ages` preset searches only the pick and its neighbours (design "
-        "8.1), so a map like this comes from the thorough sweep."
+        "What each pair of claiming ages is worth for one work variant: cells tied within the "
+        "solves' tolerance share a shade, the darkest being the best. The scores come from the "
+        "*Claiming ages, every pair tried* preset (an expert preset), which keeps them with its "
+        "solve; *Let Owl choose the claiming ages* tries only its pick and the neighbouring "
+        "years, so it gives no map."
     )
     maps = None
     found = None
     note = ""
     scores_path = run.path / "scores.json"
     if scores_path.exists():
-        found, note = scores_path, "Reading `scores.json` from the run folder."
+        found, note = scores_path, "Reading the claiming-age scores kept in the run's folder."
     else:
         # "Ages, thorough" writes its sweep with the solve (its results folder; I7).
         results = run.path / "results"
@@ -224,8 +235,8 @@ def _claiming_age_map(run):
                       reverse=True) if results.is_dir() else []
         if mine:
             found = mine[0]
-            note = (f"Reading `scores.json` from `{found.parent.name}` (the newest "
-                    "'Ages, thorough' solve).")
+            note = (f"Reading the claiming-age scores of the solve of {found.parent.name} (the "
+                    "newest *Claiming ages, every pair tried* solve).")
     if found is not None:
         try:
             maps = agemap.load_scores(found)
@@ -233,12 +244,14 @@ def _claiming_age_map(run):
         except Exception as exc:  # noqa: BLE001 - shown, not raised
             st.warning(f"{found.name} could not be read: {exc}")
     if maps is None:
-        up = st.file_uploader("A work_sweep scores file", type=["json"], key="run_page_scores")
+        up = st.file_uploader("A claiming-age scores file", type=["json"], key="run_page_scores",
+                              help="The scores file the claiming-age sweep writes (`scores.json`, "
+                                   "or `work_sweep.py --json` from the command line).")
         if up is not None:
             try:
                 maps = agemap.load_scores(up.getvalue())
             except Exception as exc:  # noqa: BLE001 - shown, not raised
-                st.error(f"Not a work_sweep scores file: {exc}")
+                st.error(f"Not a claiming-age scores file: {exc}")
     if not maps:
         return
     names = {}
@@ -281,13 +294,13 @@ def _conversions_and_brackets(run, result):
     st.caption(
         "Ordinary taxable income per year (after the deduction), the Roth conversion's share "
         "of it as the top layer (today's \\$): a conversion the deduction absorbs is not "
-        "taxable income, so the table gives the gross conversion beside its taxable part "
-        "(review AI1). The dotted lines are what the year is measured against: the top of "
+        "taxable income, so the table gives the gross conversion beside its taxable part. "
+        "The dotted lines are what the year is measured against: the top of "
         "the ordinary bracket the income is in (taxable income), and the IRMAA tier 1 line "
         "and the marketplace's 400% FPL cliff, which are read against **MAGI**, the solid "
         "line (the MAGI of a year sets the Medicare premiums two years later). The "
         "conversions are optimized in the model -- IRMAA, ACA, SS taxability and state tax "
-        "priced together -- so this view explains them (design 14.1, I8).")
+        "priced together -- so this view explains them.")
     xs = [row["year"] for row in years]
     income = [row.get("ordinary_taxable_income") or 0.0 for row in years]
     conv = [row.get("conversion") or 0.0 for row in years]
@@ -338,9 +351,9 @@ def _conversions_and_brackets(run, result):
     if regret is None:
         first = ((result.plan.get("individuals") or [None])[0])
         st.markdown("**What would a different conversion have cost?** A regret sweep "
-                    "(design 14.1, I8) re-solves historical scenarios with this year's "
+                    "re-solves historical scenarios with this year's "
                     "conversion pinned on a grid and reports the regret of each commitment"
-                    + (f" -- {first}'s conversion, the first person of the case (review AG10)"
+                    + (f" -- {first}'s conversion, the first person of the case"
                        if first else "") + ".")
         if st.button("Run the regret sweep", key="run_page_regret",
                      help="One solve per request (a background job, its own results): "
@@ -375,8 +388,8 @@ def _conversions_and_brackets(run, result):
             st.caption(f"Least regret: commit {valley.get('x', 0):,.0f} "
                        f"(mean regret {valley.get('mean_regret') or 0:,.0f})"
                        + (f", {whose}'s first-year conversion" if whose else "")
-                       + "; the curves and the per-scenario spread are in `regret.json` in "
-                       "this results folder.")
+                       + "; the curves and the per-scenario spread are in the full summary "
+                       "below (kept with this solve).")
         with st.expander("The full summary"):
             st.json(regret)
 
@@ -402,7 +415,7 @@ for job in reversed(manager.jobs(run)):
     if record is None:
         continue
     when = (record.get("solve_date") or {}).get("finished") or job.doc.get("queued") or ""
-    label = (f"{job.id} · {record.get('preset') or job.doc.get('preset')} · "
+    label = (f"{job.id} · {librarypresets.name(record.get('preset') or job.doc.get('preset'))} · "
              f"{when[:10] or 'no solve'} · {record.get('status') or job.state}")
     entries.append((label, job, view.load_result(job.results_dir)))
 if not entries:
@@ -443,19 +456,19 @@ if entries:
             how = ("local search" if decided.get("used") == "local search"
                    else "branch-and-bound at gap 1e-5")
             published = search.get("published_value")
-            st.caption("Claiming ages searched ('Ages, thorough'): picked "
+            st.caption("Claiming ages searched (every pair tried): picked "
                        f"{view.claiming_ages_text(result)} from "
                        f"{len(search.get('candidates') or [])} whole-year pair(s), each scored "
-                       f"at fixed ages by {how} (work_sweep); this plan is the decided cell "
+                       f"at fixed ages by {how}; this plan is the decided cell "
                        "re-solved the same way"
                        + (f" (objective {published:,.2f}; the sweep's cell {decided['value']:,.2f})"
                           if published is not None and decided.get("value") is not None else "")
                        + ".")
         else:
-            st.caption("Claiming ages searched (the Ages preset): picked "
+            st.caption("Claiming ages chosen by Owl: picked "
                        f"{view.claiming_ages_text(result)} from "
                        f"{len(search.get('candidates') or [])} candidate(s), scored at fixed ages "
-                       "under the case's own model (design 8.1).")
+                       "under the case's own model.")
     if record.get("status") != "solved":
         st.error(f"This solve did not finish: {record.get('status') or job.state}"
                  + (f" ({record.get('error')})" if record.get("error") else ""),
@@ -471,22 +484,33 @@ if entries:
 
     # -- headline numbers (design 9.1; run_suite.py's score rule) -------
     value = view.score(result)
+    case_options = _frozen_solver_options(run)
     cols = st.columns(6)
-    cols[0].metric("Score", _usd(value), help=view.score_label(result) + ", today's dollars.")
+    # The score's own words as its label (UX review Q7); under maxBequest it is the final
+    # bequest, and the savings left is the number differences are read on (view.first_number).
+    _score_words = view.score_label(result)
+    cols[0].metric(_score_words[:1].upper() + _score_words[1:], _usd(value),
+                   help="The score: the number the solve maximizes, today's dollars.")
     cols[1].metric("Home at the end", _usd(view.home_at_end(result)),
                    help="The home net of commission and of any loan still owed: the reserve "
-                        "for care, today's dollars. Never added to the savings (R3).")
+                        "for care, today's dollars. Never added to the savings.")
+    _spent = view.spent_down_by_design(result, case_options.get("bequest"))
     cols[2].metric("Savings left", _usd(view.savings_left(result)),
-                   help="After the heirs' tax, today's dollars.")
+                   delta="spent down by design" if _spent else None, delta_color="off",
+                   delta_arrow="off",
+                   help="After the heirs' tax, today's dollars."
+                        + (" The case asks for no bequest, so the plan spends its savings by the "
+                           "end: zero here is the goal." if _spent else ""))
     cols[3].metric("Total taxes", _usd(view.total_taxes_today(result)),
                    help="Income, gains, NIIT, payroll and state, over the plan (today's $).")
-    cols[4].markdown(f"**Claiming ages**  \n{view.claiming_ages_text(result) or '-'}")
+    cols[4].markdown("**Claiming ages**  \n"
+                     + (view.claiming_ages_phrase(result, case_options.get("withSSAges")) or "-"))
     withheld = view.ss_withheld_today(result)
     cols[5].markdown("**SS withheld by the earnings test**  \n"
                      + (f"\\${withheld:,.0f}" if withheld is not None else "-"))
     st.caption(view.score_label(result)
                + " is the score; the two end-of-plan numbers are reported side by side and "
-                 "never added (R3).")
+                 "never added together.")
 
     # -- "Things to look at" (design 14.1, I3) --------------------------
     _things_to_look_at(result)
@@ -501,7 +525,7 @@ if entries:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=years, y=[row.get("spending") for row in by_year],
                                      name="Spending", line=dict(width=3)))
-            fig.update_layout(yaxis_title="$ per year", xaxis_title="Year", height=320)
+            fig.update_layout(yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year", height=320)
             st.plotly_chart(fig, width="stretch")
         with tabs[1]:
             fig = go.Figure()
@@ -509,7 +533,7 @@ if entries:
                                ("fixed_assets", "Fixed assets"), ("debt", "Debt"),
                                ("net_worth", "Net worth")):
                 fig.add_trace(go.Scatter(x=years, y=[row.get(key) for row in by_year], name=label))
-            fig.update_layout(yaxis_title="$", xaxis_title="Year", height=320)
+            fig.update_layout(yaxis_title="nominal $", xaxis_title="Year", height=320)
             st.plotly_chart(fig, width="stretch")
         with tabs[2]:
             fig = go.Figure()
@@ -517,7 +541,7 @@ if entries:
                                ("ltcg_tax", "Gains tax"), ("niit", "NIIT"),
                                ("payroll_tax", "Payroll tax"), ("state_tax", "State + local")):
                 fig.add_trace(go.Bar(x=years, y=[row.get(key) for row in by_year], name=label))
-            fig.update_layout(barmode="stack", yaxis_title="$ per year", xaxis_title="Year",
+            fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year",
                               height=320)
             st.plotly_chart(fig, width="stretch")
         with tabs[3]:
@@ -528,7 +552,7 @@ if entries:
                 values = ([sum(row.get("ss_income") or []) for row in by_year] if key == "ss"
                           else [row.get(key) for row in by_year])
                 fig.add_trace(go.Bar(x=years, y=values, name=label))
-            fig.update_layout(barmode="stack", yaxis_title="$ per year", xaxis_title="Year",
+            fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year",
                               height=320)
             st.plotly_chart(fig, width="stretch")
         with tabs[4]:
@@ -587,14 +611,14 @@ if entries:
     with col4:
         if st.button("Edit the scenario", use_container_width=True,
                      help="The run's events (work, claiming, rent, a home purchase, care) on "
-                          "the Scenario page; what they generate is marked (design section 6)."):
+                          "the Scenario page, with what each one puts into the case."):
             st.session_state["library_selected_run"] = run.id
             st.switch_page("Scenario.py")
 
 # -- solve this run ----------------------------------------------------
 
 with st.expander("Solve this run"):
-    preset = st.selectbox("Preset", list(PRESETS), key="run_page_preset", help=_PRESET_HELP)
+    preset = librarypresets.select("Preset", "run_page_preset")
     if st.button("Solve", type="primary"):
         for solve in preset_solves(preset):
             try:
@@ -620,7 +644,7 @@ def _tornado_collection(run):
             f"Sensitivity: {run.name}",
             question=f"What moves {run.name}'s score? (one key input at a time)",
             rule="each child re-solved under the exact LP, against this run's own exact-LP "
-                 "solve; bars sorted by effect, each with its tolerance (R2)",
+                 "solve; bars sorted by effect, each with its tolerance",
             tornado_of=run.id)
     if coll.member(run.id) is None:
         lib.add_member(coll.id, run, {"mover": tornado.BASE_LABEL})
@@ -654,11 +678,11 @@ with st.expander("Sensitivity (tornado)"):
         "One child run per key input moved by a set step: " +
         "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
         ". Each child is solved under the exact LP (for speed) -- the medical-inflation child "
-        "with Medicare priced exactly, since the exact LP has no Medicare premiums (review "
-        "AJ1) -- and measured against this run's own solve under the same model, which the "
-        "button queues when the run has none (review AG2); the bars below are sorted by the "
-        "size of the effect, each with its tolerance (R2), the home at the end beside it (R3's "
-        "other number, never added). A mover that does not fit this scenario, or that no plan "
+        "with Medicare priced exactly, since the exact LP has no Medicare premiums -- and "
+        "measured against this run's own solve under the same model, which the button queues "
+        "when the run has none; the bars below are sorted by the size of the effect, each with "
+        "its tolerance (the noise rule), the home at the end beside it (the other number, never "
+        "added). A mover that does not fit this scenario, or that no plan "
         "year would see, is skipped and says why. A solve already made today by this code, or "
         "queued, is not queued again. The runs land in the collection "
         f"*{getattr(tornado.collection_of(lib, run.id), 'name', None) or 'Sensitivity: ' + run.name}*."
@@ -721,7 +745,7 @@ with st.expander("Sensitivity (tornado)"):
         if all(b is None for b in _bases.values()):
             st.caption("The bars wait for this run's own exact-LP solve (the children's model; "
                        "\"Make the sensitivity runs\" queues it): another model's result would "
-                       "put the model change into every bar (review AG2).")
+                       "put the model change into every bar.")
         elif any(result is not None for _label, result in _rows):
             _ref = _base or _bases[tornado.MEDICARE_PRESET]
             _what = view.first_number_label(_ref)
@@ -733,7 +757,8 @@ with st.expander("Sensitivity (tornado)"):
             _plain = grid.latest_result(run.path)
             if (_plain is not None and _plain.record.get("age_search")
                     and view.claiming_ages(_plain) != view.claiming_ages(_ref)):
-                st.warning(f"This run's last '{_plain.record.get('preset')}' solve picked the claiming "
+                _last = librarypresets.name(_plain.record.get("preset"))
+                st.warning(f"This run's last '{_last}' solve picked the claiming "
                            f"ages {view.claiming_ages_text(_plain)}; the sensitivity solves hold the "
                            f"case's own ({view.claiming_ages_text(_ref)}), so the bars do too.",
                            icon=":material/flag:")
@@ -785,5 +810,5 @@ _claiming_age_map(run)
 
 st.caption(
     "A results folder is one solve of the run's frozen inputs. Plans start today: results "
-    "from different days are flagged when compared (design 8.3)."
+    "from different days are flagged when compared."
 )

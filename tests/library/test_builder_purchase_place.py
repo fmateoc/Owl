@@ -30,6 +30,7 @@ def _scenario(events, hfp=None):
 def flat_gamma(monkeypatch):
     monkeypatch.setattr(b, "_gamma", lambda case, rates_rows=None: list(GAMMA))
 
+
 YONKERS = "City of Yonkers / Yonkers"
 
 

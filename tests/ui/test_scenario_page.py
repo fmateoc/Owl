@@ -74,7 +74,7 @@ class TestScenarioPage:
         at = _page()
         text = _text(at)
         assert "What the events generate (marked)" in text
-        assert "regenerated wholesale" in text  # markers first (S11)
+        assert "regenerated whole" in text  # markers first (S11)
         frames = at.dataframe
         assert frames, "no generated-rows table rendered"
         cells = "\n".join(str(f.value) for f in frames)

@@ -172,8 +172,8 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                 "Collection (optional)", [None] + list(lib.collections()),
                 format_func=lambda c: "(none)" if c is None else c.name,
                 key="lib_import_collection",
-                help="The run joins this collection as it is (design section 7); its variant "
-                     "values are set on the Collections page.")
+                help="The run joins this collection as it is; its variant values are set "
+                     "on the Collections page.")
         if st.button("Import as a new run", type="primary", disabled=case_up is None):
             _save_uploaded_run(name.strip(), notes.strip(), tags.split(","),
                                {"case": case_up, "hfp": hfp_up, "budget": budget_up,
@@ -200,8 +200,8 @@ with st.expander("Add a run to the library", expanded=not lib.runs()):
                 "Collection (optional)", [None] + list(lib.collections()),
                 format_func=lambda c: "(none)" if c is None else c.name,
                 key="lib_save_collection",
-                help="The run joins this collection as it is (design section 7); its variant "
-                     "values are set on the Collections page.")
+                help="The run joins this collection as it is; its variant values are set "
+                     "on the Collections page.")
             if st.button("Save as a new run", type="primary"):
                 _save_current_case(name.strip(), notes.strip(), tags.split(","), collection)
                 st.rerun()
@@ -252,8 +252,9 @@ for run in runs:
             lib.rename_run(run, new.strip() or run.name)
             st.rerun()
     with cols[4].popover("Delete"):
-        st.caption("Moves the run to `library/trash/` (emptied by hand). Children keep "
-                   "their parent id and show it as deleted.")
+        st.caption("Moves the run to the library's trash folder (emptied by hand). Runs made "
+                   "from it keep their link to it and show it as deleted.",
+                   help="The folder is `trash/` inside the library folder.")
         if st.button("Delete", type="primary", key=f"delb_{run.id}"):
             # Through the manager: a run with a waiting or running solve is refused (review
             # 3, W4: the folder used to move to trash/ under a live worker, untracked).
@@ -270,8 +271,8 @@ if damaged:
                "shown as damaged, never listed: " + ", ".join(p.name for p in damaged))
 
 st.caption(
-    "A run is immutable: its inputs and every solve stay as they were saved (save-as only, "
-    "D3). Deleting moves the folder to `library/trash/`; backing up is copying the library "
-    "folder, and `owlcli run runs/<run>/inputs/Case.toml` reproduces a solve outside the "
-    "interface."
+    "A saved run never changes: its inputs and every solve stay as they were saved, and an "
+    "edit is saved as a new run. Deleting moves a run to the library's trash folder; backing "
+    "up is copying the library folder. Each run's inputs are an ordinary Owl case, so a solve "
+    "can be reproduced outside the interface with Owl's command line."
 )

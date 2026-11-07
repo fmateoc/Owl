@@ -94,3 +94,31 @@ def test_decision_queues_its_exact_companion(library, monkeypatch):
     presets = sorted(R.JobRecord.read(d).doc["preset"]
                      for d in (run.path / "results").iterdir() if (d / "status.json").exists())
     assert presets == ["decision", "decision_exact"], presets
+
+
+def test_the_queue_says_what_a_job_is_doing_in_words(library):
+    """UX review Q8: a phase in words, not the raw DEBUG line; a failed job keeps its error."""
+    job = _running_job(library, "running")
+    job.update(step="solving", last_log="2026-11-07 | DEBUG | localsearch:_step:263 | "
+                                        "Local search, iteration 12: SS ball: moved in 1.20s.")
+    run = library.runs()[0]
+    failed = R.JobRecord.create(run.path / "results" / "failed", run_id=run.id, run_name=run.name,
+                                preset="decision", options={}, plan_year=2026)
+    failed.update(state=R.FAILED, error="ValueError: no plan")
+    at = _page()
+    assert not at.exception, [e.value for e in at.exception]
+    shown = [m.value for m in at.markdown]
+    assert "Solving: searching the tax breakpoints, step 12" in shown
+    assert "Failed: ValueError: no plan" in shown
+    assert not any("DEBUG" in m for m in shown)
+    assert any("Careful (about 5 minutes)" in m for m in shown)  # Q2: the preset's name
+
+
+def test_job_phase_words():
+    import libraryjobs
+
+    assert libraryjobs.job_phase({"state": "waiting"}, another_running=True).startswith("Waiting for another")
+    assert libraryjobs.job_phase({"state": "waiting"}) == "Waiting to start"
+    assert libraryjobs.job_phase({"state": "running", "step": "solving", "iteration": 3}) == \
+        "Solving, loop iteration 3"
+    assert libraryjobs.job_phase({"state": "interrupted"}) == "Interrupted"

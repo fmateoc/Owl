@@ -123,6 +123,7 @@ def place_text(value) -> str:
     text = "" if value is None else str(value).strip()
     return "" if text == NO_PLACE else text
 
+
 # "That event's year" for an `event:` anchor, by the target's kind (review X6): a work span's
 # end, a rent's start, a purchase's or care span's year, a downturn's placement. A claim or a
 # death has no year.

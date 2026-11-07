@@ -193,7 +193,7 @@ def lead_verdict(rows, objective: str = "maxSpending") -> dict:
         "verdict": "trade-off",
         "note": (("one buys more spending, the other keeps more home at the end" if spending
                   else "one leaves more savings, the other more home at the end")
-                 + "; the two numbers are never added (R3)"),
+                 + "; the two numbers are never added together"),  # R3
     }
 
 
@@ -229,8 +229,7 @@ def agreement(a: Result, b: Result, a_exact: Result, b_exact: Result) -> dict:
         verdict = ("not settled by the exact model: the pair's own difference decides "
                    f"({d_pair:+,.0f} today's $)")
         note = ("Plan years with marketplace coverage: the exact model mis-prices the ACA "
-                "trade, so a disagreement goes to the local-search result, not to a tie "
-                "(design 9.2).")
+                "trade, so a disagreement goes to the local-search result, not to a tie.")  # design 9.2
     return {
         "delta_pair": d_pair,
         "delta_exact": d_ex,
@@ -363,3 +362,32 @@ def exact_companion(results, exclude=(), near=None) -> Optional[Result]:
     if near is not None:
         cands.sort(key=lambda r: 0 if _day(r) == _day(near) else 1)  # stable: newest first
     return cands[0] if cands else None
+
+
+# -- the Compare page's default pair (UX review Q4) -------------------
+
+
+def default_pair(entries) -> tuple:
+    """The indices (a, b) the Compare page selects first.
+
+    `entries` holds one tuple per result, in the page's order: (run id, parent run id,
+    finish time in seconds or None, main) -- `main` true for a solved headline result (not a
+    model companion, R2). B is the newest main result; A is the newest main result of B's
+    parent run, else the newest main result of another run, never B itself. (Nothing in the
+    library sets a pinned baseline yet, so there is no pin to prefer.) With fewer than two
+    main results, the first two entries.
+    """
+    mains = [i for i, e in enumerate(entries) if e[3]]
+    if len(mains) < 2:
+        return 0, min(1, len(entries) - 1)
+
+    def newest(indices):
+        # The newest finish; the page order (newest run first) breaks ties and missing times.
+        return max(indices, key=lambda i: (entries[i][2] if entries[i][2] is not None else float("-inf"), -i))
+
+    b = newest(mains)
+    run_b, parent_b = entries[b][0], entries[b][1]
+    of_parent = [i for i in mains if parent_b is not None and entries[i][0] == parent_b]
+    others = [i for i in mains if entries[i][0] != run_b]
+    a = newest(of_parent or others or [i for i in mains if i != b])
+    return a, b

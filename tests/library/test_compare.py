@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+from owlplanner.library import compare as C
 from owlplanner.library import results as R
 from owlplanner.library.compare import (
     agreement,
@@ -287,3 +288,31 @@ def test_what_moved_matches_the_plans_by_calendar_year():
     rows, totals, _columns = what_moved(a, b)
     assert [(r["year"], r["changes"]["spending"]) for r in rows] == [(2026, -1000), (2029, 4000)]
     assert dict(totals) == {"Spending": 3000}
+
+
+class TestDefaultPair:
+    """UX review Q4: the Compare page's first selection."""
+
+    def test_b_is_the_newest_and_a_its_parent(self):
+        entries = [("c", None, 300.0, True), ("b", "a", 200.0, True), ("b", "a", 250.0, False),
+                   ("a", None, 100.0, True)]
+        a, b = C.default_pair(entries)
+        assert b == 0  # run c's result is the newest main one
+        # c has no parent: A is the newest main result of another run, b's.
+        assert a == 1
+
+    def test_a_is_the_parent_even_when_another_run_is_newer(self):
+        entries = [("b", "a", 300.0, True), ("x", None, 250.0, True), ("a", None, 100.0, True)]
+        assert C.default_pair(entries) == (2, 0)
+
+    def test_a_companion_is_never_chosen(self):
+        entries = [("b", "a", 300.0, True), ("a", None, 310.0, False), ("a", None, 100.0, True)]
+        assert C.default_pair(entries) == (2, 0)
+
+    def test_never_the_same_result(self):
+        entries = [("a", None, 100.0, True), ("a", None, 200.0, True)]
+        assert C.default_pair(entries) == (0, 1)
+
+    def test_fewer_than_two_main_results(self):
+        assert C.default_pair([("a", None, 1.0, True)]) == (0, 0)
+        assert C.default_pair([("a", None, 1.0, False), ("b", None, 2.0, True)]) == (0, 1)

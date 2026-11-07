@@ -29,9 +29,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import streamlit as st
 
 import libraryjobs
+import librarypresets
 import sskeys as kz
 import variant_tables as vt
-from owlplanner.library import JobsError, PRESETS, ScenarioError, grid, preset_solves, variants
+from owlplanner.library import JobsError, ScenarioError, grid, preset_solves, variants
 from owlplanner.library import view
 from owlplanner.library.sequences import sequences as _sequences
 
@@ -77,7 +78,7 @@ with st.expander("New collection", expanded=not lib.collections()):
 colls = lib.collections()
 if not colls:
     st.info("The library has no collections yet: create one above. A collection is a named "
-            "set of runs answering one question, with a comparison rule (section 4).")
+            "set of runs answering one question, with a comparison rule.")
     st.stop()
 
 labels = {f"{c.name}  ({len(c.members)} run(s))": c for c in colls}
@@ -104,9 +105,9 @@ with st.expander("Question, rule and layout"):
     question = c2.text_area("Question", value=coll.question, key=f"col_question_{coll.id}",
                             help="What this collection answers, in one sentence.")
     rule = st.text_area("Comparison rule", value=coll.rule, key=f"col_rule_{coll.id}",
-                        help="How the variants are judged (R3: a variant leads only when it is "
-                             "at least as good on the score and the home at the end, better on "
-                             "one beyond the noise rule; the two numbers are never added).")
+                        help="How the variants are judged: a variant leads only when it is at "
+                             "least as good on the score and the home at the end, and better on "
+                             "one beyond the noise rule; the two numbers are never added together.")
     dims = sorted({key for m in coll.members for key in (m.values or {})})
     shown_rows, shown_cols = vt.grid_layout(dims, coll.grid)  # AD2: the layout the grid uses
     c3, c4 = st.columns(2)
@@ -155,8 +156,8 @@ if runs:
     with st.expander("Make variants", expanded=False):
         parent = st.selectbox("From run", runs, format_func=lambda r: f"{r.name}  ({r.folder_name})",
                               key="col_variant_parent",
-                              help="One child draft per value of the dimensions below (section 9.3); "
-                                   "several dimensions give their product -- the grid.")
+                              help="One child draft per value of the dimensions below; several "
+                                   "dimensions give their product -- the grid.")
         names = list(((lib.scenario(parent).get("case") or {}).get("basic_info") or {}).get("names") or [])
         st.caption("Each table is one dimension: **one row per value**. Leave a table or field "
                    "empty to keep the parent's; in a table, an empty cell keeps the parent's value "
@@ -168,7 +169,7 @@ if runs:
             vt.places_table(), num_rows="dynamic", key="col_variant_places",
             column_config={"move": st.column_config.CheckboxColumn(
                 "move", help="A move at the purchase (the place's locality and district from that "
-                             "year); unchecked: the district only (AD6: a checkbox, not text)")})
+                             "year); unchecked: the district only")})
         st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`)")
         fins = st.data_editor(
             vt.financing_table(), num_rows="dynamic", key="col_variant_fins",
@@ -190,14 +191,14 @@ if runs:
                        f"({view.claiming_ages_text(parent_result)}). With the boxes empty the "
                        "variants keep the case's own ages under quick/decision: fill the boxes from "
                        "its last solve to hold the whole grid at those ages.", icon=":material/flag:")
-        st.markdown("**First death** (I2: one person's life horizon, comma separated ages)")
+        st.markdown("**First death** (one person's life horizon, comma separated ages)")
         d1, d2 = st.columns(2)
         death_person = d1.selectbox("dies early, for", ["(none)"] + names, key="col_variant_death_person",
                                     help="One child per age: 'Ari dies at 75'. Owl's own death "
                                          "mechanics (the survivor's share, single filing) do the rest.")
         death_ages = d2.text_input("their death age(s)", key="col_variant_death_ages",
                                    placeholder="75, 80, 85")
-        st.markdown("**Downturn sequence** (I11: one row per value; `start` a year or an anchor "
+        st.markdown("**Downturn sequence** (one row per value; `start` a year or an anchor "
                     "like `purchase`; `-` removes the overlay)")
         seqs = st.data_editor(
             vt.sequences_table(), num_rows="dynamic", key="col_variant_seqs",
@@ -209,13 +210,9 @@ if runs:
                                    key="col_variant_collection")
         c3, c4 = st.columns(2)
         run_now = c3.checkbox("Queue them when created", key="col_variant_run",
-                              help="Each child is solved with the preset below (its own results "
-                                   "folder, section 8.2).")
-        preset = c4.selectbox("Preset", list(PRESETS), key="col_variant_preset",
-                              help="quick: the loop, ages held. decision: local search + its exact "
-                                   "companion. ages: the two-stage claiming-age search. "
-                                   "ages_thorough: work_sweep.py's whole-year sweep (slow). "
-                                   "custom: the case's own options.")
+                              help="Each child is solved with the preset beside it, in a "
+                                   "background job of its own.")
+        preset = librarypresets.select("Preset", "col_variant_preset", container=c4)
         if st.button("Create the variants", type="primary", key="col_variant_go"):
             try:
                 dimensions, notes = vt.dimensions(names, years_text, places, fins,
@@ -340,7 +337,7 @@ if not solved:
     st.info("No member of this collection has a solved result yet: queue them below (or on "
             "the Run page) and come back.")
 elif ref_entry is None or ref_entry.result is None or not ref_entry.result.solved:
-    st.info("Choose a reference below: the grid's cells are differences from it (section 9.3).")
+    st.info("Choose a reference below: the grid's cells are differences from it.")
 else:
     g = grid.grid_view(entries, reference=ref_entry.run_id, row_dims=rows, col_dims=columns)
     # R3's first number (review AJ3): the score, or under maxBequest the savings left (the
@@ -349,8 +346,8 @@ else:
     st.caption(f"Each cell: the difference from the reference (**{ref_entry.name}**, "
                f"{view.first_number(ref_entry.result):,.0f}) in {first_name}, and below it the home "
                "at the end (today's \\$). &#9733; is the best in its row on that number alone. "
-               "Colour, R3's "
-               "verdict on the two numbers: green leads the reference, red the reference leads, "
+               "Colour, the "
+               "verdict on the two numbers together: green leads the reference, red the reference leads, "
                "blue a trade-off (more spending against more home), grey no difference beyond the "
                "noise rule; ~ marks a score difference inside the noise band.")
     lines = [f"| {_key_label(rows) if rows else 'variant'} | "
@@ -364,7 +361,7 @@ else:
         st.warning(flag, icon=":material/flag:")
     leaders = grid.front(entries, reference=ref_entry.run_id)
     if leaders:
-        st.markdown("#### What nothing beats (R3)")
+        st.markdown("#### What nothing beats")
         st.caption("The variants no other variant beats on both numbers -- the score and the "
                    "home at the end, never added. *vs the reference* is the score difference's "
                    "verdict against the noise rule.")
@@ -395,7 +392,7 @@ else:
 
 st.markdown("### Members")
 st.caption("A member with variant values is placed in the grid; one without is listed beside "
-           "it (section 9.3). *Values* sets them by hand for a run added here -- the same "
+           "it. *Values* sets them by hand for a run added here -- the same "
            "{dimension: label} pairs \"make variants\" fills, for example "
            "`year: 2027; place: yonkers`.")
 member_runs = []
@@ -417,7 +414,7 @@ ref_index = next((i for i, r in enumerate(ref_options) if r is not None and r.id
 ref_choice = c3.selectbox("Reference", ref_options,
                           format_func=lambda r: "(none)" if r is None else r.name,
                           index=ref_index,
-                          help="The run the grid's cells are differences from (section 9.3).",
+                          help="The run the grid's cells are differences from.",
                           key=f"col_ref_{coll.id}")
 if c3.button("Set the reference"):
     lib.set_reference(coll.id, ref_choice)
@@ -467,10 +464,10 @@ for member in coll.members:
 # -- run the collection again -----------------------------------------
 
 with st.expander("Run the collection again"):
-    st.caption("Every member is queued with the preset below (design 8.2's \"run the whole "
-               "collection again today\"). Plans start today: compare only runs solved the "
-               "same day, and only within the run's plan year (R1).")
-    preset = st.selectbox("Preset", list(PRESETS), key="col_run_preset")
+    st.caption("Every member is queued again with the preset below. Plans start today: compare "
+               "only runs solved the same day, and only within the run's plan year (the year "
+               "its balances were entered for).")
+    preset = librarypresets.select("Preset", "col_run_preset")
     if st.button("Queue every member", type="primary"):
         queued = 0
         for member in coll.members:

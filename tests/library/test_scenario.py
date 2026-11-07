@@ -248,3 +248,38 @@ class TestCanonicalPurchaseDefaults:
         [event] = self._doc({"financing": {"kind": "cash", "closing": 0.03}, "costs": {"hoa": 9600}})
         assert event["financing"] == {"kind": "cash", "closing": 0.03}
         assert event["costs"] == {"hoa": 9600}
+
+
+class TestChangeSummariesInWords:
+    """UX review Q9: the paths a person meets in words, and no change at a default."""
+
+    def _case(self, **options):
+        return {"schema_version": 3, "case": {"solver_options": {"maxRothConversion": 200, **options}}}
+
+    def test_a_known_path_is_named_in_words(self):
+        from owlplanner.library.scenario import diff_summaries
+
+        changes = diff_summaries(self._case(), {"schema_version": 3,
+                                                "case": {"solver_options": {"maxRothConversion": 50.0}}})
+        assert changes == ["Roth conversion cap: 200 -> 50.0"]
+
+    def test_defaults_the_pages_add_are_not_changes(self):
+        from owlplanner.library.scenario import diff_summaries
+
+        old = self._case(timePreference=0.0)
+        new = self._case(noLateSurplus=False, spendingSlack=0)
+        new["case"]["solver_options"]["maxRothConversion"] = 50.0
+        assert diff_summaries(old, new) == ["Roth conversion cap: 200 -> 50.0"]
+
+    def test_a_value_off_the_default_is_a_change(self):
+        from owlplanner.library.scenario import diff_summaries
+
+        changes = diff_summaries(self._case(), self._case(noLateSurplus=True, timePreference=1.5))
+        assert sorted(changes) == ["no cash-flow surplus in the last two years: added (True)",
+                                   "time preference: added (1.5)"]
+
+    def test_an_unknown_path_stays_raw(self):
+        from owlplanner.library.scenario import diff_summaries
+
+        assert diff_summaries(self._case(), self._case(mipMaxNodes=5)) == [
+            "case.solver_options.mipMaxNodes: added (5)"]

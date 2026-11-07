@@ -183,6 +183,47 @@ def claiming_ages_text(result: Result) -> str:
     return ", ".join(f"{name} {age_text(age)}" for name, age in claiming_ages(result))
 
 
+def claiming_ages_how(result: Result, case_ss_ages=None) -> str:
+    """How the solve got its claiming ages, in words (UX review Q7): "chosen by Owl" when an
+    Ages preset searched them (`record.json` `age_search`); "held" when the solve fixed them
+    (`withSSAges = "fixed"` in its options) while the run's case asks Owl to search them
+    (`case_ss_ages`, the case's own `withSSAges`); "" otherwise (the case fixes them itself)."""
+    record = result.record or {}
+    if record.get("age_search"):
+        return "chosen by Owl"
+    solved = str(((record.get("method") or {}).get("options") or {}).get("withSSAges", "")).lower()
+    asked = case_ss_ages if isinstance(case_ss_ages, list) else str(case_ss_ages or "fixed").lower()
+    if solved == "fixed" and asked not in ("fixed", "", []):
+        return "held"
+    return ""
+
+
+def claiming_ages_phrase(result: Result, case_ss_ages=None) -> str:
+    """`claiming_ages_text` with how they were set: "Ari 67y0m, Noa 67y0m (held at these:
+    this solve does not search them)" or "(chosen by Owl)"."""
+    text = claiming_ages_text(result)
+    how = claiming_ages_how(result, case_ss_ages)
+    if not text or not how:
+        return text
+    if how == "held":
+        return f"{text} (held at these: this solve does not search them)"
+    return f"{text} ({how})"
+
+
+def spent_down_by_design(result: Result, case_bequest=None) -> bool:
+    """Savings left at zero on purpose (UX review Q7): a maxSpending plan whose bequest
+    target (the case's `solver_options.bequest`, 0 when absent) is zero spends the savings
+    by the end; a zero then is the goal, not a shortfall."""
+    left = savings_left(result) if result is not None else None
+    if left is None or result.plan.get("objective") != "maxSpending":
+        return False
+    try:
+        target = float(case_bequest or 0.0)
+    except (TypeError, ValueError):
+        return False
+    return target == 0.0 and abs(left) < 0.5
+
+
 # -- "Things to look at" (I3) and the one-year cash flow (I6) ------------
 # Both blocks are written into plan.json at solve time (`thresholds.threshold_proximity`,
 # `export.cash_flow_split` via `plan_to_dict`), so a result reads the same without plan.pkl.

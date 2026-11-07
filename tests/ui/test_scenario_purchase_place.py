@@ -7,8 +7,6 @@ Create Case), and a purchase over a hand Fixed Assets home still owned is refuse
 
 from pathlib import Path
 
-import pytest
-
 from owlplanner.library import Library, import_case
 from owlplanner.library import builder
 

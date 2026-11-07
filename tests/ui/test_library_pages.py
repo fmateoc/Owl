@@ -290,7 +290,8 @@ class TestRunPage:
         assert not at.exception, [e.value for e in at.exception]
         metrics = {m.label: m.value for m in at.metric}
         # The newest run's main solve (its exact-model companion is not the headline, R2).
-        assert metrics["Score"] == "84,000"
+        # UX review Q7: the score's own words are its label.
+        assert metrics["First year's discretionary spending (\\$/yr, today's)"] == "84,000"
         assert metrics["Home at the end"] == "120,000"
         assert metrics["Savings left"] == "350,000"
         assert metrics["Total taxes"] == "180,000"
@@ -393,14 +394,14 @@ class TestRunPageDetails:
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
         assert "Claiming-age map" in text
-        assert "Reading `scores.json` from the run folder" in text
+        assert "Reading the claiming-age scores kept in the run's folder" in text
         assert "3 scored plan(s)" in text and "2 shade(s)" in text
         assert at.selectbox(key="run_page_age_variant"), "the variant picker did not render"
 
     def test_without_a_scores_file_the_map_asks_for_one(self, library):
         at = _page("Run.py")
         assert "Claiming-age map" in _text(at)
-        assert any(u.label.startswith("A work_sweep scores file") for u in at.get("file_uploader"))
+        assert any(u.label.startswith("A claiming-age scores file") for u in at.get("file_uploader"))
 
     def test_the_map_reads_the_scores_an_ages_thorough_solve_wrote(self, library):
         """The `ages_thorough` preset writes `scores.json` with its solve (its results
@@ -415,7 +416,7 @@ class TestRunPageDetails:
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
-        assert f"Reading `scores.json` from `{folder.name}`" in text
+        assert f"Reading the claiming-age scores of the solve of {folder.name}" in text
         assert "Claiming-age map" in text
 
     def test_ah6_the_map_skips_a_folder_whose_solve_did_not_finish(self, library):
@@ -436,7 +437,7 @@ class TestRunPageDetails:
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
-        assert f"Reading `scores.json` from `{solved.name}`" in text
+        assert f"Reading the claiming-age scores of the solve of {solved.name}" in text
         assert failed.name not in text
 
     def test_a_work_variant_with_fixed_ages_draws_nothing_and_does_not_crash(self, library):
@@ -483,6 +484,19 @@ class TestComparePage:
     def test_the_what_moved_table_is_rendered(self, library):
         at = _page("Compare.py")
         assert at.dataframe, "the 'what moved' table did not render"
+
+    def test_the_default_pair_is_the_newest_result_against_its_parent(self, library):
+        """UX review Q4: B the newest main result, A its parent run's (not the newest other run)."""
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = "bill unrelated"
+        other = library.save_run(name="unrelated", scenario=scenario).run
+        _set_created(other, "2026-11-01T11:00:00+01:00")
+        _write_result(other, "2026-11-02T10-40-00_decision", finished="2026-11-02T10:50:00+01:00")
+        at = _page("Compare.py")
+        assert not at.exception, [e.value for e in at.exception]
+        a, b = at.selectbox(key="cmp_a").value, at.selectbox(key="cmp_b").value
+        assert b.startswith("bill later (") and "_decision ·" in b, b
+        assert a.startswith("bill (") and "_decision ·" in a, a
 
     def test_the_s13_flags_are_shown(self, library):
         """Review P12: different days and commits must be flagged on the page itself."""
@@ -844,7 +858,7 @@ class TestConversionsAndBrackets:
         at.run()
         assert not at.exception, [e.value for e in at.exception]
         caption = next(c.value for c in at.caption if "Claiming ages searched" in c.value)
-        assert "'Ages, thorough'" in caption and "branch-and-bound at gap 1e-5" in caption
+        assert "(every pair tried)" in caption and "branch-and-bound at gap 1e-5" in caption
         assert "re-solved the same way" in caption and "165,361.78" in caption
         assert "under the case's own model" not in caption
 

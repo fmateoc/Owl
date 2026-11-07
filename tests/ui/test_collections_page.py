@@ -95,7 +95,7 @@ class TestTheGrid:
         text = _text(at)
         assert "Where and when to buy" in text
         assert "Maximize spending, condo kept" in text
-        assert "The grid" in text and "What nothing beats (R3)" in text
+        assert "The grid" in text and "What nothing beats" in text
 
     def test_the_cells_are_differences_from_the_reference(self, library):
         at = _page()

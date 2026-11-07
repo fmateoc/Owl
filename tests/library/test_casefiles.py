@@ -287,7 +287,7 @@ class TestSaveOnABase:
         scenario = scenario_from_ui(uidic, plan, base=base)
         changes = diff_summaries(base, scenario)
         assert len(changes) == 1
-        assert changes[0].startswith("case.savings_assets.taxable_savings_balances")
+        assert changes[0].startswith("taxable savings balances[0]: ")  # in words (UX review Q9)
 
     def test_without_a_base_the_page_defaults_show(self):
         """Why base= exists: ui_to_config fills fields the file leaves out."""

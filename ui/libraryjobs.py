@@ -15,6 +15,7 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+import re
 from pathlib import Path
 
 import streamlit as st
@@ -89,3 +90,33 @@ def _manager(root: str):
 def get_manager():
     """The server's job manager over the library folder (`OWL_LIBRARY_DIR`), ticking."""
     return _manager(str(default_library_root()))
+
+
+_LS_STEP = re.compile(r"Local search, iteration\s+(\d+)")
+
+
+def job_phase(doc: dict, *, another_running: bool = False) -> str:
+    """What a queued job is doing, in words, for the Queue page (UX review Q8).
+
+    The raw log line (`last_log`, e.g. "... | DEBUG | localsearch:_step:263 | ...") stays
+    available beside it; this is the worker's own step ("solving", "searching the claiming
+    ages"), with the local search's step or the loop's iteration when the log names one.
+    A failed or interrupted job leads with its error text.
+    """
+    state = doc.get("state")
+    if state == "waiting":
+        return "Waiting for another solve to finish" if another_running else "Waiting to start"
+    if state in ("failed", "interrupted"):
+        error = doc.get("error") or ""
+        head = "Failed" if state == "failed" else "Interrupted"
+        return f"{head}: {error}" if error else head
+    if state == "done":
+        return "Finished"
+    step = str(doc.get("step") or "solving").strip()
+    text = step[:1].upper() + step[1:]
+    match = _LS_STEP.search(doc.get("last_log") or "")
+    if match:
+        return f"{text}: searching the tax breakpoints, step {match.group(1)}"
+    if doc.get("iteration") is not None:
+        return f"{text}, loop iteration {doc['iteration']}"
+    return text

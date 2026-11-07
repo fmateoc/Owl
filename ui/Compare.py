@@ -28,6 +28,7 @@ import pandas as pd
 import streamlit as st
 
 import libraryjobs
+import librarypresets
 import sskeys as kz
 from owlplanner.library import compare as C
 from owlplanner.library import results as R
@@ -51,7 +52,7 @@ def _catalog():
                 continue
             when = (record.get("solve_date") or {}).get("finished") or job.doc.get("queued") or ""
             label = (f"{run.name} ({run.folder_name}) · {job.id} · "
-                     f"{record.get('preset') or job.doc.get('preset')} · "
+                     f"{librarypresets.name(record.get('preset') or job.doc.get('preset'))} · "
                      f"{when[:10] or 'no solve'} · {record.get('status') or job.state}")
             out.append((label, run, job, record))
     return out
@@ -78,12 +79,13 @@ if len(catalog) < 2:
     st.stop()
 
 labels = [label for label, _, _, _ in catalog]
-# The default pair is two main solves from two different runs (a run's model companion --
-# the exact LP, or the tornado's Medicare model, review AJ1 -- is a check, not a headline, R2).
-a_idx = next((i for i, e in enumerate(catalog) if view.record_companion(e[3]) is None), 0)
-b_idx = next((i for i, e in enumerate(catalog)
-              if i != a_idx and view.record_companion(e[3]) is None and e[1].id != catalog[a_idx][1].id),
-             min(1, len(catalog) - 1))
+# The default pair (UX review Q4): B the newest main solve, A the newest main solve of B's
+# parent run (what B was edited from), else of another run. A run's model companion -- the
+# exact LP, or the tornado's Medicare model, review AJ1 -- is a check, not a headline (R2).
+a_idx, b_idx = C.default_pair([
+    (run.id, run.parent, R.stamp_seconds((record.get("solve_date") or {}).get("finished")),
+     record.get("status") == "solved" and view.record_companion(record) is None)
+    for _label, run, _job, record in catalog])
 col1, col2 = st.columns(2)
 a_label = col1.selectbox("Result A (the reference)", labels, key="cmp_a", index=a_idx)
 b_label = col2.selectbox("Result B", labels, key="cmp_b", index=b_idx)
@@ -156,7 +158,7 @@ if agree:
         "The pair as selected and under the exact model (the loop with Medicare "
         "off, SS taxability 0.85 and capital gains priced exactly: a different model, so only "
         "its differences compare). A difference counts when both models give it the same sign "
-        "and it is larger than their spread plus the error bars of unsettled loops (R2)."
+        "and it is larger than their spread plus the error bars of unsettled loops."
     )
     st.markdown(
         f"- difference in the selected pair: **{_signed(agree['delta_pair'])}**\n"
@@ -169,11 +171,11 @@ if agree:
         st.caption(agree["note"])
 elif a.solved and b.solved:
     st.caption("No exact-model companion on both sides: the agreement check needs an exact "
-               "result of its own for each run (solve both with the Decision preset).")
+               "result of its own for each run (solve both with the *Careful* preset).")
 
 # -- what moved (design 9.2) ------------------------------------------
 
-st.markdown("#### What moved")
+st.markdown("#### What moved (nominal \\$)")
 if comparison.what_moved:
     labels_by_key = dict(C.WHAT_MOVED)
     keys = list(comparison.what_moved[0]["changes"])
@@ -185,16 +187,18 @@ if comparison.what_moved:
     totals = {"year": "lifetime"}
     totals.update(dict(comparison.what_moved_totals))
     st.dataframe(pd.concat([frame, pd.DataFrame([totals])], ignore_index=True),
-                 width="stretch")
+                 width="stretch", hide_index=True,
+                 column_config={label: st.column_config.NumberColumn(format="localized")
+                                for label in labels_by_key.values()})
     st.caption("Year-by-year differences (B - A), nominal dollars. This is why one result "
                "leads, not only that it leads.")
 else:
     st.caption("Nothing moved by more than a dollar in any year.")
 
 st.caption(
-    "Noise rule (R2): a proved plan (branch-and-bound) is judged by its reported gap x "
+    "Noise rule: a proved plan (branch-and-bound) is judged by its reported gap x "
     "objective; a loop or local-search solve has no gap, so a difference under 1% of the "
     "reference is unresolved (grey, ~) -- the loop settling on another fixed point can make "
     "it, with either sign -- and at or above 1% it counts. When in doubt, run both again "
-    "today with the Decision preset."
+    "today with the *Careful* preset."
 )

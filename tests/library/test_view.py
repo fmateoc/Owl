@@ -4,6 +4,7 @@ end-of-plan numbers, the quality line, and the method's noise tolerance (R2)."""
 from pathlib import Path
 
 from owlplanner.library import results as R
+from owlplanner.library import view
 from owlplanner.library.view import (
     Result,
     age_text,
@@ -282,3 +283,36 @@ class TestTheRunPageBlocks:
         assert uses["Other income, net outflow"] == 1_000.0
         assert sum(sources.values()) == sum(uses.values()) == 81_000.0
         assert cash_flow_year(result, 5) == ({}, {})  # a year past the rows: nothing
+
+
+class TestHeadlineWords:
+    """UX review Q7: how the claiming ages were set, and a zero that is the goal."""
+
+    def test_ages_held_when_the_solve_fixed_what_the_case_searches(self):
+        result = make_result()  # options withSSAges fixed
+        assert view.claiming_ages_how(result, "optimize") == "held"
+        assert view.claiming_ages_how(result, ["Ari"]) == "held"
+        assert "held at these" in view.claiming_ages_phrase(result, "optimize")
+
+    def test_nothing_said_when_the_case_fixes_them_itself(self):
+        result = make_result()
+        assert view.claiming_ages_how(result, "fixed") == ""
+        assert view.claiming_ages_phrase(result, "fixed") == view.claiming_ages_text(result)
+
+    def test_chosen_by_owl_after_an_age_search(self):
+        result = make_result(record={"age_search": {"candidates": [[67, 70]]}})
+        assert view.claiming_ages_how(result, "optimize") == "chosen by Owl"
+        assert view.claiming_ages_phrase(result, "optimize").endswith("(chosen by Owl)")
+
+    def test_spent_down_by_design_only_with_no_bequest_target(self):
+        spent = make_result(summary={**BASE_SUMMARY, "final_bequest_savings_today": 0.0})
+        assert view.spent_down_by_design(spent, None) is True
+        assert view.spent_down_by_design(spent, 0) is True
+        assert view.spent_down_by_design(spent, 100) is False
+        assert view.spent_down_by_design(make_result(), 0) is (
+            abs(BASE_SUMMARY.get("final_bequest_savings_today", 0.0)) < 0.5)
+
+    def test_not_under_max_bequest(self):
+        spent = make_result(summary={**BASE_SUMMARY, "final_bequest_savings_today": 0.0},
+                            plan={**BASE_PLAN, "objective": "maxBequest"})
+        assert view.spent_down_by_design(spent, 0) is False

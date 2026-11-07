@@ -228,11 +228,90 @@ def _short(value: Any, limit: int = 40) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
+# The case fields a person meets, in words (UX review Q9); any other path is shown as is.
+PATH_LABELS = {
+    "case.basic_info.names": "names",
+    "case.basic_info.date_of_birth": "dates of birth",
+    "case.basic_info.life_expectancy": "life expectancy",
+    "case.basic_info.start_date": "plan start",
+    "case.basic_info.state": "state",
+    "case.basic_info.locality": "locality",
+    "case.basic_info.school_district": "school district",
+    "case.basic_info.moves": "moves",
+    "case.savings_assets.taxable_savings_balances": "taxable savings balances",
+    "case.savings_assets.tax_deferred_savings_balances": "tax-deferred savings balances",
+    "case.savings_assets.tax_free_savings_balances": "tax-free (Roth) savings balances",
+    "case.savings_assets.hsa_savings_balances": "HSA balances",
+    "case.savings_assets.taxable_cost_basis": "taxable cost basis",
+    "case.fixed_income.social_security_pia_amounts": "Social Security PIAs",
+    "case.fixed_income.social_security_ages": "Social Security claiming ages",
+    "case.fixed_income.pension_monthly_amounts": "pensions (monthly)",
+    "case.fixed_income.pension_ages": "pension ages",
+    "case.optimization_parameters.objective": "objective",
+    "case.optimization_parameters.spending_profile": "spending profile",
+    "case.optimization_parameters.surviving_spouse_spending_percent": "survivor's spending (%)",
+    "case.optimization_parameters.other_medical_expenses": "other medical expenses",
+    "case.aca_settings.slcsp_annual": "marketplace benchmark premium",
+    "case.aca_settings.aca_start_year": "marketplace coverage starts",
+    "case.rates_selection.method": "rates method",
+    "case.rates_selection.heirs_rate_on_tax_deferred_estate": "heirs' tax rate on tax-deferred savings",
+    "case.rates_selection.obbba_expiration_year": "federal tax law reverts in",
+    "case.solver_options.maxRothConversion": "Roth conversion cap",
+    "case.solver_options.noRothConversions": "no Roth conversions for",
+    "case.solver_options.startRothConversions": "Roth conversions start",
+    "case.solver_options.stopRothConversions": "Roth conversions stop",
+    "case.solver_options.netSpending": "net spending",
+    "case.solver_options.bequest": "bequest target",
+    "case.solver_options.withSSAges": "claiming ages searched",
+    "case.solver_options.withMedicare": "Medicare premiums",
+    "case.solver_options.withACA": "marketplace premiums",
+    "case.solver_options.breakpointMethod": "solution method",
+    "case.solver_options.timePreference": "time preference",
+    "case.solver_options.noLateSurplus": "no cash-flow surplus in the last two years",
+    "case.solver_options.spendingSlack": "spending profile slack",
+    "case.solver_options.withItemized": "itemized deductions",
+    "case.solver_options.withSTAR": "NY STAR credit",
+}
+
+# Case fields whose value at the model's own default is the same as no value (UX review Q9):
+# the case pages write them when saving (Goals initializes `timePreference` to 0.0, Run
+# Options `noLateSurplus` to False), so a save that adds or drops one changes nothing the
+# solve reads. Each default is the one Plan.solve reads with (`plan.py`: noLateSurplus False,
+# timePreference 0.0, spendingSlack 0). The inputs hash still sees the key: this is the
+# summary's reading only.
+NO_OP_DEFAULTS = {
+    "case.solver_options.noLateSurplus": False,
+    "case.solver_options.timePreference": 0.0,
+    "case.solver_options.spendingSlack": 0,
+}
+
+
+def _is_no_op(path: str, value: Any) -> bool:
+    if path not in NO_OP_DEFAULTS:
+        return False
+    default = NO_OP_DEFAULTS[path]
+    if isinstance(default, bool) or isinstance(value, bool):
+        return value is default
+    try:
+        return float(value) == float(default)
+    except (TypeError, ValueError):
+        return False
+
+
+def _path_words(path: str) -> str:
+    """A path in words where `PATH_LABELS` names it; a list index stays ("life expectancy[1]")."""
+    base = path.split("[", 1)[0]
+    return PATH_LABELS[base] + path[len(base):] if base in PATH_LABELS else path
+
+
 def diff_summaries(old: Any, new: Any, prefix: str = "", limit: int = 20) -> list[str]:
     """A field-by-field diff of two scenarios in words (design section 7).
 
     Events are worded per event ("purchase: ... 2029 ... -> ... 2031 ...") and matched by id;
-    hand rows are diffed structurally. At most `limit` lines; the last line counts the rest.
+    hand rows are diffed structurally. Case fields a person meets are named in words
+    (`PATH_LABELS`), the raw path otherwise; a field added or removed at the model's own
+    default is not a change (`NO_OP_DEFAULTS`). At most `limit` lines; the last line counts
+    the rest.
     """
     changes: list[str] = []
     if isinstance(old, dict) and isinstance(new, dict):
@@ -329,9 +408,11 @@ def _diff_into(old: Any, new: Any, where: str, out: list[str]) -> None:
         for key in sorted(set(old) | set(new)):
             path = f"{label}.{key}" if where else str(key)
             if key not in old:
-                out.append(f"{path}: added ({_short(new[key])})")
+                if not _is_no_op(path, new[key]):
+                    out.append(f"{_path_words(path)}: added ({_short(new[key])})")
             elif key not in new:
-                out.append(f"{path}: removed (was {_short(old[key])})")
+                if not _is_no_op(path, old[key]):
+                    out.append(f"{_path_words(path)}: removed (was {_short(old[key])})")
             else:
                 _diff_into(old[key], new[key], path, out)
         return
@@ -342,4 +423,6 @@ def _diff_into(old: Any, new: Any, where: str, out: list[str]) -> None:
         else:
             out.append(f"{label}: {len(old)} -> {len(new)} rows")
         return
-    out.append(f"{label}: {_short(old)} -> {_short(new)}")
+    if _is_no_op(label, old) and _is_no_op(label, new):
+        return  # 0 -> 0.0 at the default: the solve reads the same
+    out.append(f"{_path_words(label)}: {_short(old)} -> {_short(new)}")

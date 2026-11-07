@@ -21,8 +21,9 @@ from datetime import datetime
 import streamlit as st
 
 import libraryjobs
+import librarypresets
 import sskeys as kz
-from owlplanner.library import JobsError, PRESETS, ScenarioError, preset_solves
+from owlplanner.library import JobsError, ScenarioError, preset_solves
 from owlplanner.library import results as R
 
 st.markdown("# :material/schedule: Queue")
@@ -57,10 +58,7 @@ with st.expander("Solve a run", expanded=not manager.jobs()):
         labels = {f"{r.name} ({r.folder_name})": r for r in runs}
         col1, col2, col3 = st.columns([4, 2, 2], vertical_alignment="bottom")
         choice = col1.selectbox("Run", list(labels), key="queue_run")
-        preset = col2.selectbox("Preset", list(PRESETS), key="queue_preset",
-                                help="quick: the self-consistent loop for every tax family "
-                                     "(no MIP, no local search), claiming ages held at the "
-                                     "scenario's values. custom: the case's own options.")
+        preset = librarypresets.select("Preset", "queue_preset", container=col2)
         if col3.button("Solve", type="primary", use_container_width=True):
             # Every solve the preset stands for: "decision" is local search and its exact
             # companion (UX review B1; the Run and Collections pages do the same).
@@ -87,22 +85,21 @@ def queue_fragment():
     header[0].markdown("**Run**")
     header[1].markdown("**State**")
     header[2].markdown("**Elapsed**")
-    header[3].markdown("**Last log line**")
+    header[3].markdown("**What it is doing**")
+    running = any(j.doc.get("state") == R.RUNNING for j in jobs)
     for job in reversed(jobs):
         doc = job.doc
         row = st.columns([4, 2, 2, 4, 2])
-        row[0].markdown(f"**{doc.get('run')}**  \n`{job.id}` · {doc.get('preset')}")
+        row[0].markdown(f"**{doc.get('run')}**  \n`{job.id}` · {librarypresets.name(doc.get('preset'))}")
         beat_note = "" if doc.get("state") != R.RUNNING else f"  \nbeat {_since(doc.get('heartbeat'), now)} ago"
         row[1].markdown(f"{_ICON.get(doc.get('state'), '')} {doc.get('state')}{beat_note}")
         started = doc.get("started") or doc.get("queued")
         finished = doc.get("finished")
         row[2].markdown(_since(started, R.stamp_seconds(finished) or now))
-        logline = doc.get("last_log") or ""
-        if doc.get("iteration") is not None:
-            logline = f"iter {doc['iteration']}  \n{logline}"
-        if doc.get("error"):
-            logline = f"{doc['error']}  \n{logline}"
-        row[3].markdown(logline[-300:] if logline else "-")
+        # The phase in words (UX review Q8); the raw log line in the tooltip.
+        logline = (doc.get("last_log") or "")[-300:]
+        row[3].markdown(libraryjobs.job_phase(doc, another_running=running),
+                        help=f"Last log line: `{logline}`" if logline else None)
         with row[4]:
             if doc.get("state") == R.RUNNING and doc.get("cancel"):
                 # Two stages (N1): the cooperative cancel is pending; the worker stops at its
@@ -136,5 +133,5 @@ if any(j.state in (R.WAITING, R.RUNNING) for j in manager.jobs()):
 st.caption(
     "Jobs are detached processes: closing this tab or stopping the server does not stop them. "
     "Elapsed runs from the start of the solve (from queue time while a job waits); the state and "
-    "the log line refresh every two seconds."
+    "what it is doing refresh every two seconds (the raw log line is in the tooltip)."
 )

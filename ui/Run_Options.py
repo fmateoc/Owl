@@ -44,19 +44,29 @@ def _onSSAgesChange(names):
 def _bound_year(key, low, high):
     """Clamp a stored year field into [low, high] (UX remediation QW-8's input bounds).
 
-    The widgets are bounded now, and Streamlit silently shows the bound instead of a stored
-    value outside it: the case keeps what the field shows. A year outside the plan horizon
-    cannot mean anything to the solve (there are no such plan years).
+    Streamlit silently shows the bound instead of a stored value outside it, so the case keeps
+    what the field shows. Moving a value is never silent (review AM3): the page names every
+    move. A move **up** to the lower bound is the neutral one -- a year before the plan's first
+    year means "from its first year" (what `sanitize_config` does at load) -- so the case keeps
+    its status. A move **down** to the upper bound changes what the input means (a year past
+    the plan can no longer say "never"), so the case is flagged modified: its results are
+    stale. Returns the old value when one moved, else None.
     """
     value = kz.getCaseKey(key)
     if value is None:
-        return
+        return None
     try:
         year = int(value)
     except (TypeError, ValueError):
-        return
-    if not low <= year <= high:
-        kz.storeCaseKey(key, min(max(year, low), high))
+        return None
+    if low <= year <= high:
+        return None
+    moved = min(max(year, low), high)
+    if year > high:
+        kz.setCaseKey(key, moved)  # flags "modified": the meaning changed
+    else:
+        kz.storeCaseKey(key, moved)  # neutral (before the plan's first year = from it)
+    return year
 
 
 kz.initCaseKey("computeMedicare", True)
@@ -87,6 +97,19 @@ else:
     # UX remediation QW-8: the year fields below are bounded by the plan's own horizon.
     _years = getattr(_plan, "year_n", None) if _plan is not None else None
     plan_end = int(_years[-1]) if _years is not None and len(_years) else thisyear + 40
+    # QW-8 (review AM3): every stored year outside its field's range is set to the nearest
+    # allowed one here, once, and the page says which values moved.
+    _moved = []
+    for _key, _low, _high in (("startRothConversions", thisyear, plan_end),
+                              ("stopRothConversions", thisyear, plan_end),
+                              ("swapRothConvertersYear", thisyear, plan_end),
+                              ("acaStartYear", thisyear, thisyear + 50)):
+        _old = _bound_year(_key, _low, _high)
+        if _old is not None:
+            _moved.append(f"{_key} {_old} \u2192 {kz.getCaseKey(_key)}")
+    if _moved:
+        st.caption("A stored year outside its field's range was set to the nearest allowed "
+                   "year: " + "; ".join(_moved) + ".")
     st.markdown("#### :orange[Roth Conversions]")
     col1, col2, col3 = st.columns(3, gap="large", vertical_alignment="top")
     with col1:
@@ -105,7 +128,6 @@ else:
     with col2:
         helpmsg = "Do not perform Roth conversions before that year."
         kz.initCaseKey("startRothConversions", thisyear)
-        _bound_year("startRothConversions", thisyear, plan_end)  # QW-8: bounded by the horizon
         ret = kz.getIntNum(
             "Year to start considering Roth conversions", "startRothConversions",
             min_value=thisyear, max_value=plan_end, help=helpmsg
@@ -121,7 +143,6 @@ else:
         ret = kz.getToggle("Stop Roth conversions mid-plan", "stopRothConversionsEnabled", help=helpmsg)
         if kz.getCaseKey("stopRothConversionsEnabled"):
             kz.initCaseKey("stopRothConversions", min(thisyear + 10, plan_end))
-            _bound_year("stopRothConversions", thisyear, plan_end)  # QW-8
             helpmsg = "No Roth conversions are performed in this year or later."
             ret = kz.getIntNum(
                 "Year to stop considering Roth conversions", "stopRothConversions",
@@ -161,7 +182,6 @@ else:
                 kz.initCaseKey("swapRothConvertersFirst", iname0)
                 ret = kz.getSelectbox("Converts first", [iname0, iname1], "swapRothConvertersFirst")
                 kz.initCaseKey("swapRothConvertersYear", thisyear)
-                _bound_year("swapRothConvertersYear", thisyear, plan_end)  # QW-8
                 helpmsg = "Year in which the other spouse takes over Roth conversions."
                 ret = kz.getIntNum(
                     "Year to switch converters", "swapRothConvertersYear",
@@ -220,9 +240,8 @@ else:
         )
         # UX remediation QW-8: no more "0 = plan start". The plan starts in the solve year, so
         # a stored 0 (or any year before this one) reads as thisyear, and the field defaults
-        # to it.
+        # to it (the move is named at the top of the page, review AM3).
         kz.initCaseKey("acaStartYear", thisyear)
-        _bound_year("acaStartYear", thisyear, thisyear + 50)
         kz.getIntNum(
             "ACA start year",
             "acaStartYear",

@@ -711,7 +711,9 @@ class TestTheTornadoReview3:
                           preset="decision_exact", exact=True, score=82_000.0 - 1_000 * i)
         at = self._open(run)
         assert not at.exception, [e.value for e in at.exception]
-        assert "wait for this run's own exact-LP solve" in _text(at)
+        assert "wait for this run's own solve in the children's model" in _text(at)  # review AM1
+        jargon = [c.value for c in at.caption if "exact-LP" in c.value or "exact LP" in c.value]
+        assert not jargon, f"review AM1: a caption kept the jargon: {jargon}"
         assert not any(str(m.value).startswith("| mover | difference |") for m in at.markdown)
 
     def test_ag5_the_run_is_the_collection_s_reference(self, library, monkeypatch):

@@ -691,7 +691,7 @@ with st.expander("Sensitivity (tornado)"):
         "; ".join(f"**{m.label}** ({m.note})" for m in tornado.movers(lib.scenario(run.id))) +
         ". Each child is re-solved in a simpler, faster model -- the medical-inflation child "
         "keeps its Medicare premiums -- and measured against this run's own solve in that same "
-        "model, which the button queues "
+        "model (named under *Technical solve details*, above), which the button queues "
         "when the run has none; the bars below are sorted by the size of the effect, each with "
         "its tolerance (the noise rule), the home at the end beside it (the other number, never "
         "added). A mover that does not fit this scenario, or that no plan "
@@ -755,14 +755,16 @@ with st.expander("Sensitivity (tornado)"):
                 continue
             _rows.append((_label, tornado.result_of(_child.path, tornado.preset_of(_label))))
         if all(b is None for b in _bases.values()):
-            st.caption("The bars wait for this run's own exact-LP solve (the children's model; "
-                       "\"Make the sensitivity runs\" queues it): another model's result would "
+            # Review AM1: plain words here too -- one block, one vocabulary ("exact LP" lives
+            # in the header's Technical solve details).
+            st.caption("The bars wait for this run's own solve in the children's model "
+                       "(\"Make the sensitivity runs\" queues it): another model's result would "
                        "put the model change into every bar.")
         elif any(result is not None for _label, result in _rows):
             _ref = _base or _bases[tornado.MEDICARE_PRESET]
             _what = view.first_number_label(_ref)
             _measured = [f"{'this run' if p == tornado.EXACT_PRESET else 'the medical-inflation bar'}"
-                         f"'s {'exact-LP' if p == tornado.EXACT_PRESET else 'Medicare-priced'} solve, "
+                         f"'s {'simpler-model' if p == tornado.EXACT_PRESET else 'Medicare-priced'} solve, "
                          f"{view.first_number(b):,.0f}" for p, b in _bases.items() if b is not None]
             st.caption(f"Measured from {'; '.join(_measured)} ({_what}); claiming ages "
                        f"{view.claiming_ages_text(_ref)}.")
@@ -813,8 +815,8 @@ with st.expander("Sensitivity (tornado)"):
             st.markdown("\n".join(lines))
         else:
             st.caption("No sensitivity result yet: the Queue page shows their progress "
-                       "(each is one solve under the exact LP, the medical-inflation pair with "
-                       "Medicare priced exactly).")
+                       "(each is one solve in the simpler, faster model, the medical-inflation "
+                       "pair with Medicare priced exactly).")
 
 # -- the claiming-age map (design 14.1, I7) -----------------------------
 

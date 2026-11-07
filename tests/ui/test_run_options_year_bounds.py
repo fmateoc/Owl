@@ -44,7 +44,7 @@ def _render(monkeypatch, **updates):
 
 
 def test_the_roth_conversion_years_are_bounded_by_the_plan(monkeypatch):
-    at, dic, plan = _render(monkeypatch, startRothConversions=2500,
+    at, dic, plan = _render(monkeypatch, caseStatus="solved", startRothConversions=2500,
                             stopRothConversionsEnabled=True, stopRothConversions=2500)
     assert not at.exception, [str(e.value) for e in at.exception]
     end = int(plan.year_n[-1])
@@ -54,6 +54,12 @@ def test_the_roth_conversion_years_are_bounded_by_the_plan(monkeypatch):
     # A stored year past the horizon is clamped to it: the field shows what the case holds.
     assert dic["startRothConversions"] == end == start.value
     assert dic["stopRothConversions"] == end == stop.value
+    # Review AM3: a move is never silent. The page names it, and a move that changes what the
+    # input means (a year past the plan can no longer say "never") flags the case modified:
+    # its results are stale.
+    said = "\n".join(c.value for c in at.caption)
+    assert f"startRothConversions 2500 → {end}" in said and f"stopRothConversions 2500 → {end}" in said
+    assert dic["caseStatus"] == "modified"
 
 
 def test_the_roth_window_defaults_stay_inside_the_plan(monkeypatch):
@@ -65,7 +71,7 @@ def test_the_roth_window_defaults_stay_inside_the_plan(monkeypatch):
 
 
 def test_the_aca_start_year_defaults_to_this_year_not_zero(monkeypatch):
-    at, dic, _ = _render(monkeypatch, acaStartYear=0)
+    at, dic, _ = _render(monkeypatch, caseStatus="solved", acaStartYear=0)
     assert not at.exception, [str(e.value) for e in at.exception]
     field = next(w for w in at.number_input if w.label.startswith("ACA start year"))
     thisyear = date.today().year
@@ -73,6 +79,10 @@ def test_the_aca_start_year_defaults_to_this_year_not_zero(monkeypatch):
     assert dic["acaStartYear"] == thisyear == field.value
     assert field.min == thisyear
     assert "0 = plan start" not in field.label  # no more code words in the label
+    # Review AM3: the move is named on the page, but it is the neutral one (a year before the
+    # plan's first year means "from its first year"), so the case keeps its status.
+    assert f"acaStartYear 0 → {thisyear}" in "\n".join(c.value for c in at.caption)
+    assert dic["caseStatus"] == "solved"
 
 
 def test_a_real_aca_start_year_is_kept(monkeypatch):

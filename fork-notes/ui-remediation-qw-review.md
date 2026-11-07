@@ -7,6 +7,10 @@ review `fork-notes/ux-q10-q20-review.md` (AL3/AL4 are what QW-7/QW-1 close), and
 "UI remediation Phase 1: quick wins QW-1-QW-8". Findings **AM1-AM8** (3 low, 5 nit; no high or
 medium); prefix AM after AL.
 
+**Status (2026-11-07, the user's call):** AM1-AM3 and AM8 **folded** on the branch (PROGRESS.md
+"UI remediation Phase 1: the independent review, AM1-AM8"; AM1's fold also covers the
+medical-inflation mover's note, a fourth jargon spot its own teeth check found); AM4-AM7 stand.
+
 Environment: Windows, Python from `.venv`, HiGHS only, tests with
 `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider` (the suite freezes the date at
 2026-01-01; the real date is 2026-11-07). **Nothing in `src/`, `ui/`, `tests/` or the existing

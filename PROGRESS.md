@@ -7467,4 +7467,48 @@ financing percent format (`test_collections_page.py`).
 **Checks.** Full suite on the Windows machine: **4539 passed, 2 skipped** (2026-11-07, 13:38,
 `-n 4`, 818 s; the second skip is a platform one -- the Linux runs record 1 skipped). Lint:
 flake8 and ruff report only upstream's listed items (the B905 in `ui/Run_Options.py` is at
-line 295 now, moved by the edits above it).
+line 314 now, moved by the edits above it). The review AM1-AM3/AM8 fold below re-runs the
+affected tests.
+
+## UI remediation Phase 1: the independent review, AM1-AM8 (2026-11-07)
+
+An independent review of `082f9b96` (`fork-notes/ui-remediation-qw-review.md`; a fresh agent
+with the work order, report-only -- no code changed by it): **AM1-AM8** (3 low, 5 nit; no high
+or medium). Every QW item verified **done** (QW-2/3/6/8 "done with deviations", each judgment
+call called defensible); every new/changed test checked for teeth in throw-away worktrees (each
+fails without its change); AL3 and AL4 reproduced closed on before/after runs; its own full
+suite run 4539 passed / 2 skipped, matching the counts above. The user folded **AM1-AM3 and
+AM8** (AM4-AM7 stand):
+
+- **AM1** (QW-6's jargon only half out of the sensitivity block): the three tornado captions
+  use the plain vocabulary now ("this run's own solve in the children's model", "the
+  simpler-model solve"), the block's opening caption points at *Technical solve details*, and
+  the medical-inflation mover's note -- a fourth spot the review's list of three missed, found
+  by the fold's own teeth check (`tornado.movers`) -- says "the simpler model prices no Medicare
+  premiums". `test_ag2_...the_bars_wait` pins the new phrase and asserts that no caption on the
+  page carries "exact LP" (it failed before the fold: the mover note).
+- **AM2** (the fork's acceptance check asserted the invariant QW-2 breaks):
+  `fork-notes/synthetic/check_library_compare.py`'s "Things to look at" rule is now "inside its
+  band **or** a crossed cliff" (the rule QW-2 introduced; the suite's twin was already rewritten
+  in `tests/plan/test_thresholds.py`), so the recorded 9/9 check will not report FAIL on a plan
+  that crossed a cliff. The check needs a full synthetic solve and was not re-run here; its
+  invariant now mirrors the suite's.
+- **AM3** (the year clamp rewrote stored inputs silently): `_bound_year` and the page now name
+  every move ("a stored year outside its field's range was set to the nearest allowed year:
+  startRothConversions 2500 \u2192 2053"), and the fold splits the two kinds of move. A move
+  **down** to the upper bound changes what the input means (a year past the plan can no longer
+  say "never convert"), so the case is flagged modified (`setCaseKey`; `flagModified` makes the
+  Graphs page re-solve, which is right -- the results are stale). A move **up** to the lower
+  bound is the neutral one (a year before the plan's first year means "from its first year",
+  what `sanitize_config` does at load), so it keeps the case's status: merely opening Run
+  Options on a case carrying the old "0 = plan start" ACA value does not invalidate its solved
+  results. `tests/ui/test_run_options_year_bounds.py` pins both halves (caption + status).
+- **AM8** (docs): CLAUDE.md's lint note points at the B905's real line (314 after these edits;
+  it had said 263 since Q20). The other half of AM8 is a fact of `082f9b96`'s commit message --
+  a `$` interpolated away by the shell took "under $100" and "$50M" out of it -- with the
+  amounts recorded in the section above.
+
+**Checks.** Full suite after the fold: **4539 passed, 2 skipped** (2026-11-07, 10:53, Windows,
+`-n 4`; the same counts as before the fold -- these are wording, invariant and message changes
+with the tests that pin them). Lint: only upstream's listed items. The AM1 teeth assertion
+(`test_ag2_...the_bars_wait`) fails on the pre-fold code with the mover note in its message.

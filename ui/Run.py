@@ -57,16 +57,31 @@ libraryjobs.show_flashes()  # what the last action said before its rerun (review
 NOMINAL_PER_YEAR = "nominal $ per year"
 
 
-def _frozen_solver_options(run) -> dict:
-    """The `[solver_options]` of the run's frozen Case.toml (what its events generated
-    included), or {} when it cannot be read."""
+def _frozen_case(run) -> dict:
+    """The run's frozen Case.toml (what its events generated included), or {} when it cannot
+    be read."""
     import tomllib
 
     try:
         with open(run.path / "inputs" / "Case.toml", "rb") as fh:
-            return tomllib.load(fh).get("solver_options") or {}
+            return tomllib.load(fh)
     except (OSError, ValueError):
         return {}
+
+
+def _frozen_solver_options(run) -> dict:
+    """The `[solver_options]` of the run's frozen Case.toml, or {}."""
+    return _frozen_case(run).get("solver_options") or {}
+
+
+def _has_star(run) -> bool:
+    """Whether the run has the NY STAR credit (QW-1: the refund is then named "STAR"): a school
+    district at home or after a move, and `withSTAR` not "none"."""
+    case = _frozen_case(run)
+    info = case.get("basic_info") or {}
+    districts = [info.get("school_district")] + [m.get("school_district") for m in info.get("moves") or []]
+    mode = str((case.get("solver_options") or {}).get("withSTAR") or "loop").lower()
+    return any(districts) and mode != "none"
 
 
 def _usd(value):
@@ -119,7 +134,7 @@ def _things_to_look_at(result):
             st.dataframe(parts["small"], width="stretch", hide_index=True, column_config=columns)
 
 
-def _cash_flow_sankey(result, by_year):
+def _cash_flow_sankey(result, by_year, star=False):
     """I6: one year's sources and uses as a paragraph and a Sankey (plan.json's `cash_flow`,
     nominal $; `run_charts.year_summary` / `sankey_figure`, UX review Q17)."""
     cf = view.cash_flow(result)
@@ -150,9 +165,9 @@ def _cash_flow_sankey(result, by_year):
     # UX review Q17: the year in words first, from the very rows the Sankey draws; then the
     # Sankey with the amounts on its nodes, a labelled hub and the taxes' total; then the two
     # sides beside each other (UX remediation QW-1).
-    st.markdown(run_charts.year_summary(years[n], sources, uses))
-    st.plotly_chart(run_charts.sankey_figure(years[n], sources, uses), width="stretch")
-    st.dataframe(run_charts.flows_table(sources, uses), width="stretch", hide_index=True)
+    st.markdown(run_charts.year_summary(years[n], sources, uses, star))
+    st.plotly_chart(run_charts.sankey_figure(years[n], sources, uses, star), width="stretch")
+    st.dataframe(run_charts.flows_table(sources, uses, star), width="stretch", hide_index=True)
     st.caption(
         f"{years[n]}: \\${sum(sources.values()):,.0f} in, \\${sum(uses.values()):,.0f} out (nominal "
         "dollars of that year; the two differ only by rounding). A Roth conversion is a move between "
@@ -563,7 +578,7 @@ if entries:
                            "off the top of the chart, its total written on it, so that it does not "
                            "set the scale for the other years.")
         with tabs[4]:
-            _cash_flow_sankey(result, by_year)
+            _cash_flow_sankey(result, by_year, _has_star(run))
 
     # -- conversions and brackets (design 14.1, I8) ----------------------
     _conversions_and_brackets(run, result)

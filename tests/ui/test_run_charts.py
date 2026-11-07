@@ -93,7 +93,17 @@ class TestTaxesAndIncome:
 
     def test_the_premiums_are_drawn_beside_the_taxes(self, rc):
         names = [t.name for t in rc.taxes_and_premiums_figure(self.BY_YEAR).data]
-        assert "Medicare premiums (with IRMAA)" in names and "Marketplace premiums" in names
+        assert "Medicare premiums (with IRMAA)" in names and "Marketplace (ACA) premiums" in names
+
+    def test_the_chart_series_take_the_one_word_map(self, rc):
+        """QW-1 (review AN6): the chart said "Gains tax", "State + local" and "Marketplace
+        premiums" where the paragraph and the Sankey said otherwise."""
+        names = [t.name for t in rc.taxes_and_premiums_figure(self.BY_YEAR).data]
+        for row in ("Federal income tax", "Gains tax", "NIIT", "State and local tax",
+                    "Medicare premiums", "ACA premiums"):
+            assert rc.flow_label(row) in names
+        assert "Capital gains tax" in names and "State and local tax" in names
+        assert not {"Gains tax", "State + local", "Marketplace premiums"} & set(names)
 
     def test_zero_series_are_left_out_and_the_purchase_year_annotated(self, rc):
         fig = rc.income_sources_figure(self.BY_YEAR, purchases={0: 741_188.0})
@@ -131,21 +141,47 @@ class TestOneYear:
     def test_the_paragraph_reads_the_same_rows(self, rc):
         text = rc.year_summary(2027, self.SOURCES, self.USES)
         assert text.startswith("**2027**: spending \\$141,369 plus big-ticket purchases \\$741,188.")
-        # QW-1: one set of words for the paragraph and the Sankey, and the refund netted
-        # against the taxes instead of listed as income.
-        assert "Taxes net of a \\$1,000 state and local tax refund took \\$62,597" in text
-        assert ("Capital gains tax \\$36,187, State and local tax \\$22,499, NIIT \\$4,911, "
-                "Federal income tax \\$0.") in text
-        assert "comes from income" not in text and "net refund" not in text
-        assert "Health premiums \\$21,745 (ACA marketplace premiums \\$21,745)." in text
+        # Decision 6: the taxes the Sankey draws, and the refund its own clause.
+        assert ("Taxes \\$63,597: capital gains tax \\$36,187, state and local tax \\$22,499, "
+                "NIIT (3.8%) \\$4,911, federal income tax \\$0; state and local, a net refund of "
+                "\\$1,000 (a refundable credit is larger than the tax).") in text
+        assert "comes from income" not in text and "net of" not in text
+        assert "Health premiums \\$21,745 (marketplace (ACA) premiums \\$21,745)." in text
         assert "\\$8,072 goes back into savings." in text
         assert "the taxable (brokerage) accounts \\$888,582" in text
 
-    def test_a_refund_bigger_than_the_taxes_gives_money_back(self, rc):
+    def test_star_is_named_only_when_the_run_has_it(self, rc):
+        with_star = rc.year_summary(2027, self.SOURCES, self.USES, star=True)
+        assert "a net refund of \\$1,000 (the STAR credit is larger than the tax)" in with_star
+        labels = list(rc.sankey_figure(2027, self.SOURCES, self.USES, star=True).data[0].node.label)
+        assert "State tax refund (STAR): $1,000" in labels
+        labels = list(rc.sankey_figure(2027, self.SOURCES, self.USES).data[0].node.label)
+        assert "State tax refund: $1,000" in labels and not any("STAR" in x for x in labels)
+
+    def test_every_tax_figure_the_paragraph_names_is_on_a_sankey_node(self, rc):
+        """Review AN6: the build netted the refund into the taxes ("Taxes net of a \\$2,934
+        ... refund took \\$2,177"), a figure on no node and in no table. The 2034 shape of the
+        Careful baseline: \\$5,111 federal income tax, a \\$2,934 STAR refund."""
+        import re
+
+        sources = {"Taxable-account withdrawals": 60_000.0, "Social Security": 50_000.0,
+                   "State and local tax, net refund": 2_934.0}
+        uses = {"core": 107_823.0, "Federal income tax": 5_111.0}
+        text = rc.year_summary(2034, sources, uses, star=True)
+        taxes = text[text.index("Taxes"):]
+        taxes = taxes[:taxes.index(").") + 2]
+        figures = {float(x.replace(",", "")) for x in re.findall(r"\\\$([\d,]+)", taxes)}
+        nodes = {float(lbl.rsplit("$", 1)[1].replace(",", ""))
+                 for lbl in rc.sankey_figure(2034, sources, uses, star=True).data[0].node.label}
+        assert figures == {5_111.0, 2_934.0}
+        assert figures <= nodes
+
+    def test_a_refund_bigger_than_the_taxes_is_its_own_clause(self, rc):
         sources = {"Wages": 10_000.0, "State and local tax, net refund": 4_000.0}
         uses = {"core": 14_000.0}
         text = rc.year_summary(2028, sources, uses)
-        assert "Taxes net of a \\$4,000 state and local tax refund gave back \\$4,000" in text
+        assert ("Taxes \\$0: federal income tax \\$0; state and local, a net refund of \\$4,000 "
+                "(a refundable credit is larger than the tax).") in text
 
     def test_the_sankey_carries_the_amounts_and_the_taxes_total(self, rc):
         fig = rc.sankey_figure(2027, self.SOURCES, self.USES)
@@ -153,8 +189,8 @@ class TestOneYear:
         labels = list(sankey.node.label)
         hub = labels.index(f"2027 cash flow: ${sum(self.SOURCES.values()):,.0f}")
         assert "Taxes: $63,597" in labels and "Capital gains tax: $36,187" in labels
-        assert "ACA marketplace premiums: $21,745" in labels
-        assert "State and local tax refund: $1,000" in labels
+        assert "Marketplace (ACA) premiums: $21,745" in labels
+        assert "Taxable (brokerage) accounts: $888,582" in labels  # AM6: the prose's words
         links = list(zip(sankey.link.source, sankey.link.target, sankey.link.value, strict=True))
         into_hub = sum(v for s, t, v in links if t == hub)
         out_of_hub = sum(v for s, t, v in links if s == hub)
@@ -165,15 +201,28 @@ class TestOneYear:
         """QW-1: the node vanished whenever a year had a single premium line."""
         uses = {"core": 90_000.0, "ACA premiums": 21_745.0}
         labels = list(rc.sankey_figure(2027, {"Wages": 111_745.0}, uses).data[0].node.label)
-        assert "Health premiums: $21,745" in labels and "ACA marketplace premiums: $21,745" in labels
+        assert "Health premiums: $21,745" in labels and "Marketplace (ACA) premiums: $21,745" in labels
 
-    def test_the_two_sides_beside_each_other(self, rc):
-        table = rc.flows_table(self.SOURCES, self.USES)
+    def test_net_spending_alone_needs_no_spending_node(self, rc):
+        """Review AN6: "Net spending" alone got a Spending node over it with the same number."""
+        labels = list(rc.sankey_figure(2027, {"Wages": 90_000.0}, {"Net spending": 90_000.0}).data[0].node.label)
+        assert "Net spending: $90,000" in labels and "Spending: $90,000" not in labels
+        labels = list(rc.sankey_figure(2027, {"Wages": 90_000.0}, {"core": 90_000.0}).data[0].node.label)
+        assert "Spending: $90,000" in labels  # a budget's line keeps its group node
+
+    def test_the_table_groups_each_side_and_its_totals_are_the_caption_s(self, rc):
+        table = rc.flows_table(self.SOURCES, self.USES, star=True)
         assert list(table.columns) == ["Sources", "Uses"]
-        assert len(table) == max(len(self.SOURCES), len(self.USES))
-        assert table["Sources"][0] == "Taxable-account withdrawals  $888,582"  # largest first
-        assert "State and local tax refund  $1,000" in list(table["Sources"])
-        assert "Capital gains tax  $36,187" in list(table["Uses"])
+        left, right = list(table["Sources"]), list(table["Uses"])
+        assert left[0] == "From savings  $974,971"
+        assert left[1] == "\u2003Taxable (brokerage) accounts  $888,582"
+        assert "Tax refunds  $1,000" in left and "\u2003State tax refund (STAR)  $1,000" in left
+        assert "Taxes  $63,597" in right and "\u2003Capital gains tax  $36,187" in right
+        assert "Big-ticket purchases  $741,188" in right
+        assert "\u2003Big-ticket purchases  $741,188" not in right  # no line repeating its group
+        # The totals line: the caption's in and out.
+        assert left[-1] == f"Total in  ${sum(self.SOURCES.values()):,.0f}"
+        assert right[-1] == f"Total out  ${sum(self.USES.values()):,.0f}"
 
 
 def test_the_table_keeps_years_whole_and_empty_cells_empty(rc):

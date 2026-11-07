@@ -369,7 +369,12 @@ class TestRunPage:
         assert not at.exception, [e.value for e in at.exception]
         flows = [d.value for d in at.dataframe if list(d.value.columns) == ["Sources", "Uses"]]
         assert flows, "no Sources vs. Uses table under the Sankey"
-        assert any("Taxable-account withdrawals" in str(v) for v in flows[0]["Sources"])
+        # QW-1's second pass: the paragraph's words, the groups with their subtotals, and a
+        # totals line equal to the caption's "90,000 in" / "90,000 out".
+        sources, uses = list(flows[0]["Sources"]), list(flows[0]["Uses"])
+        assert "\u2003Taxable (brokerage) accounts  $30,000" in sources
+        assert "From savings  $30,000" in sources and "Income  $60,000" in sources
+        assert sources[-1] == "Total in  $90,000" and uses[-1] == "Total out  $90,000"
 
     def test_the_quality_line_warns_when_the_loop_did_not_settle(self, library):
         run = library.runs()[-1]  # "bill later": the run page's default

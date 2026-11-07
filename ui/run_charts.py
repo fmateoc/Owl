@@ -319,28 +319,110 @@ def _binding_ceiling(row) -> str:
     return min(candidates)[1] if candidates else "-"
 
 
-def flows_table(sources: dict, uses: dict) -> pd.DataFrame:
-    """Sources beside Uses under the Sankey (QW-1): one row per line, largest first, each
-    cell the line's name and amount. The sides balance, so the columns run out together."""
-    left = sorted(sources.items(), key=lambda kv: -kv[1])
-    right = sorted(uses.items(), key=lambda kv: -kv[1])
-    rows = max(len(left), len(right), 1)
+_LINE = "\u2003"  # an em space: a line under its group in the table
 
-    def cell(side, n):
-        return "" if n >= len(side) else f"{flow_label(side[n][0])}  ${side[n][1]:,.0f}"
 
-    return pd.DataFrame({"Sources": [cell(left, n) for n in range(rows)],
-                         "Uses": [cell(right, n) for n in range(rows)]})
+def _side_cells(groups, titles, star):
+    cells = []
+    for group, title in titles:
+        rows = groups[group]
+        if not rows:
+            continue
+        cells.append(f"{title}  ${sum(rows.values()):,.0f}")
+        if len(rows) == 1 and flow_label(next(iter(rows)), star) == title:
+            continue  # "Big-ticket purchases" under "Big-ticket purchases" says nothing new
+        for name, v in sorted(rows.items(), key=lambda kv: -kv[1]):
+            cells.append(f"{_LINE}{flow_label(name, star)}  ${v:,.0f}")
+    return cells
+
+
+def flows_table(sources: dict, uses: dict, star: bool = False) -> pd.DataFrame:
+    """Sources beside Uses under the Sankey (QW-1, S6's table): each side's groups with their
+    subtotals and their lines under them (`year_breakdown`, the paragraph's groups and words),
+    then a totals line equal to the caption's in and out."""
+    b = year_breakdown(sources, uses)
+    left = _side_cells(b["sources"], _SOURCE_GROUPS, star)
+    right = _side_cells(b["uses"], _USE_GROUPS, star)
+    rows = max(len(left), len(right))
+    left += [""] * (rows - len(left))
+    right += [""] * (rows - len(right))
+    left.append(f"Total in  ${sum(sources.values()):,.0f}")
+    right.append(f"Total out  ${sum(uses.values()):,.0f}")
+    return pd.DataFrame({"Sources": left, "Uses": right})
 
 
 # -- Q16: taxes and premiums, income sources ---------------------------------------------------
 
-TAX_SERIES = (("federal_income_tax", "Federal income tax"), ("ltcg_tax", "Gains tax"), ("niit", "NIIT"),
-              ("payroll_tax", "Payroll tax"), ("state_tax", "State + local"))
-PREMIUM_SERIES = (("medicare_premiums", "Medicare premiums (with IRMAA)"),
-                  ("aca_premiums", "Marketplace premiums"))
-INCOME_SERIES = (("wages", "Wages"), ("ss", "Social Security"), ("pension_income", "Pensions"),
-                 ("spia_income", "SPIAs"), ("portfolio_withdrawals", "Withdrawals from savings"))
+# QW-1 (ux-qw-handoff-2.md): one map of words for the paragraph, the Sankey's nodes, the
+# table under it and the *Taxes and premiums* chart. Each cash-flow row name (plan.json's,
+# unchanged: older results and Compare read them) has a label (nodes, legends, the table) and
+# the same words for prose (inside a sentence). A row not listed (a budget's own lines) keeps
+# its name in both.
+FLOW_LABELS = {
+    "Federal income tax": ("Federal income tax", "federal income tax"),
+    "Gains tax": ("Capital gains tax", "capital gains tax"),
+    "NIIT": ("NIIT (3.8%)", "NIIT (3.8%)"),
+    "Payroll tax": ("Payroll tax", "payroll tax"),
+    "State and local tax": ("State and local tax", "state and local tax"),
+    "Medicare premiums": ("Medicare premiums (with IRMAA)", "Medicare premiums (with IRMAA)"),
+    "ACA premiums": ("Marketplace (ACA) premiums", "marketplace (ACA) premiums"),
+    "Taxable-account withdrawals": ("Taxable (brokerage) accounts", "the taxable (brokerage) accounts"),
+    "Tax-deferred withdrawals": ("Tax-deferred accounts (IRAs)", "the tax-deferred accounts (IRAs)"),
+    "Roth withdrawals": ("Roth accounts", "the Roth accounts"),
+    "HSA withdrawals": ("HSAs", "the HSAs"),
+    "Wages": ("Wages", "wages"),
+    "Social Security": ("Social Security", "Social Security"),
+    "Pensions": ("Pensions", "pensions"),
+    "SPIAs": ("SPIAs", "SPIAs"),
+    "Other income": ("Other income", "other income"),
+    "Net investment income": ("Net investment income", "net investment income"),
+    "Fixed-asset income": ("Fixed-asset income", "fixed-asset income"),
+    "Fixed-asset sale": ("Fixed-asset sale", "a fixed-asset sale"),
+    "Big-ticket inflows": ("Big-ticket inflows", "big-ticket inflows"),
+    "Net spending": ("Net spending", "net spending"),
+    "Big-ticket purchases": ("Big-ticket purchases", "big-ticket purchases"),
+    "Debt payments": ("Debt payments", "debt payments"),
+    "Roth conversions": ("Roth conversions", "Roth conversions"),
+    "Savings (surplus)": ("Back into savings", "back into savings"),
+}
+TAX_USES = ("Federal income tax", "Gains tax", "NIIT", "Payroll tax", "State and local tax")
+PREMIUM_USES = ("Medicare premiums", "ACA premiums")
+SAVINGS_SOURCES = ("Taxable-account withdrawals", "Tax-deferred withdrawals", "Roth withdrawals",
+                   "HSA withdrawals")
+CONVERSION_SOURCE = "Roth conversions (from the tax-deferred accounts)"
+# A tax that came out negative (a refundable credit larger than the tax) lands on the sources
+# side as "<row>, net refund" (`view.cash_flow_year`). In the fork only the NY STAR credit is
+# refundable (`Plan._finalize_state_tax`: personal credits stop at zero, STAR comes off after).
+REFUND = ", net refund"
+STAR_REFUND = "State and local tax" + REFUND
+
+
+def flow_label(name: str, star: bool = False) -> str:
+    """One cash-flow row's label (QW-1): a node, a legend, the table under the Sankey. A
+    refunded state tax reads "State tax refund (STAR)" when the run has STAR (`star`)."""
+    if name == STAR_REFUND:
+        return "State tax refund (STAR)" if star else "State tax refund"
+    if name.endswith(REFUND):
+        return flow_label(name[:-len(REFUND)]) + " refund"
+    return FLOW_LABELS.get(name, (name, name))[0]
+
+
+def flow_words(name: str) -> str:
+    """The same row in prose, inside a sentence (QW-1: no capitals mid-sentence)."""
+    return FLOW_LABELS.get(name, (name, name))[1]
+
+
+def _chart_series(pairs):
+    return tuple((key, flow_label(row)) for key, row in pairs)
+
+
+TAX_SERIES = _chart_series((("federal_income_tax", "Federal income tax"), ("ltcg_tax", "Gains tax"),
+                            ("niit", "NIIT"), ("payroll_tax", "Payroll tax"),
+                            ("state_tax", "State and local tax")))
+PREMIUM_SERIES = _chart_series((("medicare_premiums", "Medicare premiums"), ("aca_premiums", "ACA premiums")))
+INCOME_SERIES = (("wages", flow_label("Wages")), ("ss", flow_label("Social Security")),
+                 ("pension_income", flow_label("Pensions")), ("spia_income", flow_label("SPIAs")),
+                 ("portfolio_withdrawals", "Withdrawals from savings"))
 
 
 def _series(by_year, key):
@@ -398,37 +480,20 @@ def income_sources_figure(by_year, purchases=None):
 
 # -- Q17: one year's cash flow ------------------------------------------------------------------
 
-# One set of words for the paragraph and the Sankey's nodes (QW-1: the paragraph said
-# "marketplace" / "Medicare" / "capital gains" where the nodes said "ACA premiums" /
-# "Medicare premiums" / "Gains tax").
-TAX_USES = {"Federal income tax": "Federal income tax", "Gains tax": "Capital gains tax",
-            "NIIT": "NIIT", "Payroll tax": "Payroll tax", "State and local tax": "State and local tax"}
-PREMIUM_USES = {"ACA premiums": "ACA marketplace premiums", "Medicare premiums": "Medicare premiums"}
-# A tax that came out negative (a refundable credit larger than the tax: NY's STAR) lands on
-# the sources side under "..., net refund". QW-1: it is a tax offset, never "income".
-FLOW_WORDS = {**TAX_USES, **PREMIUM_USES,
-              "State and local tax, net refund": "State and local tax refund"}
-SAVINGS_SOURCES = {"Taxable-account withdrawals": "the taxable (brokerage) accounts",
-                   "Tax-deferred withdrawals": "the tax-deferred accounts (IRAs)",
-                   "Roth withdrawals": "the Roth accounts", "HSA withdrawals": "the HSAs"}
-INCOME_WORDS = {"Wages": "wages", "Pensions": "pensions", "Other income": "other income",
-                "Fixed-asset income": "fixed-asset income", "Fixed-asset sale": "a fixed-asset sale",
-                "Big-ticket inflows": "big-ticket inflows", "Net investment income": "net investment income"}
-CONVERSION_SOURCE = "Roth conversions (from the tax-deferred accounts)"
 _USE_GROUPS = (("spending", "Spending"), ("big_ticket", "Big-ticket purchases"),
                ("debt", "Debt payments"), ("taxes", "Taxes"), ("premiums", "Health premiums"),
                ("conversions", "Roth conversions"), ("surplus", "Back into savings"),
                ("other", "Other outflows"))
 _SOURCE_GROUPS = (("savings", "From savings"), ("income", "Income"),
                   ("conversions", "Roth conversions"), ("tax_offsets", "Tax refunds"))
-# A group that always carries its total in a node of its own, even with one line (QW-1: the
-# Health premiums node disappeared whenever a year had a single premium line).
-_NAMED_USE_GROUPS = ("spending", "taxes", "premiums")
+# Groups that always carry their total in a node of their own, even with one line (QW-1: the
+# Health premiums node disappeared whenever a year had a single premium line). Spending gets
+# one only for a budget's lines: "Net spending" alone is its own node (`_spending_node`).
+_NAMED_USE_GROUPS = ("taxes", "premiums")
 
 
-def flow_label(name: str) -> str:
-    """One cash-flow row's name in the words the paragraph and the Sankey share (QW-1)."""
-    return FLOW_WORDS.get(name, name)
+def _spending_node(rows):
+    return bool(rows) and set(rows) != {"Net spending"}
 
 
 def _use_group(name):
@@ -454,7 +519,7 @@ def _source_group(name):
         return "savings"
     if name == CONVERSION_SOURCE:
         return "conversions"
-    if name.endswith(", net refund"):  # QW-1: a refunded tax is a tax offset, not income
+    if name.endswith(REFUND):  # QW-1: a refunded tax is a tax offset, not income
         return "tax_offsets"
     return "income"
 
@@ -475,17 +540,29 @@ def _usd(value):
     return f"\\${value:,.0f}"
 
 
-def _parts(rows: dict, words: dict | None = None) -> str:
+def _parts(rows: dict) -> str:
     items = sorted(rows.items(), key=lambda kv: -kv[1])
-    return ", ".join(f"{(words or {}).get(k, k)} {_usd(v)}" for k, v in items)
+    return ", ".join(f"{flow_words(k)} {_usd(v)}" for k, v in items)
 
 
-def year_summary(year: int, sources: dict, uses: dict) -> str:
+def _refund_clause(name, value, star):
+    """"state and local, a net refund of \\$2,934 (the STAR credit is larger than the tax)"
+    (decision 6): the refund in its own clause, beside the taxes, never netted into them."""
+    base = name[:-len(REFUND)]
+    where = flow_words(base).removesuffix(" tax")
+    credit = "the STAR credit" if (star and name == STAR_REFUND) else "a refundable credit"
+    return f"{where}, a net refund of {_usd(value)} ({credit} is larger than the tax)"
+
+
+def year_summary(year: int, sources: dict, uses: dict, star: bool = False) -> str:
     """The paragraph above the Sankey (UX review section 3), in nominal dollars of *year*,
-    from the same rows the Sankey draws.
+    from the same rows the Sankey draws, in the same words (`flow_words`, QW-1).
 
-    QW-1: a refunded tax (the "..., net refund" rows) is a tax offset, never income: the
-    taxes sentence nets it ("taxes net of a \\$714 state and local tax refund took \\$25,650").
+    Decision 6 (ux-qw-handoff-2.md): the taxes sentence names the Sankey's figures -- the
+    Taxes node's total and its lines -- and a refunded tax (the "..., net refund" rows) is its
+    own clause: "Taxes \\$5,111: federal income tax \\$5,111; state and local, a net refund
+    of \\$2,934 (the STAR credit is larger than the tax)." STAR is named only when the run has
+    it (`star`); otherwise "a refundable credit".
     """
     b = year_breakdown(sources, uses)
     u, s = b["uses"], b["sources"]
@@ -497,32 +574,26 @@ def year_summary(year: int, sources: dict, uses: dict) -> str:
     text[0] += (" plus " + " and ".join(extra) if extra else "") + "."
     savings, income = total(s["savings"]), total(s["income"])
     if savings and income:
-        text.append(f"The money comes from savings, {_usd(savings)} ({_parts(s['savings'], SAVINGS_SOURCES)}), "
-                    f"and from income, {_usd(income)} ({_parts(s['income'], INCOME_WORDS)}).")
+        text.append(f"The money comes from savings, {_usd(savings)} ({_parts(s['savings'])}), "
+                    f"and from income, {_usd(income)} ({_parts(s['income'])}).")
     elif savings:
         if s["conversions"] or s["tax_offsets"]:  # not "all of it": the rest is named below
-            text.append(f"The money comes from savings, {_usd(savings)} "
-                        f"({_parts(s['savings'], SAVINGS_SOURCES)}).")
+            text.append(f"The money comes from savings, {_usd(savings)} ({_parts(s['savings'])}).")
         else:
-            text.append(f"All of it comes from savings: {_parts(s['savings'], SAVINGS_SOURCES)}.")
+            text.append(f"All of it comes from savings: {_parts(s['savings'])}.")
     elif income:
-        text.append(f"All of it comes from income: {_parts(s['income'], INCOME_WORDS)}.")
+        text.append(f"All of it comes from income: {_parts(s['income'])}.")
     taxes = dict(u["taxes"])
-    taxes.setdefault("Federal income tax", 0.0)  # "Federal income tax $0" is worth saying
-    refunds, refund = dict(s["tax_offsets"]), total(s["tax_offsets"])
-    if total(taxes) or refund:
-        if refund:
-            back = " and ".join(f"a {_usd(v)} {flow_label(k).lower()}"
-                                for k, v in sorted(refunds.items(), key=lambda kv: -kv[1]))
-            net = total(taxes) - refund
-            lead = f"Taxes net of {back} {'took' if net >= 0 else 'gave back'} {_usd(abs(net))}"
-        else:
-            lead = f"Taxes {_usd(total(taxes))}"
-        text.append(f"{lead}: {_parts(taxes, TAX_USES)}.")
+    taxes.setdefault("Federal income tax", 0.0)  # "federal income tax $0" is worth saying
+    refunds = s["tax_offsets"]
+    if total(taxes) or refunds:
+        clauses = [f"Taxes {_usd(total(taxes))}: {_parts(taxes)}"]
+        clauses += [_refund_clause(k, v, star) for k, v in sorted(refunds.items(), key=lambda kv: -kv[1])]
+        text.append("; ".join(clauses) + ".")
     else:
         text.append("No taxes.")
     if u["premiums"]:
-        text.append(f"Health premiums {_usd(total(u['premiums']))} ({_parts(u['premiums'], PREMIUM_USES)}).")
+        text.append(f"Health premiums {_usd(total(u['premiums']))} ({_parts(u['premiums'])}).")
     if u["conversions"]:
         text.append(f"A Roth conversion of {_usd(total(u['conversions']))} moves money from the tax-deferred "
                     "accounts to the Roth accounts: it is on both sides.")
@@ -533,13 +604,15 @@ def year_summary(year: int, sources: dict, uses: dict) -> str:
     return " ".join(text)
 
 
-def sankey_figure(year: int, sources: dict, uses: dict):
+def sankey_figure(year: int, sources: dict, uses: dict, star: bool = False):
     """Sources → the year's hub → the use groups → their lines, amounts on every node.
 
-    Spending, Taxes and Health premiums always get a node of their own carrying the group's
-    total, even with one line (QW-1: the Health premiums node disappeared whenever a year
-    had a single premium line); a group of one line goes straight from the hub. Every line
-    node carries `flow_label`'s words, the ones the paragraph above uses (QW-1)."""
+    Taxes and Health premiums always get a node of their own carrying the group's total, even
+    with one line (QW-1: the Health premiums node disappeared whenever a year had a single
+    premium line); Spending gets one for a budget's lines, while "Net spending" alone goes
+    straight from the hub, as does any other group of one line. Every node carries
+    `flow_label`'s words, the paragraph's (QW-1); a refunded state tax is the source node
+    "State tax refund (STAR)" when the run has STAR."""
     b = year_breakdown(sources, uses)
     labels, colors = [], []
     src, tgt, val = [], [], []
@@ -550,7 +623,7 @@ def sankey_figure(year: int, sources: dict, uses: dict):
         return len(labels) - 1
 
     total = sum(sources.values())
-    in_nodes = [(node(flow_label(name), v, "#4c78a8"), v) for name, v in sources.items()]
+    in_nodes = [(node(flow_label(name, star), v, "#4c78a8"), v) for name, v in sources.items()]
     hub = node(f"{year} cash flow", total, "#555555")
     for i, v in in_nodes:
         src.append(i)
@@ -560,7 +633,8 @@ def sankey_figure(year: int, sources: dict, uses: dict):
         rows = b["uses"][group]
         if not rows:
             continue
-        if len(rows) == 1 and group not in _NAMED_USE_GROUPS:
+        named = group in _NAMED_USE_GROUPS or (group == "spending" and _spending_node(rows))
+        if len(rows) == 1 and not named:
             (name, v), = rows.items()
             src.append(hub)
             tgt.append(node(flow_label(name), v, "#f58518"))

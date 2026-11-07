@@ -7831,3 +7831,33 @@ The user's call: fold AO1 and AO2 of `fork-notes/ux-qw-second-pass-review.md`. A
   - Lint: only upstream's listed items.
 - **Next.** The user's call on fast-forwarding `main`, and on filing the three drafts
   (`issue-crlf-upload`, `issue-year-fields`, `issue-balance-units`).
+
+## Ergonomics review S-1 to S-6: the work order (2026-11-07)
+
+The outside ergonomics review's second phase (six structural items, pasted by the user) checked
+against the code at `f854721` and re-read for ergonomics; work order
+`fork-notes/ux-structural-handoff.md`. Docs only, nothing built, no solve run.
+
+- **Mapping to our own items** (`ux-review.md`): S-1 = S1, S-2 = S3 + S2, S-3 = S4, S-4 = the
+  rest of S5, S-5 = S8 plus overlay charts, S-6 = S7.
+- **Already built or not as described [code]:**
+  - the Queue page already polls (`@st.fragment(run_every=2.0)`, `Queue.py:75`) with elapsed
+    time;
+  - `OWL_SKIP_DISCLAIMER` already exists (`Welcome.py:28`);
+  - the Run page needs no `Plan`, so the review's auto-hydration through `openCaseFromPlan`
+    adds a failure point for nothing;
+  - no "Convert housing rows" function exists;
+  - the review's line references for `library_import.py` and `scenario.py` are past the files'
+    ends.
+- **Found [code]:**
+  - Compare's "What moved" lifetime row adds nominal dollars of different years (a defect;
+    S-5 fixes it first);
+  - `library.json`'s `pins` is never set by any code;
+  - the review's three-form year picker leaves out `purchase` and `event:` anchors.
+- **Changed from the review:**
+  - S-3's conversion is offered behind an exact rebuild check, never automatic;
+  - S-5 says "where it shows up", not "driven by";
+  - S-6 drops the automatic switch to the Run page;
+  - recapture stays inside state tax.
+- **Nine decisions for the user** first; then S-2, S-1, S-4, S-5, S-3, S-6.
+- **Next.** The user's decisions 1-9 in the work order.

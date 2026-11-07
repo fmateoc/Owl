@@ -37,7 +37,7 @@ Q10-Q20, and B3's issue reworked".
 | S5 | **Partly done** (QW-2/QW-3, 2026-11-07, `claude/upbeat-planck-c731oy`): crossings of the IRMAA tiers, the 400% FPL line and the Enhanced STAR limit reported beyond the band with their cost, in a compact table of their own; the NY decomposition (`by_year` recapture, local tax, STAR) not built |
 | S6 | **Partly done** (QW-1): the paragraph, the Sankey and a two-column sources/uses table with group subtotals and a totals line share one set of words; no separate year card |
 | S9 | **Partly done** (QW-4, QW-8): \$20M balance warning; Roth, swap and ACA years bounded by the plan (the ACA start a toggle); financing ranges refused and unit slips warned on Scenario and Collections; no benchmark-premium range flag, errors not rewritten |
-| S1-S4, S7, S8, S10 | Not started (the user's call) |
+| S1-S4, S7, S8, S10 | Not started (the user's call). S1, S3, S4, S7, S8 and the rest of S5 have a work order from the outside review's S-1 to S-6: `fork-notes/ux-structural-handoff.md` (2026-11-07, decisions pending) |
 
 ## How this was checked
 

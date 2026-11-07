@@ -41,6 +41,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
+import math
 from datetime import date
 
 import pandas as pd
@@ -157,6 +158,29 @@ def _place_to_store(locality, district, move, case_district, original):
     return locality, district
 
 
+def _share_from_percent(shown, original):
+    """A share the page shows in percent (UX review Q19), as the event stores it: the event's
+    own value while the shown percent is unchanged, so an unedited save changes nothing (X4)."""
+    if math.isclose(float(shown), float(original) * 100.0, rel_tol=0.0, abs_tol=1e-9):
+        return original
+    return float(shown) / 100.0
+
+
+def _event_id(column, default, current, widget_key):
+    """The event's id, behind "Advanced" (UX review Q19): other events anchor on it
+    (`event:care+2`) and the generated rows are marked with it, so it stays editable."""
+    with column.popover("Advanced"):
+        value = st.text_input("Event id", value=current, key=widget_key,
+                              help="Other events can refer to this one by its id "
+                                   f"(a year as `event:{current or default}+2`), and the rows it "
+                                   "generates are marked with it.")
+    return value
+
+
+def _payer_label(value):
+    return value if value else (f"default ({names[0]})" if names else "default")
+
+
 def _blank_rows(rows, columns):
     """A table to edit: the events' rows, and one empty row to type into."""
     return pd.DataFrame([*rows, {c: None for c in columns}], columns=columns)
@@ -187,18 +211,18 @@ death_df = st.data_editor(
 with st.expander("Rent", expanded=rent is not None):
     rent_on = st.checkbox("The household rents", value=rent is not None, key=f"scn_rent_on_{key}")
     r1, r2, r3, r4 = st.columns(4)
-    rent_id = r1.text_input("Event id", value=(rent or {}).get("id", "rent"), key=f"scn_rent_id_{key}")
-    rent_monthly = r2.number_input("Monthly rent ($)", value=float((rent or {}).get("monthly", 4000)),
+    rent_monthly = r1.number_input("Monthly rent ($)", value=float((rent or {}).get("monthly", 4000)),
                                    key=f"scn_rent_monthly_{key}")
-    rent_start = r3.text_input("From", value=builder.year_ref_text((rent or {}).get("start", plan_year)),
+    rent_start = r2.text_input("From", value=builder.year_ref_text((rent or {}).get("start", plan_year)),
                                key=f"scn_rent_start_{key}")
-    rent_flat = r4.text_input("Flat through",
+    rent_flat = r3.text_input("Flat through",
                               value=builder.year_ref_text((rent or {}).get("flat_until", plan_year + 1)),
                               key=f"scn_rent_flat_{key}")
     rent_end = st.text_input(
         "To (blank: the year before the purchase, or the plan end)",
         value=("" if not rent or "end" not in rent else builder.year_ref_text(rent["end"])),
         key=f"scn_rent_end_{key}")
+    rent_id = _event_id(r4, "rent", (rent or {}).get("id", "rent"), f"scn_rent_id_{key}")
 
 with st.expander("Home purchase", expanded=buy is not None):
     buy_on = st.checkbox("Buy a home", value=buy is not None, key=f"scn_buy_on_{key}")
@@ -208,21 +232,26 @@ with st.expander("Home purchase", expanded=buy is not None):
     else:  # suggestions for a new purchase, shown in the fields and saved as typed
         terms = {"down": 0.20, "closing": 0.03, "extra": 0.02}
     b1, b2, b3, b4 = st.columns(4)
-    buy_id = b1.text_input("Event id", value=(buy or {}).get("id", "buy"), key=f"scn_buy_id_{key}")
-    buy_name = b2.text_input("Home (the rows' name)", value=(buy or {}).get("name", "home"),
+    buy_name = b1.text_input("Home (the rows' name)", value=(buy or {}).get("name", "home"),
                              key=f"scn_buy_name_{key}")
-    buy_price = b3.number_input("Price (today's $)", value=float((buy or {}).get("price", 700000)),
+    buy_price = b2.number_input("Price (today's \\$)", value=float((buy or {}).get("price", 700000)),
                                 key=f"scn_buy_price_{key}")
     # A new purchase defaults to the year after the plan year (review X8: "purchase" anchored
     # the purchase to itself).
-    buy_year = b4.text_input("Year", value=builder.year_ref_text((buy or {}).get("year") or plan_year + 1),
+    buy_year = b3.text_input("Year", value=builder.year_ref_text((buy or {}).get("year") or plan_year + 1),
                              key=f"scn_buy_year_{key}")
+    buy_id = _event_id(b4, "buy", (buy or {}).get("id", "buy"), f"scn_buy_id_{key}")
     s1, s2, s3, s4 = st.columns(4)
     buy_sale = s1.text_input("Sold (blank: kept)",
                              value=("" if not buy or "sale" not in buy else builder.year_ref_text(buy["sale"])),
                              key=f"scn_buy_sale_{key}")
-    buy_pay_on = s2.text_input("Paid from (person)",
-                               value=(buy or {}).get("pay_on") or "", key=f"scn_buy_pay_on_{key}")
+    # A dropdown of the case's people (UX review Q19); no choice is the builder's default, the
+    # first person, and stays no choice so that an unedited save changes nothing.
+    _payers = _choices([None, *names], (buy or {}).get("pay_on"))
+    buy_pay_on = s2.selectbox("Paid from (person)", _payers,
+                              index=_payers.index((buy or {}).get("pay_on")),
+                              format_func=_payer_label, key=f"scn_buy_pay_on_{key}",
+                              help="Whose savings pay the price and the closing costs.")
     buy_kind = s3.selectbox("Financing", ["cash", "loan"],
                             index=0 if financing.get("kind") != "loan" else 1,
                             key=f"scn_buy_kind_{key}")
@@ -233,12 +262,17 @@ with st.expander("Home purchase", expanded=buy is not None):
                                key=f"scn_buy_term_{key}")
     buy_rate = f2.number_input("Rate (%)", value=float(financing.get("rate", 6.25)),
                                key=f"scn_buy_rate_{key}")
-    buy_down = f3.number_input("Down payment (share)", value=float(terms["down"]),
-                               key=f"scn_buy_down_{key}")
-    buy_closing = f4.number_input("Closing costs (share)", value=float(terms["closing"]),
-                                  key=f"scn_buy_closing_{key}")
-    buy_extra = f5.number_input("Loan closing (share)", value=float(terms["extra"]),
-                                key=f"scn_buy_extra_{key}")
+    # Shares shown in percent (UX review Q19: 0.2 read as a fifth of a percent); the event
+    # keeps shares, converted here only.
+    buy_down = _share_from_percent(
+        f3.number_input("Down payment (%)", value=float(terms["down"]) * 100.0, step=1.0,
+                        format="%.2f", key=f"scn_buy_down_{key}"), terms["down"])
+    buy_closing = _share_from_percent(
+        f4.number_input("Closing costs (% of the price)", value=float(terms["closing"]) * 100.0,
+                        step=0.5, format="%.2f", key=f"scn_buy_closing_{key}"), terms["closing"])
+    buy_extra = _share_from_percent(
+        f5.number_input("Loan closing (% of the loan)", value=float(terms["extra"]) * 100.0,
+                        step=0.5, format="%.2f", key=f"scn_buy_extra_{key}"), terms["extra"])
     # The place starts from the case's own residence (UX review B2): a new purchase shows the
     # case's state, locality and district, and a purchase without a move that leaves its
     # district blank builds with the case's, so it shows that one. A district picked as none
@@ -300,18 +334,21 @@ with st.expander("Home purchase", expanded=buy is not None):
                                  key=f"scn_buy_growth_{key}")
     buy_commission = c5.number_input("Selling cost (%)", value=float((buy or {}).get("commission", 0.0)),
                                      key=f"scn_buy_commission_{key}")
+    if buy_on and not (cost_tax or cost_hoa or cost_ins):
+        st.warning("Property tax, HOA and insurance are all 0: owning the home costs nothing in "
+                   "this run. Enter them, unless that is what you mean.", icon=":material/warning:")
 
 with st.expander("Care", expanded=care is not None):
     care_on = st.checkbox("A care span", value=care is not None, key=f"scn_care_on_{key}")
     c1, c2, c3, c4 = st.columns(4)
-    care_id = c1.text_input("Event id", value=(care or {}).get("id", "care"), key=f"scn_care_id_{key}")
-    care_name = c2.text_input("Line name", value=(care or {}).get("name", "care"),
+    care_name = c1.text_input("Line name", value=(care or {}).get("name", "care"),
                               key=f"scn_care_name_{key}")
-    care_amount = c3.number_input("Cost (\\$/yr, today's \\$)", value=float((care or {}).get("amount", 110000)),
+    care_amount = c2.number_input("Cost (\\$/yr, today's \\$)", value=float((care or {}).get("amount", 110000)),
                                   key=f"scn_care_amount_{key}")
     _care_default = {"anchor": "age", "person": names[0], "age": 86} if names else plan_year
-    care_year = c4.text_input("From", value=builder.year_ref_text((care or {}).get("year") or _care_default),
+    care_year = c3.text_input("From", value=builder.year_ref_text((care or {}).get("year") or _care_default),
                               key=f"scn_care_year_{key}")
+    care_id = _event_id(c4, "care", (care or {}).get("id", "care"), f"scn_care_id_{key}")
     care_end = st.text_input("To (blank: the plan end)",
                              value=("" if not care or "end" not in care else builder.year_ref_text(care["end"])),
                              key=f"scn_care_end_{key}")
@@ -329,13 +366,13 @@ with st.expander("Downturn sequence", expanded=down is not None):
                           key=f"scn_down_on_{key}")
     _seq_names = sorted(_sequences())
     d1, d2, d3 = st.columns(3)
-    down_id = d1.text_input("Event id", value=(down or {}).get("id", "downturn"), key=f"scn_down_id_{key}")
     _chosen = (down or {}).get("sequence", _seq_names[0]) if _seq_names else None
-    down_seq = d2.selectbox("Sequence", _seq_names,
+    down_seq = d1.selectbox("Sequence", _seq_names,
                             index=max(0, _seq_names.index(_chosen)) if _chosen in _seq_names else 0,
                             key=f"scn_down_seq_{key}")
-    down_start = d3.text_input("From", value=builder.year_ref_text((down or {}).get("start") or plan_year),
+    down_start = d2.text_input("From", value=builder.year_ref_text((down or {}).get("start") or plan_year),
                                key=f"scn_down_start_{key}")
+    down_id = _event_id(d3, "downturn", (down or {}).get("id", "downturn"), f"scn_down_id_{key}")
     if down_seq:
         _meta = _sequences()[down_seq]
         st.caption(f"{_meta['description']} *(source: {_meta['source']})*")
@@ -441,7 +478,7 @@ def _assemble():
         event = {**_kept(buy, "purchase"),
                  "id": buy_id.strip() or "buy", "kind": "purchase", "name": buy_name.strip() or "home",
                  "price": buy_price, "year": _year(buy_year, "purchase.year"),
-                 "pay_on": buy_pay_on.strip() or None,
+                 "pay_on": buy_pay_on or None,
                  "growth": buy_growth, "commission": buy_commission,
                  "place": {"state": place_state, "locality": place_locality,
                            "school_district": place_district, "move": bool(place_move)},

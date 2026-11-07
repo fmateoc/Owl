@@ -67,7 +67,7 @@ with st.expander("New collection", expanded=not lib.collections()):
     question = st.text_input("Question", key="col_new_question",
                              placeholder="Maximize first-year discretionary spending, condo kept")
     rule_hint = ("reference: Yonkers 2027 cash; a variant leads only when it is at least as "
-                 "good on the score and the home at the end")
+                 "good on the discretionary spending and the home at the end")
     rule = st.text_input("Comparison rule", key="col_new_rule", placeholder=rule_hint)
     # Enabled whatever the name says (UX review Q18): gated on the field, the button was still
     # disabled when the click that blurs the field landed, so that first click did nothing.
@@ -114,8 +114,9 @@ with st.expander("Question, rule and layout"):
                             help="What this collection answers, in one sentence.")
     rule = st.text_area("Comparison rule", value=coll.rule, key=f"col_rule_{coll.id}",
                         help="How the variants are judged: a variant leads only when it is at "
-                             "least as good on the score and the home at the end, and better on "
-                             "one beyond the noise rule; the two numbers are never added together.")
+                             "least as good on the spending (the savings left, when the bequest is "
+                             "maximized) and the home at the end, and better on one beyond the "
+                             "noise rule; the two numbers are never added together.")
     dims = sorted({key for m in coll.members for key in (m.values or {})})
     shown_rows, shown_cols = vt.grid_layout(dims, coll.grid)  # AD2: the layout the grid uses
     c3, c4 = st.columns(2)
@@ -364,7 +365,8 @@ else:
                "Colour, the "
                "verdict on the two numbers together: green leads the reference, red the reference leads, "
                "blue a trade-off (more spending against more home), grey no difference beyond the "
-               "noise rule; ~ marks a score difference inside the noise band.")
+               f"noise rule; ~ marks a {view.first_number_name(ref_entry.result)} difference "
+               "inside the noise band.")
     lines = [f"| {_key_label(rows) if rows else 'variant'} | "
              + " | ".join(_key_label(col) for col in g.col_keys) + " |",
              "|---|" + "---:|" * len(g.col_keys)]
@@ -377,9 +379,10 @@ else:
     leaders = grid.front(entries, reference=ref_entry.run_id)
     if leaders:
         st.markdown("#### What nothing beats")
-        st.caption("The variants no other variant beats on both numbers -- the score and the "
-                   "home at the end, never added. *vs the reference* is the score difference's "
-                   "verdict against the noise rule.")
+        _first = view.first_number_name(ref_entry.result)
+        st.caption(f"The variants no other variant beats on both numbers -- the {_first} and the "
+                   f"home at the end, never added. *vs the reference* is the verdict on the "
+                   f"{_first} difference against the noise rule.")
         for item in leaders:
             entry = item["entry"]
             judgment = item["vs_reference"]
@@ -395,12 +398,14 @@ else:
                 + (f" -- {judgment.note}" if judgment.note else ""))
     for entry in g.unplaced:
         st.caption(f"Beside the grid (no variant values): **{entry.name}**"
-                   + (f", score {entry.score:,.0f}" if entry.score is not None else ""))
+                   + (f", {view.score_name(entry.result)} {entry.score:,.0f}"
+                      if entry.score is not None else ""))
     for entry, shares in g.collided:  # AC4: two runs in one cell, both shown
-        star = " &#9733; (the best score in its row)" if entry.run_id in g.best_beside else ""
+        star = " &#9733; (the best in its row)" if entry.run_id in g.best_beside else ""
         st.caption(f"Beside the grid (its cell shows **{shares.name}**, the same row and column): "
                    f"**{entry.name}**"
-                   + (f", score {entry.score:,.0f}" if entry.score is not None else "") + star)
+                   + (f", {view.score_name(entry.result)} {entry.score:,.0f}"
+                      if entry.score is not None else "") + star)
 
 
 # -- the members -------------------------------------------------------
@@ -442,7 +447,8 @@ for member in coll.members:
         line += "  \n" + ", ".join(f"{k}: {v}" for k, v in member.values.items())
     if entry.result is not None and entry.result.solved:
         home = f"{entry.home:,.0f}" if entry.home is not None else "-"
-        line += f"  \nscore {entry.score:,.0f} · home {home} · {view.method_text(entry.result)}"
+        line += (f"  \n{view.score_name(entry.result)} {entry.score:,.0f} · home {home} · "
+                 f"{view.method_text(entry.result)}")
     elif (_EXACT and _RUNS.get(member.run) is not None
           and grid.latest_result(_RUNS[member.run].path, companion="exact_medicare") is not None):
         # The tornado's medical-inflation child solves with Medicare priced exactly (review

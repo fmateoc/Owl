@@ -176,7 +176,7 @@ def _age_map_chart(amap):
     st.caption(
         f"{len(amap.cells)} scored plan(s); {len(groups)} shade(s); the best "
         f"{best.value:,.0f} is tied (within {max(c.tolerance for c in groups[0]):,.0f}) with "
-        f"{tied} cell(s). Cells this sweep did not score are blank."
+        f"{tied} cell(s). Cells this sweep did not solve are blank."
     )
     if amap.dimensions > 1:
         xs, ys = amap.x_ages(), amap.y_ages()
@@ -494,14 +494,11 @@ if entries:
         _total = _m.get("spending_year1") or (_m["discretionary_year1"] + _m["essential_year1"])
         cols[0].metric(
             "First year's total spending", _usd(_total),
-            delta=f"${_m['discretionary_year1']:,.0f} discretionary + "
-                  f"${_m['essential_year1']:,.0f} essential budget",
-            delta_color="off", delta_arrow="off",
-            help="Bar 1 of the Spending chart. The score is the discretionary part alone: "
-                 "the number the solve maximizes.")
+            help="Bar 1 of the Spending chart, today's dollars. The split is under this row; "
+                 "comparisons rank on the discretionary part, the number the solve maximizes.")
     else:
         cols[0].metric(_score_words[:1].upper() + _score_words[1:], _usd(value),
-                       help="The score: the number the solve maximizes, today's dollars.")
+                       help="The number the solve maximizes, today's dollars.")
     cols[1].metric("Home at the end", _usd(view.home_at_end(result)),
                    help="The home net of commission and of any loan still owed: the reserve "
                         "for care, today's dollars. Never added to the savings.")
@@ -519,10 +516,16 @@ if entries:
     withheld = view.ss_withheld_today(result)
     cols[5].markdown("**SS withheld by the earnings test**  \n"
                      + (f"\\${withheld:,.0f}" if withheld is not None else "-"))
-    st.caption(view.score_label(result)
-               + (f" ({value:,.0f})" if value is not None else "")
-               + " is the score; the two end-of-plan numbers are reported side by side and "
-                 "never added together.")
+    # Review AN1: the split had been the metric's `delta`, which Streamlit reads as Markdown:
+    # its "$...$" pair was drawn as math and the chip cut it short. Its own line, escaped.
+    if _split:
+        st.markdown(f"Of the first year's \\${_total:,.0f}: "
+                    f"\\${_m['discretionary_year1']:,.0f} discretionary (the part the plan raises "
+                    f"or lowers) and \\${_m['essential_year1']:,.0f} essential budget lines.")
+    st.caption(f"The solve maximizes the {_score_words}"
+               + (f": {value:,.0f}" if value is not None else "")
+               + ". The two end-of-plan numbers are reported side by side and never added "
+                 "together.")
 
     # -- "Things to look at" (design 14.1, I3) --------------------------
     _things_to_look_at(result)
@@ -664,9 +667,12 @@ def _tornado_collection(run):
     it, as the bars are). Found by the run's id, never by its name (review AI3)."""
     coll = tornado.collection_of(lib, run.id)
     if coll is None:
+        # The bars' number in its own words (QW-5): the newest main solve's.
+        main = next((e[2] for e in entries if not view.is_companion(e[2])), None)
         coll = lib.create_collection(
             f"Sensitivity: {run.name}",
-            question=f"What moves {run.name}'s score? (one key input at a time)",
+            question=f"What moves {run.name}'s {view.first_number_name(main)}? "
+                     "(one key input at a time)",
             rule="each child re-solved under the exact LP, against this run's own exact-LP "
                  "solve; bars sorted by effect, each with its tolerance",
             tornado_of=run.id)

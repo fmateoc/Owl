@@ -336,16 +336,22 @@ class TestRunPage:
         # UX remediation QW-5: with essential budget lines the headline is the first year's
         # whole spending (bar 1 of the Spending chart), with the score's split under it.
         assert metrics["First year's total spending"].value == "102,000"
-        assert metrics["First year's total spending"].delta == \
-            "$84,000 discretionary + $18,000 essential budget"
+        # Review AN1: the split is no longer the metric's delta (drawn as math, then cut),
+        # but its own line under the row, with its dollars escaped and whole.
+        assert not metrics["First year's total spending"].delta
         assert metrics["Home at the end"].value == "120,000"
         assert metrics["Savings left"].value == "350,000"
         assert metrics["Total taxes"].value == "180,000"
         text = _text(at)
         assert "Noa 66y2m, Avi 70y0m" in text
         assert "settled" in text
-        # The score stays named, with its value (the caption under the metrics).
-        assert "first year's discretionary spending (\\$/yr, today's) (84,000) is the score" in text
+        assert ("Of the first year's \\$102,000: \\$84,000 discretionary (the part the plan "
+                "raises or lowers) and \\$18,000 essential budget lines.") in text
+        # What the solve maximizes, named with its value (the caption under the metrics), in
+        # words that neither start lower case nor double their parentheses (QW-5).
+        assert ("The solve maximizes the first year's discretionary spending (\\$/yr, today's): "
+                "84,000.") in text
+        assert "is the score" not in text
         # UX remediation QW-6: the raw codes are in the collapsed technical expander.
         assert any(e.label == "Technical solve details" for e in at.expander)
         details = "\n".join(str(m.value) for m in at.markdown)

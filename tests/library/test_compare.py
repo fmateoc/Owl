@@ -139,7 +139,7 @@ class TestLead:
         assert c.lead["verdict"] == "trade-off"
         # The score keeps its noise band: under 1% of 82,000 is still unresolved.
         c = self._rows(a={}, b={"score_value": 82_400.0, "home": 151_000.0, "savings": 350_000.0})
-        score_row = next(r for r in c.rows if r.label == "score")
+        score_row = c.rows[0]  # the score row, in its own words (QW-5)
         assert score_row.verdict == "within noise"
         assert c.lead["verdict"] == "the second result leads"
 
@@ -316,3 +316,23 @@ class TestDefaultPair:
     def test_fewer_than_two_main_results(self):
         assert C.default_pair([("a", None, 1.0, True)]) == (0, 0)
         assert C.default_pair([("a", None, 1.0, False), ("b", None, 2.0, True)]) == (0, 1)
+
+
+class TestTheScoreInItsOwnWords:
+    """QW-5, decision 3 (ux-qw-handoff-2.md): the comparison names the score as the run page
+    does -- the discretionary spending with essential budget lines -- never "score"."""
+
+    def test_the_first_row_and_the_lead_note_name_the_discretionary_spending(self):
+        a = make_result()
+        b = make_result(score_value=90_000.0, home=160_000.0)
+        c = compare(a, b)
+        assert c.rows[0].label == "discretionary spending"
+        assert c.lead["verdict"] == "the second result leads"
+        assert "the discretionary spending and the home at the end" in c.lead["note"]
+        words = " ".join([r.label for r in c.rows] + [c.lead["note"], *c.flags])
+        assert "score" not in words
+
+    def test_different_objectives_say_why_without_the_word(self):
+        c = compare(make_result(), make_result(objective="maxBequest"))
+        assert c.lead["verdict"] == "not comparable"
+        assert "score" not in c.lead["note"] and "score" not in " ".join(c.flags)

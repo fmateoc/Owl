@@ -44,6 +44,7 @@ from .view import (
     method_kind,
     savings_left,
     score,
+    score_name,
     tolerance,
     total_taxes_today,
 )
@@ -140,7 +141,8 @@ def flags(a: Result, b: Result) -> tuple:
     objectives = [objective_of(a), objective_of(b)]
     if objectives[0] != objectives[1]:
         out.append(f"solved with different objectives ({objectives[0]} vs {objectives[1]}): "
-                   "the scores are not the same quantity")
+                   "one maximizes spending, the other the bequest, so their headline "
+                   "numbers are not the same quantity")
     presets = [str(rec.get("preset") or "?") for rec in recs]
     if presets[0] != presets[1]:
         out.append(f"solved with different presets ({presets[0]} vs {presets[1]})")
@@ -176,12 +178,13 @@ def lead_verdict(rows, objective: str = "maxSpending") -> dict:
     """
     by_label = {r.label: r for r in rows}
     spending = objective == "maxSpending"
-    first = "score" if spending else "savings left at the end"
-    pair = (by_label.get(first), by_label.get("home at the end"))
+    # The score row comes first and carries the score's own words (QW-5, `view.score_name`).
+    first = (rows[0] if rows else None) if spending else by_label.get("savings left at the end")
+    pair = (first, by_label.get("home at the end"))
     if any(r is None or r.delta is None for r in pair):
         return {"verdict": "not comparable", "note": "one of the two results has no numbers"}
     stances = [_lead_one(r) for r in pair]
-    both = ("the score and the home at the end" if spending
+    both = (f"the {first.label} and the home at the end" if spending
             else "the savings left and the home at the end")
     if stances == ["even", "even"]:
         return {"verdict": "no difference beyond the noise rule", "note": ""}
@@ -313,7 +316,7 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
             b_exact: Optional[Result] = None) -> Comparison:
     """The comparison screen's content for two results (design 9.2)."""
     rows = (
-        difference("score", score(a), score(b), ta=a, tb=b),
+        difference(score_name(a), score(a), score(b), ta=a, tb=b),
         difference("home at the end", home_at_end(a), home_at_end(b), ta=a, tb=b,
                    from_inputs=True),
         difference("savings left at the end", savings_left(a), savings_left(b), ta=a, tb=b),
@@ -323,7 +326,7 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
     if objectives[0] != objectives[1]:
         lead = {"verdict": "not comparable",
                 "note": f"different objectives ({objectives[0]} vs {objectives[1]}): the two "
-                        "scores measure different things"}
+                        "headline numbers measure different things"}
     else:
         lead = lead_verdict(rows, objectives[0])
     moved_rows, moved_totals, _columns = what_moved(a, b)

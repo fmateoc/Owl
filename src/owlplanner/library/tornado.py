@@ -460,7 +460,7 @@ def bars(parent_result, rows) -> list:
         if base is None or got is None:
             note = (_waiting(preset) if base is None
                     else _no_child(preset) if result is None or not mine
-                    else "no score")
+                    else "no number to compare")
             out.append({"label": label, "delta": None, "tolerance": None, "verdict": "-",
                         "note": note, "result": result, "home_delta": None, "home_verdict": "-"})
             continue

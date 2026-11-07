@@ -314,7 +314,7 @@ def lead_between(a: Entry, b: Entry) -> dict:
         return {"verdict": "not comparable",
                 "note": f"different objectives ({objective} vs {C.objective_of(b.result)})"}
     rows = (
-        C.difference("score", a.score, b.score, ta=a.result, tb=b.result),
+        C.difference(view.score_name(a.result), a.score, b.score, ta=a.result, tb=b.result),
         C.difference("home at the end", a.home, b.home, ta=a.result, tb=b.result,
                      from_inputs=True),
         C.difference("savings left at the end", view.savings_left(a.result),

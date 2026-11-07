@@ -99,6 +99,17 @@ def score_label(result: Result) -> str:
     return r"spending basis (\$/yr, today's)"
 
 
+def score_name(result: Result) -> str:
+    """The score in a few words (QW-5, decision 3: the pages say what the number is, never
+    "score"): "discretionary spending" with essential budget lines, "spending" without, the
+    "final bequest" under maxBequest."""
+    if result is not None and result.plan.get("objective") != "maxSpending":
+        return "final bequest"
+    if result is not None and "discretionary_year1" in result.summary:
+        return "discretionary spending"
+    return "spending"
+
+
 def first_number(result: Result) -> Optional[float]:
     """R3's first number, what a variant's difference is read on beside the home at the end:
     the score under maxSpending; under maxBequest the savings left, since the score there is
@@ -114,17 +125,18 @@ def first_number(result: Result) -> Optional[float]:
 
 
 def first_number_name(result: Result) -> str:
-    """`first_number`'s name, as `compare`'s rows name it ("score" / "savings left at the end")."""
+    """`first_number`'s name, as `compare`'s rows name it (`score_name` under maxSpending,
+    "savings left at the end" under maxBequest)."""
     if result is not None and result.plan.get("objective") != "maxSpending":
         return "savings left at the end"
-    return "score"
+    return score_name(result)
 
 
 def first_number_label(result: Result) -> str:
     """`first_number` in words, for a page's caption or axis."""
     if result is not None and result.plan.get("objective") != "maxSpending":
         return r"savings left at the end (today's \$, after the heirs' tax)"
-    return score_label(result) if result is not None else "score"
+    return score_label(result) if result is not None else "spending"
 
 
 def savings_left(result: Result) -> Optional[float]:

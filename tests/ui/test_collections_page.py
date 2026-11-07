@@ -363,7 +363,9 @@ class TestTheGridLayoutAndMarks:
         assert not at.exception, [e.value for e in at.exception]
         assert "&#9733;" not in _grid_md(at)  # the +2,000 cell used to carry the row's star
         [beside] = [c.value for c in at.caption if "Beside the grid" in c.value]
-        assert "**v2**" in beside and "the best score in its row" in beside
+        assert "**v2**" in beside and "the best in its row" in beside
+        # QW-5 (decision 3): the number is named in the score's own words, never "score".
+        assert "discretionary spending 95,000" in beside and "score" not in beside
 
     def test_ad4_a_lead_on_the_home_inside_the_score_band_is_green(self, tmp_path, monkeypatch):
         # +400 on 80,000 is inside the 1% band; +100,000 of home is resolved: R3 says the

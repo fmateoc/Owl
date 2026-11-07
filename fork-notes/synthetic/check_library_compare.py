@@ -136,15 +136,17 @@ def main() -> int:
         checks += 1
         changes = diff_summaries(library.scenario(base), library.scenario(variant))
         out = C.compare(a2, b2)
-        by_label = {row.label: row for row in out.rows}
-        ok = (by_label["score"].resolved
+        # QW-5: the score row is named in the score's own words (the household has essential
+        # budget lines, so "discretionary spending").
+        first = out.rows[0]
+        ok = (first.label == "discretionary spending" and first.resolved
               and out.lead["verdict"] in ("the first result leads", "the second result leads",
                                           "trade-off")
               and out.flags == ()
               and any("taxable savings balances" in change for change in changes)  # Q9: in words
               and out.what_moved)
         failures += 0 if ok else 1
-        print(f"{'ok  ' if ok else 'FAIL'} comparison: score {by_label['score'].verdict}, "
+        print(f"{'ok  ' if ok else 'FAIL'} comparison: {first.label} {first.verdict}, "
               f"lead: {out.lead['verdict']}, flags: {len(out.flags)}, "
               f"{len(changes)} input change(s), {len(out.what_moved)} year(s) moved",
               file=_real_out)

@@ -298,7 +298,9 @@ def _hfpLoadedText():
         if key == "houseListBudget" and len(df) == 0 and kz.getCaseKey("spendingProfile") != "budget":
             continue  # fork: the Budget sheet matters to a budget profile only
         tables.append(_count(len(df), one, many))
-    text = f":white_check_mark: *{name}* loaded: wages and contributions for {' and '.join(people)}"
+    # Fork, QW-7.1: every run's workbook is called HFP.xlsx; say which run it came from.
+    origin = f" (from *{kz.runBaseName()}*)" if kz.runBaseName() else ""
+    text = f":white_check_mark: *{name}*{origin} loaded: wages and contributions for {' and '.join(people)}"
     return text + (f"; {', '.join(tables)}." if tables else ".")
 
 

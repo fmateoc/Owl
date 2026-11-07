@@ -1033,3 +1033,59 @@ class TestConversionsAndBrackets:
         assert not at.exception, [e.value for e in at.exception]
         queued = [j for j in JobManager(library).jobs() if j.id not in before]
         assert [j.doc["preset"] for j in queued] == ["regret"]
+
+
+class TestEditAsNewRunTwice:
+    """QW-7's second pass (ux-qw-handoff-2.md, review AN4)."""
+
+    @staticmethod
+    def _as_saved_from_the_pages(run, case_name="bill"):
+        """A child saved from the pages keeps its import's case name in its frozen Case.toml
+        (no library code sets `case_name`): the fixture's child is made to carry it."""
+        toml = run.path / "inputs" / "Case.toml"
+        text = toml.read_text(encoding="utf-8")
+        assert 'case_name = "bill later"' in text
+        toml.write_text(text.replace('case_name = "bill later"', f'case_name = "{case_name}"'),
+                        encoding="utf-8")
+
+    def test_a_run_and_its_parent_open_in_one_session(self, library, monkeypatch):
+        """7.3: "Edit as new run" on "bill later" opened the case **bill**, and then on "bill"
+        stopped at "Case name 'bill' already exists." with "bill later"'s inputs current."""
+        monkeypatch.setattr("streamlit.switch_page", lambda page: None)
+        later = next(r for r in library.runs() if r.name == "bill later")
+        parent = next(r for r in library.runs() if r.name == "bill")
+        self._as_saved_from_the_pages(later)
+        at = _page("Run.py")  # the newest run, "bill later"
+        next(b for b in at.button if b.label == "Edit as new run").click().run()
+        assert at.session_state["currentCase"] == "bill later"
+        at.session_state["library_selected_run"] = parent.id
+        at.run()
+        next(b for b in at.button if b.label == "Edit as new run").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert not any("already exists" in e.value for e in at.error)
+        cases = at.session_state["cases"]
+        assert set(cases) == {"bill later", "bill"}
+        assert at.session_state["currentCase"] == "bill"
+        assert cases["bill"]["library_base_run_id"] == parent.id
+        assert cases["bill later"]["library_base_run_id"] == later.id
+        # The same run again: its own name, made unique in the session.
+        at.session_state["library_selected_run"] = later.id
+        at.run()
+        next(b for b in at.button if b.label == "Edit as new run").click().run()
+        assert at.session_state["currentCase"] == "bill later (2)"
+
+    def test_a_damaged_workbook_opens_nothing_and_a_retry_says_why(self, library, monkeypatch):
+        """7.2: the case without its workbook stayed current, and a retry said "Case name
+        'bill later' already exists."."""
+        monkeypatch.setattr("streamlit.switch_page", lambda page: None)
+        later = next(r for r in library.runs() if r.name == "bill later")
+        (later.path / "inputs" / "HFP.xlsx").write_bytes(b"not a workbook")
+        at = _page("Run.py")
+        for _attempt in range(2):
+            next(b for b in at.button if b.label == "Edit as new run").click().run()
+            assert not at.exception, [e.value for e in at.exception]
+            assert at.session_state["cases"] == {}
+            assert at.session_state["currentCase"] is None
+            errors = [e.value for e in at.error]
+            assert any("could not be read: nothing was opened" in e for e in errors), errors
+            assert not any("already exists" in e for e in errors)

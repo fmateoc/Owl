@@ -216,6 +216,27 @@ class TestNoWorkbook:
         on_base = scenario_from_ui(config_to_ui(copy.deepcopy(case)), plan, base=imported)
         assert scenario_hash(on_base) == scenario_hash(imported)
 
+    def test_a_case_opened_under_its_run_s_name_saves_unchanged(self, tmp_path):
+        """QW-7.3: "Edit as new run" opens a run's case under the run's own name, made unique
+        in the session ("bill later (2)"); the save against that run keeps the run's case
+        name, so an unedited save is still identical to it (no "case_name" change)."""
+        from owlplanner.config.toml_io import save_toml
+
+        case, _, _ = load_toml(CASE)
+        case = copy.deepcopy(case)
+        case["household_financial_profile"]["HFP_file_name"] = "None"
+        buf = io.StringIO()
+        save_toml(case, buf)
+        case_file = tmp_path / "Case_none.toml"
+        case_file.write_text(buf.getvalue(), encoding="utf-8")
+        imported = import_case(case_file)
+        plan = config_to_plan(copy.deepcopy(case), str(tmp_path), verbose=False, loadHFP=False)
+        uidic = config_to_ui(copy.deepcopy(case))
+        uidic["name"] = "some run (2)"
+        on_base = scenario_from_ui(uidic, plan, base=imported)
+        assert on_base["case"]["case_name"] == imported["case"]["case_name"]
+        assert scenario_hash(on_base) == scenario_hash(imported)
+
 
 def _pages(case_toml=CASE, edit=None):
     """(loaded case, plan, uidic) as the pages hold them after opening a case file."""

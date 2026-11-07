@@ -465,6 +465,11 @@ def scenario_from_ui(
         base = canonicalize(base)
         before = ui_to_config(config_to_ui(copy.deepcopy(base["case"])))
         case = _apply_page_edits(base["case"], before, case)
+        # QW-7.3: the pages open a run's case under the run's own name, made unique in the
+        # session; the stored case keeps the base's case name, so an unedited save stays
+        # identical to the base and the name is no change of inputs.
+        if "case_name" in base["case"]:
+            case["case_name"] = base["case"]["case_name"]
         if year is None:
             year = base.get("plan_year")
     if year is not None:

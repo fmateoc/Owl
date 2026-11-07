@@ -610,7 +610,7 @@ if entries:
                 st.info("The cached plan of this solve is gone (or the code changed since it "
                         "was written): solve the run again to open it in the pages.")
             else:
-                name = kz.openCaseFromPlan(plan, name=f"{run.name} {job.id[:16]}")
+                name = kz.openCaseFromPlan(plan, name=kz.uniqueCaseName(f"{run.name} {job.id[:16]}"))
                 if name:
                     st.toast(f"Opened as case *{name}*; see the Results section.")
     with col2:
@@ -627,7 +627,10 @@ if entries:
                      help="Opens the run's frozen files in the case pages. Edit there and "
                           "save on the Library page: a new run, with this one as its parent."):
             case_path = run.path / "inputs" / "Case.toml"
-            if kz.createCaseFromFile(StringIO(case_path.read_text(encoding="utf-8"))):
+            # QW-7.3 (review AN4): under the run's own name, made unique in the session -- the
+            # frozen Case.toml carries its import's case name, shared by every descendant.
+            if kz.createCaseFromFile(StringIO(case_path.read_text(encoding="utf-8")),
+                                     name=kz.uniqueCaseName(run.name)):
                 hfp = run.path / "inputs" / "HFP.xlsx"
                 if hfp.exists():
                     import owlbridge as owb
@@ -635,14 +638,16 @@ if entries:
                     if not owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx"):
                         # UX remediation QW-7: a workbook that could not be read must not be
                         # announced as open and followed by a page switch (the error readHFP
-                        # shows would not survive it).
+                        # shows would not survive it). QW-7.2 (review AN4): nor left behind
+                        # as the current case, half opened, where a retry hit "already exists".
+                        kz.deleteCurrentCase()
                         libraryjobs.flash(
                             "error",
-                            f"The workbook of *{run.name}* could not be read: the run's "
-                            "household tables are not loaded.",
+                            f"The workbook of *{run.name}* could not be read: nothing was opened. "
+                            "Its household tables (HFP.xlsx in the run's inputs) may be damaged.",
                         )
                         st.rerun()
-                kz.setRunBase(run.id)  # saved on the Library page as its child
+                kz.setRunBase(run.id, run.name)  # saved on the Library page as its child
                 # Review AL2: a run's case is complete, as after "Open in Owl" (Q12); the
                 # progress strip on Run Options read "(25%) - Step 2 of 8".
                 import case_progress

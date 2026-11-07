@@ -169,11 +169,38 @@ def has_current_case() -> bool:
 # cleared route by route missed `switchToCaseName` -- Run All Cases switches through every
 # case with it -- `copyCase` and `deleteCurrentCase`).
 RUN_BASE_KEY = "library_base_run_id"
+RUN_BASE_NAME_KEY = "library_base_run_name"
 
 
-def setRunBase(run_id):
-    """Mark the current case as edited from library run `run_id` ("Edit as new run")."""
+def setRunBase(run_id, run_name=None):
+    """Mark the current case as edited from library run `run_id` ("Edit as new run"); its name
+    is kept for display (QW-7.1: Create Case says which run the workbook came from)."""
     currentCaseDic()[RUN_BASE_KEY] = run_id
+    if run_name:
+        currentCaseDic()[RUN_BASE_NAME_KEY] = run_name
+
+
+def runBaseName():
+    """The name of the library run the current case was opened from, or None."""
+    if not has_current_case():
+        return None
+    return currentCaseDic().get(RUN_BASE_NAME_KEY)
+
+
+def uniqueCaseName(base):
+    """A case name not yet in the session: `base`, else "base (2)", "base (3)", ...
+
+    QW-7.3 (review AN4): every run descended from one import carries that import's case name
+    in its frozen Case.toml, so "Edit as new run" on a run and then on its child stopped at
+    "Case name ... already exists". The run library's pages open a run's case under the run's
+    own name, made unique here ("Open in Owl" too)."""
+    name = str(base)
+    if name not in ss.cases:
+        return name
+    k = 2
+    while f"{name} ({k})" in ss.cases:
+        k += 1
+    return f"{name} ({k})"
 
 
 def runBase():
@@ -329,14 +356,22 @@ def copyCase():
     st.toast("Case copied but not yet created.")
 
 
-def createCaseFromFile(strio):
+def createCaseFromFile(strio, name=None):
+    """Create a case from a case file; `name` (fork, QW-7.3) opens it under that name instead
+    of the file's own `case_name` (the run library's "Edit as new run")."""
     import owlbridge as owb
     from io import StringIO
 
-    name, dic = owb.createCaseFromFile(strio)
-    if name == "":
+    filename, dic = owb.createCaseFromFile(strio)
+    if filename == "":
         return False
-    elif name in ss.cases:
+    if name:
+        dic["name"] = name
+        if dic.get("plan") is not None:
+            dic["plan"].rename(name)
+    else:
+        name = filename
+    if name in ss.cases:
         st.error(f"Case name '{name}' already exists.", icon=":material/error:")
         return False
 

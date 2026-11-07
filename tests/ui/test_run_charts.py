@@ -145,3 +145,18 @@ class TestOneYear:
         out_of_hub = sum(v for s, t, v in links if s == hub)
         assert into_hub == pytest.approx(sum(self.SOURCES.values()))
         assert out_of_hub == pytest.approx(sum(self.USES.values()))
+
+
+def test_the_table_keeps_years_whole_and_empty_cells_empty(rc):
+    years = [_bracket_row(2027, 120_000.0), {**_bracket_row(2052, 90_000.0), "irmaa_edges": [], "aca_lines": []}]
+    table = rc.brackets_table(years)
+    assert str(table["Year"].dtype) == "Int64" and str(table["Sets premiums of"].dtype) == "Int64"
+    assert table["Sets premiums of"].isna().tolist() == [False, True]
+    assert table["400% FPL"].dtype == float and table["400% FPL"].isna().tolist() == [False, True]
+
+
+def test_no_page_uses_the_plain_number_format():
+    """Streamlit 1.66 renders some integers wrongly with format="plain" (2028 as
+    2027.9999999999998, 2034 as 2034.0000000000002; seen in a browser, 2026-11-07)."""
+    offenders = [p.name for p in UI_DIR.glob("*.py") if 'format="plain"' in p.read_text(encoding="utf-8")]
+    assert offenders == []

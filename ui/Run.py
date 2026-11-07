@@ -99,7 +99,8 @@ def _things_to_look_at(result):
     } for e in entries]
     money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q6)
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True,
-                 column_config={"Year": st.column_config.NumberColumn(format="plain"),
+                 # "%d", not "plain": Streamlit 1.66 shows 2028 as 2027.9999999999998 in "plain".
+                 column_config={"Year": st.column_config.NumberColumn(format="%d"),
                                 "Amount ($)": money, "Cost ($)": money,
                                 "Affects": st.column_config.TextColumn()})
 
@@ -300,8 +301,8 @@ def _conversions_and_brackets(run, result):
     st.dataframe(table, width="stretch", hide_index=True,
                  column_config={c: money for c in table.columns
                                 if c not in ("Year", "Bracket", "Sets premiums of")}
-                 | {"Year": st.column_config.NumberColumn(format="plain"),
-                    "Sets premiums of": st.column_config.NumberColumn(format="plain")})
+                 | {"Year": st.column_config.NumberColumn(format="%d"),
+                    "Sets premiums of": st.column_config.NumberColumn(format="%d")})
 
     # -- the regret sweep (I8: "what a different conversion would have cost") -----
     regret = result.record.get("regret")

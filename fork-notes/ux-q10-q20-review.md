@@ -17,6 +17,10 @@ file). Probes and Playwright scripts were kept in the session's scratchpad (`pw/
 
 **Status (2026-11-07):** AL1 and AL2 folded on `claude/review-ux-q10-q20` (the user's call;
 PROGRESS.md "UX quick wins: the independent review's AL1-AL2 folded"); AL3-AL6 stand.
+Later on 2026-11-07 (`claude/upbeat-planck-c731oy`): **AL3 folded** by QW-7.1 (the workbook's
+bare name after *Open in Owl*, and Create Case's "HFP.xlsx (from *run*)") and **AL4 folded**
+by QW-1 (a refund is never income; the paragraph, the Sankey and the table share one set of
+words; `ux-qw-handoff-2.md`); AL5 and AL6 stand.
 
 ## What was run
 

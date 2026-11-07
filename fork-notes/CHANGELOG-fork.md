@@ -7,6 +7,45 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run page and case pages: the quick wins' second pass (2026-11-07)
+
+- **"Things to look at" in two tables and a fold.** *Where the plan pays for being over a
+  line* lists every year over an IRMAA tier, the marketplace's 400% FPL line or the Enhanced
+  STAR limit (new), consecutive years merged, the largest cost first, IRMAA with the year's
+  whole surcharge beside the tier's step; *Close to a line* the years within 5% of a line;
+  everything under \$100 and the ramps fold into "N smaller items". Nothing is dropped at
+  solve time any more: `plan.json` keeps every entry, marked "near" or "over", and an older
+  result says to solve again for the crossings (QW-2).
+- **The headline's split is readable**: "Of the first year's \$161,016: \$108,516
+  discretionary (the part the plan raises or lowers) and \$52,500 essential budget lines" on
+  its own line (it was drawn as math and cut). No page calls a number "score": Compare, the
+  grid, the Collections lines and the tornado say "discretionary spending" (QW-5).
+- **One year's money in the Sankey's own figures**: "Taxes \$5,111: federal income tax
+  \$5,111; state and local, a net refund of \$2,934 (the STAR credit is larger than the
+  tax)"; STAR named only when the run has it; one set of words for the paragraph, the Sankey,
+  the table and the *Taxes and premiums* chart; the table grouped with subtotals and a totals
+  line (QW-1).
+- **Financing checked**: a down payment outside 0-100%, negative closing costs, a term of 0
+  or a negative rate are refused in words on both pages and in "make variants" (a Collections
+  cell of 2000 had built a -\$13.7M mortgage); a rate or down payment that looks like a slip
+  of units is warned about; headers say their units (QW-4).
+- **Plain method words**: one list of preset names; "taxes and premiums priced exactly, the
+  plan found by a local search" instead of "exact ... optimization"; the tornado marks its
+  medical-inflation bar with † and keeps the case-file codes in its button's help (QW-6).
+- **The brackets table says what it can know**: no IRMAA tier for a premium year nobody is on
+  Medicare; "tier 2 (\$38,466 over its \$289,559 edge): 2031 premiums"; *Next limit* names the
+  case's own limits per person (the cap, the window, the last two years) before the closest
+  line; a negative `maxRothConversion` is no cap (QW-3).
+- ***Edit as new run* opens a run under its own name**, unique in the session, so a run and
+  its parent open side by side; a damaged workbook opens nothing (QW-7).
+- **Inputs**: the save name defaults to "<base run> variant" and follows a switch of case;
+  *Marketplace coverage from the plan start* is a toggle storing 0 (no more "acaStartYear 0 →
+  2026" on every case); clamped years are named in the field's words; balances of \$20M or
+  more are flagged in dollars (QW-8). The brackets table's empty 400% FPL cells are blank, not
+  "None" (N2).
+- Upstream issue drafts, not filed: the CRLF upload (`fork-notes/issue-crlf-upload.md`), the
+  year fields (`issue-year-fields.md`), the \$k balance trap (`issue-balance-units.md`).
+
 ### Run page and case pages: UI remediation Phase 1, quick wins QW-1-QW-8 (2026-11-07)
 
 - **A refunded tax is never "income"** (NY's STAR): the one-year paragraph nets it against

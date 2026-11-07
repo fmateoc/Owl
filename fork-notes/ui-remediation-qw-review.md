@@ -10,6 +10,11 @@ medium); prefix AM after AL.
 **Status (2026-11-07, the user's call):** AM1-AM3 and AM8 **folded** on the branch (PROGRESS.md
 "UI remediation Phase 1: the independent review, AM1-AM8"; AM1's fold also covers the
 medical-inflation mover's note, a fourth jargon spot its own teeth check found); AM4-AM7 stand.
+Closed later the same day by the second pass (`ux-qw-handoff-2.md`, `claude/upbeat-planck-c731oy`):
+**AM4** by QW-6 (the Medicare-priced companion's line is its name alone), **AM5** by N3
+(`without_folder` tries both spellings of the folder), **AM6** by QW-1 (one word map, the
+savings and income rows included), **AM7** by QW-2 (no floor at solve time; the page folds
+everything under \$100 and the ramps, and its caption says so).
 
 Environment: Windows, Python from `.venv`, HiGHS only, tests with
 `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider` (the suite freezes the date at

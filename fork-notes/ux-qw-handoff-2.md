@@ -278,6 +278,9 @@ AM5 stands. AM7 is settled by QW-2's page-side fold below.
 
 ## Decisions for the user, before the work
 
+**Taken (the user, 2026-11-07): all six as recommended.** Built the same day on this branch,
+one commit per item (PROGRESS.md "Ergonomics quick wins: the second pass built").
+
 Ask each with its recommendation; do not settle them alone.
 
 1. **Upstream drafts** (the user's rule from Q10-Q20: a plain defect is changed for everyone,

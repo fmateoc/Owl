@@ -7614,3 +7614,147 @@ direction.
   `fork-notes/ux-qw-handoff.md` is marked superseded for the remaining work.
 - Docs only on this branch: nothing in `src`, `ui` or `tests` changed by this review. The probes
   lived in the session's scratchpad; their recipes are in the work order.
+
+## Ergonomics quick wins: the second pass built (2026-11-07)
+
+Branch `claude/upbeat-planck-c731oy`, work order `fork-notes/ux-qw-handoff-2.md`. The user's
+call: **all six decisions as recommended** (1: drafts for the CRLF upload, 8.3 and 8.4, none
+for the check mark; 2: crossings for IRMAA, the 400% FPL line and the Enhanced STAR limit, the
+floor on the page, ramps in the fold, no floor on crossings; 3: "discretionary" for "score";
+4: \$20M; 5: the ACA toggle; 6: the tax sentence in the Sankey's figures). One commit per
+item, in the order QW-2, QW-5, QW-1, QW-4, QW-6, QW-3, QW-7, QW-8, N2, N3, N1, N4.
+
+Each defect's test was run against the build's code first (a worktree of `686521e`, the
+merged build, with `PYTHONPATH` set to its `src`):
+
+- **QW-2** (`0aa42b3`): 10 of `test_thresholds.py`'s new or changed tests fail on the build
+  (no STAR over-entry, no `group`/`groups`, a \$69 NIIT row and a \$50 crossing dropped).
+  Model: `group` per entry, `groups` per block, Enhanced STAR crossings priced at the enhanced
+  line only (an income over the basic limit too does not charge the basic credit to it),
+  IRMAA `total_today_dollars`, the ACA over-cliff note ("no subsidy is paid"), `SMALL_PRICE`
+  and `CROSSING_COST` gone. Page: `run_charts.threshold_parts` (two tables, the fold, plain
+  columns, merged years, an older result split by its band with "Solved before crossings
+  were reported: solve again to see them.").
+- **QW-5** (`3f40a85`): the dollar-math source test now scans `value=`, `delta=`,
+  `delta_description=` and failed on the build's `Run.py:497`; the split is its own escaped
+  line; `view.score_name` names the score in Compare's first row, the lead note, the grid's
+  pair rows, Collections' lines and the tornado's question; `tests/ui/test_no_score_word.py`
+  (upstream's "Retirement Efficiency Score" is a proper name and stays). 4 tests fail on the
+  build.
+- **QW-1** (`cc54bf4`): on the build the 2034-shaped paragraph says "Taxes net of a \$2,934
+  state and local tax refund took \$2,177", and \$2,177 is on no Sankey node (probe on the
+  build's `run_charts`); now "Taxes \$5,111: federal income tax \$5,111; state and local, a
+  net refund of \$2,934 (the STAR credit is larger than the tax)". `FLOW_LABELS` (label and
+  prose), `TAX_SERIES`/`PREMIUM_SERIES` built from it, the grouped table with "Total in" /
+  "Total out", no Spending node over "Net spending" alone, STAR only with a district and
+  `withSTAR` on (`Run.py` `_has_star`). 10 of 14 one-year and chart tests fail on the build.
+- **QW-4** (`693e2e5`): on the build a down of 20 builds a Debts row of -\$13,566,000 in the
+  test's case (AN7's -\$13,672,400 on the synthetic price); now refused, "down payment 2000%:
+  enter a percent between 0 and 100", in the builder and in `variants`; unit-slip warnings on
+  both pages; Collections headers and bounds; Scenario's boxes bounded unless a stored value
+  is already outside. Builder output unchanged (`BUILDER_VERSION` 6).
+- **QW-6** (`0ac7a02`): `presets.PRESET_NAMES` (the one list), method words without "exact
+  ... optimization" for a local search, AM4's repetition gone, the tornado's † and footnote,
+  its notes in plain words with the codes as `Mover.detail` in the button's help, the
+  expander's sensitivity line only once a sensitivity collection exists (the order said
+  once results exist; the collection is made when the runs are queued, before any result).
+  6 tests fail on the build.
+- **QW-3** (`20aa424`): on the build `maxRothConversion = -1` gives `conversion_cap = -2000.0`;
+  now per-person limits (`brackets.conversion_limits`: excluded, pinned, last years, window,
+  swap, cap, not alive), `conversion_cap_each`, `conversion_window`, IRMAA edges only for a
+  premium year with Medicare months; the page's IRMAA words and *Next limit*. 16 tests fail
+  on the build.
+- **QW-7** (`5170bc9`): on the build *Edit as new run* opens "bill" for "bill later", leaves
+  the half-opened case behind after a damaged workbook, and a save stores the session's case
+  name; now `sskeys.uniqueCaseName` (shared with *Open in Owl*), `createCaseFromFile(name=)`,
+  the case deleted on a failed read, `scenario_from_ui` keeps the base's `case_name`, and
+  Create Case says "HFP.xlsx (from *run*)". 3 tests fail on the build.
+- **QW-8** (`f69316a`): on the build both unmodified upstream examples get `acaStartYear`
+  2026 (the test's `assert 2026 == 0`); now the toggle storing 0, clamps named in the field's
+  words, the save name "<base run> variant" keyed by the case with a duplicate warning, the
+  \$20M warning in dollars. 4 Run Options tests fail on the build.
+- **N2** (`0c8ca65`): Playwright on a probe page: Streamlit 1.66.1 draws a float NaN, a
+  `Float64` `pd.NA` and an object `None` alike as a grey "None" (with or without
+  `NumberColumn(format="localized")`); only an empty text cell is blank. The 400% FPL column
+  is text now.
+- **N3** (`b6b98c3`): AM5's corner fails on the build ("cannot read C:/tmp/xyz123/HFP.xlsx
+  missing") and passes now.
+- **N1** (`ba0a618`), **N4** (`fa7255d`): `fork-notes/issue-crlf-upload.*`,
+  `issue-year-fields.*`, `issue-balance-units.*`, each reproduced on a stock `dev` `73dc881`
+  worktree and patched there (`git apply --check` clean; the new tests fail on stock and pass
+  with the patch; `tests/ui` + `tests/config` 409, 412 and 410 passed with them). Stock
+  results: a CRLF case reads as `['case_name']` and Create Case says "Failed to parse case
+  file: 'basic_info'"; a start year of 20300 is stored and the plan converts \$0 instead of
+  \$322,299 (jack+jill); jack+jill with balances typed in dollars solves "infeasible". The
+  balance draft carries a test-only `tests/conftest.py` hunk: on stock, an AppTest of Account
+  Balances fails on `st.date_input` under the frozen date. **Not filed.**
+- **Re-drive fixes** (`3c839e9`, found with Playwright): "Things to look at" cut "Year of
+  income" and the IRMAA cost at the named widths (now pixels; the cost reads "\$3,741 (whole
+  year \$6,216)"); the brackets table cut its IRMAA column; the tornado caption put the
+  medical dagger twice and nested parentheses in the notes.
+- **What was run** (Linux):
+  - full suite on `fa7255d` (every item and draft committed): **4595 passed, 1 skipped**
+    (14:50, `-n 3`, with a Careful solve beside it); after `3c839e9`, `tests/library`,
+    `tests/ui`, `test_thresholds.py` and `test_brackets.py`: 1103 passed;
+  - lint: flake8 and ruff report only upstream's listed items (`ui/Run_Options.py`'s B905 is
+    at line 340 now);
+  - `check_library_compare.py` **9/9** ("discretionary spending resolved"; "thresholds: 5
+    near a threshold or over a cliff (aca, irmaa, star)"), `check_library_builder.py`
+    **46/46**, `check_library_roundtrip.py` **39/39** (after QW-4 too);
+  - the UX review's baseline (`Case_ari+noa_condo.toml` +
+    `HFP_ari+noa_condo_yonkers_2029_cash.xlsx`) solved Careful with the final code (308 s,
+    exact companion 12 s), and a child ("10k less taxable", the import's case name) solved
+    Quick for the two-edit drive.
+- **QW-2's check** on that solve (`run_charts.threshold_parts` on its `plan.json`, and the
+  page): *Where the plan pays for being over a line* holds "2027-2029, marketplace subsidy
+  cliff (400% FPL), \$48,790-\$243,823 over, \$4,824-\$12,864" (\$12,547.12 / \$12,864.41 /
+  \$4,823.61 today's, x gamma 1.0280 / 1.0568 / 1.0864 = \$12,898.44 / \$13,594.90 /
+  \$5,240.24 nominal), "2029, IRMAA tier 2, \$38,466 over, \$3,741 (whole year \$6,216), paid
+  in 2031" (\$3,741.19 x 1.1481 = \$4,295.12 nominal; the year \$6,215.50 x 1.1481 =
+  **\$7,135.78** nominal, the work order's \$7,136) and "2029, Enhanced STAR limit, \$181,038
+  over, \$1,546, 2031". *Close to a line* is empty; "4 smaller items" holds 2030 / 2047 / 2048
+  NY recapture (\$26, \$19, \$4) and 2050's 0% gains edge (\$9). The work order expected four
+  recapture rows (\$26.48, \$19.19, \$4.42, \$3.03): today's plan differs in its late years, and
+  the pre-branch `threshold_proximity` on today's plan lists exactly these four rows (run on
+  the first of today's two Careful solves, whose `plan.pkl` was still loadable; the deflators
+  above are from it too, and its entries equal the final solve's to the cent).
+- **Playwright on the final code** (library mode, the baseline's Run page unless said):
+  - QW-5: "Solved 2026-11-07 19:42 · Careful — taxes and premiums priced exactly, the plan
+    found by a local search"; metrics 161,016 / 753,309 / 0 (spent down by design) / 304,959;
+    "Of the first year's \$161,016: \$108,516 discretionary (the part the plan raises or
+    lowers) and \$52,500 essential budget lines." whole, with its dollars; "The solve
+    maximizes the first year's discretionary spending (\$/yr, today's): 108,516. ...".
+  - QW-2: the two headings, the caption "The optimizer prices each of these lines, ...", the
+    table and "4 smaller items" as above (screenshots).
+  - QW-1, 2034: "spending \$167,469. The money comes from savings, \$91,924 (the taxable
+    (brokerage) accounts \$43,596, the tax-deferred accounts (IRAs) \$41,311, the Roth
+    accounts \$7,017), and from income, \$84,562 (Social Security \$84,562). Taxes \$5,109:
+    federal income tax \$5,109; state and local, a net refund of \$2,934 (the STAR credit is
+    larger than the tax). Health premiums \$6,842 (Medicare premiums (with IRMAA) \$6,842)."
+    The table: "From savings \$91,924" ... "Tax refunds \$2,934 / State tax refund (STAR)
+    \$2,934", "Taxes \$5,109 / Federal income tax \$5,109", "Total in \$179,420 | Total out
+    \$179,420", equal to the caption's.
+  - QW-3, 2026-2031 (IRMAA tier | Next limit): 2026 "no Medicare premiums in 2028" | "24/28%
+    bracket top: \$82,909 away"; 2027 "below tier 1 by \$97,333: 2029 premiums" | "10% bracket
+    top: \$2,000 away"; 2028 "below tier 1 by \$97,386: 2030 premiums" | "10% bracket top:
+    \$1,662 away"; 2029 "tier 2 (\$38,466 over its \$289,559 edge): 2031 premiums" | "10%
+    bracket top: \$24,800 away"; 2030 "below tier 1 by \$94,188: 2032 premiums" | "12/15%
+    bracket top: \$53,538 away"; 2031 "below tier 1 by \$94,237: 2033 premiums" | "12/15%
+    bracket top: \$47,120 away"; the 400% FPL cells blank outside 2027-2029; the caption
+    under the table. The case sets no conversion limit these years, so none is named.
+  - QW-6: the tornado's caption in plain words, "medical inflation +2 points †", no config
+    code; the header as above.
+  - QW-7: *Edit as new run* on "ari+noa condo baseline, 10k less taxable", then on "ari+noa
+    condo baseline", in one session: both open under their run names (the case selector
+    lists both, the current one ✓), no "already exists".
+  - QW-8: the save name "ari+noa condo baseline variant", and after switching the case
+    "ari+noa condo baseline, 10k less taxable variant" with its caption following;
+    `Case_jack+jill.toml` uploaded unmodified: Run Options shows no message, the toggle on
+    (disabled: no benchmark premium), no year box; Account Balances with 60,000 in Jack's
+    taxable field: "Jack's taxable accounts: 60,000 here means \$60 million (amounts are in
+    thousands). If you typed dollars, divide by 1,000."
+- Docs: `fork-notes/CHANGELOG-fork.md` entry; CLAUDE.md State bullet and counts;
+  `ux-review.md` status (S5, S6, S9 partly done); `ux-q10-q20-review.md` (AL3, AL4 folded);
+  `ui-remediation-qw-review.md` (AM4-AM7 closed); the work order records the decisions.
+- **Next:** the user's call on an independent review, on fast-forwarding `main`, and on
+  filing the three drafts.

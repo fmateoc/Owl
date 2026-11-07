@@ -283,7 +283,7 @@ with st.expander("Home purchase", expanded=buy is not None):
         place_locality, place_district, bool(place_move), case_place["school_district"],
         event_place if buy is not None else None)
     c1, c2, c3, c4, c5 = st.columns(5)
-    cost_tax = c1.number_input("Property tax ($/yr, today's $)",
+    cost_tax = c1.number_input("Property tax (\\$/yr, today's \\$)",
                                value=float(costs.get("property tax", 0)), key=f"scn_cost_tax_{key}")
     cost_hoa = c2.number_input("HOA / common charges ($/yr)", value=float(costs.get("hoa", 0)),
                                key=f"scn_cost_hoa_{key}")
@@ -300,7 +300,7 @@ with st.expander("Care", expanded=care is not None):
     care_id = c1.text_input("Event id", value=(care or {}).get("id", "care"), key=f"scn_care_id_{key}")
     care_name = c2.text_input("Line name", value=(care or {}).get("name", "care"),
                               key=f"scn_care_name_{key}")
-    care_amount = c3.number_input("Cost ($/yr, today's $)", value=float((care or {}).get("amount", 110000)),
+    care_amount = c3.number_input("Cost (\\$/yr, today's \\$)", value=float((care or {}).get("amount", 110000)),
                                   key=f"scn_care_amount_{key}")
     _care_default = {"anchor": "age", "person": names[0], "age": 86} if names else plan_year
     care_year = c4.text_input("From", value=builder.year_ref_text((care or {}).get("year") or _care_default),

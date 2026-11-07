@@ -7210,3 +7210,10 @@ reverted (the 17 that pass there are the allowed cases and older tests).
 `tests/library tests/ui tests/tax/test_aca.py`: 1016 passed. `check_library_builder.py` 46/46,
 `check_library_roundtrip.py` 39/39. Lint clean apart from upstream's listed items.
 Full suite: 4472 passed / 1 skipped (10:32, Linux, `-n 4`) on `8041d21` (only docs changed after it).
+
+## `main` fast-forwarded to `claude/ux-fixes` (2026-11-07)
+
+The user's call. `main` moves from `1623d2e` to this branch. The branch carries the UX review
+(`claude/optimistic-mccarthy-pidkig`), its four bugs and quick wins Q1-Q9, and the independent
+review's AK1-AK7 folds. Full suite on the branch: 4472 passed, 1 skipped. B3's upstream issue
+(`fork-notes/issue-prepare-run-failure.md`) is still unfiled.

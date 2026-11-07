@@ -7366,3 +7366,6 @@ and AL2. AL3-AL6 stand.
   `test_library_pages.py::test_run_options_draws_the_message_edit_as_new_run_left`; all three
   fail on `3617bb5` (checked in a worktree with the new tests copied in) and pass with the fold.
   `tests/ui tests/library` 985 passed. Lint: only upstream's listed items.
+- Full suite on the fold (`abc473c2`): **4512 passed, 1 skipped** (8:59, Linux, `-n 4`); on
+  `3617bb5` before it, 4510 passed / 1 skipped (9:55), the count the Q10-Q20 section promised
+  and did not record (review AL6).

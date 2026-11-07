@@ -357,20 +357,20 @@ def movers(scenario: dict) -> list:
               _returns_minus_1,
               detail="the run's own rate path, every return -1 point (a shifted rates table)"),
         Mover("inflation+1", "inflation +1 point",
-              "inflation 1 point higher, and every return 1 point higher too (the same real "
-              "returns: inflation's own effect)",
+              "inflation 1 point higher and every return 1 point higher too, so the real returns "
+              "hold: inflation's own effect",
               _inflation_plus_1,
               detail="the rate path's inflation +1 point and every return +1 point (a shifted "
                      "rates table)"),
         Mover("medical+2", MEDICAL_LABEL,
-              f"medical prices growing 2 points a year faster; measured with Medicare premiums "
-              f"priced, since they are what medical inflation grows ({DAGGER})",
+              "medical prices growing 2 points a year faster; measured with Medicare premiums "
+              "priced, since they are what medical inflation grows",
               _medical_plus_2, preset=MEDICARE_PRESET,
               detail="`medical_inflation_excess` +2; this child and its base solve with "
                      "`withMedicare = optimize` (the `exact_medicare` preset)"),
         Mover("condo+10", "condo price +10%",
-              "the home's price and its property tax 10% higher (today's dollars; the HOA and "
-              "the insurance held)",
+              "the home's price and its property tax 10% higher in today's dollars, the HOA and "
+              "the insurance held",
               _condo_plus_10,
               detail="the purchase event's `price` and its `property tax` cost x 1.10"),
         Mover("slcsp+10", "benchmark premium +10%",
@@ -389,12 +389,12 @@ def movers(scenario: dict) -> list:
                      "`slcsp_published_year` is `slcsp_published_annual`"),
         Mover("reversion-2032", "the 2032 reversion",
               f"the federal brackets and standard deduction go back to the pre-2018 ones in "
-              f"{REVERSION_YEAR} (Owl's default)",
+              f"{REVERSION_YEAR}, Owl's default",
               _obbba(REVERSION_YEAR),
               detail=f"`rates_selection.obbba_expiration_year = {REVERSION_YEAR}`"),
         Mover("no-reversion", "no 2032 reversion",
-              "today's federal brackets and standard deduction kept to the end (the law as "
-              "enacted)",
+              "today's federal brackets and standard deduction kept to the end, the law as "
+              "enacted",
               _obbba(NO_REVERSION_YEAR),
               detail=f"`rates_selection.obbba_expiration_year = {NO_REVERSION_YEAR}`"),
     ]

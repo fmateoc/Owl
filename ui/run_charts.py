@@ -90,7 +90,7 @@ def _threshold_row(entries):
         cost_text = _span(costs, _dollars)
         totals = [e.get("total_today_dollars") for e in entries]
         if first["kind"] == "irmaa" and side == "over" and None not in totals:
-            cost_text += f" (the year's whole surcharge {_span(totals, _dollars)})"
+            cost_text += f" (whole year {_span(totals, _dollars)})"
     paid = [e.get("affects") or e["year"] for e in entries]
     notes = {e.get("note") or "" for e in entries}
     note = notes.pop() if len(notes) == 1 else _MERGED_NOTES.get(first["kind"], first.get("note") or "")

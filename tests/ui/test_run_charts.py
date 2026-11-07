@@ -364,7 +364,7 @@ class TestThingsToLookAt:
     def test_the_irmaa_row_carries_its_step_its_year_total_and_its_payment_year(self, rc):
         over = rc.threshold_parts(_baseline_like(), 0.05)["over"]
         irmaa = over[over["Line"] == "IRMAA tier 2"].iloc[0]
-        assert irmaa["Costs"] == "$3,741 (the year's whole surcharge $6,215)"
+        assert irmaa["Costs"] == "$3,741 (whole year $6,215)"
         assert irmaa["Paid in"] == "2031" and irmaa["Year of income"] == "2029"
 
     def test_the_floor_folds_small_items_and_ramps_instead_of_dropping_them(self, rc):

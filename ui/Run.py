@@ -105,13 +105,12 @@ def _things_to_look_at(result):
     if parts["older"]:
         st.caption("Solved before crossings were reported: solve again to see them.")
     text = st.column_config.TextColumn
-    columns = {"Year of income": text(width="small"), "Line": text(width="large"),
-               "Where": text(), "Costs": text(width="medium",
-                                              help="Over a line: what being over costs that year "
-                                                   "(getting back under would save it). Under a "
-                                                   "line: what going over by the same distance "
-                                                   "would cost."),
-               "Paid in": text(width="small"), "Note": text(width="large")}
+    # Widths in pixels: "small" cut "Year of income" and "medium" the IRMAA cost (Playwright).
+    costs_help = ("Over a line: what being over costs that year (getting back under would save "
+                  "it). Under a line: what going over by the same distance would cost.")
+    columns = {"Year of income": text(width=110), "Line": text(width=260),
+               "Where": text(width=190), "Costs": text(width=270, help=costs_help),
+               "Paid in": text(width=90), "Note": text(width="large")}
     st.markdown("#### Where the plan pays for being over a line")
     if parts["over"].empty:
         st.caption("No year's income is over an IRMAA tier, the marketplace's 400% FPL line or "
@@ -336,7 +335,7 @@ def _conversions_and_brackets(run, result):
                     # UX remediation QW-3: the IRMAA tier per year with its premium year, and
                     # the next limit above the year's income.
                     "IRMAA tier": st.column_config.TextColumn(
-                        "IRMAA tier", width="medium",
+                        "IRMAA tier", width=340,  # "medium" cut "...: 2029 premiums" (Playwright)
                         help="The tier the year's MAGI is in (how far over its edge), or how far "
                              "below tier 1, and the year whose Medicare premiums it sets."),
                     # Text, blank in a year without the marketplace (N2: a missing number reads

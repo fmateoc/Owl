@@ -7549,3 +7549,68 @@ the code at `0770124` and against `upstream/dev` `73dc881` (fetched the same day
   - Each item gives file:line evidence, what to do, its tests and its check.
   - QW-2 and QW-3 add fields to `plan.json` for new solves only; no item moves an inputs hash.
 - Docs only: nothing built, no test run.
+
+## Ergonomics quick wins: the build reviewed against the work order (2026-11-07)
+
+Branch `claude/upbeat-planck-c731oy`. The user had built QW-1 to QW-8 in parallel on
+`claude/ui-remediation-qw` (from the original review's list, not from this branch's work
+order), had it reviewed (AM1-AM8) and folded AM1-AM3 and AM8. It is merged here (`790364a`:
+`src`, `ui` and `tests` identical to `44c3eec`; CLAUDE.md and PROGRESS.md kept side by side) and
+reviewed against `fork-notes/ux-qw-handoff.md`, each difference judged on its merits, in either
+direction.
+
+- **What was run** (Linux, the implementation's code):
+  - targeted suites, 1048 passed (72 s); full suite **4540 passed, 1 skipped** (11:49, `-n 4`);
+    `check_library_compare.py` 9/9 (not re-run since AM2's fold until now);
+  - lint, only upstream's listed items;
+  - the UX review's baseline (`Case_ari+noa_condo.toml` +
+    `HFP_ari+noa_condo_yonkers_2029_cash.xlsx`) imported into a fresh library and solved
+    "Careful" (5 min 16 s) and its exact companion, and one Quick look solved with the
+    pre-branch code as an "older result";
+  - Playwright on the Run, Library, Account Balances and Collections pages;
+  - AppTest and script probes for the rest.
+  The Careful figures match `ux-review.md` to the dollar (premiums \$21,745 / \$22,689 / \$13,158
+  nominal; \$161,016 = \$108,516 + \$52,500).
+- **Kept from the build:**
+  - QW-2's cliff costs, equal to `tx.acaCosts` called directly (\$12,547 / \$12,865 / \$4,824);
+  - QW-5's total from `spending_year1`;
+  - QW-1's refund never called income, and the one-line group nodes;
+  - QW-6's plain phrase in `view.method_text`;
+  - QW-7.1; QW-8.2's ✓; QW-8.3's Roth bounds and AM3's split;
+  - the CRLF and separator fixes.
+- **Findings AN1-AN11** (4 medium, 5 low, 2 nit), in the new work order:
+  - AN1: the headline's split is drawn as math and cut, "108,516 discretionary + 52…" [seen].
+    `st.metric`'s `delta` is Markdown, and the dollar-math test does not scan `delta=`.
+  - AN2: Run Options says "acaStartYear 0 → 2026" on every case without an ACA start year,
+    both upstream examples probed, and a save then writes the year.
+  - AN3: QW-2 misses the crossed Enhanced STAR limit (2029, \$1,546 of the 2031 credit) [ran].
+    It has no `groups` marker: the older result shows the new caption over one near row [seen].
+    It removes the small rows from `plan.json`: on the same plan, the pre-branch report gives
+    the four recapture rows (\$3.03-\$26.48) and the new one none [ran]. The ACA note on over
+    rows is wrong, and the page is the old table.
+  - AN4: QW-7.3 reproduces ("Case name 'bill' already exists."); 7.2 leaves the half-opened
+    case current. The save name follows the import ("ari+noa variant" for "ari+noa condo
+    baseline") and does not follow a case switch.
+  - AN5: QW-3's "crossed (+\$12,802 in 2028)" names a premium year with no Medicare, and shows
+    the overshoot where a premium is expected. A documented "no cap" (`maxRothConversion = -1`)
+    reads "Conversion cap (\$-2,000)"; the cap is the household's where the plan's is per
+    person.
+  - AN6: QW-1's netted tax figure (\$2,177 in 2034) is in neither the Sankey (\$5,111, \$2,934)
+    nor the table; STAR is not named; the chart's words differ; the table is flat.
+  - AN7: a Collections down of 2000 builds a -\$13,672,400 mortgage.
+  - AN8: two lists of preset names; "exact … optimization" for a local search; the tornado has
+    no †, and its notes carry config codes.
+  - AN9: upstream code changed with no draft. Among it, a real upstream defect reproduced on
+    stock `dev` `73dc881`: a CRLF case with a `"""` string, uploaded, keeps only its name ("Failed
+    to parse case file: 'basic_info'"); 14 of upstream's 19 examples hold one.
+  - AN10 (pre-existing): "None" cells in the brackets table.
+  - AN11: the balance warning's "\$60,000k".
+- **Work order** `fork-notes/ux-qw-handoff-2.md`:
+  - six decisions for the user first: the upstream drafts, QW-2's rules given the build, QW-5's
+    wording elsewhere, QW-8.4's threshold, QW-8.3's toggle, QW-1's tax sentence;
+  - then the remaining work per item, in the reader's order, and four new items (the CRLF
+    draft, the "None" cells, AM5, the other drafts);
+  - each defect with a test that must fail first.
+  `fork-notes/ux-qw-handoff.md` is marked superseded for the remaining work.
+- Docs only on this branch: nothing in `src`, `ui` or `tests` changed by this review. The probes
+  lived in the session's scratchpad; their recipes are in the work order.

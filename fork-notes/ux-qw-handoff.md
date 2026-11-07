@@ -1,5 +1,10 @@
 # Handoff: the ergonomics review's QW-1 to QW-8 (2026-11-07)
 
+**Superseded for the remaining work by `fork-notes/ux-qw-handoff-2.md`** (same day): the user
+built QW-1 to QW-8 in parallel on `claude/ui-remediation-qw`, merged into this branch; the
+second note reviews that build against this order and orders what remains. This file stays as
+the record of the first order.
+
 For the **next session**. The work order for eight "quick wins" from an independent
 ergonomics review of the browser UI. The user pasted it into the chat on 2026-11-07, and it is
 not committed elsewhere: each item below opens with what the review asked for. The review's

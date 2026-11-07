@@ -291,3 +291,50 @@ class TestDeathEventsAndTheCollectionField:
         assert not at.exception, [e.value for e in at.exception]
         assert [r.id for r in library.runs()] == [run.id]  # identical: nothing new saved
         assert library.collection(coll.id).member(run.id).values == {"place": "yonkers", "year": 2027}
+
+
+class TestFinancingRange:
+    """UX remediation QW-4 (ux-qw-handoff-2.md): the purchase's percent boxes are bounded,
+    a likely slip of units is warned about, and the same loan typed on Scenario and on the
+    Collections table gives the same financing."""
+
+    LOAN = {"kind": "loan", "term": 30, "rate": 6.25, "down": 0.20, "closing": 0.03, "extra": 0.02}
+
+    def _loan_library(self, tmp_path, monkeypatch, financing):
+        events = copy.deepcopy(EVENTS)
+        next(e for e in events if e["kind"] == "purchase")["financing"] = dict(financing)
+        return _library_with(tmp_path, monkeypatch, events)
+
+    def test_the_percent_boxes_are_bounded(self, tmp_path, monkeypatch):
+        self._loan_library(tmp_path, monkeypatch, self.LOAN)
+        at = _page()
+        assert not at.exception, [e.value for e in at.exception]
+        down = next(n for n in at.number_input if n.label == "Down payment (%)")
+        assert (down.min, down.max) == (0.0, 100.0)
+        rate = next(n for n in at.number_input if n.label == "Rate (%)")
+        assert rate.min == 0.0
+
+    def test_a_rate_typed_as_a_share_is_warned_about(self, tmp_path, monkeypatch):
+        self._loan_library(tmp_path, monkeypatch, self.LOAN)
+        at = _page()
+        next(n for n in at.number_input if n.label == "Rate (%)").set_value(0.0625)
+        at.run()
+        assert any("0.0625% a year: did you mean 6.25%?" in w.value for w in at.warning)
+
+    def test_the_same_loan_on_both_pages_gives_the_same_financing(self, tmp_path, monkeypatch):
+        import variant_tables as vt  # the page module, on the UI path the fixture set
+
+        lib = self._loan_library(tmp_path, monkeypatch, self.LOAN)
+        at = _page()
+        next(n for n in at.number_input if n.label == "Down payment (%)").set_value(25.0)
+        at.run()
+        next(t for t in at.text_input if t.label == "Name").set_value("bill, 25% down")
+        next(b for b in at.button if b.label == "Save as a new run").set_value(True)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        child = next(r for r in lib.runs() if r.name == "bill, 25% down")
+        saved = next(e for e in lib.scenario(child.id)["events"] if e["kind"] == "purchase")["financing"]
+        typed = {"label": "x", "kind": "loan", "term": 30, "rate": 6.25, "down": 25, "closing": 3, "extra": 2}
+        from_table = vt._financing_value(typed)["financing"]
+        assert {k: saved[k] for k in from_table} == pytest.approx(from_table)
+        assert saved["down"] == pytest.approx(0.25)

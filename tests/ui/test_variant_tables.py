@@ -317,3 +317,22 @@ class TestMemberValues:
         values = {"year": 2027, "place": "yonkers"}
         assert vt.member_values(vt.values_text(values)) == values
         assert vt.values_text({}) == ""
+
+
+class TestFinancingNotes:
+    """QW-4: the table says what does not build, and what looks like a slip of units, before
+    "Create the variants" (the builder's own range check and warnings)."""
+
+    def test_a_down_payment_over_100_percent_is_named(self, vt):
+        fins = _edited(vt.financing_table(), [{"label": "m", "kind": "loan", "term": "30", "rate": "6.25",
+                                               "down": "2000"}])
+        errors, warnings = vt.financing_notes(fins)
+        assert errors == ["m: down payment 2000%: enter a percent between 0 and 100"]
+        assert warnings == []
+
+    def test_a_rate_typed_as_a_share_is_a_warning(self, vt):
+        fins = _edited(vt.financing_table(), [{"label": "m", "kind": "loan", "term": "30", "rate": "0.0625",
+                                               "down": "0.2"}])
+        errors, warnings = vt.financing_notes(fins)
+        assert errors == []
+        assert warnings == ["m: 0.0625% a year: did you mean 6.25%?", "m: 0.2% down: did you mean 20%?"]

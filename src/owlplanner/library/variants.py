@@ -217,6 +217,9 @@ def _check_value(dimension: str, value: Any, scenario: dict) -> None:
         for field in ("term", "rate", "down", "closing", "extra"):
             if field in fin and not _number(fin[field]):
                 raise ScenarioError(f"financing: {field!r} must be a number, got {fin[field]!r}")
+        problem = builder.financing_range_error(fin)  # QW-4: the builder's own range check
+        if problem:
+            raise ScenarioError(f"financing {value.get('label')}: {problem}")
         if "name" in fin and not isinstance(fin["name"], str):
             raise ScenarioError(f"financing: 'name' must be text, got {fin['name']!r}")
     elif dimension == "work":

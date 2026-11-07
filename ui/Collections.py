@@ -179,17 +179,29 @@ if runs:
             column_config={"move": st.column_config.CheckboxColumn(
                 "move", help="A move at the purchase (the place's locality and district from that "
                              "year); unchecked: the district only")})
-        st.markdown("**Financing** (a loan needs term and rate; `name` may hold `{place}`; "
-                    "`down`, `closing` and `extra` are **percentages**, as on the Scenario "
-                    "page: type 20 for 20%)")
+        st.markdown("**Financing**: cash, or a loan with its term and rate. The down payment and "
+                    "the closing costs are **percentages**, as on the Scenario page: type 20 for 20%.")
+        money = st.column_config.NumberColumn
         fins = st.data_editor(
             vt.financing_table(), num_rows="dynamic", key="col_variant_fins",
-            column_config={"kind": st.column_config.SelectboxColumn("kind", options=["cash", "loan"]),
-                           # Percentages shown and typed as such, stored as shares (QW-4).
-                           **{field: st.column_config.NumberColumn(label, format="%.2f%%")
-                              for field, label in (("down", "down (% of the price)"),
-                                                   ("closing", "closing (% of the price)"),
-                                                   ("extra", "extra (% of the loan)"))}})
+            column_config={
+                "kind": st.column_config.SelectboxColumn("cash or loan", options=["cash", "loan"]),
+                "term": money("term (years)", min_value=1, max_value=50, step=1, format="%d"),
+                "rate": money("rate (%)", min_value=0.0, max_value=25.0, format="%.3f%%",
+                              help="Percent a year: 6.25 for 6.25%."),
+                # Percentages shown and typed as such, stored as shares (QW-4).
+                **{field: money(label, min_value=0.0, max_value=100.0, format="%.2f%%")
+                   for field, label in (("down", "down (% of the price)"),
+                                        ("closing", "closing (% of the price)"),
+                                        ("extra", "loan closing (% of the loan)"))},
+                "name": st.column_config.TextColumn(
+                    "loan name", help="The Debts row's name; write {place} where the place's label goes."),
+            })
+        _fin_errors, _fin_warnings = vt.financing_notes(fins)
+        for _note in _fin_errors:
+            st.error(f"Does not build: {_note}.", icon=":material/error:")
+        for _note in _fin_warnings:
+            st.warning(_note, icon=":material/flag:")
         c1, c2 = st.columns(2)
         work_person = c1.selectbox("Last work year, for", ["(none)"] + names, key="col_variant_work_person")
         work_years = c2.text_input("their last year(s)", key="col_variant_work_years", placeholder="2026, 2027")

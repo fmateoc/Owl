@@ -578,3 +578,52 @@ class TestDeathEvents:
                   {"id": "k", "kind": "care", "amount": 1, "year": 2045}]
         with pytest.raises(ScenarioError, match="outside the plan"):
             b.build(_scenario(events))
+
+
+@pytest.mark.usefixtures("flat_gamma")
+class TestFinancingRange:
+    """UX remediation QW-4 (ux-qw-handoff-2.md, review AN7): one range check on a purchase's
+    financing, in the builder and in `variants`, refused in words; warnings for a likely slip
+    of units. Builder output for a valid loan does not change (BUILDER_VERSION stays)."""
+
+    LOAN = {"kind": "loan", "term": 30, "rate": 6.25, "down": 0.20, "closing": 0.03, "extra": 0.02}
+
+    def test_a_down_of_20_typed_as_a_share_is_refused_in_words(self):
+        """On the build's code this built a -$13,672,400 Debts row: loan = price x (1 - 20)."""
+        buy = dict(BUY_CASH, financing=dict(self.LOAN, down=20.0))
+        with pytest.raises(ScenarioError, match=r"down payment 2000%: enter a percent between 0 and 100"):
+            b.build(_scenario([WORK_ARI, WORK_NOA, RENT, buy]))
+
+    @pytest.mark.parametrize("field, value, words", [
+        ("down", -0.1, "down payment -10%: enter a percent between 0 and 100"),
+        ("closing", -0.01, "closing costs -1% of the price: enter a percent of 0 or more"),
+        ("extra", -0.02, "loan closing costs -2% of the loan: enter a percent of 0 or more"),
+        ("term", 0, "loan term 0 years: enter a positive number of years"),
+        ("rate", -1.0, "interest rate -1% a year: enter a rate of 0 or more"),
+    ])
+    def test_each_field_has_its_range(self, field, value, words):
+        assert b.financing_range_error(dict(self.LOAN, **{field: value})) == words
+        buy = dict(BUY_CASH, financing=dict(self.LOAN, **{field: value}))
+        with pytest.raises(ScenarioError, match=words):
+            b.build(_scenario([WORK_ARI, WORK_NOA, RENT, buy]))
+
+    def test_the_edges_are_allowed(self):
+        assert b.financing_range_error(dict(self.LOAN, down=0.0, closing=0.0, extra=0.0, rate=0.0)) is None
+        assert b.financing_range_error(dict(self.LOAN, down=1.0)) is None
+        assert b.financing_range_error({"kind": "cash", "closing": 0.03}) is None
+
+    def test_variants_refuses_the_same_way(self):
+        from owlplanner.library import variants
+
+        scenario = _scenario([WORK_ARI, WORK_NOA, RENT, dict(BUY_CASH)])
+        bad = {"financing": [{"label": "m20", "financing": dict(self.LOAN, down=20.0)}]}
+        with pytest.raises(ScenarioError, match=r"financing m20: down payment 2000%"):
+            variants.plan_variants(scenario, bad)
+
+    def test_a_likely_slip_of_units_is_a_warning_not_a_refusal(self):
+        loan = dict(self.LOAN, rate=0.0625, down=0.002)
+        assert b.financing_range_error(loan) is None
+        assert b.financing_warnings(loan) == ["0.0625% a year: did you mean 6.25%?",
+                                              "0.2% down: did you mean 20%?"]
+        assert b.financing_warnings(self.LOAN) == []
+        assert b.financing_warnings({"kind": "cash", "closing": 0.03}) == []

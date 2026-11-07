@@ -212,6 +212,26 @@ def _financing_value(row) -> dict:
     return {"label": label, "financing": financing}
 
 
+def financing_notes(fins) -> tuple:
+    """What the financing table's rows say before "Create the variants" (QW-4): (errors,
+    warnings), each a list of sentences -- the builder's own range check and its unit-slip
+    warnings, per labelled row. A cell that is not a number is left to `dimensions`."""
+    errors, warnings = [], []
+    for row in records(fins):
+        if row.get("label") is None:
+            continue
+        label = str(row["label"])
+        try:
+            financing = _financing_value({**row, "label": label})["financing"]
+        except ScenarioError:
+            continue
+        problem = builder.financing_range_error(financing)
+        if problem:
+            errors.append(f"{label}: {problem}")
+        warnings += [f"{label}: {note}" for note in builder.financing_warnings(financing)]
+    return errors, warnings
+
+
 def dimensions(names, years_text, places, fins, work_person, work_years, claim_texts,
                death_person="(none)", death_ages="", seqs=None):
     """The make-variants dimensions from the editors' raw values (reviews AC6, AD1, AD6).

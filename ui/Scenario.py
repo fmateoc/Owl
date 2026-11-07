@@ -158,6 +158,14 @@ def _place_to_store(locality, district, move, case_district, original):
     return locality, district
 
 
+def _bound(value, low, high):
+    """(min, max) for a number box, or None where the stored value is already outside it: a
+    Streamlit box refuses a value outside its bounds, and the builder's own range check names
+    the problem instead (QW-4)."""
+    v = float(value)
+    return (low if low is None or v >= low else None, high if high is None or v <= high else None)
+
+
 def _share_from_percent(shown, original):
     """A share the page shows in percent (UX review Q19), as the event stores it: the event's
     own value while the shown percent is unchanged, so an unedited save changes nothing (X4)."""
@@ -259,20 +267,35 @@ with st.expander("Home purchase", expanded=buy is not None):
                                   key=f"scn_buy_debt_{key}")
     f1, f2, f3, f4, f5 = st.columns(5)
     buy_term = f1.number_input("Term (years)", value=float(financing.get("term", 30)),
+                               min_value=_bound(financing.get("term", 30), 1.0, None)[0],
                                key=f"scn_buy_term_{key}")
     buy_rate = f2.number_input("Rate (%)", value=float(financing.get("rate", 6.25)),
+                               min_value=_bound(financing.get("rate", 6.25), 0.0, None)[0],
                                key=f"scn_buy_rate_{key}")
-    # Shares shown in percent (UX review Q19: 0.2 read as a fifth of a percent); the event
-    # keeps shares, converted here only.
-    buy_down = _share_from_percent(
-        f3.number_input("Down payment (%)", value=float(terms["down"]) * 100.0, step=1.0,
-                        format="%.2f", key=f"scn_buy_down_{key}"), terms["down"])
-    buy_closing = _share_from_percent(
-        f4.number_input("Closing costs (% of the price)", value=float(terms["closing"]) * 100.0,
-                        step=0.5, format="%.2f", key=f"scn_buy_closing_{key}"), terms["closing"])
-    buy_extra = _share_from_percent(
-        f5.number_input("Loan closing (% of the loan)", value=float(terms["extra"]) * 100.0,
-                        step=0.5, format="%.2f", key=f"scn_buy_extra_{key}"), terms["extra"])
+
+    def _percent_box(column, label, share, step, widget):
+        # Shares shown in percent (UX review Q19: 0.2 read as a fifth of a percent); the event
+        # keeps shares, converted here only. Bounded 0-100 (QW-4), unless a stored value is
+        # already outside: the builder's range check then says why it does not build.
+        shown = float(share) * 100.0
+        low, high = _bound(shown, 0.0, 100.0)
+        return _share_from_percent(
+            column.number_input(label, value=shown, step=step, format="%.2f", min_value=low,
+                                max_value=high, key=widget), share)
+
+    buy_down = _percent_box(f3, "Down payment (%)", terms["down"], 1.0, f"scn_buy_down_{key}")
+    buy_closing = _percent_box(f4, "Closing costs (% of the price)", terms["closing"], 0.5,
+                               f"scn_buy_closing_{key}")
+    buy_extra = _percent_box(f5, "Loan closing (% of the loan)", terms["extra"], 0.5,
+                             f"scn_buy_extra_{key}")
+    if buy_kind == "loan":
+        _shown = {"kind": "loan", "term": buy_term, "rate": buy_rate, "down": buy_down,
+                  "closing": buy_closing, "extra": buy_extra}
+        _problem = builder.financing_range_error(_shown)
+        if _problem:
+            st.error(f"This purchase does not build: {_problem}.", icon=":material/error:")
+        for _note in builder.financing_warnings(_shown):  # QW-4: a slip of units, not refused
+            st.warning(_note, icon=":material/flag:")
     # The place starts from the case's own residence (UX review B2): a new purchase shows the
     # case's state, locality and district, and a purchase without a move that leaves its
     # district blank builds with the case's, so it shows that one. A district picked as none

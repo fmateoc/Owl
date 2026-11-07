@@ -253,6 +253,50 @@ def _finite_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _pct(share: float) -> str:
+    return f"{100.0 * share:.4g}%"
+
+
+def financing_range_error(financing: dict) -> str | None:
+    """The one range check on a purchase's financing (UX remediation QW-4, review AN7), shared
+    by the builder and `variants`: the shares (down, closing, extra) are fractions of the price
+    or the loan, the rate is a percent a year, the term years. Returns the refusal in words --
+    "down payment 2000%: enter a percent between 0 and 100" -- or None. Fields not present,
+    or not numbers (refused elsewhere), are not judged here. Builder output does not change.
+    """
+    def value(field):
+        v = financing.get(field)
+        return v if _finite_number(v) else None
+
+    down, closing, extra = value("down"), value("closing"), value("extra")
+    term, rate = value("term"), value("rate")
+    if down is not None and not 0.0 <= down <= 1.0:
+        return f"down payment {_pct(down)}: enter a percent between 0 and 100"
+    if closing is not None and closing < 0:
+        return f"closing costs {_pct(closing)} of the price: enter a percent of 0 or more"
+    if extra is not None and extra < 0:
+        return f"loan closing costs {_pct(extra)} of the loan: enter a percent of 0 or more"
+    if financing.get("kind") == "loan":
+        if term is not None and term <= 0:
+            return f"loan term {term:g} years: enter a positive number of years"
+        if rate is not None and rate < 0:
+            return f"interest rate {rate:g}% a year: enter a rate of 0 or more"
+    return None
+
+
+def financing_warnings(financing: dict) -> list[str]:
+    """Values that build but look like a slip of units (QW-4): a rate between 0 and 1 (6.25%
+    typed as 0.0625) and a down payment between 0 and 1 percent (20% typed as 0.2). Warnings,
+    never refusals: a 0.5% teaser rate is possible."""
+    out = []
+    rate, down = financing.get("rate"), financing.get("down")
+    if financing.get("kind") == "loan" and _finite_number(rate) and 0 < rate < 1:
+        out.append(f"{rate:g}% a year: did you mean {100 * rate:g}%?")
+    if financing.get("kind") == "loan" and _finite_number(down) and 0 < down < 0.01:
+        out.append(f"{_pct(down)} down: did you mean {_pct(100 * down)}?")
+    return out
+
+
 def _year_fields(event: dict) -> list[str]:
     """The names of the event's year fields."""
     kind = event["kind"]
@@ -421,6 +465,10 @@ def validate_events(events: Any, names: list[str]) -> list[dict]:
             for field in ("term", "rate", "down", "closing", "extra"):
                 if field in financing and not _finite_number(financing[field]):
                     raise ScenarioError(f"{where}.financing.{field} must be a number, got {financing[field]!r}")
+            # QW-4 (review AN7): a down of 20 typed as a percent built a -$13,672,400 loan.
+            problem = financing_range_error(financing)
+            if problem:
+                raise ScenarioError(f"{where}.financing: {problem}")
             costs = event.get("costs")
             if costs is not None:
                 if not isinstance(costs, dict):

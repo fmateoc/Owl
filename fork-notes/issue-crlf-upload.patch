@@ -1,0 +1,66 @@
+diff --git a/src/owlplanner/config/toml_io.py b/src/owlplanner/config/toml_io.py
+index 56cc774..21ade09 100644
+--- a/src/owlplanner/config/toml_io.py
++++ b/src/owlplanner/config/toml_io.py
+@@ -121,6 +121,13 @@ def _convert_for_toml(obj):
+     return obj
+ 
+ 
++def _lf(text: str) -> str:
++    """Unix line endings for `toml.loads`: its parser drops a triple-quoted string and every
++    key after it from CRLF text (a case uploaded from a Windows checkout); `toml.load` on a
++    path reads through universal newlines and is not affected."""
++    return text.replace("\r\n", "\n").replace("\r", "\n")
++
++
+ def load_toml(
+     file: Union[str, os.PathLike, BytesIO, StringIO],
+     *,
+@@ -160,13 +167,13 @@ def load_toml(
+             raise ValueError(f"TOML parse error in {filename}: {e}") from e
+     elif isinstance(file, BytesIO):
+         try:
+-            string = file.getvalue().decode("utf-8")
++            string = _lf(file.getvalue().decode("utf-8"))
+             diconf = toml.loads(string)
+         except Exception as e:
+             raise RuntimeError(f"Cannot read from BytesIO: {e}") from e
+     elif isinstance(file, StringIO):
+         try:
+-            string = file.getvalue()
++            string = _lf(file.getvalue())
+             diconf = toml.loads(string)
+         except Exception as e:
+             raise RuntimeError(f"Cannot read from StringIO: {e}") from e
+diff --git a/tests/config/test_toml_crlf.py b/tests/config/test_toml_crlf.py
+new file mode 100644
+index 0000000..316ed14
+--- /dev/null
++++ b/tests/config/test_toml_crlf.py
+@@ -0,0 +1,26 @@
++"""A case file with Windows line endings reads whole from memory, as it does from a path.
++
++`toml` 0.10.2's string parser drops a triple-quoted string and every key after it when the
++text has CRLF endings; `toml.load` on a path reads through universal newlines and is not
++affected. Create Case uploads a case through `StringIO`, so on a Git-for-Windows checkout
++(core.autocrlf on) 14 of the 19 examples failed with "Failed to parse case file: 'basic_info'".
++"""
++
++import io
++from pathlib import Path
++
++import pytest
++
++from owlplanner.config import load_toml
++
++EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "Case_jack+jill.toml"
++
++
++@pytest.mark.parametrize("wrap", [lambda t: io.StringIO(t), lambda t: io.BytesIO(t.encode("utf-8"))],
++                         ids=["StringIO", "BytesIO"])
++def test_a_crlf_case_reads_whole_from_memory(wrap):
++    text = EXAMPLE.read_text(encoding="utf-8")
++    assert '"""' in text  # the trigger
++    whole, _, _ = load_toml(str(EXAMPLE))
++    crlf, _, _ = load_toml(wrap(text.replace("\n", "\r\n")))
++    assert crlf == whole

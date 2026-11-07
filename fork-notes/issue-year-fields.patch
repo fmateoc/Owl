@@ -1,0 +1,282 @@
+diff --git a/tests/ui/test_run_options_year_bounds.py b/tests/ui/test_run_options_year_bounds.py
+new file mode 100644
+index 0000000..e897f51
+--- /dev/null
++++ b/tests/ui/test_run_options_year_bounds.py
+@@ -0,0 +1,116 @@
++"""
++Run Options: the year fields are bounded by the plan horizon, and "ACA coverage from the
++plan start" is a toggle storing 0 (the code's sentinel), with a year box bounded by the plan
++when it is off.
++
++The Roth conversion window and the converter switch took any year (a typo, 20300 for 2030,
++silently turned conversions off); the marketplace start year asked for "0 = plan start". A
++stored year outside a field's bounds is clamped to them, and the page says so in the field's
++words.
++"""
++
++import io
++from datetime import date
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[2]
++CASE = ROOT / "examples" / "Case_riley+casey.toml"
++JACK_JILL = ROOT / "examples" / "Case_jack+jill.toml"
++
++
++def _render(monkeypatch, case=CASE, **updates):
++    import streamlit as st
++    from streamlit.testing.v1 import AppTest
++
++    from owlplanner import readConfig
++    from owlplanner.config import config_to_ui, load_toml
++
++    # AppTest has no multipage context: st.page_link cannot resolve the pages.
++    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
++    plan = readConfig(str(case), verbose=False, logstreams=[io.StringIO()])
++    diconf, _, _ = load_toml(str(case))
++    dic = config_to_ui(diconf)
++    dic.update({"plan": plan, "id": "t1", "name": "rc", "caseStatus": "modified", "summaryDf": None})
++    dic.update(updates)
++    at = AppTest.from_file(str(ROOT / "ui" / "Run_Options.py"), default_timeout=60)
++    at.session_state["cases"] = {"rc": dic}
++    at.session_state["currentCase"] = "rc"
++    return at.run(), dic, plan
++
++
++def test_the_roth_conversion_years_are_bounded_by_the_plan(monkeypatch):
++    at, dic, plan = _render(monkeypatch, caseStatus="solved", startRothConversions=2500,
++                            stopRothConversionsEnabled=True, stopRothConversions=2500)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    end = int(plan.year_n[-1])
++    start = next(w for w in at.number_input if w.label.startswith("Year to start"))
++    stop = next(w for w in at.number_input if w.label.startswith("Year to stop"))
++    assert start.max == end and stop.max == end
++    # A stored year past the horizon is clamped to it: the field shows what the case holds.
++    assert dic["startRothConversions"] == end == start.value
++    assert dic["stopRothConversions"] == end == stop.value
++    # A move is never silent; one that changes what the input means (a year past the plan
++    # can no longer say "never") flags the case modified: its results are stale.
++    said = "\n".join(c.value for c in at.caption)
++    assert (f"Year to start considering Roth conversions: 2500 is past the plan's last year, "
++            f"{end}; shown as {end}") in said
++    assert f"Year to stop considering Roth conversions: 2500 is past the plan's last year, {end}" in said
++    assert "RothConversions" not in said
++    assert dic["caseStatus"] == "modified"
++
++
++def test_the_roth_window_defaults_stay_inside_the_plan(monkeypatch):
++    at, dic, plan = _render(monkeypatch, stopRothConversionsEnabled=True)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    end = int(plan.year_n[-1])
++    assert dic["startRothConversions"] == date.today().year
++    assert dic["stopRothConversions"] == min(date.today().year + 10, end)
++
++
++def _toggle(at):
++    return next(t for t in at.toggle if t.label == "Marketplace coverage from the plan start")
++
++
++def _rerun(at):
++    """Rerun keeping the decorated case option ("rc ✓"), as test_create_case_move does."""
++    for box in at.selectbox:
++        if box.label == "Case selector":
++            box.set_value(box.options[0])
++    return at.run()
++
++
++def test_an_unmodified_upstream_example_shows_no_message_and_keeps_zero(monkeypatch):
++    """An unmodified example keeps its 0 ("from the plan start"), with no message."""
++    for case in (JACK_JILL, CASE):
++        at, dic, _ = _render(monkeypatch, case=case, caseStatus="solved")
++        assert not at.exception, [str(e.value) for e in at.exception]
++        assert dic.get("acaStartYear", 0) == 0
++        assert not any("outside" in c.value or "shown as" in c.value for c in at.caption)
++        assert _toggle(at).value is True
++        assert not any(w.label.startswith("ACA start year") for w in at.number_input)
++        assert dic["caseStatus"] == "solved"
++
++
++def test_turning_the_toggle_off_shows_a_bounded_year_box(monkeypatch):
++    at, dic, plan = _render(monkeypatch, slcspAnnual=20.84)
++    _toggle(at).set_value(False)
++    _rerun(at)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    thisyear = date.today().year
++    assert dic["acaStartYear"] == thisyear + 1
++    field = next(w for w in at.number_input if w.label == "ACA start year")
++    assert (field.min, field.max) == (thisyear, int(plan.year_n[-1]))
++    assert field.value == thisyear + 1
++    _toggle(at).set_value(True)
++    _rerun(at)
++    assert dic["acaStartYear"] == 0  # back to the sentinel
++
++
++def test_a_real_aca_start_year_is_kept(monkeypatch):
++    year = date.today().year + 3
++    at, dic, _ = _render(monkeypatch, acaStartYear=year)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    assert dic["acaStartYear"] == year
++    assert next(w for w in at.number_input if w.label.startswith("ACA start year")).value == year
++    assert _toggle(at).value is False
++    assert not any("shown as" in c.value for c in at.caption)
+diff --git a/ui/Run_Options.py b/ui/Run_Options.py
+index 6624107..c57ead4 100644
+--- a/ui/Run_Options.py
++++ b/ui/Run_Options.py
+@@ -41,6 +41,49 @@ def _onSSAgesChange(names):
+     kz.setCaseKey("ssAgesMode", _ssAgesMode(names, selected))
+ 
+ 
++def _moved_text(label, old, new, low, high):
++    """A clamped year in words: "Year to stop considering Roth conversions: 2500 is past the
++    plan's last year, 2053; shown as 2053"."""
++    where = (f"past the plan's last year, {high}" if old > high
++             else f"before the plan's first year, {low}")
++    return f"{label}: {old} is {where}; shown as {new}"
++
++
++def _onAcaFromStart():
++    """The marketplace toggle: on stores 0 ("from the plan start"); off stores next year (the
++    plan's last at most) for the year box to show."""
++    on = st.session_state.get(kz.genCaseKey("acaFromPlanStart"))
++    plan = kz.getCaseKey("plan")
++    years = getattr(plan, "year_n", None) if plan is not None else None
++    end = int(years[-1]) if years is not None and len(years) else date.today().year + 40
++    year = 0 if on else min(date.today().year + 1, end)
++    kz.setCaseKey("acaStartYear", year)
++    st.session_state[kz.genCaseKey("acaStartYear")] = year
++
++
++def _bound_year(key, low, high):
++    """Clamp a stored year field into [low, high] before its widget draws it, so the case keeps
++    what the field shows. A move up to the lower bound keeps the meaning (a year before the
++    plan's first year means "from its first year") and the case's status; a move down to the
++    upper bound changes it (a year past the plan said "never"), so the case is flagged modified.
++    Returns the old value when one moved, else None."""
++    value = kz.getCaseKey(key)
++    if value is None:
++        return None
++    try:
++        year = int(value)
++    except (TypeError, ValueError):
++        return None
++    if low <= year <= high:
++        return None
++    moved = min(max(year, low), high)
++    if year > high:
++        kz.setCaseKey(key, moved)
++    else:
++        kz.storeCaseKey(key, moved)
++    return year
++
++
+ kz.initCaseKey("computeMedicare", True)
+ kz.initCaseKey("optimizeMedicare", False)
+ kz.initCaseKey("slcspAnnual", 0)
+@@ -61,6 +104,25 @@ ret = kz.titleBar(":material/tune: Run Options")
+ if ret is None or kz.caseHasNoPlan():
+     kz.no_case_info()
+ else:
++    _plan = kz.getCaseKey("plan")
++    thisyear = date.today().year
++    # The year fields below are bounded by the plan's own horizon. A stored year outside its
++    # field's range is set to the nearest allowed one here, and the page says so in the
++    # field's words. The ACA start year's 0 means "from the plan start" (its toggle below).
++    _years = getattr(_plan, "year_n", None) if _plan is not None else None
++    plan_end = int(_years[-1]) if _years is not None and len(_years) else thisyear + 40
++    _moved = []
++    for _key, _label in (("startRothConversions", "Year to start considering Roth conversions"),
++                         ("stopRothConversions", "Year to stop considering Roth conversions"),
++                         ("swapRothConvertersYear", "Year to switch converters"),
++                         ("acaStartYear", "ACA start year")):
++        if _key == "acaStartYear" and kz.getCaseKey(_key) in (0, None):
++            continue
++        _old = _bound_year(_key, thisyear, plan_end)
++        if _old is not None:
++            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), thisyear, plan_end))
++    if _moved:
++        st.caption("; ".join(_moved) + ".")
+     st.markdown("#### :orange[Roth Conversions]")
+     col1, col2, col3 = st.columns(3, gap="large", vertical_alignment="top")
+     with col1:
+@@ -78,10 +140,10 @@ else:
+ 
+     with col2:
+         helpmsg = "Do not perform Roth conversions before that year."
+-        thisyear = date.today().year
+         kz.initCaseKey("startRothConversions", thisyear)
+         ret = kz.getIntNum(
+-            "Year to start considering Roth conversions", "startRothConversions", min_value=thisyear, help=helpmsg
++            "Year to start considering Roth conversions", "startRothConversions",
++            min_value=thisyear, max_value=plan_end, help=helpmsg
+         )
+         # An explicit toggle, not a year derived from the plan horizon: a derived default
+         # is stored once and never revisited, so extending life expectancy later would
+@@ -93,10 +155,11 @@ else:
+         )
+         ret = kz.getToggle("Stop Roth conversions mid-plan", "stopRothConversionsEnabled", help=helpmsg)
+         if kz.getCaseKey("stopRothConversionsEnabled"):
+-            kz.initCaseKey("stopRothConversions", thisyear + 10)
++            kz.initCaseKey("stopRothConversions", min(thisyear + 10, plan_end))
+             helpmsg = "No Roth conversions are performed in this year or later."
+             ret = kz.getIntNum(
+-                "Year to stop considering Roth conversions", "stopRothConversions", min_value=thisyear, help=helpmsg
++                "Year to stop considering Roth conversions", "stopRothConversions",
++                min_value=thisyear, max_value=plan_end, help=helpmsg
+             )
+     with col3:
+         if kz.getCaseKey("status") == "married":
+@@ -134,7 +197,8 @@ else:
+                 kz.initCaseKey("swapRothConvertersYear", thisyear)
+                 helpmsg = "Year in which the other spouse takes over Roth conversions."
+                 ret = kz.getIntNum(
+-                    "Year to switch converters", "swapRothConvertersYear", min_value=thisyear, help=helpmsg
++                    "Year to switch converters", "swapRothConvertersYear",
++                    min_value=thisyear, max_value=plan_end, help=helpmsg
+                 )
+ 
+     st.divider()
+@@ -178,22 +242,26 @@ else:
+         kz.getNum("Benchmark Silver plan premium (SLCSP) (\\$k/year)", "slcspAnnual", min_value=0.0, help=helpmsg)
+     with cols[1]:
+         acaoff = (kz.getCaseKey("slcspAnnual") or 0) <= 0
+-        helpmsg_start = (
+-            "4-digit calendar year when ACA coverage begins (e.g. 2029 for the year of retirement). "
+-            "Years before this are assumed employer-covered (zero ACA cost). "
+-            "Set to 0 for coverage from the start of the plan. "
+-            "Do not enter an offset (e.g. 3); use the actual calendar year."
+-        )
+-        thisyear = date.today().year
+-        kz.getIntNum(
+-            "ACA start year (0 = plan start, else 4-digit year)",
+-            "acaStartYear",
+-            min_value=0,
+-            max_value=thisyear + 50,
+-            step=1,
+-            help=helpmsg_start,
+-            disabled=acaoff,
+-        )
++        # "From the plan start" is a toggle storing 0, the code's own sentinel; off, a year
++        # box bounded by the plan's first and last years.
++        _from_start = kz.getCaseKey("acaStartYear") in (0, None)
++        kz.initGlobalKey(kz.genCaseKey("acaFromPlanStart"), _from_start)
++        st.toggle("Marketplace coverage from the plan start", key=kz.genCaseKey("acaFromPlanStart"),
++                  on_change=_onAcaFromStart, disabled=acaoff,
++                  help="On: marketplace (ACA) coverage from the plan's first year. Off: from the "
++                       "year below; the years before it are assumed employer-covered (no ACA "
++                       "cost).")
++        if not _from_start:
++            kz.getIntNum(
++                "ACA start year",
++                "acaStartYear",
++                min_value=thisyear,
++                max_value=plan_end,
++                step=1,
++                help="The calendar year marketplace coverage begins (e.g. 2029 for the year of "
++                     "retirement).",
++                disabled=acaoff,
++            )
+ 
+     st.markdown("##### Medicare")
+     cols = st.columns(3, gap="large", vertical_alignment="top")

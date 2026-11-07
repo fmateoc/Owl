@@ -1,0 +1,130 @@
+diff --git a/tests/conftest.py b/tests/conftest.py
+index 15310ae..8c24e20 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -41,7 +41,21 @@ _REAL_DATE = datetime.date
+ _FROZEN_DATE = _REAL_DATE(2026, 1, 1)
+ 
+ 
+-class _FixedDate(_REAL_DATE):
++class _FixedDateMeta(type):
++    """A frozen date is still a date.
++
++    AppTest (like any serializer) hands widget state back as plain datetime.date values.
++    Modules patched with _FixedDate check `isinstance(value, date)` against it -- streamlit's
++    date_input rejects the plain value ("Provided type: date") on the second run of a page
++    with a date widget. The instance check accepts any real date, so the freeze stays
++    transparent to isinstance while today() stays frozen.
++    """
++
++    def __instancecheck__(cls, instance):
++        return isinstance(instance, _REAL_DATE) and not isinstance(instance, datetime.datetime)
++
++
++class _FixedDate(_REAL_DATE, metaclass=_FixedDateMeta):
+     """datetime.date subclass whose today() always returns _FROZEN_DATE."""
+ 
+     @classmethod
+diff --git a/tests/ui/test_account_balances_units.py b/tests/ui/test_account_balances_units.py
+new file mode 100644
+index 0000000..31bc16e
+--- /dev/null
++++ b/tests/ui/test_account_balances_units.py
+@@ -0,0 +1,60 @@
++"""
++Account Balances: a \\$k balance that reads as \\$20M or more is flagged (UX remediation QW-8;
++second pass, decision 4: \\$20M, not \\$50M, and the amount named in dollars, review AN11).
++
++The fields are thousands of dollars. A balance of 20,000 or more in them is most likely
++dollars typed into a \\$k field; the page says so instead of solving it silently.
++
++Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
++
++This program is free software: you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation, either version 3 of the License, or
++(at your option) any later version.
++"""
++
++import io
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[2]
++CASE = ROOT / "examples" / "Case_riley+casey.toml"
++
++
++def _render(monkeypatch, **updates):
++    import streamlit as st
++    from streamlit.testing.v1 import AppTest
++
++    from owlplanner import readConfig
++    from owlplanner.config import config_to_ui, load_toml
++
++    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
++    plan = readConfig(str(CASE), verbose=False, logstreams=[io.StringIO()])
++    diconf, _, _ = load_toml(str(CASE))
++    dic = config_to_ui(diconf)
++    dic.update({"plan": plan, "id": "t1", "name": "rc", "caseStatus": "modified", "summaryDf": None})
++    dic.update(updates)
++    at = AppTest.from_file(str(ROOT / "ui" / "Account_Balances.py"), default_timeout=60)
++    at.session_state["cases"] = {"rc": dic}
++    at.session_state["currentCase"] = "rc"
++    return at.run()
++
++
++def test_a_balance_reading_as_sixty_million_warns_in_dollars(monkeypatch):
++    at = _render(monkeypatch, txbl0=60_000)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    warns = [w.value for w in at.warning if "million" in w.value]
++    assert warns == ["Riley's taxable accounts: 60,000 here means \\$60 million (amounts are in "
++                     "thousands). If you typed dollars, divide by 1,000."], warns
++
++
++def test_a_balance_between_twenty_and_fifty_million_warns_too(monkeypatch):
++    """Dollars typed for a \\$25,000 balance: the build's \\$50M threshold missed it."""
++    at = _render(monkeypatch, txDef0=25_000)
++    warns = [w.value for w in at.warning if "million" in w.value]
++    assert warns and "25,000 here means \\$25 million" in warns[0], warns
++
++
++def test_ordinary_balances_do_not_warn(monkeypatch):
++    at = _render(monkeypatch, txbl0=5_000, txDef0=19_999)
++    assert not at.exception, [str(e.value) for e in at.exception]
++    assert not [w.value for w in at.warning if "million" in w.value]
+diff --git a/ui/Account_Balances.py b/ui/Account_Balances.py
+index aa08114..ac2bfdf 100644
+--- a/ui/Account_Balances.py
++++ b/ui/Account_Balances.py
+@@ -26,6 +26,10 @@ import streamlit as st
+ import sskeys as kz
+ import case_progress as cp
+ 
++# A balance field ($k) at or above this reads as $20M or more: probably dollars typed into a
++# $k field, which solves "infeasible" with no other hint.
++BALANCE_WARNING_K = 20_000
++
+ ret = kz.titleBar(":material/savings: Account Balances")
+ 
+ if ret is None or kz.caseHasNoPlan():
+@@ -78,6 +82,21 @@ else:
+                 kz.initCaseKey(nkey, 0)
+                 ret = kz.getNum(f"{iname1}'s {accounts[key]} accounts (\\$k)", nkey, help=hdetails[key] + kz.help1000)
+ 
++    # The fields are $k: a balance read as $20M or more is most likely dollars typed into them.
++    n_people = 2 if kz.getCaseKey("status") == "married" else 1
++    too_big = []
++    for i in range(n_people):
++        for key, what in accounts.items():
++            value = kz.getCaseKey(f"{key}{i}") or 0.0
++            if value >= BALANCE_WARNING_K:
++                too_big.append(f"{kz.getCaseKey(f'iname{i}')}'s {what} accounts: {value:,.0f} here "
++                               f"means \\${value / 1000:,.4g} million (amounts are in thousands)")
++    if too_big:
++        warn_col, _ = st.columns([2, 1])
++        with warn_col:
++            st.warning("; ".join(too_big) + ". If you typed dollars, divide by 1,000.",
++                       icon=":material/warning:")
++
+     st.divider()
+     st.markdown("#### :orange[Taxable Account Cost Basis] *(optional)*")
+     basis_help = (

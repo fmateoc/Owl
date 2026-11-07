@@ -21,8 +21,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 # flake8: noqa: E402
 
-import re
-
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -198,8 +196,7 @@ def _applyConfig(plan):
         diconf = ui_to_config(uidic, mylog=_get_case_logger())
         apply_config_to_plan(plan, diconf)
     except Exception as e:
-        # "setACA: start_year=..." -> "start_year=...": the method name means nothing on a page.
-        return re.sub(r"^set\w+: ", "", str(e))
+        return str(e)
 
     _setContributions(plan, "set")
     return None

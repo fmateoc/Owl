@@ -13,7 +13,7 @@ and "UX review: quick wins Q1-Q9".
 |---|---|
 | Q3 (= bug B1) Queue's "decision" | **Done**: `preset_solves`, two jobs queued (re-driven) |
 | bug B2 purchase on an imported run | **Done**: refused as two homes; a blank district keeps the case's, `-` is none; the purchase box pre-fills from the case with dropdowns (part of Q19) |
-| Q21 (= bug B3) solve after a failed configuration | **Done** in the fork with the stock-`dev` patch; issue draft `fork-notes/issue-prepare-run-failure.md`, not filed |
+| Q21 (= bug B3) solve after a failed configuration | **Done** in the fork with the stock-`dev` patch; issue draft `fork-notes/issue-prepare-run-failure.md`, not filed. Revised 2026-11-07 (user): the `setACA` hint for a year before 2000 dropped (fork back to upstream's), the repro is a move to the starting state |
 | Q5 (= bug B4) dollar labels as math | **Done**, with a source check over `ui/` |
 | Q1 codes in rendered strings | **Done** on Run, Compare, Scenario, Collections, Library, Queue and the comparison's notes; file names kept only in a help tooltip (the scores-file uploader) |
 | Q2 preset names | **Done** (`ui/librarypresets.py`); times as measured: quick ~1 s, Careful ~5 min; Ages not timed, so "slow" |

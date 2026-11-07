@@ -3,56 +3,65 @@
 Status: **draft, not filed** (2026-11-07, UX review B3, `fork-notes/ux-review.md`). For the user
 to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-prepare-run-failure.patch` (applies to stock `dev` with `git apply`; verified
-there: `tests/ui` and `tests/tax/test_aca.py` 233 passed). Repro script:
-`fork-notes/issue-prepare-run-failure-repro.py` (run with the repo root as argument). The
-output below is from real runs of that script in this container on stock `dev` and on `dev`
-with the patch (re-run 2026-11-07 after the script's label changed; upstream `dev` still `73dc8815`).
+there: `tests/ui` and `tests/tax/test_aca.py` 231 passed; the new test fails on stock `dev`).
+Repro script: `fork-notes/issue-prepare-run-failure-repro.py` (run with the repo root as
+argument). The output below is from real runs of that script in this container on stock `dev`
+and on `dev` with the patch.
+
+Revised 2026-11-07 (user): the first draft also proposed a new `setACA` hint for an ACA start
+year before 2000 (1999 gave "e.g. 4025") and used 1999 as its trigger. Nobody enters 1999, so
+that part is dropped, from the patch too, and the trigger is now a move to the starting state,
+which Create Case warns about but accepts. The fork's `setACA` and `test_aca.py` are upstream's
+again.
 
 ---
 
-**Title:** UI solves a case after "Failed to apply configuration"; setACA's year hint says "e.g. 4025"
+**Title:** UI solves a case after "Failed to apply configuration" and shows the old plan's results
 
-Two small things, found together.
+**`ui/owlbridge.prepareRun` reports a failure, but every caller solves anyway.** `prepareRun`
+catches the exception from `apply_config_to_plan`, shows *"Failed to apply configuration: ..."*
+and returns. Its callers do not know: `runPlan` (owlbridge.py 214), `runHistorical` (267),
+`runMC` (311), `runStochasticSpending` (611), `runSpendingBequestFrontier` (860) and
+`runConversionRegret` (2662) go on and solve. The plan then holds only the part of the case
+applied before the exception (`apply_config_to_plan` stops at the failing step), and the
+Financial Profile tables are not applied at all: `_setContributions` comes after
+`apply_config_to_plan` in `prepareRun`.
 
-**1. `ui/owlbridge.prepareRun` reports a failure but every caller solves anyway.**
-`prepareRun` catches the exception from `apply_config_to_plan`, shows *"Failed to apply
-configuration: ..."* and returns. Its callers do not know: `runPlan` (owlbridge.py 214),
-`runHistorical` (267), `runMC` (311), `runStochasticSpending` (611),
-`runSpendingBequestFrontier` (860) and `runConversionRegret` (2662) go on and solve. The plan
-then holds only the part of the case applied before the exception: `apply_config_to_plan`
-stops at the failing step, so with an ACA error `setStateTax` (the state and moves) and the
-HFP contributions (`_setContributions`) are the previous run's or the defaults.
+One way to get there: a case in CA with *Move to another state during the plan* on and FL as
+the new state; then *State of residence* is set to FL too, to look at moving now. Create Case
+warns *"The new state is the starting state."* but keeps both. On Reports, `setStateTax`
+refuses the move, and the page shows the error above the results of a solve in CA, as the
+case's results. Wages added on Financial Profile before that are missing from the results, and
+Reports then applies them to the plan's tables after the solve (`saveContributions`), so the
+workbook offered for download has them.
 
-What a person sees depends on the case. On `Case_jack+jill.toml` with *ACA start year* set to
-1999 (and a benchmark premium, so `setACA` runs), Reports shows the error and then the
-results of the half-applied plan as solved. On a case with a purchase and a budget (our
-synthetic household), the second message was *"No plan satisfies all the constraints. An
-input has to give: ..."*, which points at the wrong input.
-
-**2. `Plan.setACA`'s hint** for a start year before 2000 is `date.today().year + sy`, which
-suits a small offset (3 -> 2029) but gives *"e.g. 4025"* for 1999.
-
-**Repro (stock `dev` `73dc8815`):**
+**Repro (stock `dev` `73dc8815`):** the script renders `ui/Reports.py` through Streamlit's
+`AppTest` with `Case_dana.toml` (CA), *State of residence* FL, a move to FL in 2031 and \$50,000
+of wages added for 2026, and counts `Plan.solve` calls. Click path: load dana; on Create Case
+turn on the move with FL as the new state, then set the state of residence to FL; on Financial
+Profile add \$50,000 of wages in 2026; open **Reports**.
 
 ```text
 $ PYTHONPATH=$PWD/src python issue-prepare-run-failure-repro.py $PWD
-setACA error: setACA: start_year=1999 looks like an offset rather than a calendar year. Use a 4-digit calendar year (e.g. 4025).
 solves: 1
 caseStatus: solved
-error: Failed to apply configuration: setACA: start_year=1999 looks like an offset rather than a calendar year. Use a 4-digit calendar year (e.g. 4025).
+case: state FL; plan: state 'CA' moves []
+results shown: total state income tax $29,910, total wages $0
+2026 wages: case 50,000, plan's table after the page 50,000
+error: Failed to apply configuration: Invalid state in config: The move goes to the starting state ('FL').
 ```
 
-(The script renders `ui/Reports.py` through Streamlit's `AppTest` with jack+jill, `slcspAnnual`
-20 and `acaStartYear` 1999, and counts `Plan.solve` calls. Click path: load jack+jill, set a
-benchmark premium and *ACA start year* 1999 on the ACA settings, open **Reports**.)
+(FL has no income tax; the \$29,910 is CA's. With the same wage edit and the case left in CA
+with no move, the same page shows total wages \$50,000: the \$0 above is the skipped tables.)
 
 **With the patch:**
 
 ```text
-setACA error: setACA: start_year=1999 is before 2000. Use a 4-digit calendar year such as 2027.
 solves: 0
 caseStatus: invalid input
-error: The case was not solved: one of its inputs could not be applied. start_year=1999 is before 2000. Use a 4-digit calendar year such as 2027.
+case: state FL; plan: state 'CA' moves []
+2026 wages: case 50,000, plan's table after the page 0
+error: The case was not solved: one of its inputs could not be applied. Invalid state in config: The move goes to the starting state ('FL').
 ```
 
 **Patch (attached), minimal:**
@@ -64,12 +73,8 @@ error: The case was not solved: one of its inputs could not be applied. start_ye
   `showCaseStatus` explains it, so Reports and Graphs show one message. `sskeys.caseHasNotRun`
   lists the new status, so the page does not also say the case definition is incomplete.
   Editing the input marks the case modified again, so the next visit re-runs it.
-- The method name (`setACA: `) is dropped from the message shown on the page.
-- `setACA`: the offset hint only below 100; from 100 to 1999 *"is before 2000. Use a 4-digit
-  calendar year such as <next year>"*. `test_start_year_offset_raises_for_typical_offsets`
-  is split accordingly (1-10 still "looks like an offset"; 100 and 1999 "is before 2000").
-- New `tests/ui/test_prepare_run_failure.py`: the two hints, and Reports with 1999 shows one
-  error and calls `Plan.solve` zero times. On stock `dev` two of its three tests fail (the old
-  year's hint, and the Reports test: one solve); with the patch all three pass.
+- New `tests/ui/test_prepare_run_failure.py`: Reports with the move above shows one error,
+  calls `Plan.solve` zero times and records `invalid input`. It fails on stock `dev` (one
+  solve) and passes with the patch.
 
 Found by a review of the interface in our fork (`fmateoc/Owl`); the fork carries the same patch.

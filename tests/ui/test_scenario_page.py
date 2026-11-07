@@ -205,6 +205,35 @@ class TestSecondReview:
         assert "saved in scenario schema 1" in text
 
 
+class TestSaveButton:
+    """Review AL1 (as Q18): *Save as a new run* is enabled while the events cannot be built,
+    and a click then says why and saves nothing. Disabled, the button was still disabled when
+    the click that leaves the corrected field landed (a field commits on blur), so the first
+    click after a fix did nothing (reproduced with Playwright; AppTest cannot move the focus)."""
+
+    def test_save_is_enabled_while_not_buildable_and_a_click_says_why(self, library):
+        at = _page()
+        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
+        care_from.set_value("bogus").run()
+        assert any("Not buildable yet" in e.value for e in at.error)
+        save = next(b for b in at.button if b.label == "Save as a new run")
+        assert not save.disabled
+        save.click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("cannot be built yet" in w.value for w in at.warning)
+        assert len(library.runs()) == 1
+
+    def test_once_corrected_one_click_saves(self, library):
+        at = _page()
+        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
+        care_from.set_value("bogus").run()
+        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
+        care_from.set_value("2045")
+        next(b for b in at.button if b.label == "Save as a new run").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert len(library.runs()) == 2
+
+
 class TestDeathEventsAndTheCollectionField:
     """I2's death events on the Scenario page, and the save dialog's "Collection" field
     (design section 7)."""

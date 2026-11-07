@@ -2391,7 +2391,7 @@ def openCaseFromPlan(plan, name=None):
     # strip read "(12%) - Step 8 of 8").
     import case_progress
 
-    dic["case_setup_visited_pages"] = [page["key"] for page in case_progress.CASE_SETUP_PAGES]
+    dic["case_setup_visited_pages"] = case_progress.all_setup_pages()
     if name:
         casename = name
         dic["name"] = name

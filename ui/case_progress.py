@@ -99,6 +99,12 @@ def mark_page_visited(page_key):
         kz.storeCaseKey(visited_key, visited_pages)
 
 
+def all_setup_pages():
+    """Fork: every Case Setup page's key. A case opened from a run of the library holds a
+    complete, saved case, so its pages count as visited (UX review Q12 and review AL2)."""
+    return [page["key"] for page in CASE_SETUP_PAGES]
+
+
 def is_page_visited(page_key):
     """
     Check if a page has been visited for the current case.

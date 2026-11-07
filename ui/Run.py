@@ -556,6 +556,11 @@ if entries:
 
                     owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx")
                 kz.setRunBase(run.id)  # saved on the Library page as its child
+                # Review AL2: a run's case is complete, as after "Open in Owl" (Q12); the
+                # progress strip on Run Options read "(25%) - Step 2 of 8".
+                import case_progress
+
+                kz.storeCaseKey("case_setup_visited_pages", case_progress.all_setup_pages())
                 # UX review Q13: go where the what-if is made. A toast does not survive the
                 # page switch; the flash is drawn under Run Options' title bar (sskeys.titleBar).
                 libraryjobs.flash(

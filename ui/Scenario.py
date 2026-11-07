@@ -602,7 +602,14 @@ collection = n3.selectbox(
     key="scenario_page_collection",
     help="The new run joins this collection as it is; its variant values "
          "are set on the Collections page.")
-if st.button("Save as a new run", type="primary", disabled=built is None):
+# Enabled whatever the events say (review AL1, as Q18): disabled while the page could not
+# build, the button was still disabled when the click that leaves the corrected field landed
+# (a field commits on blur), so that first click did nothing.
+save_clicked = st.button("Save as a new run", type="primary")
+if save_clicked and built is None:
+    st.warning("Not saved: the events above cannot be built yet (see the message above).",
+               icon=":material/warning:")
+elif save_clicked:
     try:
         result = lib.save_run(name=name.strip() or f"{run.name} variant", scenario=edited,
                               parent=run.id, notes=notes.strip())

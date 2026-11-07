@@ -81,8 +81,12 @@ def test_a_second_home_is_refused_on_the_page(tmp_path, monkeypatch):
     assert not at.exception, [e.value for e in at.exception]
     errors = [e.value for e in at.error]
     assert any("Not buildable yet" in e and "two homes" in e and "yonkers condo" in e for e in errors), errors
-    save = at.button[[b.label for b in at.button].index("Save as a new run")]
-    assert save.disabled
+    # Review AL1: the button stays enabled (a disabled one swallowed the first click after a
+    # fix); a click on a page that cannot build says so and saves nothing.
+    runs = len(lib.runs())
+    at.button[[b.label for b in at.button].index("Save as a new run")].click().run()
+    assert any("cannot be built yet" in w.value for w in at.warning)
+    assert len(lib.runs()) == runs
 
 
 def test_another_state_resets_the_pre_filled_place(tmp_path, monkeypatch):

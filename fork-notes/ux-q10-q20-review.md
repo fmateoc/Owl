@@ -15,6 +15,9 @@ file). Probes and Playwright scripts were kept in the session's scratchpad (`pw/
 `git worktree`s (removed afterwards), with `PYTHONPATH` set to the worktree's `src` and
 `owlplanner.__file__` printed.
 
+**Status (2026-11-07):** AL1 and AL2 folded on `claude/review-ux-q10-q20` (the user's call;
+PROGRESS.md "UX quick wins: the independent review's AL1-AL2 folded"); AL3-AL6 stand.
+
 ## What was run
 
 | Command | Result |

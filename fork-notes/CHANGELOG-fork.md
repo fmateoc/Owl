@@ -30,6 +30,10 @@ has) is logged in `PROGRESS.md` only.
 - **Create collection and Create case take the first click** after typing a name (the button
   used to be still disabled when that click landed), and say what is missing on a blank one; a
   collection name already taken is refused (Q18).
+- **The Scenario page's *Save as a new run* takes the first click** after a field that kept
+  the page from building is corrected; a click while it cannot build says so and saves nothing
+  (independent review AL1). **Edit as new run** counts the run's case as fully set up, as Open
+  in Owl does (AL2).
 - **The Scenario page's purchase box**: *Paid from* a dropdown of the people, down payment and
   closing costs in percent (no change stored unless edited), event ids under "Advanced", a
   warning when property tax, HOA and insurance are all 0 (Q19).

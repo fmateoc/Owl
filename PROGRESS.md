@@ -7340,3 +7340,29 @@ collection); the full suite on the final code is recorded below. `check_library_
 46/46, `check_library_roundtrip.py` 39/39, `check_library_compare.py` 9/9. Lint: flake8 and
 ruff report only upstream's listed items (the B905 in `ui/Run_Options.py` is at line 263 now).
 The three upstream patches apply to stock `dev` `73dc8815` alone and together.
+
+## UX quick wins: the independent review's AL1-AL2 folded (2026-11-07)
+
+Branch `claude/review-ux-q10-q20` (from `claude/dazzling-gauss-69epxn` `3617bb5`). The
+independent review `fork-notes/ux-q10-q20-review.md` (AL1-AL6: 2 low, 4 nit; the three issue
+drafts reproduced exactly on stock and patched `dev`) was committed first; the user folded AL1
+and AL2. AL3-AL6 stand.
+
+- **AL1** (`ui/Scenario.py`): *Save as a new run* was `disabled=built is None`, Q18's pattern on
+  a library page: after a field that kept the page from building was corrected, the click that
+  left the field landed on a still-disabled button and nothing was saved (reproduced with
+  Playwright). The button is now always enabled; a click while the events cannot be built shows
+  *"Not saved: the events above cannot be built yet (see the message above)."* and saves
+  nothing. Re-driven with Playwright: `bogus` in the care span's *From*, then `2040` typed and
+  one mouse click on Save -> *"Saved as condo yonkers 2027 cash variant ..."* (before the fold:
+  disabled at the click, nothing saved). B2's
+  `test_scenario_purchase_place.py::test_a_second_home_is_refused_on_the_page` asserted the
+  disabled button; it now clicks and checks the warning and that no run is saved.
+- **AL2** (`ui/Run.py`, `ui/case_progress.py`): *Edit as new run* loads the run through
+  `createCaseFromFile` + `readHFP`, not `openCaseFromPlan`, so Q12's "every Case Setup page
+  visited" did not run, and Run Options' strip read *"(25%) - Step 2 of 8"*. Both paths now use
+  `case_progress.all_setup_pages()`. Re-driven: *"(100%)"*.
+- Tests: `tests/ui/test_scenario_page.py::TestSaveButton` (2) and an assertion added to
+  `test_library_pages.py::test_run_options_draws_the_message_edit_as_new_run_left`; all three
+  fail on `3617bb5` (checked in a worktree with the new tests copied in) and pass with the fold.
+  `tests/ui tests/library` 985 passed. Lint: only upstream's listed items.

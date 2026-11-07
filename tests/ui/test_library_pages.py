@@ -351,6 +351,12 @@ class TestRunPage:
         options.run()
         assert not options.exception, [e.value for e in options.exception]
         assert any("are open as the case" in i.value for i in options.info)
+        # Review AL2: the run's case is complete, as after "Open in Owl" (Q12): every Case Setup
+        # page counts as visited (the strip read "(25%) - Step 2 of 8").
+        import case_progress
+
+        case = options.session_state["cases"][options.session_state["currentCase"]]
+        assert case.get("case_setup_visited_pages") == case_progress.all_setup_pages()
         for box in options.selectbox:  # keep the decorated case option (test_create_case_move)
             if box.label == "Case selector":
                 box.set_value(box.options[0])

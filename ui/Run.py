@@ -330,9 +330,8 @@ def _conversions_and_brackets(run, result):
     money = st.column_config.NumberColumn(format="localized")  # thousands separators (Q15)
     table = run_charts.brackets_table(years, doc.get("conversion_window"),
                                       result.plan.get("individuals") or [])
-    text = ("Year", "Bracket", "IRMAA tier", "Next limit")
     st.dataframe(table, width="stretch", hide_index=True,
-                 column_config={c: money for c in table.columns if c not in text}
+                 column_config={c: money for c in table.columns if c not in run_charts.TEXT_COLUMNS}
                  | {"Year": st.column_config.NumberColumn(format="%d"),
                     # UX remediation QW-3: the IRMAA tier per year with its premium year, and
                     # the next limit above the year's income.
@@ -340,6 +339,9 @@ def _conversions_and_brackets(run, result):
                         "IRMAA tier", width="medium",
                         help="The tier the year's MAGI is in (how far over its edge), or how far "
                              "below tier 1, and the year whose Medicare premiums it sets."),
+                    # Text, blank in a year without the marketplace (N2: a missing number reads
+                    # "None" in Streamlit 1.66).
+                    "400% FPL": st.column_config.TextColumn("400% FPL"),
                     "Next limit": st.column_config.TextColumn(
                         "Next limit", width="large",
                         help="The case's own limits on the year's Roth conversions (its cap, its "

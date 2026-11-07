@@ -263,12 +263,21 @@ def brackets_table(years, window=None, names=()) -> pd.DataFrame:
         })
     table = pd.DataFrame(rows)
     # Years as nullable integers and amounts as whole-dollar floats: a None left in a column
-    # made it an object column that the page showed as "None", and years as floats.
+    # made it an object column, and years as floats.
     table["Year"] = pd.to_numeric(table["Year"], errors="coerce").round().astype("Int64")
     for column in table.columns:
-        if column not in ("Year", "Bracket", "IRMAA tier", "Next limit"):
+        if column not in TEXT_COLUMNS:
             table[column] = pd.to_numeric(table[column], errors="coerce").astype(float).round(0)
+    # N2 (review AN10): Streamlit 1.66 draws a missing number as a grey "None" -- a float NaN,
+    # a nullable Float64's pd.NA and an object None alike (checked with Playwright) -- and only
+    # an empty text cell blank. The 400% FPL line is missing in every year without the
+    # marketplace, so it is text: the amount with its separators, or nothing.
+    table["400% FPL"] = [f"{v:,.0f}" if pd.notna(v) else "" for v in table["400% FPL"]]
     return table
+
+
+# The brackets table's text columns (the rest are numbers the page formats).
+TEXT_COLUMNS = ("Year", "Bracket", "IRMAA tier", "Next limit", "400% FPL")
 
 
 def _medicare_in_premium_year(row):

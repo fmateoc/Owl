@@ -229,7 +229,10 @@ def test_the_table_keeps_years_whole_and_empty_cells_empty(rc):
     years = [_bracket_row(2027, 120_000.0), {**_bracket_row(2052, 90_000.0), "irmaa_edges": [], "aca_lines": []}]
     table = rc.brackets_table(years)
     assert str(table["Year"].dtype) == "Int64"
-    assert table["400% FPL"].dtype == float and table["400% FPL"].isna().tolist() == [False, True]
+    # N2 (review AN10): Streamlit 1.66 draws any missing number as "None" (a float NaN, a
+    # Float64 pd.NA, an object None: checked with Playwright); only an empty text cell is blank.
+    assert table["400% FPL"].tolist()[1] == "" and table["400% FPL"].tolist()[0] != ""
+    assert table["400% FPL"].tolist()[0].replace(",", "").isdigit()
     assert table["IRMAA tier"][1] == "-" and table["Next limit"][1] != ""
 
 

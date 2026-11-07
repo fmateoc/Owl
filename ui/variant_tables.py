@@ -36,6 +36,10 @@ PLACE_COLUMNS = ["label", "name", "price", "state", "locality", "school_district
                  "property tax", "hoa", "insurance"]
 FINANCING_COLUMNS = ["label", "kind", "term", "rate", "down", "closing", "extra", "name"]
 SEQUENCE_COLUMNS = ["label", "sequence", "start"]
+# The financing share fields are typed as percentages on the page (0-100) and stored as the
+# shares the purchase events hold (0-1), as Scenario.py's purchase box shows them (Q19).
+# UX remediation QW-4: the table used to show raw shares (0.2) where that page showed 20.00%.
+FINANCING_PERCENT = ("down", "closing", "extra")
 # A place's text fields: an empty cell keeps the parent's; "-" clears it (= builder.NO_PLACE) (a place with no
 # local income tax, from a parent that has one: White Plains from Yonkers).
 CLEAR = "-"
@@ -183,6 +187,11 @@ def _place_value(row) -> dict:
     return value
 
 
+def _share(value, what):
+    """A percent cell (0-100) as the share (0-1) the purchase event stores (QW-4)."""
+    return number(value, what) / 100.0
+
+
 def _financing_value(row) -> dict:
     label = row["label"]
     kind = str(row.get("kind") or "cash").strip().lower()
@@ -192,9 +201,12 @@ def _financing_value(row) -> dict:
         financing = {"kind": "cash"}
     else:
         raise ScenarioError(f"financing {label}: kind must be cash or loan, got {row.get('kind')!r}")
-    for field in ("term", "rate", "down", "closing", "extra"):
+    for field in ("term", "rate"):
         if row.get(field) is not None:
             financing[field] = number(row[field], f"financing {label}: {field}")
+    for field in FINANCING_PERCENT:  # typed as percentages, stored as shares (QW-4)
+        if row.get(field) is not None:
+            financing[field] = _share(row[field], f"financing {label}: {field}")
     if row.get("name") is not None:
         financing["name"] = str(row["name"])
     return {"label": label, "financing": financing}

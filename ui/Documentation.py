@@ -71,7 +71,7 @@ to visualize the results.
 A `Case selector` box located at the top of each page allows you
 to navigate between the different cases created.
 This box is present on all pages in the **Case Setup**, **Results**, and **Stress Tests** sections.
-The *case* being currently displayed is marked with a small red triangle 🔻.
+The *case* being currently displayed is marked with a check mark ✓.
 
 A typical workflow for exploring different cases involves starting with a base
 case and then copying + creating derived cases with slight changes in the parameters.

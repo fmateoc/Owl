@@ -156,6 +156,14 @@ class TestOneYear:
         p.x_in[0] = 10_000.0 * g  # a conversion inside the taxable income counts in full
         assert bracket_view(p)["years"][0]["conversion_taxable"] == pytest.approx(10_000.0)
 
+    def test_the_conversion_cap_travels_with_the_row(self):
+        """QW-3's "binding ceiling": `maxRothConversion` is nominal and per person (the LP
+        caps each individual's own conversions), so the couple's cap is their sum."""
+        p = FakePlan(solverOptions={"units": "k", "maxRothConversion": 50})
+        row = bracket_view(p)["years"][0]
+        assert row["conversion_cap"] == pytest.approx(100_000.0)  # two converters, year 0
+        assert bracket_view(FakePlan())["years"][0]["conversion_cap"] is None  # uncapped
+
 
 # ---------------------------------------------------------------------------
 # plan.json carries the block (the run page reads the durable files, D7)

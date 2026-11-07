@@ -41,6 +41,34 @@ def _onSSAgesChange(names):
     kz.setCaseKey("ssAgesMode", _ssAgesMode(names, selected))
 
 
+def _bound_year(key, low, high):
+    """Clamp a stored year field into [low, high] (UX remediation QW-8's input bounds).
+
+    Streamlit silently shows the bound instead of a stored value outside it, so the case keeps
+    what the field shows. Moving a value is never silent (review AM3): the page names every
+    move. A move **up** to the lower bound is the neutral one -- a year before the plan's first
+    year means "from its first year" (what `sanitize_config` does at load) -- so the case keeps
+    its status. A move **down** to the upper bound changes what the input means (a year past
+    the plan can no longer say "never"), so the case is flagged modified: its results are
+    stale. Returns the old value when one moved, else None.
+    """
+    value = kz.getCaseKey(key)
+    if value is None:
+        return None
+    try:
+        year = int(value)
+    except (TypeError, ValueError):
+        return None
+    if low <= year <= high:
+        return None
+    moved = min(max(year, low), high)
+    if year > high:
+        kz.setCaseKey(key, moved)  # flags "modified": the meaning changed
+    else:
+        kz.storeCaseKey(key, moved)  # neutral (before the plan's first year = from it)
+    return year
+
+
 kz.initCaseKey("computeMedicare", True)
 kz.initCaseKey("optimizeMedicare", False)
 kz.initCaseKey("slcspAnnual", 0)
@@ -64,6 +92,24 @@ ret = kz.titleBar(":material/tune: Run Options")
 if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
+    _plan = kz.getCaseKey("plan")
+    thisyear = date.today().year
+    # UX remediation QW-8: the year fields below are bounded by the plan's own horizon.
+    _years = getattr(_plan, "year_n", None) if _plan is not None else None
+    plan_end = int(_years[-1]) if _years is not None and len(_years) else thisyear + 40
+    # QW-8 (review AM3): every stored year outside its field's range is set to the nearest
+    # allowed one here, once, and the page says which values moved.
+    _moved = []
+    for _key, _low, _high in (("startRothConversions", thisyear, plan_end),
+                              ("stopRothConversions", thisyear, plan_end),
+                              ("swapRothConvertersYear", thisyear, plan_end),
+                              ("acaStartYear", thisyear, thisyear + 50)):
+        _old = _bound_year(_key, _low, _high)
+        if _old is not None:
+            _moved.append(f"{_key} {_old} \u2192 {kz.getCaseKey(_key)}")
+    if _moved:
+        st.caption("A stored year outside its field's range was set to the nearest allowed "
+                   "year: " + "; ".join(_moved) + ".")
     st.markdown("#### :orange[Roth Conversions]")
     col1, col2, col3 = st.columns(3, gap="large", vertical_alignment="top")
     with col1:
@@ -81,10 +127,10 @@ else:
 
     with col2:
         helpmsg = "Do not perform Roth conversions before that year."
-        thisyear = date.today().year
         kz.initCaseKey("startRothConversions", thisyear)
         ret = kz.getIntNum(
-            "Year to start considering Roth conversions", "startRothConversions", min_value=thisyear, help=helpmsg
+            "Year to start considering Roth conversions", "startRothConversions",
+            min_value=thisyear, max_value=plan_end, help=helpmsg
         )
         # An explicit toggle, not a year derived from the plan horizon: a derived default
         # is stored once and never revisited, so extending life expectancy later would
@@ -96,10 +142,11 @@ else:
         )
         ret = kz.getToggle("Stop Roth conversions mid-plan", "stopRothConversionsEnabled", help=helpmsg)
         if kz.getCaseKey("stopRothConversionsEnabled"):
-            kz.initCaseKey("stopRothConversions", thisyear + 10)
+            kz.initCaseKey("stopRothConversions", min(thisyear + 10, plan_end))
             helpmsg = "No Roth conversions are performed in this year or later."
             ret = kz.getIntNum(
-                "Year to stop considering Roth conversions", "stopRothConversions", min_value=thisyear, help=helpmsg
+                "Year to stop considering Roth conversions", "stopRothConversions",
+                min_value=thisyear, max_value=plan_end, help=helpmsg
             )
     with col3:
         if kz.getCaseKey("status") == "married":
@@ -137,7 +184,8 @@ else:
                 kz.initCaseKey("swapRothConvertersYear", thisyear)
                 helpmsg = "Year in which the other spouse takes over Roth conversions."
                 ret = kz.getIntNum(
-                    "Year to switch converters", "swapRothConvertersYear", min_value=thisyear, help=helpmsg
+                    "Year to switch converters", "swapRothConvertersYear",
+                    min_value=thisyear, max_value=plan_end, help=helpmsg
                 )
 
     st.divider()
@@ -185,16 +233,19 @@ else:
     with cols[1]:
         acaoff = (kz.getCaseKey("slcspAnnual") or 0) <= 0
         helpmsg_start = (
-            "4-digit calendar year when ACA coverage begins (e.g. 2029 for the year of retirement). "
-            "Years before this are assumed employer-covered (zero ACA cost). "
-            "Set to 0 for coverage from the start of the plan. "
-            "Do not enter an offset (e.g. 3); use the actual calendar year."
+            "4-digit calendar year when marketplace (ACA) coverage begins (e.g. 2029 for the "
+            "year of retirement). Years before it are assumed employer-covered (zero ACA cost). "
+            "Defaults to this year -- the plan's first year -- for coverage from the start of "
+            "the plan. Do not enter an offset (e.g. 3); use the actual calendar year."
         )
-        thisyear = date.today().year
+        # UX remediation QW-8: no more "0 = plan start". The plan starts in the solve year, so
+        # a stored 0 (or any year before this one) reads as thisyear, and the field defaults
+        # to it (the move is named at the top of the page, review AM3).
+        kz.initCaseKey("acaStartYear", thisyear)
         kz.getIntNum(
-            "ACA start year (0 = plan start, else 4-digit year)",
+            "ACA start year",
             "acaStartYear",
-            min_value=0,
+            min_value=thisyear,
             max_value=thisyear + 50,
             step=1,
             help=helpmsg_start,

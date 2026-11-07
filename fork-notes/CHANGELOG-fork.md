@@ -7,6 +7,40 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run page and case pages: UI remediation Phase 1, quick wins QW-1-QW-8 (2026-11-07)
+
+- **A refunded tax is never "income"** (NY's STAR): the one-year paragraph nets it against
+  the taxes ("Taxes net of a \$714 state and local tax refund took \$25,650"), the paragraph
+  and the Sankey share one set of words (Capital gains tax, ACA marketplace premiums,
+  Medicare premiums), the Health premiums node is drawn even on a single-premium year, and a
+  compact Sources vs. Uses table sits under the Sankey (QW-1).
+- **"Things to look at" shows active crossings**: a year that has crossed an IRMAA tier or
+  the marketplace's 400% FPL cliff is listed wherever it sits (once crossing it costs over
+  \$500), small priced edges (a \$3 state-recapture step) are dropped as noise, and each
+  IRMAA row names the year its premiums are paid (QW-2).
+- **The Brackets table names the active IRMAA tier** ("Tier 2 (\$274,000) — crossed (+\$26,000
+  in 2029)") and a **Binding ceiling** column (the bracket top, IRMAA tier or 400% FPL line
+  closest above the year, or the Roth conversion cap where it binds) (QW-3).
+- **The Collections financing table takes percentages** (20 = 20%), as the Scenario page's
+  purchase box shows them (QW-4).
+- **The headline shows the first year's total spending** beside the score's split
+  ("\$108,516 discretionary + \$52,500 essential budget") when budget lines split the score
+  (QW-5).
+- **Solver jargon moved out of the way**: the header says "Careful — exact tax & Medicare
+  optimization" in plain English; the preset codes, binary families, branch-and-bound gap,
+  commit and exact-LP notes sit in a collapsed "Technical solve details" expander, and the
+  sensitivity table no longer has a "model" column (QW-6).
+- **No filesystem paths after *Open in Owl*** (the workbook is named "HFP.xlsx", not its run
+  folder's path), and *Edit as new run* stops instead of switching pages when the workbook
+  cannot be read (QW-7).
+- **Inputs behave**: saving a run's edited inputs defaults to "*{case}* variant"; the current
+  case is marked ✓ (was 🔻); the Roth-conversion and converter-switch years are bounded by
+  the plan horizon; the ACA start year is a plain year defaulting to this one; a \$k balance
+  that reads as \$50M or more is flagged (QW-8).
+- **Windows fixes found on the way**: an uploaded case file with CRLF line endings was read
+  as its name alone (`toml_io.load_toml`'s string branch; the `toml` package silently drops
+  everything after the first key), and import errors could keep the temporary folder's path.
+
 ### Run library and classic pages: the UX review's quick wins Q10-Q20 (2026-11-07)
 
 - **The Library page's import form names the files a case needs** ("Required: this case

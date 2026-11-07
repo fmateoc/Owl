@@ -16,6 +16,7 @@ from owlplanner.library.view import (
     home_at_end,
     is_exact_lp,
     load_result,
+    method_details,
     method_kind,
     method_text,
     objective_value,
@@ -214,9 +215,32 @@ class TestMethodAndTolerance:
                                             "gap": -1.0})
         assert tolerance(proved_no_gap) == 0.0
 
-    def test_method_text_names_the_preset_the_method_and_the_commit(self):
-        text = method_text(make_result())
-        assert "decision" in text and "local search" in text and "abcdef1" in text
+    def test_method_text_is_plain_english_and_the_codes_are_details(self):
+        """UX remediation QW-6: the header in plain English ("Careful — exact tax & Medicare
+        optimization"); the preset code, the binary families, the gap and the commit live in
+        `method_details` (a collapsed expander on the run page)."""
+        result = make_result(record={"method": {
+            "objective": "maxSpending", "breakpoint_method": "local search (SS, IRMAA, LTCG)",
+            "options": {"breakpointMethod": "local-search", "withSSAges": "fixed"}}})
+        text = method_text(result)
+        assert text == "Careful — exact tax & Medicare optimization"
+        assert "abcdef1" not in text and "local search" not in text
+        details = method_details(result)
+        assert "`decision`" in details and "local search (SS, IRMAA, LTCG)" in details
+        assert "abcdef1" in details and "2026.11.2" in details
+
+    def test_the_fast_method_and_the_companions_say_what_they_are(self):
+        looped = make_result(record={"method": {"breakpoint_method": "loop"}})
+        assert method_text(looped) == "Careful — the fast approximate method"
+        proved = make_result(record={"method": {"breakpoint_method": "branch-and-bound"},
+                                     "gap": 1e-5})
+        assert method_text(proved) == "Careful — exact tax optimization, proved optimal"
+        assert "branch-and-bound at gap" in method_details(proved)
+        exact = make_result(record={"method": {"breakpoint_method": "loop", "options": {
+            "breakpointMethod": "loop", "withMedicare": "none", "withSSTaxability": 0.85,
+            "withLTCG": "optimize"}}})
+        assert "used as a check" in method_text(exact)
+        assert "exact LP" in method_details(exact)
 
 
 class TestIsExactLp:

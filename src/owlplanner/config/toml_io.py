@@ -121,6 +121,17 @@ def _convert_for_toml(obj):
     return obj
 
 
+def _lf(text: str) -> str:
+    """Unix line endings for `toml.loads`.
+
+    The `toml` package's string parser silently keeps only the first key of a string with CRLF
+    endings (a case uploaded on Windows: `library_import.case_refs` read every such case as its
+    name alone, and the import then failed on a workbook it had never seen named); `toml.load`
+    escapes it through universal newlines. Found on 2026-11-07.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def load_toml(
     file: Union[str, os.PathLike, BytesIO, StringIO],
     *,
@@ -160,13 +171,13 @@ def load_toml(
             raise ValueError(f"TOML parse error in {filename}: {e}") from e
     elif isinstance(file, BytesIO):
         try:
-            string = file.getvalue().decode("utf-8")
+            string = _lf(file.getvalue().decode("utf-8"))
             diconf = toml.loads(string)
         except Exception as e:
             raise RuntimeError(f"Cannot read from BytesIO: {e}") from e
     elif isinstance(file, StringIO):
         try:
-            string = file.getvalue()
+            string = _lf(file.getvalue())
             diconf = toml.loads(string)
         except Exception as e:
             raise RuntimeError(f"Cannot read from StringIO: {e}") from e

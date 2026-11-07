@@ -78,6 +78,24 @@ else:
                 kz.initCaseKey(nkey, 0)
                 ret = kz.getNum(f"{iname1}'s {accounts[key]} accounts (\\$k)", nkey, help=hdetails[key] + kz.help1000)
 
+    # UX remediation QW-8: the fields are \\$k. A balance over 50,000 (\\$50M) is almost
+    # certainly dollars typed into a \\$k field: say so instead of solving it silently.
+    n_people = 2 if kz.getCaseKey("status") == "married" else 1
+    too_big = []
+    for i in range(n_people):
+        for key, what in accounts.items():
+            value = kz.getCaseKey(f"{key}{i}") or 0.0
+            if value > 50_000:
+                too_big.append(f"{kz.getCaseKey(f'iname{i}')}'s {what} \\${value:,.0f}k")
+    if too_big:
+        warn_col, _ = st.columns([2, 1])
+        with warn_col:
+            st.warning(
+                "Read as \\$50M or more (the fields are \\$k): " + "; ".join(too_big)
+                + ". If these are dollars rather than thousands, divide by 1,000.",
+                icon=":material/warning:",
+            )
+
     st.divider()
     st.markdown("#### :orange[Taxable Account Cost Basis] *(optional)*")
     basis_help = (

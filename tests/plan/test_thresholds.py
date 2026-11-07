@@ -18,7 +18,7 @@ from owlplanner.budget import Budget
 from owlplanner.cli.formatters import plan_to_dict, plan_to_json
 from owlplanner.export import budget_spending, cash_flow_split
 from owlplanner.star import StarSchedule
-from owlplanner.thresholds import NEAR_BAND, threshold_proximity
+from owlplanner.thresholds import CROSSING_COST, NEAR_BAND, SMALL_PRICE, threshold_proximity
 
 THISYEAR = 2026  # the frozen test date (tests/conftest.py)
 N_YEARS = 12
@@ -240,14 +240,24 @@ class TestTheOtherKinds:
         p = FakePlan()
         n = 4
         p.I_n[n] = 60_000.0
-        p.MAGI_n[n] = 250_000.0 + 2_000.0
+        p.MAGI_n[n] = 250_000.0 + 6_000.0
         e = _by_kind(threshold_proximity(p), "niit")
         assert len(e) == 1
         e = e[0]
         assert e["label"] == "NIIT threshold"
         assert e["side"] == "over"
-        assert e["amount_today_dollars"] == pytest.approx(2_000.0 / p.gamma_n[n], abs=0.01)
-        assert e["cost_today_dollars"] == pytest.approx(0.038 * 2_000.0 / p.gamma_n[n], rel=0.01)
+        assert e["amount_today_dollars"] == pytest.approx(6_000.0 / p.gamma_n[n], abs=0.01)
+        assert e["cost_today_dollars"] == pytest.approx(0.038 * 6_000.0 / p.gamma_n[n], rel=0.01)
+
+    def test_a_pricing_under_a_hundred_dollars_is_noise_and_is_not_listed(self):
+        """QW-2: a continuous edge (the NY benefit-recapture start, the NIIT kink) whose
+        crossing costs under `SMALL_PRICE` -- the $3-$26 recapture edges of a year parked
+        just over the start -- is noise, not a thing to look at."""
+        p = FakePlan()
+        n = 4
+        p.I_n[n] = 60_000.0
+        p.MAGI_n[n] = 250_000.0 + 2_000.0  # 3.8% of $2,000 is about $69 today
+        assert _by_kind(threshold_proximity(p), "niit") == []
 
     def test_the_niit_line_counts_gains_only_investment_income(self):
         """Review 2, Q2: the gate read I_n only, so a year whose investment income is all
@@ -275,20 +285,23 @@ class TestTheOtherKinds:
 
     def test_the_state_recapture_start(self):
         N = N_YEARS
+        # A phase-in narrow enough that crossing the start costs real money: with the wide
+        # one below the crossing is priced in single digits and QW-2 filters it as noise.
         p = FakePlan(
             _str_active=True,
-            st_recap=(np.full(N, 107_650.0), np.full(N, 50_000.0), np.full(N, 5_000_000.0)),
+            st_recap=(np.full(N, 107_650.0), np.full(N, 3_000.0), np.full(N, 5_000_000.0)),
         )
         p.st_theta_tn = np.tile(np.array([0.04, 0.045, 0.0526])[:, None], (1, N))
         p.st_DeltaBar_tn = np.tile(np.array([8_500.0, 6_500.0, 1_000_000.0])[:, None], (1, N))
         n = 2
-        p.st_agi_n[n] = 107_650.0 + 3_000.0
+        p.st_agi_n[n] = 107_650.0 + 2_500.0
         p.st_ti_n[n] = 90_000.0
         e = _by_kind(threshold_proximity(p), "state_recapture")
         assert len(e) == 1
         assert e[0]["label"].endswith("benefit recapture starts")
         assert e[0]["side"] == "over"
-        assert e[0]["amount_today_dollars"] == pytest.approx(3_000.0 / p.gamma_n[n], abs=0.01)
+        assert e[0]["amount_today_dollars"] == pytest.approx(2_500.0 / p.gamma_n[n], abs=0.01)
+        assert e[0]["cost_today_dollars"] > SMALL_PRICE  # priced above the noise floor
 
     def test_the_enhanced_star_limit_loses_the_enhanced_credit(self):
         N = N_YEARS
@@ -322,9 +335,11 @@ class TestTheOtherKinds:
         assert report["near_band_fraction"] == NEAR_BAND == 0.05
         assert report["entries"] == []
 
-    def test_every_entry_carries_its_boundary_and_sits_inside_its_band(self):
+    def test_every_entry_carries_its_boundary_and_reads_as_a_near_miss_or_a_crossed_cliff(self):
         """Review 2, Q5: the acceptance check claimed "every entry inside its band" with no
-        boundary to check against. Each entry now carries it (same deflator as the amount)."""
+        boundary to check against. Each entry now carries it (same deflator as the amount);
+        QW-2: a near miss sits inside its band, while a crossed discrete cliff is listed
+        wherever the year now sits (here 2029 is $12k over tier 1, outside the band)."""
         p = FakePlan()
         edge = float(tx.irmaaThresholds(tx.irmaaStatus(p.horizons, 4), p.gamma_n, 4, THISYEAR)[0])
         p.MAGI_n[2] = edge + 2_000.0
@@ -333,9 +348,38 @@ class TestTheOtherKinds:
         entries = threshold_proximity(p)["entries"]
         assert {e["kind"] for e in entries} >= {"irmaa", "niit"}
         for e in entries:
-            assert e["amount_today_dollars"] <= NEAR_BAND * e["boundary_today_dollars"] + 0.01, e
-        (irmaa,) = [e for e in entries if e["kind"] == "irmaa"]
-        assert irmaa["boundary_today_dollars"] == pytest.approx(edge / p.gamma_n[2], abs=0.01)
+            near = e["amount_today_dollars"] <= NEAR_BAND * e["boundary_today_dollars"] + 0.01
+            cliff = e["kind"] == "irmaa" or "cliff" in e["label"]
+            assert near or (cliff and e["side"] == "over"), e
+        (near_irmaa,) = [e for e in entries if e["kind"] == "irmaa" and e["year"] == THISYEAR + 2]
+        assert near_irmaa["boundary_today_dollars"] == pytest.approx(edge / p.gamma_n[2], abs=0.01)
+
+
+class TestCrossedCliffs:
+    """QW-2: a crossed discrete cliff is listed wherever the year sits over it, not only
+    inside the near band, and the tier the year is actually in speaks for the ones below."""
+
+    def test_a_year_deep_in_an_irmaa_tier_is_listed_wherever_it_sits(self):
+        p = FakePlan()
+        m, n_prem = 2, 4  # tax year 2028 sets the premiums of 2030
+        edges = tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n, n_prem, THISYEAR)
+        p.MAGI_n[m] = float(edges[1]) + 20_000.0  # in tier 2, far over both tier edges
+        e = _by_kind(threshold_proximity(p), "irmaa")
+        assert [x["label"] for x in e] == ["IRMAA tier 2"]  # not tier 1 beside it
+        assert e[0]["side"] == "over"
+        assert e[0]["cost_today_dollars"] > CROSSING_COST
+        assert e[0]["affects"] == THISYEAR + n_prem
+        # QW-2: the payment year is labelled on the row (the two-year lookback).
+        assert f"paid in {THISYEAR + n_prem}" in e[0]["note"]
+
+    def test_the_marketplace_cliff_is_listed_wherever_the_year_sits(self):
+        p = FakePlan(yobs=[1975, 1977], slcsp_annual=12_000.0)
+        n = 1
+        fpl = float(tx._aca_fpl(THISYEAR + n, 2, p.gamma_n, THISYEAR))
+        p.MAGI_aca_n[n] = 6.0 * fpl  # far over the cliff, outside every band
+        e = _by_kind(threshold_proximity(p), "aca")
+        assert [x["label"] for x in e] == ["marketplace subsidy cliff (400% FPL)"]
+        assert e[0]["side"] == "over" and e[0]["cost_today_dollars"] > CROSSING_COST
 
 
 # ---------------------------------------------------------------------------

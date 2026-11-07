@@ -185,9 +185,13 @@ def runBase():
 
 def switchToCase(key):
     name = ss[key]
-    # format_func adds 🔻 for display only; strip it if it leaked into the stored value.
-    if isinstance(name, str) and name.endswith("🔻"):
-        name = name[:-1]
+    # format_func adds the current-case mark for display only; strip it if it leaked into
+    # the stored value (and the pre-QW-8 "🔻" too: a session opened before the change).
+    if isinstance(name, str):
+        if name.endswith(" ✓"):
+            name = name[:-2]
+        elif name.endswith("🔻"):
+            name = name[:-1]
     # Only set currentCase if the case exists (guards against reconnect/stale widget state).
     if name in ss.cases:
         ss.currentCase = name
@@ -1037,8 +1041,9 @@ def getColors():
 
 
 def flagCurrentCase(caseName):
+    # UX remediation QW-8: a check mark, not the red triangle (which read as a warning).
     if caseName == currentCaseName():
-        return caseName + "🔻"
+        return caseName + " ✓"
     else:
         return caseName
 

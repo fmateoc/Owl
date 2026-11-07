@@ -182,13 +182,16 @@ def main() -> int:
         band = report.get("near_band_fraction")
         ok = (band == 0.05
               and all(fields <= set(e) and e["side"] in ("over", "under") for e in entries)
-              # inside its band (review 2, Q5: claimed here, never checked)
+              # review AM2: a near miss inside its band (review 2, Q5), or a crossed discrete
+              # cliff listed wherever the year sits (QW-2, `thresholds._keep`).
               and all(e["amount_today_dollars"] <= band * e["boundary_today_dollars"] + 0.01
+                      or (e["side"] == "over"
+                          and (e["kind"] == "irmaa" or "cliff" in e["label"]))
                       for e in entries))
         failures += 0 if ok else 1
         kinds = sorted({e["kind"] for e in entries})
-        print(f"{'ok  ' if ok else 'FAIL'} thresholds: {len(entries)} near a threshold "
-              f"({', '.join(kinds) or 'none this close'})", file=_real_out)
+        print(f"{'ok  ' if ok else 'FAIL'} thresholds: {len(entries)} near a threshold or "
+              f"over a cliff ({', '.join(kinds) or 'none this close'})", file=_real_out)
 
         # 8. the one-year cash flow (I6) ------------------------------------------
         checks += 1

@@ -2383,9 +2383,13 @@ def openCaseFromPlan(plan, name=None):
     plan.setLogstreams(True, [dic["logs"], dic["logs"]])  # the restored case logs like a new one
     # UX review Q12. The pages know a workbook as loaded by `stHFP`, which only an upload sets
     # (readHFP): without it Financial Profile said the run's workbook "has not yet been
-    # uploaded" above the tables the plan holds from it.
+    # uploaded" above the tables the plan holds from it. UX remediation QW-7 (review AL3): a
+    # solved run's workbook name is its path in the run's folder -- the pages show (and the
+    # next save keeps) a file name, never a filesystem path.
     hfp = getattr(plan, "hfpFileName", None)
     if hfp and hfp != "None":
+        hfp = hfp.replace("\\", "/").rsplit("/", 1)[-1]
+        dic["hfpFileName"] = hfp
         dic["stHFP"] = hfp
     # A solved run's case is complete: its Case Setup pages count as visited (the progress
     # strip read "(12%) - Step 8 of 8").

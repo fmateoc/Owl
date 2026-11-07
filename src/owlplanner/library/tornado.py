@@ -347,8 +347,8 @@ def movers(scenario: dict) -> list:
               _inflation_plus_1),
         Mover("medical+2", MEDICAL_LABEL,
               "medical_inflation_excess, 2 points higher; solved with Medicare priced exactly "
-              "(withMedicare = optimize), the run's base for this bar too: the exact LP has no "
-              "Medicare premiums, which are what medical inflation grows",
+              "(withMedicare = optimize), the run's base for this bar too: the simpler model "
+              "prices no Medicare premiums, and they are what medical inflation grows",
               _medical_plus_2, preset=MEDICARE_PRESET),
         Mover("condo+10", "condo price +10%",
               "the home purchase's price and its property tax, 10% higher (today's $; the HOA "

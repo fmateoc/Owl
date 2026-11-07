@@ -7374,6 +7374,145 @@ and AL2. AL3-AL6 stand.
 
 The user filed the three drafts on `mdlacasse/Owl`: **#245** (`issue-prepare-run-failure.md`, B3: the UI solves after "Failed to apply configuration"), **#246** (`issue-create-case.md`, Q18/Q11: Create Case's lost first click and the missing upload confirmation), **#247** (`issue-slcsp-field.md`, Q20: the SLCSP field's decimals and step). Numbers found with `gh api search/issues`. `main` fast-forwarded to `claude/review-ux-q10-q20` (Q10-Q20, the review, AL1-AL2 folded).
 
+## UI remediation Phase 1: quick wins QW-1-QW-8 (2026-11-07, on `claude/ui-remediation-qw`)
+
+Branch from `main` (`07701242`). The remediation plan's Phase 1 ("Labels, Units, Validation &
+Table Ergonomics"; its file/line references were approximate -- several named functions no
+longer exist -- so each item was implemented against the current code). One interpretation
+per item, noted where the plan's wording allowed more than one reading.
+
+- **QW-1** (AL4: a STAR refund called "income"; prose and Sankey words differ). `ui/run_charts.py`:
+  a "..., net refund" row is a **tax offset**, never income (`_source_group`, a fourth source
+  group "Tax refunds"), and the paragraph **nets it against the taxes** ("Taxes net of a
+  \$1,000 state and local tax refund took \$62,597: ...", "gave back" when the refund is the
+  larger); one set of words for the paragraph and the Sankey's nodes (`flow_label`: *Capital
+  gains tax*, *ACA marketplace premiums*, *Medicare premiums*, *State and local tax refund*);
+  Spending, Taxes and Health premiums always carry their total in a node of their own, even
+  with one line (the Health premiums node vanished on a single-premium year); and a compact
+  **Sources vs. Uses** table (`flows_table`, largest first) sits under the Sankey (`ui/Run.py`).
+- **QW-2** ("Things to look at" showed near misses only). `src/owlplanner/thresholds.py`: a
+  **crossed discrete cliff** is listed wherever the year sits over it, once crossing it costs
+  over `CROSSING_COST` (\$500): the IRMAA tier the year is **in** (the highest tier its MAGI
+  has crossed -- the tiers below it are not repeated) or the marketplace's 400% FPL cliff; a
+  **continuous edge** (bracket edges, the NY recapture start, the NIIT kink) is listed only
+  inside the 5% band **and** only when its price clears `SMALL_PRICE` (\$100): the \$3-\$26
+  recapture edges of a parked year are noise. IRMAA rows name the payment year ("paid in 2030
+  via the 2-year Medicare lookback"). The Run page's caption says which rows make it in.
+- **QW-3** (the Brackets table showed IRMAA tier 1's edge only). `ui/run_charts.py`: one
+  **IRMAA tier** text column -- the active (or next) tier for the year's MAGI ("IRMAA Tier 2
+  (\$274,000) — crossed (+\$26,000 in 2029)" / "IRMAA Tier 1 (\$218,000) — \$98,000 below (sets
+  2029)") -- and a **Binding ceiling** column: the ceiling with the least room left (a bracket
+  top read against taxable income, an IRMAA tier or the 400% FPL cliff against MAGI), or the
+  case's Roth conversion cap when the year is already at it. The cap is a new `conversion_cap`
+  key in `brackets.bracket_view`'s rows (`maxRothConversion`: nominal, per person, as the LP
+  caps it; today's \$ of the couple's total; results written before it carry none and simply
+  never name the cap). "Sets premiums of" merged into the tier text.
+- **QW-4** (Scenario.py showed percentages where Collections showed raw shares).
+  `ui/variant_tables.py` + `ui/Collections.py`: `down`, `closing` and `extra` are typed and
+  shown as **percentages** in the make-variants financing table (`format="%.2f%%"`, labels as
+  on Scenario.py's purchase box) and stored as the shares the events hold (`_share`: 20 -> 0.20).
+- **QW-5** (the headline read \$108,516 where the Spending chart's first bar read \$161,016).
+  `ui/Run.py`: when the score is the first year's **discretionary** spending (essential budget
+  lines under maxSpending), the headline metric is the first year's **total spending** (bar 1
+  of the chart) with "\$108,516 discretionary + \$52,500 essential budget" under it; the
+  caption names the score with its value. Other objectives keep the score as the headline.
+- **QW-6** (preset/family codes, commit hashes and LP jargon on the decision screen).
+  `view.method_text` is plain English ("Careful — exact tax & Medicare optimization"; "the
+  fast approximate method"; companions "a simpler exact model, used as a check"), and the raw
+  codes -- preset id, breakpoint method with its families, the branch-and-bound gap, the
+  version and commit, the solver options, the claiming-age sweep's scorer ("branch-and-bound
+  at gap 1e-5") and the note that the sensitivity children are solved under the exact LP --
+  moved into a collapsed **"Technical solve details"** expander on the Run page. The
+  sensitivity table lost its "model" column (QW-6.2).
+- **QW-7** (AL3: a filesystem path after *Open in Owl*). `ui/owlbridge.openCaseFromPlan` names
+  the workbook **without its folder** in `hfpFileName`/`stHFP`; *Edit as new run* **aborts**
+  (a flash, no page switch) when `readHFP` returns False instead of announcing the inputs as
+  open and leaving the error behind.
+- **QW-8** (default variant name, the active-case icon, input bounds). `ui/Library.py`: the
+  save-name default is *"{case} variant"* when the case is a run's edited inputs (`runBase`),
+  the plain name otherwise. `ui/sskeys.flagCurrentCase` marks the current case with **✓** (was
+  🔻, which read as a warning; the leak-stripping in `switchToCase` accepts both);
+  `ui/Documentation.py` follows. `ui/Run_Options.py`: the Roth conversion years and the
+  converter-switch year are **bounded by the plan horizon** (`max_value=plan.year_n[-1]`; a
+  stored year outside the bounds is clamped to them -- the case keeps what the field shows --
+  and the stop-year default is `min(thisyear + 10, plan end)`); the ACA start year is a plain
+  calendar year, **default this year** ("0 = plan start" is gone: the plan starts in the solve
+  year, so 0 reads as this year and the input is bounded below by it).
+  `ui/Account_Balances.py` warns when a \$k balance reads as **\$50M or more** ("if these are
+  dollars rather than thousands, divide by 1,000").
+
+**Found and fixed on the way (Windows).** The suite runs on Windows here, which exposed two
+platform bugs in the import flow QW-7/QW-8 touch: `toml_io.load_toml`'s `BytesIO`/`StringIO`
+branch fed `toml.loads` a CRLF string, and the `toml` package then **silently kept only the
+first key** (`library_import.case_refs` read every uploaded case as its name alone, and the
+import failed on a workbook it had never seen named); both branches now normalize line
+endings. `library_import.without_folder` matched the folder with `os.sep` only and left
+forward-slash paths in its errors; it accepts either separator.
+
+**Tests.** Updated for the intended changes: `tests/plan/test_thresholds.py` (the NIIT noise
+price, the recapture stub narrowed so its crossing clears \$100, "every entry" = a near miss
+or a crossed cliff), `tests/library/test_view.py` (plain-English `method_text`,
+`method_details`), `tests/ui/test_run_charts.py` (the refund group and netting, the unified
+words, the single-premium Health premiums node, the flows table, the new Brackets columns),
+`tests/ui/test_library_pages.py` (the headline metric and its delta, the technical expander,
+the scorer's new home, the tornado table without "model"). New: crossed-cliff rows and the
+payment-year note (`TestCrossedCliffs`), the \$100 noise floor, `conversion_cap` in
+`test_brackets.py`, the percent-to-share financing cells (`test_variant_tables.py`), the
+workbook named without its folder (`test_open_in_owl.py`), the *"{case} variant"* default and
+the ✓ mark (`test_library_pages.py`), the Sources vs. Uses table on the Run page, the Run
+Options year bounds and ACA default (`tests/ui/test_run_options_year_bounds.py`), the \$50M
+balance warning (`tests/ui/test_account_balances_units.py`), and a source check on the
+financing percent format (`test_collections_page.py`).
+
+**Checks.** Full suite on the Windows machine: **4539 passed, 2 skipped** (2026-11-07, 13:38,
+`-n 4`, 818 s; the second skip is a platform one -- the Linux runs record 1 skipped). Lint:
+flake8 and ruff report only upstream's listed items (the B905 in `ui/Run_Options.py` is at
+line 314 now, moved by the edits above it). The review AM1-AM3/AM8 fold below re-runs the
+affected tests.
+
+## UI remediation Phase 1: the independent review, AM1-AM8 (2026-11-07)
+
+An independent review of `082f9b96` (`fork-notes/ui-remediation-qw-review.md`; a fresh agent
+with the work order, report-only -- no code changed by it): **AM1-AM8** (3 low, 5 nit; no high
+or medium). Every QW item verified **done** (QW-2/3/6/8 "done with deviations", each judgment
+call called defensible); every new/changed test checked for teeth in throw-away worktrees (each
+fails without its change); AL3 and AL4 reproduced closed on before/after runs; its own full
+suite run 4539 passed / 2 skipped, matching the counts above. The user folded **AM1-AM3 and
+AM8** (AM4-AM7 stand):
+
+- **AM1** (QW-6's jargon only half out of the sensitivity block): the three tornado captions
+  use the plain vocabulary now ("this run's own solve in the children's model", "the
+  simpler-model solve"), the block's opening caption points at *Technical solve details*, and
+  the medical-inflation mover's note -- a fourth spot the review's list of three missed, found
+  by the fold's own teeth check (`tornado.movers`) -- says "the simpler model prices no Medicare
+  premiums". `test_ag2_...the_bars_wait` pins the new phrase and asserts that no caption on the
+  page carries "exact LP" (it failed before the fold: the mover note).
+- **AM2** (the fork's acceptance check asserted the invariant QW-2 breaks):
+  `fork-notes/synthetic/check_library_compare.py`'s "Things to look at" rule is now "inside its
+  band **or** a crossed cliff" (the rule QW-2 introduced; the suite's twin was already rewritten
+  in `tests/plan/test_thresholds.py`), so the recorded 9/9 check will not report FAIL on a plan
+  that crossed a cliff. The check needs a full synthetic solve and was not re-run here; its
+  invariant now mirrors the suite's.
+- **AM3** (the year clamp rewrote stored inputs silently): `_bound_year` and the page now name
+  every move ("a stored year outside its field's range was set to the nearest allowed year:
+  startRothConversions 2500 \u2192 2053"), and the fold splits the two kinds of move. A move
+  **down** to the upper bound changes what the input means (a year past the plan can no longer
+  say "never convert"), so the case is flagged modified (`setCaseKey`; `flagModified` makes the
+  Graphs page re-solve, which is right -- the results are stale). A move **up** to the lower
+  bound is the neutral one (a year before the plan's first year means "from its first year",
+  what `sanitize_config` does at load), so it keeps the case's status: merely opening Run
+  Options on a case carrying the old "0 = plan start" ACA value does not invalidate its solved
+  results. `tests/ui/test_run_options_year_bounds.py` pins both halves (caption + status).
+- **AM8** (docs): CLAUDE.md's lint note points at the B905's real line (314 after these edits;
+  it had said 263 since Q20). The other half of AM8 is a fact of `082f9b96`'s commit message --
+  a `$` interpolated away by the shell took "under $100" and "$50M" out of it -- with the
+  amounts recorded in the section above.
+
+**Checks.** Full suite after the fold: **4539 passed, 2 skipped** (2026-11-07, 10:53, Windows,
+`-n 4`; the same counts as before the fold -- these are wording, invariant and message changes
+with the tests that pin them). Lint: only upstream's listed items. The AM1 teeth assertion
+(`test_ag2_...the_bars_wait`) fails on the pre-fold code with the mover note in its message.
+
 ## Ergonomics review QW-1 to QW-8: the work order (2026-11-07)
 
 Branch `claude/upbeat-planck-c731oy` (from `main` `0770124`). The user pasted an independent

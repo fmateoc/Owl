@@ -11,6 +11,9 @@ Probes are scripts in the session's scratchpad (`probes/test_probe_*.py`, `same_
 reverts were made in throw-away `git worktree`s (removed afterwards), with `PYTHONPATH` set to
 the worktree's `src` and `owlplanner.__file__` checked.
 
+**Status (2026-11-07):** AK1-AK7 all folded on `claude/ux-fixes` (PROGRESS.md "UX fixes: the
+independent review's AK1-AK7 folded"); AK4 by documentation, not a migration.
+
 ## What was run
 
 | Command | Result |

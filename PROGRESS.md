@@ -7170,3 +7170,43 @@ Full suite: 4459 passed / 1 skipped (9:10, Linux, `-n 4`) on `aace7a1`, and agai
 
 Not fixed, seen on the way: the Scenario page's Save *Name* field keeps the previous run's
 default when the run selector changes (its widget key is not per run).
+
+## UX fixes: the independent review's AK1-AK7 folded (2026-11-07)
+
+Review `fork-notes/ux-fixes-review.md` (an independent agent, report only: 1 medium, 3 low,
+3 nits). All seven folded the same day, at the user's call, on `claude/ux-fixes`.
+
+- **AK1 (medium)** `builder._check_one_home` no longer exempts a hand home with the purchase's
+  name. The exception was meant for the event's own row, but the hand tables never hold
+  it (a pages save drops generated rows, `casefiles._drop_generated`; a hand row an event
+  replaced by name is put back only because the base had it). Re-run on the review's repro
+  (condo case, 2029 mortgage workbook, cash purchase `yonkers condo` in 2031): it was built
+  with the 2029 mortgage and down payment left over; it is now refused.
+- **AK3 / AK5 (low / nit)** rows are read as the plan reads them: a blank `year`, or no `year`
+  column, is the plan's first year (`fixedassets._get_reference_year`); a blank or absent
+  `yod` is 0; `active` is inactive only when set and falsy (`utils.is_row_active`). Only a
+  table with no `type` column is skipped.
+- **AK2 (low)** `builder._check_place`: a move's locality and district are checked with
+  `residency.normalize` when built (a `ScenarioError`, "Not buildable yet"). A purchase
+  without a move is not checked against the case's state: I tried, and it refused existing
+  fixtures whose case has no state or a non-NY one (Bill is TX). That goes beyond AK2, and
+  such a district is a hand-district question, not this branch's. On the page, a State
+  other than the one the pre-filled place came from starts both pickers at "(none)".
+  `test_casefiles.py::…test_a_pages_save_drops_the_generated_case_fields` used an invented
+  district (`City of X / X`) in a move. It now uses Yonkers; the test is about generated case
+  fields, not the district.
+- **AK6 (nit)** the page keeps the event's own spelling of the state when it matches the
+  upper-cased field.
+- **AK4 (low)** documented, not migrated: design 6.2 and the changelog say a pre-6 purchase
+  with a blank district now keeps the case's district.
+- **AK7 (nit)** changelog wording; "Q9 moves no hash, the builder bump moves every run's" in
+  the changelog and CLAUDE.md; design 6.2 describes AK1's rule; the repro script prints
+  "setACA error:". Its output was re-run on stock `dev` `73dc8815` and on the patched tree,
+  identical apart from the label, and pasted into the issue draft.
+
+Tests: 10 new or rewritten in `tests/library/test_builder_purchase_place.py` and
+`tests/ui/test_scenario_purchase_place.py`. All 10 failed with the builder and page hunks
+reverted (the 17 that pass there are the allowed cases and older tests).
+`tests/library tests/ui tests/tax/test_aca.py`: 1016 passed. `check_library_builder.py` 46/46,
+`check_library_roundtrip.py` 39/39. Lint clean apart from upstream's listed items.
+Full suite: 4472 passed / 1 skipped (10:32, Linux, `-n 4`) on `8041d21` (only docs changed after it).

@@ -1094,8 +1094,9 @@ def _check_one_home(hand_hfp: dict, purchase: dict, where: dict, end_year) -> No
             raise ScenarioError(
                 f"the case already holds a home, {row[at['name']]!r} (Fixed Assets, from {bought}, "
                 f"{sold}), owned while the purchase event's {purchase['name']!r} is (from {start}): "
-                "the plan would hold two homes. Drop the purchase event, or start from a scenario "
-                "without that row (the rent-only baseline) and add the purchase on the Scenario page."
+                "the plan would hold two homes. Drop the purchase event, or start from a run with "
+                "no home in its workbook (a rent-only case: no home in Fixed Assets, no loan for "
+                "it, no owner's budget lines or purchase outflow) and add the purchase here."
             )
 
 

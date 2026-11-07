@@ -140,7 +140,7 @@ def main() -> int:
               and out.lead["verdict"] in ("the first result leads", "the second result leads",
                                           "trade-off")
               and out.flags == ()
-              and any("taxable_savings_balances" in change for change in changes)
+              and any("taxable savings balances" in change for change in changes)  # Q9: in words
               and out.what_moved)
         failures += 0 if ok else 1
         print(f"{'ok  ' if ok else 'FAIL'} comparison: score {by_label['score'].verdict}, "

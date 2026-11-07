@@ -4,6 +4,26 @@ Audit only: no code was changed. The yardstick is the user's spouse, a physician
 reads longitudinal charts and probability ranges, wants to know *why* the plan does what it does,
 and has no interest in the solver, TOML keys, tracebacks or sign conventions.
 
+## Status of the fixes (2026-11-07, branch `claude/ux-fixes`)
+
+Work order `fork-notes/ux-fixes-handoff.md`; details in PROGRESS.md "UX review: the four bugs"
+and "UX review: quick wins Q1-Q9".
+
+| Item | State |
+|---|---|
+| Q3 (= bug B1) Queue's "decision" | **Done**: `preset_solves`, two jobs queued (re-driven) |
+| bug B2 purchase on an imported run | **Done**: refused as two homes; a blank district keeps the case's, `-` is none; the purchase box pre-fills from the case with dropdowns (part of Q19) |
+| Q21 (= bug B3) solve after a failed configuration | **Done** in the fork with the stock-`dev` patch; issue draft `fork-notes/issue-prepare-run-failure.md`, not filed |
+| Q5 (= bug B4) dollar labels as math | **Done**, with a source check over `ui/` |
+| Q1 codes in rendered strings | **Done** on Run, Compare, Scenario, Collections, Library, Queue and the comparison's notes; file names kept only in a help tooltip (the scores-file uploader) |
+| Q2 preset names | **Done** (`ui/librarypresets.py`); times as measured: quick ~1 s, Careful ~5 min; Ages not timed, so "slow" |
+| Q4 Compare's default pair | **Done**; no pinned baseline: nothing in the library sets `pins` |
+| Q6 units, separators, index | **Done** for axes and the two tables; no today's-\$ toggle (`plan.json` has no deflator: structural) |
+| Q7 headline wording | **Done** (`view.claiming_ages_phrase`, `view.spent_down_by_design`) |
+| Q8 Queue phase in words | **Done** (`libraryjobs.job_phase`) |
+| Q9 change summaries | **Done in the diff** (`scenario.PATH_LABELS`, `NO_OP_DEFAULTS`); `scenario_from_ui` unchanged, so no inputs hash moves |
+| Q10-Q20, S1-S10 | Not started (the user's call) |
+
 ## How this was checked
 
 - **The app was run and driven.** It ran in library mode (`OWL_LIBRARY_DIR=otherFiles/library`,

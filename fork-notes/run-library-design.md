@@ -209,6 +209,27 @@ names the table in the generated case (`rates_selection.method = "table"` and th
 marked when an event generates them) and `export_case` writes `rates.csv`; a run's nominal
 amounts are built from the table's inflation path when there is one.
 
+**The place of a purchase, and a second home** *(amended 2026-11-07, UX review B2;
+`BUILDER_VERSION` 6)*:
+
+- With *Move there*, the place states the new residence: its state, locality and school
+  district go into the move, and a blank or `-` locality or district there is none.
+- Without a move, the home is where the case already lives: the case's locality stays, and
+  the place's school district replaces the case's **only when it is stated**. A blank district
+  keeps the case's (before, a blank set `basic_info.school_district = ""` and the NY STAR
+  credit stopped silently); `-` states "no district" (the variants tables' spelling for
+  clearing a text cell, `builder.NO_PLACE`). The Scenario page starts a new purchase from the
+  case's own state, locality and district, with the Create Case dropdowns.
+- A purchase event over a hand Fixed Assets row of type residence that is still owned while
+  the event's home is (the hand row bought before the event's sale, if any, and not disposed
+  of by the event's year: `yod`, a disposition at the start of that year, zero or negative
+  counted from the plan's end) is refused with a `ScenarioError` naming the row. A refusal,
+  not a warning: two homes are never what an imported case plus a purchase means, and the
+  page already shows a refusal as "Not buildable yet". A hand home sold by the purchase year,
+  an inactive row and the event's own row (kept by name from a pages save) are allowed.
+- Turning an imported case's home rows into a purchase event is S4 of the UX review, not
+  built: "make variants" on such a run says to start from a rent-only run.
+
 ### 6.3 Generated rows versus hand edits
 
 The user may want to adjust a single generated value, for example the 2029 closing costs.

@@ -356,8 +356,12 @@ class TestTheOtherKinds:
         for e in entries:
             near = e["amount_today_dollars"] <= NEAR_BAND * e["boundary_today_dollars"] + 0.01
             cliff = e["kind"] in ("irmaa", "star") or "cliff" in e["label"]
-            assert e["group"] == ("near" if near else "over"), e
-            assert near or (cliff and e["side"] == "over"), e
+            # Review AO1: a cliff crossed is "over" wherever it sits, inside its band included.
+            crossing = cliff and e["side"] == "over"
+            assert e["group"] == ("over" if crossing else "near"), e
+            assert near or crossing, e
+        assert any(e["kind"] == "irmaa" and e["group"] == "over" and e["amount_today_dollars"]
+                   <= NEAR_BAND * e["boundary_today_dollars"] for e in entries)  # 2028, in band
         (near_irmaa,) = [e for e in entries if e["kind"] == "irmaa" and e["year"] == THISYEAR + 2]
         assert near_irmaa["boundary_today_dollars"] == pytest.approx(edge / p.gamma_n[2], abs=0.01)
 
@@ -384,6 +388,44 @@ class TestCrossedCliffs:
         step1 = float(tx.partB_irmaa_fees[1] + tx.partD_irmaa_fees[1])
         assert e[0]["cost_today_dollars"] == pytest.approx(2 * step2, rel=0.01)
         assert e[0]["total_today_dollars"] == pytest.approx(2 * (step1 + step2), rel=0.01)
+
+    def test_a_cliff_crossed_inside_its_band_is_over_not_near(self):
+        """Review AO1: a year just over one of the three cliffs pays the whole step, as one
+        far over it does, so it is "over" (the run page's *Where the plan pays for being over
+        a line*), not "near". On d64ec67 all three were "near": a Quick look of the synthetic
+        baseline sat $2,399 over the 400% FPL line and paid $12,547 under *Close to a line*."""
+        # IRMAA tier 1, $2,000 over (inside its 5% band).
+        p = FakePlan()
+        m, n_prem = 2, 4
+        edge = float(tx.irmaaThresholds(tx.irmaaStatus(p.horizons, n_prem), p.gamma_n,
+                                        n_prem, THISYEAR)[0])
+        p.MAGI_n[m] = edge + 2_000.0
+        (e,) = _by_kind(threshold_proximity(p), "irmaa")
+        assert e["side"] == "over" and e["amount_today_dollars"] < NEAR_BAND * e["boundary_today_dollars"]
+        assert e["group"] == "over"
+        # The 400% FPL cliff, $1,000 over.
+        p = FakePlan(yobs=[1975, 1977], slcsp_annual=30_000.0)
+        fpl = float(tx._aca_fpl(THISYEAR + 1, 2, p.gamma_n, THISYEAR))
+        p.MAGI_aca_n[1] = 4.0 * fpl + 1_000.0
+        (e,) = [x for x in _by_kind(threshold_proximity(p), "aca") if "cliff" in x["label"]]
+        assert e["side"] == "over" and e["group"] == "over" and e["cost_today_dollars"] > 1_000
+        # A contribution step crossed inside its band stays "near": not one of the three cliffs.
+        p.MAGI_aca_n[1] = 3.0 * fpl + 500.0
+        steps = [x for x in _by_kind(threshold_proximity(p), "aca") if "step" in x["label"]]
+        assert steps and all(x["group"] == "near" for x in steps)
+        # The Enhanced STAR limit, $500 over.
+        N = N_YEARS
+        sched = StarSchedule(np.full(N, 600.0), np.full(N, 1_500.0), np.full(N, 110_750.0),
+                             500_000.0, 2)
+        income = np.zeros(N)
+        income[3] = 110_750.0 + 500.0
+        p = FakePlan(_star_on=True, _star=sched, _star_income=income)
+        (e,) = _by_kind(threshold_proximity(p), "star")
+        assert e["side"] == "over" and e["group"] == "over"
+        # The under side of a cliff stays "near".
+        income[3] = 110_750.0 - 500.0
+        (e,) = _by_kind(threshold_proximity(FakePlan(_star_on=True, _star=sched, _star_income=income)), "star")
+        assert e["side"] == "under" and e["group"] == "near"
 
     def test_a_year_under_every_tier_has_no_surcharge_total(self):
         p = FakePlan()

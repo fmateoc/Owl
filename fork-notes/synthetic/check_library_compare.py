@@ -22,9 +22,9 @@ comparison page do (`owlplanner.library.view` / `compare`, from the durable file
 And, for the step-3 second increment (design 14.1: I3/I6/I7):
 
 7. plan.json carries "Things to look at" (I3): the thresholds block, its groups named, every
-   "near" entry inside its band (its amount at most `near_band_fraction` x its
-   `boundary_today_dollars`), every "over" entry a crossed cliff beyond it (QW-2), each with
-   the fields the run page shows;
+   "over" entry a crossed cliff wherever it sits (QW-2, review AO1), every "near" entry
+   inside its band (its amount at most `near_band_fraction` x its `boundary_today_dollars`),
+   each with the fields the run page shows;
 8. plan.json carries the one-year cash flow (I6): sources equal to uses in every year, both
    in the signed rows and as the Sankey draws them (`view.cash_flow_year`: a negative row,
    such as the state tax in a STAR-refund year, drawn on the other side -- review 3, W1),
@@ -189,11 +189,12 @@ def main() -> int:
 
         ok = (band == 0.05 and report.get("groups") == ["near", "over"]
               and all(fields <= set(e) and e["side"] in ("over", "under") for e in entries)
-              # A near miss inside its band (review 2, Q5); a crossed cliff (QW-2: an IRMAA
-              # tier, the 400% FPL line, the Enhanced STAR limit) beyond it, on the over side.
-              and all((e["group"] == "near" and inside(e))
-                      or (e["group"] == "over" and not inside(e) and e["side"] == "over"
-                          and (e["kind"] in ("irmaa", "star") or "cliff" in e["label"]))
+              # A crossed cliff (QW-2: an IRMAA tier, the 400% FPL line, the Enhanced STAR
+              # limit) is "over" wherever it sits, inside its band too (review AO1); every
+              # other entry is a near miss inside its band (review 2, Q5).
+              and all((e["group"] == "over") == (e["side"] == "over" and (
+                          e["kind"] in ("irmaa", "star") or "cliff" in e["label"]))
+                      and (e["group"] == "over" or inside(e))
                       for e in entries))
         failures += 0 if ok else 1
         kinds = sorted({e["kind"] for e in entries})

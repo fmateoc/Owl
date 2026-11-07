@@ -18,11 +18,14 @@ a ramp rather than a cliff (the SS taxability bands) no cost is reported.
 
 Each entry is in one of two groups (UX remediation QW-2, `ux-qw-handoff-2.md` decisions 2a-d):
 
-- **"near"**: the year's income is inside the band of a boundary, on either side;
-- **"over"**: the year is above one of the three discrete cliffs beyond the band -- the IRMAA
-  tier the year is in (the highest tier its MAGI has crossed), the marketplace's 400% FPL
-  subsidy cliff, or the Enhanced STAR limit -- wherever it sits. Its cost is what getting
-  back under the line would save.
+- **"over"**: the year is above one of the three discrete cliffs -- the IRMAA tier the year
+  is in (the highest tier its MAGI has crossed), the marketplace's 400% FPL subsidy cliff, or
+  the Enhanced STAR limit -- wherever it sits, just over the line included (review AO1: a
+  crossing inside the band pays the whole step, as one beyond it does). Its cost is what
+  getting back under the line would save;
+- **"near"**: everything else, inside the band of a boundary: the under side of those three
+  lines, and either side of a continuous edge (a bracket edge, the NY recapture start, the
+  NIIT kink, the SS taxability ramps, the marketplace's contribution steps).
 
 Every entry whose price is above half a cent, and every ramp, is kept: there is no floor at
 solve time. The run page folds the small ones (under $100, and the ramps) into "N smaller
@@ -138,6 +141,9 @@ def _irmaa_entries(p):
                     continue
                 if k < len(thresholds) and magi > float(thresholds[k]):
                     continue
+            # Review AO1: the tier the year is in is a crossing ("over") wherever it sits, inside
+            # the band included; a near row of a lower tier, or of the tier above, is "near".
+            top = distance > 0 and not (k < len(thresholds) and magi > float(thresholds[k]))
             below = np.array(p.MAGI_n[:N], dtype=float)
             below[m] = edge - 2 * _SLACK
             across = below.copy()
@@ -150,7 +156,7 @@ def _irmaa_entries(p):
                 # QW-2: the payment year is named explicitly (the two-year lookback).
                 f"paid in {int(p.year_n[n_prem])} via the 2-year Medicare lookback: the "
                 f"MAGI of {int(p.year_n[m])} sets those premiums",
-                boundary=edge / float(p.gamma_n[m]), group="near" if near else "over",
+                boundary=edge / float(p.gamma_n[m]), group="over" if top else "near",
                 total=max(total, 0.0) / float(p.gamma_n[n_prem]),
             ))
     return entries
@@ -305,7 +311,8 @@ def _aca_entries(p):
                 "over" if distance > 0 else "under", abs(distance) / float(gamma[n]),
                 cost / float(gamma[n]), None, note,
                 boundary=edge / float(gamma[n]),
-                group="near" if _near(distance, edge) else "over",
+                # Review AO1: the cliff crossed is "over" wherever it sits, inside the band too.
+                group="over" if (cliff and distance > 0) else "near",
             ))
     return entries
 
@@ -387,7 +394,8 @@ def _star_entries(p):
             "over" if distance > 0 else "under", abs(distance) / float(gamma[m]),
             cost / float(gamma[b]), p.year_n[b],
             f"the {int(p.year_n[m])} income sets the STAR credit of {int(p.year_n[b])}",
-            boundary=edge / float(gamma[m]), group="near" if near else "over",
+            # Review AO1: over the limit is a crossing wherever it sits, inside the band too.
+            boundary=edge / float(gamma[m]), group="over" if distance > 0 else "near",
         ))
     return entries
 
@@ -451,9 +459,9 @@ def threshold_proximity(plan) -> dict:
     ("over"/"under"), amount_today_dollars (the distance), boundary_today_dollars,
     cost_today_dollars (the price of closing the gap, or None at a ramp), affects (the year
     the crossing bites: the IRMAA premium year, the STAR benefit year), a note, group
-    ("near" inside the band, "over" for a cliff crossed beyond it) and, on IRMAA entries,
-    total_today_dollars (the year's whole surcharge). Today's dollars. `_keep` above says
-    which rows make it in.
+    ("over" for a cliff crossed, wherever the year sits; "near" for the rest, inside the
+    band) and, on IRMAA entries, total_today_dollars (the year's whole surcharge). Today's
+    dollars. `_keep` above says which rows make it in.
     """
     entries = []
     for build in (_irmaa_entries, _gains_entries, _ss_entries, _aca_entries,

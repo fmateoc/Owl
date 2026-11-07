@@ -158,6 +158,41 @@ class TestOneYear:
         labels = list(rc.sankey_figure(2027, self.SOURCES, self.USES).data[0].node.label)
         assert "State tax refund: $1,000" in labels and not any("STAR" in x for x in labels)
 
+    def test_every_figure_the_paragraph_names_is_on_a_sankey_node(self, rc):
+        """Review AO2: the paragraph's group totals are the Sankey's figures too. On d64ec67
+        "The money comes from savings, $158,708 (...)" was on no node in 210 of 280 one-year
+        paragraphs of ten Quick looks of the synthetic baseline: the sources had no group
+        nodes. Several accounts, several incomes, a conversion, a refund, budget lines, a
+        purchase, a loan, both premiums and a surplus."""
+        import re
+
+        sources = {"Taxable-account withdrawals": 127_435.0, "Tax-deferred withdrawals": 31_273.0,
+                   "Roth withdrawals": 7_017.0, "Social Security": 52_000.0, "Pensions": 12_000.0,
+                   "Roth conversions (from the tax-deferred accounts)": 16_953.0,
+                   "State and local tax, net refund": 1_876.0}
+        uses = {"core": 98_000.0, "travel while able": 23_340.0, "Big-ticket purchases": 30_000.0,
+                "Debt payments": 12_000.0, "Federal income tax": 3_778.0, "Gains tax": 1_200.0,
+                "ACA premiums": 7_261.0, "Medicare premiums": 2_305.0, "Roth conversions": 16_953.0}
+        uses["Savings (surplus)"] = round(sum(sources.values()) - sum(uses.values()), 2)
+        assert uses["Savings (surplus)"] > 0
+        text = rc.year_summary(2029, sources, uses, star=True)
+        figures = {float(x.replace(",", "")) for x in re.findall(r"\\\$([\d,]+)", text)}
+        nodes = {float(lbl.rsplit("$", 1)[1].replace(",", ""))
+                 for lbl in rc.sankey_figure(2029, sources, uses, star=True).data[0].node.label}
+        assert {165_725.0, 64_000.0} <= figures  # the savings and income totals are named
+        assert figures <= nodes, sorted(figures - nodes)
+        labels = list(rc.sankey_figure(2029, sources, uses, star=True).data[0].node.label)
+        assert "From savings: $165,725" in labels and "Income: $64,000" in labels
+        # One line of its own needs no group node: it is its own total. Nor does the only source
+        # group: the hub carries its total, and the paragraph names none ("All of it comes
+        # from savings: ...").
+        one = rc.sankey_figure(2029, {"Taxable-account withdrawals": 90_000.0}, {"Net spending": 90_000.0})
+        assert not any(lbl.startswith("From savings") for lbl in one.data[0].node.label)
+        only = {"Taxable-account withdrawals": 60_000.0, "Tax-deferred withdrawals": 30_000.0}
+        assert "All of it comes from savings" in rc.year_summary(2029, only, {"Net spending": 90_000.0})
+        labels = rc.sankey_figure(2029, only, {"Net spending": 90_000.0}).data[0].node.label
+        assert not any(lbl.startswith("From savings") for lbl in labels)
+
     def test_every_tax_figure_the_paragraph_names_is_on_a_sankey_node(self, rc):
         """Review AN6: the build netted the refund into the taxes ("Taxes net of a \\$2,934
         ... refund took \\$2,177"), a figure on no node and in no table. The 2034 shape of the
@@ -386,6 +421,38 @@ class TestThingsToLookAt:
         entries = [_threshold(y, "aca", CLIFF, "over", 40_000.0, 10_000.0, boundary=84_202.0, group="over")
                    for y in (2027, 2029)]
         assert list(rc.threshold_parts(entries, 0.05)["over"]["Year of income"]) == ["2027", "2029"]
+
+    def test_a_cliff_crossed_inside_its_band_is_over_and_merges_with_its_neighbours(self, rc):
+        """Review AO1, the shape of a Quick look of the synthetic baseline with $200k less in
+        each taxable account: 2027 and 2028 are $2,399 and $3,852 over the 400% FPL line
+        (inside its 5% band), 2029 far over. d64ec67 marked the first two "near": *Where the
+        plan pays...* held 2029's $4,824 alone, and the two costliest crossings sat under
+        *Close to a line*. The page regroups by side and line, so a result solved then is drawn
+        right too."""
+        entries = [_threshold(y, "aca", CLIFF, "over", a, c, boundary=84_202.0, group=g)
+                   for y, a, c, g in ((2027, 2_399.0, 12_547.0, "near"), (2028, 3_852.0, 12_864.0, "near"),
+                                      (2029, 76_979.0, 4_824.0, "over"))]
+        parts = rc.threshold_parts(entries, 0.05)
+        assert parts["near"].empty
+        (row,) = parts["over"].to_dict("records")
+        assert row["Year of income"] == "2027-2029" and row["Costs"] == "$4,824-$12,864"
+        # An IRMAA tier and the Enhanced STAR limit crossed inside the band, marked "near" then.
+        inside = [_threshold(2028, "irmaa", "IRMAA tier 1", "over", 10_402.0, 2_438.0, boundary=218_000.0,
+                             group="near", affects=2030, total=2_438.0),
+                  _threshold(2028, "star", "Enhanced STAR limit", "over", 145.0, 1_558.0, boundary=110_000.0,
+                             group="near", affects=2030)]
+        parts = rc.threshold_parts(inside, 0.05)
+        assert parts["near"].empty and sorted(parts["over"]["Line"]) == ["Enhanced STAR limit", "IRMAA tier 1"]
+
+    def test_the_under_side_and_continuous_edges_stay_near(self, rc):
+        entries = [_threshold(2030, "irmaa", "IRMAA tier 1", "under", 9_000.0, 2_200.0, boundary=230_000.0,
+                              group="near", affects=2032),
+                   _threshold(2031, "niit", "NIIT threshold", "over", 4_000.0, 160.0, boundary=250_000.0,
+                              group="near"),
+                   _threshold(2027, "aca", "marketplace contribution step (3x FPL)", "over", 500.0, 300.0,
+                              boundary=63_000.0, group="near")]
+        parts = rc.threshold_parts(entries, 0.05)
+        assert parts["over"].empty and len(parts["near"]) == 3
 
     def test_a_new_result_is_not_older(self, rc):
         assert rc.threshold_parts(_baseline_like(), 0.05)["older"] is False

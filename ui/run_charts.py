@@ -52,12 +52,26 @@ _MERGED_NOTES = {
 }
 
 
+def _is_crossing(entry):
+    """A year over one of the three discrete cliffs: an IRMAA tier, the 400% FPL line, the
+    Enhanced STAR limit (QW-2, decision 2a)."""
+    cliff = entry.get("kind") in ("irmaa", "star") or "cliff" in str(entry.get("label") or "")
+    return cliff and entry.get("side") == "over"
+
+
 def _entry_group(entry, band):
-    """The entry's group: plan.json's own, or, for a result solved before QW-2 marked them,
-    "near" inside its band and "over" beyond it."""
-    group = entry.get("group")
-    if group in ("near", "over"):
-        return group
+    """The entry's group on the page: "over" for a crossing of one of the three cliffs
+    wherever it sits, "near" for the rest.
+
+    Review AO1: read from the entry's side and line, not from plan.json's `group` alone. A
+    result solved at d64ec67 marked a crossing inside the 5% band "near" (a $12,547
+    crossing of the 400% FPL line was listed under *Close to a line*), and one solved before
+    QW-2 marked nothing; both are drawn right this way. Every other entry keeps its own mark,
+    or, unmarked, is "near" inside its band."""
+    if _is_crossing(entry):
+        return "over"
+    if entry.get("group") in ("near", "over"):
+        return entry["group"]
     boundary = entry.get("boundary_today_dollars")
     if boundary is None:
         return "near"
@@ -684,7 +698,8 @@ def year_summary(year: int, sources: dict, uses: dict, star: bool = False) -> st
 
 
 def sankey_figure(year: int, sources: dict, uses: dict, star: bool = False):
-    """Sources → the year's hub → the use groups → their lines, amounts on every node.
+    """Sources (grouped where a group has two or more lines and is not the only group) → the
+    year's hub → the use groups → their lines, amounts on every node.
 
     Taxes and Health premiums always get a node of their own carrying the group's total, even
     with one line (QW-1: the Health premiums node disappeared whenever a year had a single
@@ -702,9 +717,28 @@ def sankey_figure(year: int, sources: dict, uses: dict, star: bool = False):
         return len(labels) - 1
 
     total = sum(sources.values())
-    in_nodes = [(node(flow_label(name, star), v, "#4c78a8"), v) for name, v in sources.items()]
+    # Review AO2: a source group of two or more rows (several accounts drawn from, several
+    # incomes) gets a node of its own carrying the group's total, as the uses side does: the
+    # paragraph names that total ("from savings, $158,708"), and it was on no node. Not when it
+    # is the only source group: the hub then carries the same number, and the paragraph says
+    # "All of it comes from savings: ..." with no total of its own.
+    in_links = []
+    several = sum(1 for g, _ in _SOURCE_GROUPS if b["sources"][g]) > 1
+    for group, title in _SOURCE_GROUPS:
+        rows = b["sources"][group]
+        if not rows:
+            continue
+        if len(rows) == 1 or not several:
+            in_links += [(node(flow_label(name, star), v, "#4c78a8"), v) for name, v in rows.items()]
+            continue
+        g = node(title, sum(rows.values()), "#2f5b8a")
+        for name, v in sorted(rows.items(), key=lambda kv: -kv[1]):
+            src.append(node(flow_label(name, star), v, "#4c78a8"))
+            tgt.append(g)
+            val.append(v)
+        in_links.append((g, sum(rows.values())))
     hub = node(f"{year} cash flow", total, "#555555")
-    for i, v in in_nodes:
+    for i, v in in_links:
         src.append(i)
         tgt.append(hub)
         val.append(v)

@@ -606,8 +606,14 @@ if entries:
 
                     owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx")
                 kz.setRunBase(run.id)  # saved on the Library page as its child
-                st.toast("The run's inputs are open in the case pages (Create Case). "
-                         "Save them as a new run on the Library page.")
+                # UX review Q13: go where the what-if is made. A toast does not survive the
+                # page switch; the flash is drawn under Run Options' title bar (sskeys.titleBar).
+                libraryjobs.flash(
+                    "info",
+                    f"The inputs of *{run.name}* are open as the case **{kz.currentCaseName()}**. "
+                    "Change them here or on any Case Setup page, then save them on the Library "
+                    f"page (*Save the current case*): a new run, with *{run.name}* as its parent.")
+                st.switch_page("Run_Options.py")
     with col4:
         if st.button("Edit the scenario", use_container_width=True,
                      help="The run's events (work, claiming, rent, a home purchase, care) on "

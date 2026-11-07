@@ -72,7 +72,11 @@ outcomes those futures would have produced rather than a single number.
 ### :orange[Built for US Retirees]
 **Owl** integrates US federal and state income taxes (all 50 states + DC), Social Security
 rules, Medicare IRMAA, and 401(k)/Roth regulations to ensure your plan is grounded in reality.
-
+""")
+    # Fork: library mode runs offline on household data (run-library design section 10), so the
+    # pitch for sending a case to an AI assistant is left out there (UX review Q14).
+    if not os.environ.get("OWL_LIBRARY_DIR"):
+        st.markdown("""
 ### :orange[Powered by Actual Intelligence — connect it to your AI assistant]
 **Owl**'s optimizer runs on real mathematical optimization — mixed-integer linear programming,
 not language-model guesswork. For everyday use, you can also connect it to an AI assistant

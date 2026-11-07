@@ -69,11 +69,16 @@ with st.expander("New collection", expanded=not lib.collections()):
     rule_hint = ("reference: Yonkers 2027 cash; a variant leads only when it is at least as "
                  "good on the score and the home at the end")
     rule = st.text_input("Comparison rule", key="col_new_rule", placeholder=rule_hint)
-    if st.button("Create collection", type="primary", disabled=not name.strip()):
-        coll = lib.create_collection(name.strip(), question=question.strip(), rule=rule.strip())
-        _open_collection(coll.id)
-        libraryjobs.flash("success", f"Collection *{coll.name}* created.")
-        st.rerun()
+    # Enabled whatever the name says (UX review Q18): gated on the field, the button was still
+    # disabled when the click that blurs the field landed, so that first click did nothing.
+    if st.button("Create collection", type="primary"):
+        if not name.strip():
+            st.warning("Give the collection a name.", icon=":material/warning:")
+        else:
+            coll = lib.create_collection(name.strip(), question=question.strip(), rule=rule.strip())
+            _open_collection(coll.id)
+            libraryjobs.flash("success", f"Collection *{coll.name}* created.")
+            st.rerun()
 
 colls = lib.collections()
 if not colls:

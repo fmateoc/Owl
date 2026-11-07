@@ -43,6 +43,14 @@ newCase = "New Case..."
 loadCaseFile = "Upload Case File..."
 help1000 = "Values are in thousands of dollars (\\$k)."
 
+
+def _library_mode():
+    """Fork: the Run Library is on (OWL_LIBRARY_DIR, run-library design section 3)."""
+    import os
+
+    return bool(os.environ.get("OWL_LIBRARY_DIR"))
+
+
 # Single source of truth for brand image paths. Served as absolute raw URLs from
 # the repository so they render identically in the UI, on GitHub, and on PyPI, and
 # avoid the local-file load race condition seen with on-disk paths.
@@ -1092,5 +1100,13 @@ def titleBar(txt):
             )
 
         divider("white", "99%")
+
+    # Fork: a message a Run Library page queued before switching to this one ("Edit as new run"
+    # lands on Run Options, UX review Q13). The library pages draw their own; they do not call
+    # this function.
+    if ss.get("library_flash") and _library_mode():
+        import libraryjobs
+
+        libraryjobs.show_flashes()
 
     return ret

@@ -7,5 +7,6 @@
 
 echo Hit Ctrl-C to terminate the server.
 if "%OWL_LIBRARY_DIR%"=="" set OWL_LIBRARY_DIR=otherFiles\library
-set options=--browser.gatherUsageStats=false --browser.serverAddress=localhost --server.address=localhost --server.fileWatcherType=auto %*
+:: toolbarMode "viewer": no Deploy, Rerun or Clear cache in the menu (UX review Q14); Print stays.
+set options=--browser.gatherUsageStats=false --browser.serverAddress=localhost --server.address=localhost --server.fileWatcherType=auto --client.toolbarMode=viewer %*
 uv run streamlit run .\ui\main.py %options%

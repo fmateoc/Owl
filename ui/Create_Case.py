@@ -276,6 +276,23 @@ def _loadHFPExample(file):
             owb.readHFP(mybytesio, file=hfp_name)
 
 
+def _createCase():
+    """`Create case`, or what is still missing. The button is enabled before the names are in:
+    disabled until then, it was still disabled when the click that leaves the last name field
+    landed (the field commits on blur), so that first click did nothing."""
+    missing = []
+    if kz.currentCaseName() == "":
+        missing.append("the case name")
+    if kz.getCaseKey("iname0") in [None, ""]:
+        missing.append("your first name")
+    if kz.getCaseKey("status") == "married" and kz.getCaseKey("iname1") in [None, ""]:
+        missing.append("your spouse's first name")
+    if missing:
+        st.session_state["_create_case_missing"] = " and ".join(missing)
+        return
+    owb.createPlan()
+
+
 def _deleteCase():
     kz.deleteCurrentCase()
     # Close the popover so a second click cannot delete the next case.
@@ -598,7 +615,7 @@ Then, click on the `Create case` button once all parameters on this page are set
     with col2:
         helpmsg = "`Create case` opens up all other pages in the **Case Setup** section."
         st.button(
-            "Create case :material/add:", on_click=owb.createPlan, disabled=cantcreate, type="primary", help=helpmsg
+            "Create case :material/add:", on_click=_createCase, disabled=diz1, type="primary", help=helpmsg
         )
 
     with col3:
@@ -606,6 +623,9 @@ Then, click on the `Create case` button once all parameters on this page are set
         with st.popover("Delete case :material/delete:", help=helpmsg, key="delete_case_popover", on_change="rerun"):
             st.warning("This cannot be undone.", icon=":material/warning:")
             st.button("Confirm delete", type="primary", on_click=_deleteCase)
+    missing = st.session_state.pop("_create_case_missing", None)
+    if missing:
+        st.warning(f"Enter {missing} first.", icon=":material/warning:")
 
 # Show progress bar at bottom (only when a case is selected)
 if ret is not None:

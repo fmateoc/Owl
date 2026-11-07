@@ -85,3 +85,57 @@ def test_a_save_after_open_in_owl_keeps_the_aca_settings():
     before = ui_to_config(config_to_ui(copy.deepcopy(case)))
     saved = _apply_page_edits(case, before, ui_to_config(dic))
     assert saved["aca_settings"] == case["aca_settings"]
+
+
+# -- UX review Q12: after "Open in Owl" -------------------------------------------------
+
+JACK_JILL = "examples/Case_jack+jill.toml"
+
+
+@pytest.fixture(scope="module")
+def cached_workbook_results(tmp_path_factory):
+    """A solved run whose case has a workbook (bill's has none)."""
+    from owlplanner.library import import_case
+
+    library = Library.open(tmp_path_factory.mktemp("library"))
+    run = library.save_run(name="jack+jill", scenario=import_case(JACK_JILL)).run
+    job = R.JobRecord.create(run.path / "results" / "j1", run_id=run.id, run_name=run.name,
+                             preset="quick", options={"withSSAges": "fixed"}, plan_year=2026)
+    assert run_job(job.results_dir, job.token) == R.DONE
+    return job.results_dir
+
+
+def _financial_profile(dic):
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(UI_DIR / "Financial_Profile.py"), default_timeout=120)
+    at.session_state["cases"] = {"run": dic}
+    at.session_state["currentCase"] = "run"
+    return at.run()
+
+
+def test_financial_profile_does_not_ask_for_the_runs_workbook(monkeypatch, cached_workbook_results):
+    """Q12: the page said the run's workbook "has not yet been uploaded" above its tables."""
+    import streamlit as st
+
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+    plan = R.load_plan(cached_workbook_results)
+    assert plan.hfpFileName not in (None, "None")
+    _, dic = owlbridge.openCaseFromPlan(plan)
+    at = _financial_profile(dic)
+    assert not at.exception, [str(e.value) for e in at.exception]
+    shown = "\n".join([i.value for i in at.info] + [c.value for c in at.caption])
+    assert "not yet been uploaded" not in shown, shown
+    assert "loaded" in shown  # the upload's own confirmation line
+
+
+def test_the_progress_strip_counts_the_runs_pages_as_visited(monkeypatch, cached_workbook_results):
+    """Q12: the strip read "(12%) - Step 8 of 8" on a solved run."""
+    import streamlit as st
+
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+    plan = R.load_plan(cached_workbook_results)
+    _, dic = owlbridge.openCaseFromPlan(plan)
+    at = _financial_profile(dic)
+    strip = "\n".join(m.value for m in at.markdown if "Case Setup Progress" in m.value)
+    assert "(100%)" in strip, strip

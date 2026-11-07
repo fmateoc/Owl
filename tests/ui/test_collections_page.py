@@ -123,6 +123,19 @@ class TestCollections:
         names = [c.name for c in library.collections()]
         assert "A second question" in names
 
+    def test_create_collection_is_enabled_before_the_name_and_asks_for_it(self, library):
+        """UX review Q18: gated on the name, the button was still disabled when the click that
+        blurs the name field landed, so that click did nothing (reproduced with Playwright; a
+        blur cannot be driven from AppTest). It is enabled now and a blank name is refused."""
+        at = _page()
+        button = next(b for b in at.button if b.label == "Create collection")
+        assert not button.disabled
+        before = len(library.collections())
+        button.click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(w.value == "Give the collection a name." for w in at.warning)
+        assert len(library.collections()) == before
+
     def test_ac3_create_collection_opens_the_new_collection(self, library):
         # Review AC3: `_open_collection` stored the collection's id where the picker holds
         # labels, so the rerun fell back to the first collection instead of opening the new

@@ -319,7 +319,9 @@ class TestRunPage:
         assert _text(at).count("did not settle") == 1
         assert any(c.value == "Quality: 1 problem(s), below" for c in at.caption)
 
-    def test_edit_as_new_run_opens_the_frozen_files(self, library):
+    def test_edit_as_new_run_opens_the_frozen_files(self, library, monkeypatch):
+        opened = []
+        monkeypatch.setattr("streamlit.switch_page", lambda page: opened.append(page))
         at = _page("Run.py")
         button = next(b for b in at.button if b.label == "Edit as new run")
         button.click().run()
@@ -327,6 +329,33 @@ class TestRunPage:
         # The case pages hold the run's inputs, and saving will make a child of *this* run.
         case = at.session_state["cases"][at.session_state["currentCase"]]
         assert case["library_base_run_id"] == library.runs()[-1].id
+        # UX review Q13: it goes to Run Options (it used to stay put with a toast), and the
+        # message travels with it.
+        assert opened == ["Run_Options.py"]
+        flashes = at.session_state["library_flash"]
+        assert any("*bill later*" in text and "Library page" in text for _, text in flashes)
+
+    def test_run_options_draws_the_message_edit_as_new_run_left(self, library, monkeypatch):
+        """Q13: Run Options (an upstream page) draws a queued library message under its title
+        bar (`sskeys.titleBar`), once."""
+        import streamlit as st
+        from streamlit.testing.v1 import AppTest
+
+        monkeypatch.setattr("streamlit.switch_page", lambda page: None)
+        monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Edit as new run").click().run()
+        options = AppTest.from_file(str(UI_DIR / "Run_Options.py"), default_timeout=90)
+        for key in ("cases", "currentCase", "library_flash"):
+            options.session_state[key] = at.session_state[key]
+        options.run()
+        assert not options.exception, [e.value for e in options.exception]
+        assert any("are open as the case" in i.value for i in options.info)
+        for box in options.selectbox:  # keep the decorated case option (test_create_case_move)
+            if box.label == "Case selector":
+                box.set_value(box.options[0])
+        options.run()
+        assert not any("are open as the case" in i.value for i in options.info)
 
     def test_open_switches_runs_after_the_first_render(self, library):
         """Review P2: the selector's widget state used to override "Open" after run one."""

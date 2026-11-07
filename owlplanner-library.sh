@@ -24,5 +24,6 @@
 
 echo Hit Ctrl-C to terminate the server.
 export OWL_LIBRARY_DIR="${OWL_LIBRARY_DIR:-otherFiles/library}"
-options="--browser.gatherUsageStats=false --browser.serverAddress=localhost --server.address=localhost --server.fileWatcherType=auto $*"
+# toolbarMode "viewer": no Deploy, Rerun or Clear cache in the menu (UX review Q14); Print stays.
+options="--browser.gatherUsageStats=false --browser.serverAddress=localhost --server.address=localhost --server.fileWatcherType=auto --client.toolbarMode=viewer $*"
 uv run streamlit run ./ui/main.py $options

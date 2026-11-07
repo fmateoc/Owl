@@ -178,7 +178,10 @@ else:
     )
     cols = st.columns(3, gap="large", vertical_alignment="top")
     with cols[0]:
-        kz.getNum("Benchmark Silver plan premium (SLCSP) (\\$k/year)", "slcspAnnual", min_value=0.0, help=helpmsg)
+        # Two decimals and a $1k step (UX review Q20): one decimal showed 20.84 as 20.8, and
+        # the default step of 10 moved the premium by $10k a year.
+        kz.getNum("Benchmark Silver plan premium (SLCSP) (\\$k/year)", "slcspAnnual", min_value=0.0,
+                  step=1.0, format="%.2f", help=helpmsg)
     with cols[1]:
         acaoff = (kz.getCaseKey("slcspAnnual") or 0) <= 0
         helpmsg_start = (

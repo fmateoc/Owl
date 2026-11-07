@@ -15,6 +15,7 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -99,3 +100,48 @@ def test_the_workbook_heading_drops_optional_for_a_budget_profile(monkeypatch):
     at = _create_case_with_plan(monkeypatch, "flat")
     heads = [m.value for m in at.markdown if "Upload Financial Profile" in m.value]
     assert heads == ["#### :orange[Upload Financial Profile (Optional)]"]
+
+
+# -- Q20: Goals (library mode); the SLCSP field is in test_run_options_slcsp_field.py ----
+
+
+def _case_page(monkeypatch, page, case_file=ROOT / "examples" / "Case_bill.toml"):
+    import io
+
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    from owlplanner import readConfig
+    from owlplanner.config import config_to_ui, load_toml
+
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+    plan = readConfig(str(case_file), verbose=False, logstreams=[io.StringIO()])
+    diconf, _, _ = load_toml(str(case_file))
+    dic = config_to_ui(diconf)
+    dic.update({"plan": plan, "id": "t1", "name": "case", "caseStatus": "modified", "summaryDf": None})
+    at = AppTest.from_file(str(UI_DIR / page), default_timeout=60)
+    at.session_state["cases"] = {"case": dic}
+    at.session_state["currentCase"] = "case"
+    at.run()
+    assert not at.exception, [str(e.message) for e in at.exception]
+    return at
+
+
+def test_goals_puts_slack_and_time_preference_behind_advanced_in_library_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv("OWL_LIBRARY_DIR", str(tmp_path / "library"))
+    at = _case_page(monkeypatch, "Goals.py")
+    advanced = next(e for e in at.expander if e.label == "Advanced")
+    labels = [w.label for w in advanced.number_input] + [w.label for w in advanced.slider]
+    assert labels == ["Profile slack (%)", "Time preference (%/year)"]
+    assert any("stray from the profile" in c.value for c in advanced.caption)
+    spec = next(json.loads(c.proto.spec) for c in at.get("plotly_chart"))
+    assert spec["layout"]["yaxis"]["title"]["text"] == "spending relative to the first year"  # bill: flat
+
+
+def test_goals_is_upstream_s_outside_library_mode(monkeypatch):
+    monkeypatch.delenv("OWL_LIBRARY_DIR", raising=False)
+    at = _case_page(monkeypatch, "Goals.py")
+    assert not [e for e in at.expander if e.label == "Advanced"]
+    assert "Profile slack (%)" in [w.label for w in at.number_input]
+    spec = next(json.loads(c.proto.spec) for c in at.get("plotly_chart"))
+    assert spec["layout"]["yaxis"]["title"]["text"] == "ξ"

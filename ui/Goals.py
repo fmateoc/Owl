@@ -20,6 +20,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import contextlib
+
 import streamlit as st
 
 import sskeys as kz
@@ -150,22 +152,32 @@ else:
                 "Survivor's spending (%)", "survivor", max_value=100, help=helpmsg, callback=owb.setProfile
             )
     with col2:
-        kz.initCaseKey("spendingSlack", 0)
-        helpmsg = (
-            "Percentage allowed to deviate from the spending profile. "
-            "Spending stays within ±slack% of the profile shape. "
-            "Set to 0 to pin spending exactly to the profile shape."
-        )
-        ret = kz.getIntNum("Profile slack (%)", "spendingSlack", max_value=100, help=helpmsg)
-        kz.initCaseKey("timePreference", 0.0)
-        helpmsg = (
-            "Subjective time preference rate (%/year). Values above 0 increase the "
-            "relative value of near-term spending, discouraging end-of-life back-loading. "
-            "Has no effect on the Bequest objective."
-        )
-        kz.getSlider(
-            "Time preference (%/year)", "timePreference", min_value=0.0, max_value=10.0, step=0.5, help=helpmsg
-        )
+        # Fork: in library mode the two sit behind "Advanced", each with a plain sentence (UX
+        # review Q20); elsewhere the page is upstream's.
+        library = kz.library_mode()
+        with st.expander("Advanced") if library else contextlib.nullcontext():
+            kz.initCaseKey("spendingSlack", 0)
+            helpmsg = (
+                "Percentage allowed to deviate from the spending profile. "
+                "Spending stays within ±slack% of the profile shape. "
+                "Set to 0 to pin spending exactly to the profile shape."
+            )
+            ret = kz.getIntNum("Profile slack (%)", "spendingSlack", max_value=100, help=helpmsg)
+            if library:
+                st.caption("How far each year's spending may stray from the profile's shape; 0 keeps "
+                           "it on the shape.")
+            kz.initCaseKey("timePreference", 0.0)
+            helpmsg = (
+                "Subjective time preference rate (%/year). Values above 0 increase the "
+                "relative value of near-term spending, discouraging end-of-life back-loading. "
+                "Has no effect on the Bequest objective."
+            )
+            kz.getSlider(
+                "Time preference (%/year)", "timePreference", min_value=0.0, max_value=10.0, step=0.5, help=helpmsg
+            )
+            if library:
+                st.caption("How much more a dollar spent sooner counts than one spent later; 0 counts "
+                           "every year the same.")
     with col3:
         if kz.getCaseKey("spendingProfile") == "smile":
             helpmsg = "Time in year before spending starts decreasing."

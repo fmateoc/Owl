@@ -1191,9 +1191,25 @@ def showAllocations(plan):
 @_checkPlan
 def showProfile(plan, col):
     fig = plan.showProfile(figure=True)
+    if fig and kz.library_mode():
+        # Fork (UX review Q20): the axis was titled with the bare symbol ξ. The flat and budget
+        # profiles start at 1, the smile does not.
+        xi = getattr(plan, "xi_n", None)
+        starts_at_one = xi is not None and len(xi) and abs(float(xi[0]) - 1.0) < 1e-9
+        _setYTitle(fig, "spending relative to the first year" if starts_at_one
+                   else "spending, relative scale (the profile's shape)")
     if fig:
         col.markdown("#### :orange[Spending Profile]")
         renderPlot(fig, col)
+
+
+def _setYTitle(fig, title):
+    """A y-axis title on a figure from either plotting backend."""
+    if hasattr(fig, "update_layout"):  # plotly
+        fig.update_layout(yaxis_title=title)
+    else:  # matplotlib
+        for ax in fig.axes[:1]:
+            ax.set_ylabel(title)
 
 
 @_checkPlan

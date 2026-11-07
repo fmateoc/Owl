@@ -44,7 +44,7 @@ loadCaseFile = "Upload Case File..."
 help1000 = "Values are in thousands of dollars (\\$k)."
 
 
-def _library_mode():
+def library_mode():
     """Fork: the Run Library is on (OWL_LIBRARY_DIR, run-library design section 3)."""
     import os
 
@@ -1104,7 +1104,7 @@ def titleBar(txt):
     # Fork: a message a Run Library page queued before switching to this one ("Edit as new run"
     # lands on Run Options, UX review Q13). The library pages draw their own; they do not call
     # this function.
-    if ss.get("library_flash") and _library_mode():
+    if ss.get("library_flash") and library_mode():
         import libraryjobs
 
         libraryjobs.show_flashes()

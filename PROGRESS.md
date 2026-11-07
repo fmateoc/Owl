@@ -7336,7 +7336,12 @@ stock Create Case test puts Streamlit's own `date` class back in its date widget
 
 **Checks.** Full suite on `bdfebd9` (all items built): 4507 passed, 1 skipped (11:11, Linux,
 `-n 4`). Three UI-only commits followed (the tables' `%d` and whole dollars, the twin
-collection); the full suite on the final code is recorded below. `check_library_builder.py`
+collection); on the final code, `02fa36f`: **4510 passed, 1 skipped** (9:47, Linux, `-n 4`;
+the three new tests are the tables' two and the twin's). `check_library_builder.py`
 46/46, `check_library_roundtrip.py` 39/39, `check_library_compare.py` 9/9. Lint: flake8 and
 ruff report only upstream's listed items (the B905 in `ui/Run_Options.py` is at line 263 now).
 The three upstream patches apply to stock `dev` `73dc8815` alone and together.
+
+Independent review requested by the user the same day: a separate session
+(`session_01Xk1WkUgmYdH3VsdQg2FKEe`) reviews `3617bb5` and writes `fork-notes/ux-q10-q20-review.md`
+(findings AL1-...) on its own branch; report only.

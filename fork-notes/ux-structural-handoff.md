@@ -1,5 +1,9 @@
 # Handoff: the ergonomics review's structural items S-1 to S-6 (2026-11-07)
 
+**Status (2026-11-08): built** on `claude/loving-wright-44943l`, the nine decisions all as
+recommended; what was built, the deviations and the checks are in PROGRESS.md "Ergonomics
+review S-1 to S-6: built".
+
 This is for the **next session**. The outside ergonomics review that suggested QW-1 to QW-8 also
 suggested a second phase: six structural items, S-1 to S-6, "Workflows, State Persistence &
 NY/ACA/IRMAA Storytelling". The user pasted them on 2026-11-07, asked for a review without

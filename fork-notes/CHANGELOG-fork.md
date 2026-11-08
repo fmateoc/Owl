@@ -7,6 +7,26 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: the structural items S-1 to S-6 (2026-11-08)
+
+- **The app opens on your baseline.** In library mode the Run Library comes first and the
+  Run page opens on the pinned run (*Make this the baseline* on the Library page); the
+  reminder is shown once per library (S-1).
+- **Scenario edits survive a visit to another page**, with *Reset to the run*; people and
+  work level are dropdowns; year fields are picked ("at an age", "the year after last work",
+  "another event's year" ...) with the text form as a fallback; a *Goal and conversions* box
+  edits the objective and the Roth limits (S-2).
+- **Today's dollars on the Run page's charts** (a switch keeps nominal one click away); the NY
+  state tax split into the state's own tax, the local tax and the STAR credit; markers for
+  the last work years, the purchase, Medicare and the last loan year (S-4).
+- **Compare in words**: "*White Plains* comes out ahead: \$2,520/yr more ...", where the
+  difference shows up, the inputs that differ, side-by-side charts. Fixed: the lifetime totals
+  of "what moved" added nominal dollars of different years (S-5).
+- **An imported home turned into events**, only when they rebuild the same tables exactly
+  (S-3).
+- **No foreground solves in library mode**: the classic pages save the case as a run and
+  solve it in the background; *Open result* on finished queue rows (S-6).
+
 ### Run page: the second-pass review's AO1 and AO2 (2026-11-07)
 
 - **A year just over a cliff is "over".** A year over an IRMAA tier, the 400% FPL line or the

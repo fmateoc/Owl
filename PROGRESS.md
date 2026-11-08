@@ -7861,3 +7861,170 @@ against the code at `f854721` and re-read for ergonomics; work order
   - recapture stays inside state tax.
 - **Nine decisions for the user** first; then S-2, S-1, S-4, S-5, S-3, S-6.
 - **Next.** The user's decisions 1-9 in the work order.
+
+## Ergonomics review S-1 to S-6: built (2026-11-08)
+
+Branch `claude/loving-wright-44943l` (from `986c625`, after the work order
+`fork-notes/ux-structural-handoff.md`). The user's nine decisions: **all as recommended** (Run
+page on the pin; the reminder once per library; a goal box on Scenario; a six-form year picker;
+conversion offered behind an exact check; recapture inside state tax; today's dollars by
+default; "where it shows up"; library mode only for the classic pages). One commit per item, in
+the order's sequence: S-2 `0f2555c`, S-1 `2b9bb8f`, S-4 `a4e2bfb`, S-5 `216884c`/`b4e7eeb`,
+S-3 `6c8678b`, S-6 `4e4ab96`; re-drive fixes `78cd5b0`. No existing run's inputs hash moves
+(`BUILDER_VERSION` stays 6).
+
+- **S-2, Scenario drafts, dropdowns, year picker, goal box** (`ui/Scenario.py`,
+  `ui/year_ref_input.py`).
+  - A session draft per run (`scn_draft_<run id>`: every box's value, the three tables as
+    records, a version in every widget key). Each data_editor gets the base it was mounted
+    with for as long as it stays mounted (the user's watch-out: a data_editor replays its
+    deltas on whatever `data=` it gets); it remounts from the draft after a page visit, and
+    from the run after *Reset* (version + 1).
+  - Banner "Unsaved changes against *run*" with *Reset to the run*; the Run page says "The
+    Scenario page has unsaved changes for this run" with a way back. A save drops the draft
+    and opens the page on the new run.
+  - **Found and fixed:** the page also came back on the *newest* run after a visit (its own
+    run selector is a widget whose state is dropped too), away from the draft; it now comes
+    back on the run edited last (`scenario_last_run`) unless another page asks for one.
+  - Person and level as `SelectboxColumn`s ("full time" / "part time", blank = full time);
+    the event id hidden, kept for existing rows, made for new ones (`work-<person>-<start>`,
+    `claim-<person>`, `death-<person>`, unique).
+  - Year fields: "When" (calendar year, at an age, last work year, year after last work,
+    home purchase year, another event's year with an offset, *Type it*; "Blank: ..." where
+    the field may be empty). **Deviation:** the helper returns the text form, not the dict:
+    the page parses every field once with the scenario's ids and the field's name in the
+    error, and the draft keeps text. Round-tripped against `parse_year_ref` /
+    `year_ref_text` over all six forms.
+  - "Goal and conversions": objective, bequest target or net spending (the case's units),
+    Roth cap (on/off), start year, stop year (on/off), bounded by the plan (a stored year
+    outside is named and kept unless changed). A field the case leaves out stays out unless
+    changed. No event generates these fields (`builder.build`'s case fields), so the saves
+    keep them.
+  - **Driven:** AppTest's `switch_page` on `ui/main.py` for the boxes (the lost edit: on the
+    pre-S-2 code `assert 700000.0 == 800000.0`, worktree of `986c625`); **Playwright** for
+    the tables, which AppTest cannot edit: a new work row typed into the blank row, a second
+    row added from the grid's ghost row, each edited twice, across a trip to Run: two rows,
+    no duplicate, the banner listing both. Found there: a new row's blank `level` came back
+    as NaN and failed to build ("got None"); fixed (`_present`).
+- **S-1, landing page, pin, reminder** (`store.Library.pin/unpin/baseline`,
+  `accept_disclaimer`/`disclaimer_accepted`; `ui/main.py`, `ui/Run.py`, `ui/Library.py`,
+  `ui/disclaimer.py`).
+  - Library mode: Run Library first in the menu, the Run page `default=True` (Welcome under
+    Help). The Run page opens on the run viewed last in the session, else the baseline, else
+    the newest with "Pin a run on the Library page ... to open it here". **Deviation:** the
+    order says baseline whenever the selector has no state; that sent the page back to the
+    baseline after every visit elsewhere, so the session's last run comes first.
+  - Library page: *Make this the baseline* / *Baseline ✓* (unpins). Compare's default A is
+    the baseline's newest result when B's run has no parent result.
+  - The reminder: drawn by the Run page until `library.json` holds `disclaimer_accepted`; OK
+    writes it. Upstream's text moved unchanged into `ui/disclaimer.py`, which Welcome now
+    imports; in library mode Welcome no longer draws it. Outside library mode nothing
+    changes (tested: Welcome default, its reminder).
+- **S-4, today's dollars, the NY split, markers** (`cli/formatters.plan_to_dict`,
+  `ui/run_charts.py`, `ui/Run.py`).
+  - `by_year` rows gain `deflator`, `local_tax`, `state_recapture`, `star_credit` and
+    (beyond the order, for per-person markers) `wages_by_person`. `state_tax` keeps its
+    meaning. The identity `state_tax = state base + recapture + local - STAR` checked on a
+    real solve of the synthetic baseline against `sum(st_T_tn) + STR_n - st_c_n`: within
+    \$1 (three rounded integers); deflator = `gamma_n` to 5e-7.
+  - Charts: a "Today's \$ | Nominal \$" control (session-wide, today's by default, shared with
+    Compare); the taxes chart in `barmode="relative"` with *State tax* (recapture in the
+    hover), *Local income tax (NYC / Yonkers)* and *NY STAR credit* below the axis, each part
+    drawn only where non-zero, as the user's watch-out spelled out; markers for each person's
+    last work year, the purchase, Medicare at 65 and the last loan year. An older result
+    draws nominal, one state series, "Last wages", and says "A new solve can show today's
+    dollars".
+- **S-5, Compare** (`library/compare.py`, `ui/Compare.py`, `ui/run_charts.py`).
+  - **Defect fixed:** "what moved"'s lifetime row summed nominal dollars of different years.
+    Two plans that spend the same in today's dollars under inflation paths 1.5 and 1.2 read
+    `('Spending', -30000)` on the old code (worktree of `986c625`); now 0. Totals are in
+    today's dollars whenever both results carry the deflator, rows in the selected units;
+    older results stay nominal and say so.
+  - The verdict as a sentence with the runs' names and amounts (`verdict_sentence`: ahead /
+    trade-off / too close to call / no difference / not comparable); "Where the difference
+    shows up" (the three largest lifetime lines) and "Inputs that differ" apart, no "driven
+    by"; the rule's reading, the noise rule and the exact-model check ("a second method
+    agrees / disagrees / does not settle it") under *How sure is this?*.
+  - Side-by-side tabs: spending, liquid net worth, cumulative taxes and premiums, MAGI with
+    IRMAA tier 1 and the 400% FPL line from each result's brackets rows, matched by calendar
+    year. **Deviation:** the toggle shows **B - A**, not A - B: every other difference on the
+    page is B - A.
+- **S-3, housing rows into events** (`casefiles.has_housing_rows`, `housing_events`,
+  `convert_housing`; `ui/housing_convert.py`).
+  - Reads one active residence, its linked loan (down share snapped to the shortest decimal
+    that rebuilds the loan; closing and loan closing from the one outflow, the builder's
+    defaults tried first: any pair that rebuilds the outflow is the same plan), the outflow's
+    person, the owner's three lines, the rent rows (start, flat-until from the "rent from"
+    tail or the one-year rows, an end only where it is not the year before the purchase), a
+    move in the purchase year (taken out of the case, made by the event), and **care rows**
+    (beyond the order: two synthetic workbooks end with a care line, which only a care event
+    puts back in the same place).
+  - Accepted only when `builder.build` of the converted run equals the original's tables and
+    case cell for cell; else the differing cells (e.g. "Budget, row 8 (rent in 2027),
+    amount: 49512 -> 49412") and nothing saved. Offered on the Run page (also for a run
+    with no results) and the Library page, as a child run "<name>, home as events";
+    `variants.py` points to it.
+  - `check_library_builder.py`: **39/39** imported workbooks convert (each exported case
+    with `make_cases.py`'s own workbook), beside 46/46.
+- **S-6, the queue and the classic pages** (`ui/Queue.py`, `ui/background_solve.py`,
+  `ui/library_save.py`, Graphs / Worksheets / Reports).
+  - *Open result* on finished rows (selects the run, switches to Run); no switch on
+    completion.
+  - Library mode: a modified case is not solved on open; the pages offer *Save as a new run
+    and solve it in the background* (the Library page's save, moved to `library_save.py`,
+    then `preset_solves("decision")`) and *Open the Queue*; Graphs' *Re-run* becomes the same
+    button. Outside library mode the pages take upstream's path (tested: `runPlan` called,
+    *Re-run* shown).
+- **Found in the re-drive:** a change summary holds "(today's \$)" twice, and two `$` in one
+  Markdown element start LaTeX math, which swallowed the text between them in the browser.
+  Pre-existing on the Scenario caption and the Run / Library "from" lines; new on the banner
+  and Compare. `libraryjobs.plain` escapes them everywhere a summary is drawn. Also: Graphs
+  showed the background button twice on a modified case (fixed); "where it shows up"
+  lowercased "Roth" (fixed).
+- **Re-driven with Playwright** (synthetic library in `otherFiles/library`: the builder
+  baseline, White Plains 2029 as its child, the imported condo case; Quick looks with the new
+  code, one with a worktree of `f854721` as the older result):
+  - first session: the reminder dialog; OK stamped `2026-11-08T01:25:38+00:00` in
+    `library.json`; a second session: no dialog, the Run page on "baseline (builder)" with
+    ":material/push_pin: The baseline", menu "Run Library | Case Setup | Results | ...";
+  - taxes chart, today's \$: legend "Federal income tax, Capital gains tax, NIIT (3.8%),
+    Payroll tax, State tax, Local income tax (NYC / Yonkers), NY STAR credit, Medicare
+    premiums (with IRMAA), Marketplace (ACA) premiums", axis "\$ per year (today's \$)",
+    markers "Ari's last work year / Noa's last work year", "Purchase", "Ari: Medicare / Noa:
+    Medicare"; nominal: axis "nominal \$ per year"; the older result: "This result was solved
+    before the charts could show today's dollars ...", one "State and local tax" series,
+    "Last wages";
+  - Scenario: the purchase year switched to "Year after last work" / Ari, banner "Unsaved
+    changes against baseline (builder): purchase: ... in the year after Ari's work, cash";
+    bequest target 250: "bequest target: 0 → 250.0";
+  - Compare (baseline Quick look vs White Plains 2029): "baseline (builder) comes out ahead:
+    \$2,520/yr more discretionary spending and \$7,552 more home at the end."; "Where the
+    difference shows up (lifetime, B - A, today's \$): Roth conversions -37,753; Spending
+    +36,963; Withdrawals from savings +30,866."; tabs Spending, Liquid net worth, Taxes and
+    health premiums, cumulative, MAGI; the B - A bars;
+  - S-3 on the imported condo run: "Saved imported condo, home as events: the same tables,
+    now made by rent and purchase events";
+  - S-6: *Edit as new run*, then Graphs opened in 1.7 s with "The case changed since its last
+    solve. In the run library it is solved in the background ..."; the click: "Saved as
+    baseline (builder) variant; its Careful (about 5 minutes) solve is queued"; the Queue
+    showed it running and its exact companion waiting. A server restart during the drive
+    left that Careful job's record "running" (not re-checked to completion).
+- **Not done as the order said:** Compare was driven on Quick looks, not on a Careful pair
+  (the Careful solve queued through S-6 was not waited for).
+- **Tests** (new: `test_scenario_drafts.py` 7, `test_year_ref_input.py` 12,
+  `test_landing_page.py` 7, `test_plan_json_state_parts.py` 2, `test_run_charts.py` +9,
+  `test_library_pages.py` +3, `test_compare.py` +10, `test_housing_conversion.py` 10,
+  `test_housing_convert_button.py` 3, `test_classic_pages_library_mode.py` 5,
+  `test_queue_page.py` +1, `test_ui_dollar_math.py` +1; changed: `test_scenario_page.py` for
+  the picker, `test_variants.py` for the pointer).
+- **Run (Linux).**
+  - Full suite at `4e4ab96`: **4669 passed, 1 skipped** (11:37, `-n 3`, beside the browser
+    drive). After `78cd5b0` (display only): `tests/library tests/ui tests/cli
+    test_thresholds.py test_brackets.py` 1272 passed.
+  - `test_worker.py::...test_run_again_leaves_no_artifacts_of_the_old_attempt` failed once
+    under `-n 4` with the UI suites, passed alone and in every later run (a race test under
+    load; not investigated).
+  - `check_library_builder.py` 46/46 + 39/39; `check_library_roundtrip.py` 39/39;
+    `check_library_compare.py` 9/9.
+  - Lint: only upstream's listed items.
+- **Next.** The user's call on an independent review and on fast-forwarding `main`.

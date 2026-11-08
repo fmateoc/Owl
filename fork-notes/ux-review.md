@@ -34,10 +34,16 @@ Q10-Q20, and B3's issue reworked".
 | Q18 buttons gated on a text field | **Done** on Collections and Create Case (reproduced with Playwright first); issue draft `fork-notes/issue-create-case.md`, not filed; duplicate collection names refused |
 | Q19 purchase box | **Done** (the dropdowns were B2's) |
 | Q20 Goals / Run Options wording | **Done**: Goals in library mode only; the SLCSP field for everyone, issue draft `fork-notes/issue-slcsp-field.md`, not filed |
-| S5 | **Partly done** (QW-2/QW-3, 2026-11-07, `claude/upbeat-planck-c731oy`): crossings of the IRMAA tiers, the 400% FPL line and the Enhanced STAR limit reported beyond the band with their cost, in a compact table of their own; the NY decomposition (`by_year` recapture, local tax, STAR) not built |
+| S1 | **Done** (S-1, 2026-11-08, `claude/loving-wright-44943l`): library sections first, the Run page as the landing page on the pinned baseline (pins on the Library page), the reminder once per library in `library.json`; no separate Home page (decision 1) |
+| S2 | **Done in part** (S-2): the levers on the Scenario page (goal, Roth cap and window in a *Goal and conversions* box; work, claims, purchase, care as events), saved as a child run; no Run-page panel (decision 3) |
+| S3 | **Done** (S-2): a session draft per run, *Reset*, the Run page's notice; drafts on disk (design section 4) not built |
+| S4 | **Done** (S-3): *Turn the home rows into a purchase event* on the Run and Library pages, behind an exact rebuild check (39/39 synthetic workbooks); never automatic |
+| S5 | **Done** (QW-2/QW-3; S-4 2026-11-08): crossings with their cost; `by_year` deflator, local tax, recapture, STAR; the taxes chart split, today's dollars, event markers |
 | S6 | **Partly done** (QW-1): the paragraph, the Sankey and a two-column sources/uses table with group subtotals and a totals line share one set of words; no separate year card |
 | S9 | **Partly done** (QW-4, QW-8): \$20M balance warning; Roth, swap and ACA years bounded by the plan (the ACA start a toggle); financing ranges refused and unit slips warned on Scenario and Collections; no benchmark-premium range flag, errors not rewritten |
-| S1-S4, S7, S8, S10 | Not started (the user's call). S1, S3, S4, S7, S8 and the rest of S5 have a work order from the outside review's S-1 to S-6: `fork-notes/ux-structural-handoff.md` (2026-11-07, decisions pending) |
+| S7 | **Done** (S-6): library mode's Graphs, Worksheets and Reports save and queue a Careful solve instead of solving on open; *Open result* on the Queue; no spinner outside library mode (decision 9) |
+| S8 | **Done** (S-5): verdict sentences, "where it shows up", "inputs that differ", *How sure is this?*, side-by-side and B - A charts; the lifetime totals in today's dollars |
+| S10 | Not started |
 
 ## How this was checked
 

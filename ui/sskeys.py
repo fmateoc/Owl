@@ -241,8 +241,7 @@ def isIncomplete():
 
 
 def caseHasNotRun():
-    return getCaseKey("caseStatus") not in ["solved", "infeasible", "solver error", "unsuccessful", "exception",
-                                            "invalid input"]
+    return getCaseKey("caseStatus") not in ["solved", "infeasible", "solver error", "unsuccessful", "exception"]
 
 
 def isCaseUnsolved():
@@ -467,6 +466,17 @@ def no_case_info():
         st.info("A case must first be created before running this page. Use the link on the right to get started.")
     with col2:
         st.page_link("Create_Case.py", label="Create Case", icon=":material/person_add:")
+
+
+def hfp_loaded_caption():
+    """Confirm the workbook read for the current case, if any."""
+    if getCaseKey("stHFP") is None:
+        return
+    hfp_name = getCaseKey("hfpFileName") or ""
+    if hfp_name.endswith(" *"):
+        st.caption(f":white_check_mark: *{hfp_name[:-2]}*\\* loaded — values modified.")
+    else:
+        st.caption(f":white_check_mark: *{hfp_name}* loaded.")
 
 
 def dumpSession():

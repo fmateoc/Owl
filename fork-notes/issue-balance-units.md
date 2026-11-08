@@ -1,6 +1,6 @@
 # Issue draft: balances typed in dollars into the \$k fields solve "infeasible" with no hint
 
-Status: **draft, not filed** (2026-11-07; `ux-qw-handoff-2.md` N4, QW-8.4, decision 4). For the
+Status: **filed as #249 and closed by the user before the maintainer answered** (2026-11-08, after his #245 reply: the fork's \$20M warning is a heuristic after the fact, not validation at the input; CLAUDE.md, Conventions, "prevent at the input"). The fork keeps its warning. Was a draft (2026-11-07; `ux-qw-handoff-2.md` N4, QW-8.4, decision 4). For the
 user to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-balance-units.patch` (`ui/Account_Balances.py`, a new
 `tests/ui/test_account_balances_units.py`, and `tests/conftest.py`; applies to stock `dev` with

@@ -187,8 +187,7 @@ def _checkPlan(func):
     return wrapper
 
 
-def _applyConfig(plan):
-    """Apply the case's inputs to plan. Return None, or the reason they could not be applied."""
+def prepareRun(plan):
     from owlplanner.config import apply_config_to_plan, ui_to_config
 
     try:
@@ -196,20 +195,10 @@ def _applyConfig(plan):
         diconf = ui_to_config(uidic, mylog=_get_case_logger())
         apply_config_to_plan(plan, diconf)
     except Exception as e:
-        return str(e)
+        st.error(f"Failed to apply configuration: {e}", icon=":material/error:")
+        return
 
     _setContributions(plan, "set")
-    return None
-
-
-def prepareRun(plan):
-    """Apply the case's inputs to plan. Return False (after saying why) if they could not be
-    applied: the caller must not solve a plan that holds only part of them."""
-    error = _applyConfig(plan)
-    if error is not None:
-        st.error(f"Failed to apply configuration: {error}", icon=":material/error:")
-        return False
-    return True
 
 
 def runAllCases():
@@ -222,15 +211,7 @@ def runAllCases():
 
 @_checkPlan
 def runPlan(plan):
-    error = _applyConfig(plan)
-    if error is not None:
-        # Not solved: one message, shown by showCaseStatus(), instead of this one followed by
-        # the verdict of a solve on a half-applied configuration.
-        kz.storeCaseKey("caseStatus", "invalid input")
-        kz.storeCaseKey("solverMessage", error)
-        kz.storeCaseKey("summaryDf", None)
-        kz.storeCaseKey("casetoml", "")
-        return
+    prepareRun(plan)
 
     objective, options = kz.getSolveParameters()
     try:
@@ -271,9 +252,6 @@ def showCaseStatus():
     message = kz.getCaseKey("solverMessage")
     if status == "infeasible":
         st.warning(message, icon=":material/warning:")
-    elif status == "invalid input":
-        st.error(f"The case was not solved: one of its inputs could not be applied. {message}",
-                 icon=":material/error:")
     elif status in ("solver error", "exception"):
         st.error(f"{message} The solver is selected under *Solver* on the **Run Options** page.",
                  icon=":material/error:")
@@ -286,8 +264,7 @@ def runHistorical(plan):
     if _refuseOverBudget(histRangeCost):
         return
     plan1 = owl.clone(plan)
-    if not prepareRun(plan1):
-        return
+    prepareRun(plan1)
 
     hyfrm = kz.getCaseKey("hyfrm")
     hyto = kz.getCaseKey("hyto")
@@ -331,8 +308,7 @@ def runMC(plan):
     if _refuseOverBudget(monteCarloCost):
         return
     plan1 = owl.clone(plan)
-    if not prepareRun(plan1):
-        return
+    prepareRun(plan1)
 
     N = kz.getCaseKey("MC_cases")
     log_x = kz.getCaseKey("histogram_log_x_mc")
@@ -632,8 +608,7 @@ def runStochasticSpending(plan):
     if _refuseOverBudget(stochasticSpendingCost):
         return
     plan1 = owl.clone(plan)
-    if not prepareRun(plan1):
-        return
+    prepareRun(plan1)
 
     scenario_method = kz.getCaseKey("stoch_scenario_method") or "historical"
     target_sr_pct = kz.getCaseKey("stoch_target_success_rate_pct")
@@ -882,8 +857,7 @@ def runSpendingBequestFrontier(plan):
     if _refuseOverBudget(frontierCost):
         return
     plan1 = owl.clone(plan)
-    if not prepareRun(plan1):
-        return
+    prepareRun(plan1)
 
     try:
         grid = _parse_bequest_grid(kz.getCaseKey("frontier_bequest_grid"))
@@ -2873,8 +2847,7 @@ def runConversionRegret(plan):
         return
 
     plan1 = owl.clone(plan)
-    if not prepareRun(plan1):
-        return
+    prepareRun(plan1)
     objective, options = kz.getSolveParameters()
 
     preset = kz.getCaseKey("regret_preset") or "Standard"

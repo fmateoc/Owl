@@ -22,7 +22,7 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
-__version__ = "2026.10.30"
+__version__ = "2026.11.06"
 
 
 @lru_cache(maxsize=1)

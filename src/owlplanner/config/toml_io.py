@@ -6,12 +6,14 @@ Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
 import copy
 import os
+import tomllib
 from datetime import date
 from io import BytesIO, StringIO
 from typing import Union
 
 import toml
 
+from ..utils import last_year_entered
 from .legacy import translate_old_keys
 
 
@@ -59,14 +61,32 @@ def sanitize_config(diconf: dict, *, mylog=None) -> None:
             aa["generic"] = [copy.deepcopy(pair) for _ in range(ni)]
         aa["type"] = "individual"
 
+    # A year past what the UI accepts is held at that limit, which is still past any plan:
+    # its meaning ("never") is kept, and Run Options can draw it.
+    thisyear = date.today().year
+    lastyear = last_year_entered(thisyear)
+
+    def _hold(section, key, signed=False):
+        val = section.get(key) if isinstance(section, dict) else None
+        if val is None or abs(int(val)) <= lastyear:
+            return
+        section[key] = -lastyear if signed and int(val) < 0 else lastyear
+        if mylog:
+            mylog.print(f"{key} ({int(val)}) is past {lastyear}; held at {section[key]}.", tag="WARNING")
+
+    _hold(diconf.get("aca_settings"), "aca_start_year")
+
     so = diconf.get("solver_options")
     if so is None:
         return
 
+    for key in ("startRothConversions", "stopRothConversions"):
+        _hold(so, key)
+    _hold(so, "swapRothConverters", signed=True)
+
     # Clamp startRothConversions to this year if in the past
     start_roth = so.get("startRothConversions")
     if start_roth is not None:
-        thisyear = date.today().year
         year_val = int(start_roth)
         if year_val < thisyear:
             so["startRothConversions"] = thisyear
@@ -121,17 +141,6 @@ def _convert_for_toml(obj):
     return obj
 
 
-def _lf(text: str) -> str:
-    """Unix line endings for `toml.loads`.
-
-    The `toml` package's string parser silently keeps only the first key of a string with CRLF
-    endings (a case uploaded on Windows: `library_import.case_refs` read every such case as its
-    name alone, and the import then failed on a workbook it had never seen named); `toml.load`
-    escapes it through universal newlines. Found on 2026-11-07.
-    """
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
 def load_toml(
     file: Union[str, os.PathLike, BytesIO, StringIO],
     *,
@@ -161,24 +170,26 @@ def load_toml(
         if not filename.endswith(".toml"):
             filename = filename + ".toml"
         try:
-            f = open(filename, "r", encoding="utf-8")
+            f = open(filename, "rb")
         except OSError as e:
             raise FileNotFoundError(f"File {filename} not found: {e}") from e
         try:
             with f:
-                diconf = toml.load(f)
-        except toml.TomlDecodeError as e:
+                diconf = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
             raise ValueError(f"TOML parse error in {filename}: {e}") from e
+    # Read with tomllib, write with toml: toml's reader drops every key after a triple-quoted
+    # string when the text has CRLF line endings (#248).
     elif isinstance(file, BytesIO):
         try:
-            string = _lf(file.getvalue().decode("utf-8"))
-            diconf = toml.loads(string)
+            string = file.getvalue().decode("utf-8")
+            diconf = tomllib.loads(string)
         except Exception as e:
             raise RuntimeError(f"Cannot read from BytesIO: {e}") from e
     elif isinstance(file, StringIO):
         try:
-            string = _lf(file.getvalue())
-            diconf = toml.loads(string)
+            string = file.getvalue()
+            diconf = tomllib.loads(string)
         except Exception as e:
             raise RuntimeError(f"Cannot read from StringIO: {e}") from e
     else:

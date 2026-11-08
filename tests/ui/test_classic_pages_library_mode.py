@@ -153,9 +153,10 @@ def test_ap3_once_queued_the_page_stops_asking_to_save_until_modified_again(libr
 
     # Modifying the case again restores the save-and-solve offer.
     graphs.session_state["cases"]["t"]["summaryDf"] = pd.DataFrame()
-    kz.ss = graphs.session_state
-    kz.flagModified()
-    graphs.run()
+    with monkeypatch.context() as m:
+        m.setattr(kz, "ss", graphs.session_state)
+        kz.flagModified()
+        graphs.run()
     assert any(b.label == "Save as a new run and solve it in the background" for b in graphs.button)
 
 

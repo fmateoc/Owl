@@ -175,8 +175,10 @@ def test_the_pages_see_every_move_of_a_plan():
 
 # -- parity with residency (reviews W3/W4) ----------------------------------------
 
-# (moves as the page holds them, the refusal kind the warnings must show, or None when
-# residency accepts the chain). The first move is moves[0]; the rest are "Further moves".
+# (moves as the page holds them, the warning the page must show, or None for a chain the plan
+# takes as it is). The first move is moves[0]; the rest are "Further moves". A "goes to" or
+# "starting one" move changes nothing and the plan drops it (upstream #245); the other kinds
+# are refused.
 PARITY_CHAINS = [
     ([{"year": 2031, "state": "FL"}], None),
     ([{"year": 2031, "state": "FL"}, {"year": 2035, "state": "TX"}], None),
@@ -191,33 +193,37 @@ PARITY_CHAINS = [
       {"year": 2035, "state": "NY", "locality": "Yonkers"}], "goes to"),
 ]
 
-_MOVE_WARN_MARKS = ("Two moves in", "goes to", "must fall after the first plan year", "starting one")
+_REFUSED_MARKS = ("Two moves in", "must fall after the first plan year")
+_IGNORED_MARKS = ("goes to", "starting one")
 
 
 @pytest.mark.toml
 @pytest.mark.parametrize("moves, kind", PARITY_CHAINS)
-def test_the_move_warnings_match_what_residency_refuses(monkeypatch, moves, kind):
-    """Every refusal `residency` raises at solve time is reported as the rows are edited, and
-    an accepted chain is not warned about (reviews W3/W4: the first move is checked against
+def test_the_move_warnings_match_what_the_plan_does(monkeypatch, moves, kind):
+    """Every move the plan refuses or ignores at solve time is reported as the rows are edited,
+    and a chain taken as it is gets no warning (reviews W3/W4: the first move is checked against
     the residence it leaves in year order too, and the plan's year bound is warned)."""
     at = _render(monkeypatch, moves, with_plan=True)
     warns = [str(w.value) for w in at.warning]
-    related = [w for w in warns if any(mark in w for mark in _MOVE_WARN_MARKS)]
+    refusals = [w for w in warns if any(mark in w for mark in _REFUSED_MARKS)]
+    ignored = [w for w in warns if any(mark in w for mark in _IGNORED_MARKS)]
 
     plan = readConfig(str(CASE), verbose=False)
     diconf, _, _ = load_toml(str(CASE))
     diconf["basic_info"]["state"] = "NY"
     start = config_to_ui(diconf)
     try:
-        residency.residence_by_year(start["state"], start["locality"], moves,
-                                    int(plan.year_n[0]), plan.N_n, start["schoolDistrict"])
+        _, dropped = residency.changing_moves(start["state"], start["locality"], start["schoolDistrict"],
+                                              moves, int(plan.year_n[0]), plan.N_n)
         refused = None
     except ValueError as exc:
-        refused = str(exc)
+        refused, dropped = str(exc), []
 
-    assert bool(related) == bool(refused), (warns, refused)
+    assert bool(refusals) == bool(refused), (warns, refused)
+    assert bool(ignored) == bool(dropped), (warns, dropped)
+    assert all("ignored" in w for w in ignored), ignored
     if kind is not None:
-        assert any(kind in w for w in related), (kind, related)
+        assert any(kind in w for w in refusals + ignored), (kind, warns)
 
 
 @pytest.mark.toml
@@ -269,3 +275,13 @@ def test_a_further_move_in_the_past_renders_and_warns(monkeypatch):
     next(b for b in at.button if b.label == ":material/delete:").click()
     _rerun(at)
     assert at.session_state["cases"]["t"]["stateMovesMore"] == []
+
+
+@pytest.mark.toml
+def test_the_year_of_the_move_stays_within_the_plan(monkeypatch):
+    # Jill (1966 + 92) outlives Jack (1963 + 89) in Case_jack+jill.toml.
+    lastyear = 1966 + 92
+    at = _render(monkeypatch, [{"year": lastyear + 20, "state": "FL"}])
+    year = [n for n in at.number_input if n.label == "Year of the move"]
+    assert [(n.value, n.max) for n in year] == [(lastyear, lastyear)]
+    assert at.session_state["cases"]["t"]["stateMoveYear"] == lastyear

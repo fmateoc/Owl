@@ -712,7 +712,7 @@ try:
     _unit = {1: "\\$", 1000: "\\$k", 1_000_000: "\\$M"}.get(_u.getUnits(_so.get("units", "k")), "units")
 except ValueError:
     _unit = "units"
-_plan_end = builder.plan_window(scenario)[1] or plan_year + 40
+_last_year = _u.last_year_entered(plan_year)
 _OBJECTIVES = {"maxSpending": "Spend as much as possible (keep a bequest target)",
                "maxBequest": "Leave as much as possible (spend a set amount)"}
 _settings = {}  # path -> (the value as the case holds it, the value the box shows now, present before)
@@ -720,12 +720,12 @@ _clamped = []
 
 
 def _year_shown(name, value, low, high, label):
-    """A stored year inside the box's bounds (QW-8's clamps), the move named on the page."""
+    """A stored year inside the box's bounds (#250's last_year_entered), the move named on the page."""
     year = int(value)
     if low <= year <= high:
         return year
     moved = min(max(year, low), high)
-    where = f"past the plan's last year, {high}" if year > high else f"before {low}"
+    where = f"past the last year accepted, {high}" if year > high else f"before {low}"
     _clamped.append(f"{label}: {year} is {where}; shown as {moved} (kept unless you change it)")
     return moved
 
@@ -774,11 +774,11 @@ with st.expander("Goal and conversions", expanded=False):
             _so.get("maxRothConversion"), _so.get("maxRothConversion") if _cap_present and _cap == _cap0 else _cap,
             _cap_present)
     _start0 = _so.get("startRothConversions")
-    _start_shown = _year_shown("roth_start", _start0 if _start0 is not None else plan_year, plan_year, _plan_end,
+    _start_shown = _year_shown("roth_start", _start0 if _start0 is not None else plan_year, plan_year, _last_year,
                                "Roth conversions start")
     _start = int(_keep("roth_start", k2.number_input(
         "Year to start considering Roth conversions", value=_seed("roth_start", _start_shown), step=1,
-        min_value=plan_year, max_value=_plan_end, format="%d", key=f"scn_roth_start_{key}")))
+        min_value=plan_year, max_value=_last_year, format="%d", key=f"scn_roth_start_{key}")))
     _settings["solver_options.startRothConversions"] = (
         _start0, _start0 if _start == _start_shown else _start, _start0 is not None)
     _stop0 = _so.get("stopRothConversions")
@@ -787,16 +787,16 @@ with st.expander("Goal and conversions", expanded=False):
                                                  key=f"scn_roth_stop_on_{key}",
                                                  help="Off: conversions are considered to the plan's end."))
     _stop_low = max(_start, plan_year)
-    _stop_default = min(max(plan_year + 10, _stop_low), _plan_end)
+    _stop_default = min(max(plan_year + 10, _stop_low), _last_year)
     _stop_shown = _year_shown("roth_stop", _stop0 if _stop0 is not None else _stop_default,
-                              max(_start_shown, plan_year), _plan_end, "Roth conversions stop")
+                              max(_start_shown, plan_year), _last_year, "Roth conversions stop")
     _stop_key = f"scn_roth_stop_{key}"
     if isinstance(st.session_state.get(_stop_key), (int, float)) and st.session_state[_stop_key] < _stop_low:
         st.session_state[_stop_key] = _stop_low
     _stop = int(_keep("roth_stop", k3.number_input(
         "Year to stop considering Roth conversions", value=min(max(int(_seed("roth_stop", _stop_shown)), _stop_low),
-                                                               _plan_end),
-        step=1, min_value=_stop_low, max_value=_plan_end, format="%d", disabled=not _stop_on,
+                                                               _last_year),
+        step=1, min_value=_stop_low, max_value=_last_year, format="%d", disabled=not _stop_on,
         key=_stop_key, help="No conversions in this year or later.")))
     _settings["solver_options.stopRothConversions"] = (
         _stop0, (_stop0 if _stop0 is not None and _stop == _stop_shown else _stop) if _stop_on else None,

@@ -1,6 +1,6 @@
 # Issue draft: Run Options' year fields take any year, and "ACA start year (0 = plan start)"
 
-Status: **draft, not filed** (2026-11-07; `ux-qw-handoff-2.md` N4, QW-8.3, decision 5). For the
+Status: **filed as #250** by the user; fixed upstream another way (`e78d2a0`, merged here 2026-11-08): the fields accept any year up to `last_year_entered` (this year + 120), since a year past the plan is a legitimate "never"; the plan-end bound proposed here is dropped from the fork too. Was a draft (2026-11-07; `ux-qw-handoff-2.md` N4, QW-8.3, decision 5). For the
 user to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-year-fields.patch` (`ui/Run_Options.py` and a new
 `tests/ui/test_run_options_year_bounds.py`; applies to stock `dev` with `git apply`; verified

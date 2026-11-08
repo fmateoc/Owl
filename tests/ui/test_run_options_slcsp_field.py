@@ -1,8 +1,9 @@
 """
-Run Options: the benchmark premium (SLCSP) field shows two decimals and steps by $1k.
+Run Options: the health-cost fields show two decimals and step by one unit.
 
-With `sskeys.getNum`'s defaults it showed 20.84 as 20.8 and its +/- moved the premium by
-$10k a year.
+With `sskeys.getNum`'s defaults the benchmark premium (SLCSP) showed 20.84 as 20.8 and its +/-
+moved the premium by $10k a year; other medical expenses and the Part D base premium had the
+same defaults.
 
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 
@@ -18,8 +19,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CASE = ROOT / "examples" / "Case_riley+casey.toml"
 
+LABELS = (
+    "Benchmark Silver plan premium",
+    "Other medical expenses",
+    "Part D base premium",
+)
 
-def test_the_benchmark_premium_shows_two_decimals_and_steps_by_one(monkeypatch):
+
+def test_health_cost_fields_show_two_decimals_and_step_by_one(monkeypatch):
     import streamlit as st
     from streamlit.testing.v1 import AppTest
 
@@ -37,6 +44,8 @@ def test_the_benchmark_premium_shows_two_decimals_and_steps_by_one(monkeypatch):
     at.session_state["currentCase"] = "rc"
     at.run()
     assert not at.exception, [str(e.message) for e in at.exception]
-    field = next(w for w in at.number_input if w.label.startswith("Benchmark Silver plan premium"))
-    assert field.value == 22.0
-    assert field.proto.format == "%.2f" and field.proto.step == 1.0
+    for label in LABELS:
+        field = next(w for w in at.number_input if w.label.startswith(label))
+        assert field.proto.format == "%.2f" and field.proto.step == 1.0, label
+    slcsp = next(w for w in at.number_input if w.label.startswith(LABELS[0]))
+    assert slcsp.value == 22.0

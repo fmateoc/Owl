@@ -7862,6 +7862,77 @@ against the code at `f854721` and re-read for ergonomics; work order
 - **Nine decisions for the user** first; then S-2, S-1, S-4, S-5, S-3, S-6.
 - **Next.** The user's decisions 1-9 in the work order.
 
+## The maintainer's lesson from #245 (2026-11-08)
+
+The user reports issues #245-#250 filed, all fixed upstream, and one draft withheld after the
+maintainer's answer to #245 (B3, `issue-prepare-run-failure.md`). Not checked here: this session
+cannot read `mdlacasse/Owl` (GitHub access refused), so the issue numbers beyond #247 and the
+upstream fixes are the user's report, and no upstream `dev` was merged.
+
+- **His answer:** he validated at the input (the starting state is no longer offered as a move
+  target; bad TOML files were already rejected at load) and called the downstream check "not
+  really relevant"; "Agents can find bugs easily, but I find their proposed solutions often
+  lacking good and basic software engineering design."
+- **What our draft did wrong:** its own text names the entry point (Create Case warns "The new
+  state is the starting state" but keeps both), yet the patch changed six callers of
+  `prepareRun`, added a case status (`invalid input`), a helper and `caseHasNotRun` handling:
+  recovery after the fact instead of a one-line restriction where the state is entered.
+- **The rule** is now in CLAUDE.md, Conventions ("Upstream patches: prevent at the input"):
+  find the entry point and the existing validation, fix there in the code's idiom, add a
+  downstream guard only for a failure the input cannot prevent and with its own repro.
+- **Decided (user, 2026-11-08):** drop B3's downstream patch (`ea338d6`) and take upstream's
+  fix; done in the merge below.
+- **Next.** Unchanged: the user's decisions 1-9 in `ux-structural-handoff.md`.
+
+## Upstream `dev` `d2ede71` merged (2026-11-08)
+
+Nine upstream commits since `73dc881` (version 2026.11.07): our #245-#248 and #250 fixed, a
+uv/setup-uv bump and dependency updates. Merge commit on `claude/peaceful-tesla-tc4vo5`;
+`CHANGELOG.md` is upstream's byte for byte. Seven files conflicted.
+
+- **#245 (`b719efa`), read from the commit:** `setStateTax` ignores a move to the starting
+  state with a log warning instead of refusing it, so a case file carrying one loads; Create
+  Case caps *Year of the move* at the plan's last year (the other refusal the UI could reach)
+  and says the move "will be ignored". The new-state list still offers the starting state
+  (`_state_choices()`, checked on `upstream/dev`), so the commit is not quite what his comment
+  says ("removed from the list"); the lesson is the same: make the bad input harmless where it
+  enters, not in the callers.
+  - **B3 dropped** (the user's call): `owlbridge.prepareRun` / `runPlan` / the five clone
+    callers / `showCaseStatus` / `sskeys.caseHasNotRun` are upstream's again (no `_applyConfig`,
+    no `invalid input` status); `tests/ui/test_prepare_run_failure.py` deleted. The fork-notes
+    draft, patch and repro stay as the record.
+  - **Fork adaptation (several moves):** upstream's rule generalized: any move to the residence
+    it leaves changes nothing and is dropped with a warning (`residency.changing_moves`, called
+    by `setStateTax`; `residence_by_year` itself stays strict). Two moves in one year and a
+    year outside the plan are still refused, a dropped move included. Create Case's warnings say
+    "will be ignored" for those moves; the parity test (`test_the_move_warnings_match_what_the_plan_does`)
+    now checks refusals and ignored moves separately against `changing_moves`. New tests in
+    `test_state_tax.py`: a later no-op move is dropped, an ignored move still counts for "two
+    moves in one year". Upstream's year cap applies to the first move; the further moves keep
+    the fork's warning for a year outside the plan (not capped: a fork design choice left as is).
+- **#246 (`2130052`):** upstream's `kz.hfp_loaded_caption()` replaces the fork's
+  `_hfpLoadedText` (people and table counts dropped; sync rule). The fork keeps QW-7.1's run
+  origin as its own caption, "Workbook of run *X*." The first-click part is "by design"
+  upstream; the fork keeps its enabled-before-names `_createCase`.
+- **#247 (`113ec13`):** upstream's SLCSP field and test taken (also other medical and Part D).
+- **#248 (`d2ede71`):** case files and state data read with `tomllib`; the fork's `_lf` and its
+  CRLF workaround dropped; `toml_io.py` is upstream's again.
+- **#250 (`e78d2a0`), upstream's design taken:** the Roth years and the ACA start year accept
+  any year up to `utils.last_year_entered` (this year + 120): a year past the plan is a
+  legitimate "never" that survives a change of longevity. The fork's QW-8 bound at the plan's
+  last year contradicted that (its clamp flagged the case modified because the meaning changed)
+  and is gone: `_bound_year` keeps only clamping into [this year (or the start year), last
+  accepted year], with the move named. Kept from the fork: the stop year's minimum is the
+  start year (`986c625`), and the ACA toggle (QW-8.3, decision 5); upstream's
+  `test_run_options_year_fields.py` sets `acaStartYear = 2030` so the box shows (marked as a
+  fork adaptation). `test_run_options_year_bounds.py` rewritten for the new bound.
+- **Checks:** flake8/ruff only upstream's known lines (ruff's B905 at `ui/Run_Options.py:367`
+  now). Full suite **4633 passed, 1 skipped** (9:57, Linux, `-n 4`).
+- **#249** (`issue-balance-units.md`, the \$k balance trap): filed by the user and closed by
+  the user before the maintainer answered, after his #245 reply (user, 2026-11-08). The fork
+  keeps its \$20M warning on Account Balances.
+- **`main`** fast-forwarded to `claude/peaceful-tesla-tc4vo5` (`986c625` -> `4d76cbb`, then this note) on 2026-11-08.
+
 ## Ergonomics review S-1 to S-6: built (2026-11-08)
 
 Branch `claude/loving-wright-44943l` (from `986c625`, after the work order
@@ -7896,8 +7967,8 @@ S-3 `6c8678b`, S-6 `4e4ab96`; re-drive fixes `78cd5b0`. No existing run's inputs
     error, and the draft keeps text. Round-tripped against `parse_year_ref` /
     `year_ref_text` over all six forms.
   - "Goal and conversions": objective, bequest target or net spending (the case's units),
-    Roth cap (on/off), start year, stop year (on/off), bounded by the plan (a stored year
-    outside is named and kept unless changed). A field the case leaves out stays out unless
+    Roth cap (on/off), start year, stop year (on/off), bounded by `last_year_entered` (a stored
+    year outside is named and kept unless changed). A field the case leaves out stays out unless
     changed. No event generates these fields (`builder.build`'s case fields), so the saves
     keep them.
   - **Driven:** AppTest's `switch_page` on `ui/main.py` for the boxes (the lost edit: on the
@@ -8069,4 +8140,4 @@ S-3 `6c8678b`, S-6 `4e4ab96`; re-drive fixes `78cd5b0`. No existing run's inputs
   true. Test:
   `tests/ui/test_classic_pages_library_mode.py::test_ap4_reports_in_library_mode_hides_rerun_all_cases`.
 - **AP5 (`CLAUDE.md`, `PROGRESS.md`):** Updated `ui/Run_Options.py`'s pre-existing `B905` line
-  number from 340 to 345 (shifted by `986c625e`).
+  number (345 on `claude/loving-wright-44943l`; 367 after merging `origin/main`).

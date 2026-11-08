@@ -88,29 +88,10 @@ def test_create_case_creates_once_the_names_are_in(monkeypatch):
 
 
 @pytest.mark.toml
-def test_create_case_confirms_the_workbook_it_read(monkeypatch):
-    from owlplanner import readConfig
-    from owlplanner.config import config_to_ui, load_toml
-
-    plan = readConfig(str(JACK_JILL), verbose=False, logstreams=[io.StringIO()])
-    diconf, _, _ = load_toml(str(JACK_JILL))
-    dic = config_to_ui(diconf)
-    # What owlbridge.readHFP leaves after an upload (AppTest cannot upload a file).
-    dic.update({"plan": plan, "id": "t1", "name": "jj", "caseStatus": "modified",
-                "summaryDf": None, "stHFP": "HFP_jack+jill.xlsx", "hfpFileName": "HFP_jack+jill.xlsx",
-                "timeList0": plan.timeLists["Jack"], "timeList1": plan.timeLists["Jill"],
-                "houseListDebts": plan.houseLists["Debts"],
-                "houseListFixedAssets": plan.houseLists["Fixed Assets"]})
-    at = _page(monkeypatch, dic, "jj")
-    shown = [c.value for c in at.caption if "loaded" in c.value]
-    assert shown == [":white_check_mark: *HFP_jack+jill.xlsx* loaded: wages and contributions for "
-                     "Jack and Jill; 1 debt, 1 fixed asset."], [c.value for c in at.caption]
-
-
-@pytest.mark.toml
 def test_a_run_s_workbook_says_which_run_it_came_from(monkeypatch):
     """QW-7.1 (ux-qw-handoff-2.md): every run's workbook is HFP.xlsx; a case opened with "Edit
-    as new run" says "HFP.xlsx (from *run name*)". Display only: the stored name stays bare."""
+    as new run" says which run it came from, under upstream's "loaded" line (#246, which
+    replaced the fork's own caption). Display only: the stored name stays bare."""
     from owlplanner import readConfig
     from owlplanner.config import config_to_ui, load_toml
 
@@ -124,6 +105,7 @@ def test_a_run_s_workbook_says_which_run_it_came_from(monkeypatch):
                 "houseListFixedAssets": plan.houseLists["Fixed Assets"],
                 "library_base_run_id": "r1", "library_base_run_name": "jj condo 2029"})
     at = _page(monkeypatch, dic, "jj")
-    shown = [c.value for c in at.caption if "loaded" in c.value]
-    assert shown and shown[0].startswith(":white_check_mark: *HFP.xlsx* (from *jj condo 2029*) loaded:")
+    captions = [c.value for c in at.caption]
+    assert ":white_check_mark: *HFP.xlsx* loaded." in captions, captions
+    assert "Workbook of run *jj condo 2029*." in captions, captions
     assert at.session_state["cases"]["jj"]["hfpFileName"] == "HFP.xlsx"

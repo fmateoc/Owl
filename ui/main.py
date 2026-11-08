@@ -100,14 +100,17 @@ if os.environ.get("OWL_LIBRARY_DIR"):
     import libraryjobs
 
     if libraryjobs.library_address_ok():
-        pages["Run Library"] = [
-            st.Page("Queue.py", icon=":material/schedule:"),
+        # Ergonomics review S-1: in library mode the Run Library comes first in the menu and the
+        # app opens on the Run page (the pinned baseline); Welcome stays under Help.
+        pages["Help"][0] = st.Page("Welcome.py", icon=":material/campaign:")
+        pages = {"Run Library": [
+            st.Page("Run.py", icon=":material/monitoring:", default=True),
             st.Page("Library.py", icon=":material/database:"),
-            st.Page("Run.py", icon=":material/monitoring:"),
-            st.Page("Collections.py", icon=":material/grid_view:"),
             st.Page("Scenario.py", icon=":material/edit_note:"),
+            st.Page("Collections.py", icon=":material/grid_view:"),
             st.Page("Compare.py", icon=":material/compare_arrows:"),
-        ]
+            st.Page("Queue.py", icon=":material/schedule:"),
+        ], **pages}
         libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
     else:
         st.error(

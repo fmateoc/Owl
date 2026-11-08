@@ -25,31 +25,26 @@ import streamlit as st
 import owlbridge as owb
 import sskeys as kz
 
-_SHOW_DISCLAIMER = os.environ.get("OWL_SKIP_DISCLAIMER", "0") not in ("1", "true", "True", "yes")
-_GPLV3_URL = "https://www.gnu.org/licenses/gpl-3.0.html#license-text"
-_WELCOME_DISCLAIMER_DISMISSED = "welcome_disclaimer_dismissed"
+import disclaimer  # fork: the reminder's text, shared with the run library's landing page (S-1)
+
+_SHOW_DISCLAIMER = disclaimer.show_disclaimer()
+_WELCOME_DISCLAIMER_DISMISSED = disclaimer.DISMISSED_KEY
 
 logofile = kz.LOGOFILE
 owl_pdf_url = "https://raw.githubusercontent.com/mdlacasse/Owl/refs/heads/main/papers/owl.pdf"
 
 
-@st.dialog(":material/policy: :orange[Reminder]")
+@st.dialog(disclaimer.TITLE)
 def _welcome_session_reminder():
-    st.markdown(
-        f"""
-**Owl** – *Optimal wealth lab* is for **educational and research purposes** only. Nothing in this session constitutes
-**financial, tax, or investment advice**—consult a qualified professional for decisions specific to your situation.
-
-This software is released under the [GNU General Public License v3]({_GPLV3_URL}).
-"""
-    )
+    st.markdown(disclaimer.reminder_markdown())
     st.caption(f"🦉 **Owl** version {owb.version()}")
     if st.button("OK"):
         kz.storeGlobalKey(_WELCOME_DISCLAIMER_DISMISSED, True)
         st.rerun()
 
 
-if not kz.getGlobalKey(_WELCOME_DISCLAIMER_DISMISSED) and _SHOW_DISCLAIMER:
+# Fork: in library mode the reminder is shown once per library, by the landing page (S-1).
+if not kz.getGlobalKey(_WELCOME_DISCLAIMER_DISMISSED) and _SHOW_DISCLAIMER and not kz.library_mode():
     _welcome_session_reminder()
 
 # Value proposition

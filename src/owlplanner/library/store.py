@@ -422,6 +422,47 @@ class Library:
         info = run if isinstance(run, RunInfo) else self.get(run)
         return self._read_json(info.path / INPUTS_DIR / SCENARIO_JSON)
 
+    # -- pins: the baseline (ergonomics review S-1) ---------------------
+
+    def pins(self) -> list:
+        """The pinned run ids, first pinned first (ids of deleted runs are dropped at delete)."""
+        return list(self._library_doc().get("pins") or [])
+
+    def pin(self, run: "RunInfo | str") -> None:
+        """Make the run the baseline: it goes to the front of `pins` (idempotent)."""
+        info = run if isinstance(run, RunInfo) else self.get(run)
+        with self._lock():
+            doc = self._library_doc()
+            doc["pins"] = [info.id] + [rid for rid in doc["pins"] if rid != info.id]
+            self._write_json(self.root / LIBRARY_JSON, doc)
+
+    def unpin(self, run: "RunInfo | str") -> None:
+        rid = run.id if isinstance(run, RunInfo) else str(run)
+        with self._lock():
+            doc = self._library_doc()
+            doc["pins"] = [p for p in doc["pins"] if p != rid]
+            self._write_json(self.root / LIBRARY_JSON, doc)
+
+    def baseline(self) -> Optional[RunInfo]:
+        """The first pin that is still a run, else None (the landing page's run)."""
+        by_id = {r.id: r for r in self.runs()}
+        return next((by_id[rid] for rid in self.pins() if rid in by_id), None)
+
+    # -- the disclaimer, once per library (S-1, decision 2) --------------
+
+    def disclaimer_accepted(self) -> Optional[str]:
+        """When the disclaimer was accepted for this library (an ISO stamp), else None."""
+        value = self._library_doc().get("disclaimer_accepted")
+        return value if isinstance(value, str) and value else None
+
+    def accept_disclaimer(self) -> str:
+        stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        with self._lock():
+            doc = self._library_doc()
+            doc["disclaimer_accepted"] = stamp
+            self._write_json(self.root / LIBRARY_JSON, doc)
+        return stamp
+
     def find_by_hash(self, inputs_hash: str) -> Optional[RunInfo]:
         for info in self.runs():
             if info.inputs_hash == inputs_hash:

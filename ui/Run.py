@@ -41,6 +41,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import libraryjobs
+import disclaimer
 import librarypresets
 import run_charts
 import sskeys as kz
@@ -288,9 +289,26 @@ def _claiming_age_map(run):
 manager = libraryjobs.get_manager()
 lib = manager.library
 
+
+# The reminder, once per library (ergonomics review S-1, decision 2): this page is library
+# mode's landing page, so it draws upstream's dialog until the library holds the stamp.
+@st.dialog(disclaimer.TITLE)
+def _library_reminder():
+    st.markdown(disclaimer.reminder_markdown())
+    st.caption("Shown once for this library: OK is remembered in its `library.json`.")
+    if st.button("OK"):
+        lib.accept_disclaimer()
+        kz.storeGlobalKey(disclaimer.DISMISSED_KEY, True)
+        st.rerun()
+
+
+if disclaimer.show_disclaimer() and not kz.getGlobalKey(disclaimer.DISMISSED_KEY) \
+        and not lib.disclaimer_accepted():
+    _library_reminder()
+
 runs = list(reversed(lib.runs()))
 if not runs:
-    st.info("The library has no runs yet.")
+    st.info("The library has no runs yet: import a case on the Library page.")
     st.stop()
 
 # -- the conversion and bracket view (design 14.1, I8) -----------------
@@ -407,12 +425,22 @@ labels = {f"{r.name}  ({r.folder_name})": r for r in runs}
 # value and overrides `index`, and "Open" stops switching runs after the first render
 # (step-3 review P2).
 wanted = st.session_state.pop("library_selected_run", None)
+# Landing (S-1): with no run asked for and no choice in the selector, the run viewed last in
+# this session (the selector's own state is dropped with the page), else the pinned baseline.
+_baseline = lib.baseline()
+if wanted is None and "run_page_run" not in st.session_state:
+    wanted = st.session_state.get("run_page_last") or (_baseline.id if _baseline is not None else None)
 if wanted is not None:
     for label, r in labels.items():
         if r.id == wanted:
             st.session_state["run_page_run"] = label
             break
 run = labels[st.selectbox("Run", list(labels), key="run_page_run")]
+st.session_state["run_page_last"] = run.id
+if _baseline is None:
+    st.caption("Pin a run on the Library page (*Make this the baseline*) to open it here.")
+elif run.id == _baseline.id:
+    st.caption(":material/push_pin: The baseline")
 
 entries = []  # newest solve first: (label, job, result)
 for job in reversed(manager.jobs(run)):

@@ -224,10 +224,13 @@ if not runs:
     st.stop()
 
 st.markdown("#### Runs")
+_baseline = lib.baseline()
 for run in runs:
     jobs = manager.jobs(run)
     latest = jobs[-1].state if jobs else None
     line = f"**{run.name}**"
+    if _baseline is not None and run.id == _baseline.id:
+        line += "  :material/push_pin: *baseline*"
     if run.plan_year:
         line += f"  \n`{run.folder_name}` · plan year {run.plan_year}"
     if run.parent:
@@ -242,8 +245,19 @@ for run in runs:
         line += f"  \n{', '.join(run.tags)}"
     if jobs:
         line += f"  \n{len(jobs)} solve(s), latest: {latest}"
-    cols = st.columns([6, 1, 1, 1, 1])
+    cols = st.columns([6, 1, 1, 1, 1, 1])
     cols[0].markdown(line)
+    # S-1: the baseline is the run the app opens on (the Run page, library mode's landing page).
+    if _baseline is not None and run.id == _baseline.id:
+        if cols[5].button("Baseline ✓", key=f"unpin_{run.id}",
+                          help="The app opens on this run. Click to unpin it."):
+            lib.unpin(run)
+            st.rerun()
+    elif cols[5].button("Make this the baseline", key=f"pin_{run.id}",
+                        help="The app opens on the baseline (the Run page)."):
+        lib.pin(run)
+        libraryjobs.flash("info", f"*{run.name}* is the baseline: the app opens on it.")
+        st.rerun()
     if cols[1].button("Open", key=f"open_{run.id}",
                       help="The run's page: numbers, charts, tables and its solves."):
         st.session_state["library_selected_run"] = run.id

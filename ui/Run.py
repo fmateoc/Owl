@@ -54,21 +54,6 @@ kz.divider("orange")
 libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
 
-# The four by-year charts read plan.json's `by_year`, which is in nominal dollars (each year's
-# own); since S-4 each row carries its deflator, and the charts default to today's dollars.
-
-
-def units_control(key):
-    """S-4: "Today's $ | Nominal $" for the by-year charts, kept for the session (shared by the
-    Run and Compare pages: `library_units`), today's dollars by default (decision 7)."""
-    current = st.session_state.get("library_units", "today")
-    choice = st.segmented_control("Amounts", list(run_charts.UNITS), default=current,
-                                  format_func=run_charts.UNIT_LABELS.get, key=key)
-    choice = choice or current
-    st.session_state["library_units"] = choice
-    return choice
-
-
 def _frozen_case(run) -> dict:
     """The run's frozen Case.toml (what its events generated included), or {} when it cannot
     be read."""
@@ -605,7 +590,7 @@ if entries:
     if by_year:
         # S-4: the by-year charts in today's dollars by default (the headline's units), nominal
         # one click away; the choice is the session's, shared with Compare.
-        units = units_control("run_page_units")
+        units = run_charts.units_control("run_page_units")
         if units == "today" and not run_charts.has_deflator(by_year):
             st.caption("This result was solved before the charts could show today's dollars: they are in "
                        "nominal dollars (each year's own). A new solve can show today's dollars.")

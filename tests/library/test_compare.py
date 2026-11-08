@@ -336,3 +336,76 @@ class TestTheScoreInItsOwnWords:
         c = compare(make_result(), make_result(objective="maxBequest"))
         assert c.lead["verdict"] == "not comparable"
         assert "score" not in c.lead["note"] and "score" not in " ".join(c.flags)
+
+
+class TestTodaysDollarsTotals:
+    """Ergonomics review S-5: the lifetime row of "what moved" added nominal dollars of
+    different years. Two plans that spend the same in today's dollars under different
+    inflation paths read as spending differently."""
+
+    A = [{"year": 2026, "deflator": 1.0, "spending": 100_000},
+         {"year": 2027, "deflator": 1.5, "spending": 150_000}]
+    B = [{"year": 2026, "deflator": 1.0, "spending": 100_000},
+         {"year": 2027, "deflator": 1.2, "spending": 120_000}]
+
+    def test_the_lifetime_totals_are_in_today_s_dollars(self):
+        a, b = make_result(by_year=self.A), make_result(id="b", by_year=self.B)
+        rows, totals, _cols = what_moved(a, b, "nominal")
+        assert rows == ({"year": 2027, "changes": {"spending": -30_000}},)  # the rows stay nominal
+        assert dict(totals) == {"Spending": 0}  # the old nominal sum said -30,000
+        c = compare(a, b, units="today")
+        assert c.what_moved_units == "today" and c.what_moved_totals_units == "today"
+        assert c.what_moved == ()
+
+    def test_older_results_keep_nominal_and_say_so(self):
+        a = make_result(by_year=[{k: v for k, v in r.items() if k != "deflator"} for r in self.A])
+        b = make_result(id="b", by_year=self.B)
+        _rows, totals, _cols = what_moved(a, b, "today")
+        assert dict(totals) == {"Spending": -30_000}
+        c = compare(a, b, units="today")
+        assert c.what_moved_units == "nominal" and c.what_moved_totals_units == "nominal"
+
+
+class TestVerdictSentences:
+    """S-5: the lead verdict in words, with the runs' names and the amounts."""
+
+    def _sentence(self, a, b):
+        return C.verdict_sentence(compare(a, b), "Yonkers", "White Plains", "spending", C.objective_of(a))
+
+    def test_b_comes_out_ahead(self):
+        s = self._sentence(make_result(score_value=82_000.0), make_result(id="b", score_value=84_000.0))
+        assert s == ("*White Plains* comes out ahead: \\$2,000/yr more spending and as much home at the end "
+                     "or more.")
+
+    def test_a_comes_out_ahead_on_both(self):
+        s = self._sentence(make_result(score_value=84_000.0, home=160_000.0),
+                           make_result(id="b", score_value=82_000.0, home=150_000.0))
+        assert s == "*Yonkers* comes out ahead: \\$2,000/yr more spending and \\$10,000 more home at the end."
+
+    def test_a_trade_off(self):
+        s = self._sentence(make_result(score_value=82_000.0, home=160_000.0),
+                           make_result(id="b", score_value=84_000.0, home=150_000.0))
+        assert s.startswith("A trade-off: *White Plains* spends \\$2,000/yr more, *Yonkers* keeps \\$10,000 more "
+                            "home at the end")
+
+    def test_too_close_to_call(self):
+        s = self._sentence(make_result(score_value=82_000.0), make_result(id="b", score_value=82_400.0))
+        assert s == "Too close to call: \\$400/yr, within this method's noise (1% of the plan)."
+
+    def test_no_difference(self):
+        assert self._sentence(make_result(), make_result(id="b")) == "No difference."
+
+    def test_not_comparable(self):
+        s = self._sentence(make_result(), make_result(id="b", objective="maxBequest"))
+        assert s.startswith("Not comparable: different objectives")
+
+    def test_where_it_shows_up_is_largest_first(self):
+        totals = (("Taxes", -5_000), ("Medicare premiums", 300), ("Spending", 12_000), ("Roth conversions", 0))
+        assert C.where_it_shows_up(totals) == [("Spending", 12_000), ("Taxes", -5_000), ("Medicare premiums", 300)]
+
+
+def test_the_default_pair_prefers_the_baseline_when_b_has_no_parent():
+    entries = [("c", None, 300.0, True, False), ("x", None, 250.0, True, False), ("a", None, 100.0, True, True)]
+    assert C.default_pair(entries) == (2, 0)  # A: the baseline's result, not the newer x
+    entries = [("c", "x", 300.0, True, False), ("x", None, 250.0, True, False), ("a", None, 100.0, True, True)]
+    assert C.default_pair(entries) == (1, 0)  # the parent still wins

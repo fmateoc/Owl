@@ -79,6 +79,10 @@ class Comparison:
     agreement: Optional[dict]  # the exact-model check, when both companions were found
     what_moved: tuple  # year-by-year differences (design 9.2's "What moved")
     what_moved_totals: tuple  # lifetime differences of the same items
+    # The units of the rows ("today" | "nominal", the page's choice when both results carry
+    # the deflator) and of the lifetime totals (today's dollars when both carry it: S-5).
+    what_moved_units: str = "nominal"
+    what_moved_totals_units: str = "nominal"
 
 
 def pair_tolerance(a: Result, b: Result, reference: float) -> tuple:
@@ -258,15 +262,23 @@ WHAT_MOVED = (
 )
 
 
-def _by_year_sums(result: Result) -> dict:
-    """{year: {item: nominal total}} for the WHAT_MOVED items."""
+def has_deflator(result: Result) -> bool:
+    """Whether every by_year row of the result carries its deflator (plan.json since S-4)."""
+    rows = result.plan.get("by_year") or []
+    return bool(rows) and all(isinstance(r.get("deflator"), (int, float)) and r["deflator"] > 0 for r in rows)
+
+
+def _by_year_sums(result: Result, units: str = "nominal") -> dict:
+    """{year: {item: total}} for the WHAT_MOVED items, nominal or in today's dollars (each
+    year's amounts divided by that year's own deflator: S-5)."""
+    today = units == "today"
     out = {}
     for row in result.plan.get("by_year") or []:
         try:
             year = int(row.get("year"))
         except (TypeError, ValueError):
             continue
-        out[year] = {
+        sums = {
             "taxes": sum(int(row.get(k) or 0) for k in
                          ("federal_income_tax", "ltcg_tax", "niit", "payroll_tax", "state_tax")),
             "medicare_premiums": int(row.get("medicare_premiums") or 0),
@@ -276,45 +288,128 @@ def _by_year_sums(result: Result) -> dict:
             "ss_income": sum(int(v or 0) for v in (row.get("ss_income") or [])),
             "spending": int(row.get("spending") or 0),
         }
+        if today:
+            sums = {k: v / float(row["deflator"]) for k, v in sums.items()}
+        out[year] = sums
     return out
 
 
-def what_moved(a: Result, b: Result) -> tuple:
-    """Year-by-year differences (b - a), nominal $: the rows the comparison shows.
+def what_moved_units(a: Result, b: Result, units: str = "nominal") -> tuple:
+    """(rows' units, totals' units): the rows in `units` when both results carry the deflator,
+    else nominal; the lifetime totals in today's dollars whenever both carry it (S-5)."""
+    both = has_deflator(a) and has_deflator(b)
+    return ("today" if units == "today" and both else "nominal"), ("today" if both else "nominal")
+
+
+def what_moved(a: Result, b: Result, units: str = "nominal") -> tuple:
+    """Year-by-year differences (b - a): the rows the comparison shows, in `units`.
 
     The two plans are matched by calendar year, not by position (step-3 review 3, W6: two
     results of different plan years compared A's 2027 with B's 2028 under the label 2027); a
     year only one plan has counts the other's items as 0. A row is included when any item
     moved by more than a dollar in any year; the items with no movement anywhere are left out
     of the table's columns.
+
+    The lifetime totals are sums over years, so they are in today's dollars whenever both
+    results carry the deflator (S-5: a sum of nominal dollars of different years mixes
+    dollars of different worth, and two plans with different inflation paths then differ
+    in the sum where they spend the same). Units: `what_moved_units`.
     """
-    sa, sb = _by_year_sums(a), _by_year_sums(b)
-    years = sorted(set(sa) | set(sb))
+    row_units, total_units = what_moved_units(a, b, units)
 
-    def _delta(key, year):
-        return (sb.get(year) or {}).get(key, 0) - (sa.get(year) or {}).get(key, 0)
+    def _deltas(units_):
+        sa, sb = _by_year_sums(a, units_), _by_year_sums(b, units_)
+        years = sorted(set(sa) | set(sb))
 
+        def _delta(key, year):
+            return (sb.get(year) or {}).get(key, 0) - (sa.get(year) or {}).get(key, 0)
+
+        return years, _delta
+
+    years, delta = _deltas(row_units)
     moving = [key for key, _ in WHAT_MOVED
-              if any(abs(_delta(key, year)) > 1 for year in years)]
+              if any(abs(delta(key, year)) > 1 for year in years)]
     rows = []
     for year in years:
-        changes = {key: _delta(key, year) for key in moving}
+        changes = {key: round(delta(key, year)) for key in moving}
         if any(changes.values()):
             rows.append({"year": year, "changes": changes})
+    t_years, t_delta = _deltas(total_units)
     totals = tuple(
-        (label, sum(_delta(key, year) for year in years))
+        (label, round(sum(t_delta(key, year) for year in t_years)))
         for key, label in WHAT_MOVED if key in moving
     )
     columns = tuple((key, label) for key, label in WHAT_MOVED if key in moving)
     return tuple(rows), totals, columns
 
 
+# -- the verdict in words (S-5) ---------------------------------------
+
+
+def _money(value) -> str:
+    return f"\\${abs(value):,.0f}"
+
+
+def where_it_shows_up(totals, limit: int = 3) -> list:
+    """The largest lifetime lines of "what moved" (label, B - A), largest first: where a
+    difference shows up, not what caused it (S-5, decision 8)."""
+    lines = [(label, value) for label, value in totals if abs(value) >= 1]
+    return sorted(lines, key=lambda lv: -abs(lv[1]))[:limit]
+
+
+def verdict_sentence(comparison: Comparison, name_a: str, name_b: str, score_words: str,
+                     objective: str = "maxSpending") -> str:
+    """The lead verdict (R3) as one sentence naming the runs and the amounts (S-5).
+
+    The amounts are the rows' differences in today's dollars: the first number per year under
+    maxSpending, the savings left under maxBequest, and the home at the end. "Too close to
+    call" names the noise rule that makes it so."""
+    rows = comparison.rows
+    spending = objective == "maxSpending"
+    first = rows[0] if spending else next((r for r in rows if r.label == "savings left at the end"), None)
+    home = next((r for r in rows if r.label == "home at the end"), None)
+    verdict = comparison.lead.get("verdict")
+    note = comparison.lead.get("note") or ""
+    if verdict == "not comparable":
+        return f"Not comparable: {note or 'one result has no numbers'}."
+
+    def _first_words(r, more=True):
+        word = "more" if more else "less"
+        if spending:
+            return f"{_money(r.delta)}/yr {word} {score_words}"
+        return f"{_money(r.delta)} {word} savings left at the end"
+
+    if verdict in ("the second result leads", "the first result leads"):
+        winner, sign = (name_b, 1) if verdict == "the second result leads" else (name_a, -1)
+        better = [r for r in (first, home) if r is not None and r.resolved and sign * (r.delta or 0) > 0]
+        parts = [(_first_words(r) if r is first else f"{_money(r.delta)} more home at the end") for r in better]
+        if len(better) == 1:
+            parts.append("as much home at the end or more" if home not in better
+                         else (f"as much {score_words} or more" if spending else "as much savings or more"))
+        return f"*{winner}* comes out ahead: {' and '.join(parts)}."
+    if verdict == "trade-off":
+        if first is None or home is None:
+            return "A trade-off."
+        more_first = name_b if (first.delta or 0) > 0 else name_a
+        more_home = name_b if (home.delta or 0) > 0 else name_a
+        what = f"spends {_money(first.delta)}/yr more" if spending else f"leaves {_money(first.delta)} more savings"
+        return (f"A trade-off: *{more_first}* {what}, *{more_home}* keeps {_money(home.delta)} more home at "
+                "the end (the two are never added together).")
+    # No difference beyond the noise rule.
+    if first is not None and first.verdict == "within noise":
+        why = "the solver's proved gap" if "gap" in (first.note or "") else "1% of the plan"
+        amount = f"{_money(first.delta)}/yr" if spending else _money(first.delta)
+        return f"Too close to call: {amount}, within this method's noise ({why})."
+    return "No difference."
+
+
 # -- the whole screen --------------------------------------------------
 
 
 def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
-            b_exact: Optional[Result] = None) -> Comparison:
-    """The comparison screen's content for two results (design 9.2)."""
+            b_exact: Optional[Result] = None, units: str = "nominal") -> Comparison:
+    """The comparison screen's content for two results (design 9.2); "what moved" in `units`
+    where both results allow it (`what_moved_units`)."""
     rows = (
         difference(score_name(a), score(a), score(b), ta=a, tb=b),
         difference("home at the end", home_at_end(a), home_at_end(b), ta=a, tb=b,
@@ -329,7 +424,8 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
                         "headline numbers measure different things"}
     else:
         lead = lead_verdict(rows, objectives[0])
-    moved_rows, moved_totals, _columns = what_moved(a, b)
+    moved_rows, moved_totals, _columns = what_moved(a, b, units)
+    row_units, total_units = what_moved_units(a, b, units)
     agree = None
     if a_exact is not None and b_exact is not None and a_exact.solved and b_exact.solved:
         # Four distinct results (review P4): a result is never its own companion, and one
@@ -344,6 +440,8 @@ def compare(a: Result, b: Result, *, a_exact: Optional[Result] = None,
         agreement=agree,
         what_moved=moved_rows,
         what_moved_totals=moved_totals,
+        what_moved_units=row_units,
+        what_moved_totals_units=total_units,
     )
 
 
@@ -376,9 +474,10 @@ def default_pair(entries) -> tuple:
     `entries` holds one tuple per result, in the page's order: (run id, parent run id,
     finish time in seconds or None, main) -- `main` true for a solved headline result (not a
     model companion, R2). B is the newest main result; A is the newest main result of B's
-    parent run, else the newest main result of another run, never B itself. (Nothing in the
-    library sets a pinned baseline yet, so there is no pin to prefer.) With fewer than two
-    main results, the first two entries.
+    parent run, else the newest main result of another run, never B itself. With fewer than
+    two main results, the first two entries. With a pinned baseline (S-1) and no parent result,
+    A is the baseline's newest main result (`entries` may carry a fifth item, true for the
+    baseline's results).
     """
     mains = [i for i, e in enumerate(entries) if e[3]]
     if len(mains) < 2:
@@ -392,5 +491,6 @@ def default_pair(entries) -> tuple:
     run_b, parent_b = entries[b][0], entries[b][1]
     of_parent = [i for i in mains if parent_b is not None and entries[i][0] == parent_b]
     others = [i for i in mains if entries[i][0] != run_b]
-    a = newest(of_parent or others or [i for i in mains if i != b])
+    of_baseline = [i for i in others if len(entries[i]) > 4 and entries[i][4]]
+    a = newest(of_parent or of_baseline or others or [i for i in mains if i != b])
     return a, b

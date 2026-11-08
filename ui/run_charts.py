@@ -536,6 +536,18 @@ UNIT_LABELS = {"today": "Today's \\$", "nominal": "Nominal \\$"}
 _NOT_MONEY = {"year", "ages", "deflator"}
 
 
+def units_control(key):
+    """S-4: "Today's $ | Nominal $" for the by-year charts, kept for the session (shared by the
+    Run and Compare pages: `library_units`), today's dollars by default (decision 7)."""
+    import streamlit as st
+
+    current = st.session_state.get("library_units", "today")
+    choice = st.segmented_control("Amounts", list(UNITS), default=current, format_func=UNIT_LABELS.get, key=key)
+    choice = choice or current
+    st.session_state["library_units"] = choice
+    return choice
+
+
 def has_deflator(by_year) -> bool:
     """Whether every row carries its deflator (results solved since S-4)."""
     return bool(by_year) and all(isinstance(row.get("deflator"), (int, float)) and row["deflator"] > 0
@@ -922,4 +934,79 @@ def sankey_figure(year: int, sources: dict, uses: dict, star: bool = False):
                   hovertemplate="%{source.label} → %{target.label}<extra></extra>"),
     ))
     fig.update_layout(height=max(460, 24 * len(labels)), font=dict(size=11))
+    return fig
+
+
+# -- S-5: Compare's side-by-side charts ---------------------------------------------------------
+
+TAXES_AND_PREMIUMS_KEYS = ("federal_income_tax", "ltcg_tax", "niit", "payroll_tax", "state_tax",
+                           "medicare_premiums", "aca_premiums")
+COMPARE_CHARTS = ("Spending", "Liquid net worth", "Taxes and health premiums, cumulative", "MAGI")
+
+
+def _by_calendar_year(by_year, values):
+    return {int(row["year"]): v for row, v in zip(by_year, values, strict=True)}
+
+
+def compare_series(by_year, units: str) -> dict:
+    """{chart: {year: value}} for one result, in `units` (`in_units`; MAGI from the brackets
+    rows comes separately, `magi_series`)."""
+    rows = in_units(by_year, units)
+    running, cumulative = 0.0, []
+    for row in rows:
+        running += sum(float(row.get(k) or 0.0) for k in TAXES_AND_PREMIUMS_KEYS)
+        cumulative.append(running)
+    return {
+        "Spending": _by_calendar_year(rows, [float(r.get("spending") or 0.0) for r in rows]),
+        "Liquid net worth": _by_calendar_year(rows, [float(r.get("liquid_net_worth") or 0.0) for r in rows]),
+        "Taxes and health premiums, cumulative": _by_calendar_year(rows, cumulative),
+    }
+
+
+def magi_series(brackets_years, by_year, units: str) -> tuple:
+    """({year: MAGI}, {year: IRMAA tier 1}, {year: 400% FPL}) from the brackets rows, which are
+    in today's dollars; nominal multiplies by the year's deflator where the result has it."""
+    deflators = {int(r["year"]): float(r["deflator"]) for r in by_year if r.get("deflator")}
+    nominal = units == "nominal" and has_deflator(by_year)
+    magi, irmaa, fpl = {}, {}, {}
+    for row in brackets_years or []:
+        year = int(row["year"])
+        k = deflators.get(year, 1.0) if nominal else 1.0
+        if row.get("magi") is not None:
+            magi[year] = float(row["magi"]) * k
+        tiers = [e for e in row.get("irmaa_edges") or [] if e.get("amount") is not None]
+        if tiers:
+            irmaa[year] = float(min(e["amount"] for e in tiers)) * k
+        lines = [e for e in row.get("aca_lines") or [] if "400%" in str(e.get("label")) and e.get("amount")]
+        if lines:
+            fpl[year] = float(lines[0]["amount"]) * k
+    return magi, irmaa, fpl
+
+
+def magi_units(by_year, units: str) -> str:
+    """The MAGI chart's units: the brackets rows are in today's dollars, so nominal needs the
+    deflator."""
+    return "nominal" if units == "nominal" and has_deflator(by_year) else "today"
+
+
+def compare_figure(chart: str, a: dict, b: dict, names=("A", "B"), diff: bool = False, axis: str = "",
+                   lines_a=(), lines_b=()):
+    """One side-by-side chart: A and B overlaid by calendar year, or B - A (`diff`) over the
+    years both have. `lines_*` are (label, {year: value}) threshold lines drawn under A / B."""
+    fig = go.Figure()
+    years = sorted(set(a) | set(b))
+    if diff:
+        both = [y for y in years if y in a and y in b]
+        fig.add_trace(go.Bar(x=both, y=[b[y] - a[y] for y in both], name=f"{names[1]} - {names[0]}"))
+    else:
+        for series, name, dash in ((a, names[0], "solid"), (b, names[1], "dash")):
+            fig.add_trace(go.Scatter(x=years, y=[series.get(y) for y in years], name=name,
+                                     line=dict(width=2.5, dash=dash)))
+        for lines, dash in ((lines_a, "dot"), (lines_b, "dashdot")):
+            for label, values in lines:
+                if values:
+                    fig.add_trace(go.Scatter(x=years, y=[values.get(y) for y in years], name=label,
+                                             line=dict(width=1, dash=dash, shape="hv",
+                                                       color=_IRMAA if "IRMAA" in label else _ACA)))
+    fig.update_layout(yaxis_title=axis, xaxis_title="Year", height=340, title=chart)
     return fig

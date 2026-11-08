@@ -678,6 +678,21 @@ class TestComparePage:
         at = _page("Compare.py")
         assert at.dataframe, "the 'what moved' table did not render"
 
+    def test_the_verdict_in_words_and_where_it_shows_up(self, library):
+        """Ergonomics review S-5: a sentence naming the runs and the amounts, where the difference
+        shows up, the inputs that differ apart, the side-by-side tabs; no "driven by"."""
+        at = _page("Compare.py")
+        assert not at.exception, [e.value for e in at.exception]
+        text = _text(at)
+        assert ("A trade-off: *bill later* spends \\$2,000/yr more, *bill* keeps \\$30,000 more home at "
+                "the end") in text
+        assert "**Where the difference shows up** (lifetime, B - A, nominal \\$)" in text  # older results
+        assert "**Inputs that differ:**" in text and "case_name" in text
+        assert "driven by" not in text.lower()
+        assert [t.label for t in at.tabs][:4] == ["Spending", "Liquid net worth",
+                                                  "Taxes and health premiums, cumulative", "MAGI"]
+        assert "A new solve can show today's dollars" in text
+
     def test_the_default_pair_is_the_newest_result_against_its_parent(self, library):
         """UX review Q4: B the newest main result, A its parent run's (not the newest other run)."""
         scenario = import_case(BILL)

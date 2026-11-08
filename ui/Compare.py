@@ -29,6 +29,7 @@ import streamlit as st
 
 import libraryjobs
 import librarypresets
+import run_charts
 import sskeys as kz
 from owlplanner.library import compare as C
 from owlplanner.library import results as R
@@ -82,9 +83,11 @@ labels = [label for label, _, _, _ in catalog]
 # The default pair (UX review Q4): B the newest main solve, A the newest main solve of B's
 # parent run (what B was edited from), else of another run. A run's model companion -- the
 # exact LP, or the tornado's Medicare model, review AJ1 -- is a check, not a headline (R2).
+_baseline = lib.baseline()  # S-1: A defaults to the pinned baseline when B has no parent result
 a_idx, b_idx = C.default_pair([
     (run.id, run.parent, R.stamp_seconds((record.get("solve_date") or {}).get("finished")),
-     record.get("status") == "solved" and view.record_companion(record) is None)
+     record.get("status") == "solved" and view.record_companion(record) is None,
+     _baseline is not None and run.id == _baseline.id)
     for _label, run, _job, record in catalog])
 col1, col2 = st.columns(2)
 a_label = col1.selectbox("Result A (the reference)", labels, key="cmp_a", index=a_idx)
@@ -101,21 +104,49 @@ if not (a.solved and b.solved):
                f"A is {a.record.get('status') or 'unsolved'}, B is {b.record.get('status') or 'unsolved'}.")
     st.stop()
 
-# -- inputs (design 9.2) ----------------------------------------------
-
-st.markdown("#### Inputs")
+units = run_charts.units_control("cmp_units")
+comparison = C.compare(a, b,
+                       a_exact=_companion(run_a, exclude={job_a.id, job_b.id}, near=a),
+                       b_exact=_companion(run_b, exclude={job_a.id, job_b.id}, near=b),
+                       units=units)
 if run_a.id == run_b.id:
-    st.caption("The same run, solved twice: no input changes.")
+    changes = []
 else:
     try:
         changes = diff_summaries(lib.scenario(run_a), lib.scenario(run_b))
     except Exception as exc:  # noqa: BLE001 - a damaged scenario is shown, not raised
         changes = [f"(cannot read one of the scenarios: {exc})"]
-    if changes:
+
+# -- the verdict in words (S-5) -----------------------------------------
+# The lead verdict (R3) as a sentence with the runs' names and the amounts; under it where
+# the difference shows up (the largest lifetime lines of "what moved") and, apart, the inputs
+# that differ. No "driven by": in an optimized plan taxes, conversions and spending move
+# together, and "what moved" says where a difference shows up, not what caused it (decision 8).
+_objective = C.objective_of(a)
+_name_a = run_a.name if run_a.id != run_b.id else f"{run_a.name} ({job_a.id})"
+_name_b = run_b.name if run_a.id != run_b.id else f"{run_b.name} ({job_b.id})"
+st.info(C.verdict_sentence(comparison, _name_a, _name_b, view.score_name(a), _objective),
+        icon=":material/balance:")
+_where = C.where_it_shows_up(comparison.what_moved_totals)
+if _where:
+    _tot_units = "today's \\$" if comparison.what_moved_totals_units == "today" else "nominal \\$"
+    st.markdown("**Where the difference shows up** (lifetime, B - A, " + _tot_units + "): "
+                + "; ".join(f"{label.lower()} {value:+,.0f}" for label, value in _where) + ".")
+if run_a.id == run_b.id:
+    st.markdown("**Inputs that differ:** none (the same run, solved twice).")
+elif changes:
+    st.markdown("**Inputs that differ:** " + "; ".join(changes[:4]) + ("; ..." if len(changes) > 4 else ""))
+else:
+    st.markdown("**Inputs that differ:** none (identical inputs).")
+for flag in comparison.flags:
+    st.warning(flag, icon=":material/flag:")
+
+# -- inputs (design 9.2) ----------------------------------------------
+
+if len(changes) > 4:
+    with st.expander(f"All {len(changes)} input changes"):
         for change in changes:
             st.markdown(f"- {change}")
-    else:
-        st.caption("Identical inputs.")
 
 # -- outputs (design 9.2, R2, R3) -------------------------------------
 
@@ -126,9 +157,6 @@ header = st.columns([3, 2, 2, 2, 3])
 for cell, text in zip(header, ("number", "A", "B", "difference", "reading"), strict=True):
     cell.markdown(f"**{text}**")
 
-comparison = C.compare(a, b,
-                       a_exact=_companion(run_a, exclude={job_a.id, job_b.id}, near=a),
-                       b_exact=_companion(run_b, exclude={job_a.id, job_b.id}, near=b))
 for row in comparison.rows:
     cells = st.columns([3, 2, 2, 2, 3])
     cells[0].markdown(f"**{row.label}**")
@@ -141,41 +169,86 @@ for row in comparison.rows:
         reading += f"  \n{row.note}"
     cells[4].markdown(reading)
 
-verdict = comparison.lead["verdict"]
-st.markdown(f"### {verdict}")
-if comparison.lead.get("note"):
-    st.caption(comparison.lead["note"])
-
-for flag in comparison.flags:
-    st.warning(flag, icon=":material/flag:")
-
-# -- the exact model's agreement check (R2) ---------------------------
+# -- how sure is this? (R2, the agreement check) -------------------------
 
 agree = comparison.agreement
-if agree:
-    st.markdown("#### The exact model, as a check")
+with st.expander("How sure is this?"):
+    st.markdown(f"The rule's reading: **{comparison.lead['verdict']}**"
+                + (f" ({comparison.lead['note']})." if comparison.lead.get("note") else "."))
     st.caption(
-        "The pair as selected and under the exact model (the loop with Medicare "
-        "off, SS taxability 0.85 and capital gains priced exactly: a different model, so only "
-        "its differences compare). A difference counts when both models give it the same sign "
-        "and it is larger than their spread plus the error bars of unsettled loops."
+        "Noise rule: a proved plan (branch-and-bound) is judged by its reported gap x "
+        "objective; a loop or local-search solve has no gap, so a difference under 1% of the "
+        "reference is unresolved (grey, ~) -- the loop settling on another fixed point can make "
+        "it, with either sign -- and at or above 1% it counts. When in doubt, run both again "
+        "today with the *Careful* preset."
     )
-    st.markdown(
-        f"- difference in the selected pair: **{_signed(agree['delta_pair'])}**\n"
-        f"- difference under the exact model: **{_signed(agree['delta_exact'])}**\n"
-        f"- spread between the two: {_number(agree['spread'])}; "
-        f"error bars: {_number(agree['error_bars'])}\n"
-        f"- reading: **{agree['verdict']}**"
-    )
-    if agree.get("note"):
-        st.caption(agree["note"])
-elif a.solved and b.solved:
-    st.caption("No exact-model companion on both sides: the agreement check needs an exact "
-               "result of its own for each run (solve both with the *Careful* preset).")
+    if agree:
+        _v = agree["verdict"]
+        _says = ("a second method agrees" if _v.startswith("resolved")
+                 else "a second method disagrees" if "disagree" in _v
+                 else "a second method does not settle it")
+        st.markdown(f"**The exact model, as a check:** {_says}.")
+        st.caption(
+            "The pair as selected and under the exact model (the loop with Medicare "
+            "off, SS taxability 0.85 and capital gains priced exactly: a different model, so only "
+            "its differences compare). A difference counts when both models give it the same sign "
+            "and it is larger than their spread plus the error bars of unsettled loops."
+        )
+        st.markdown(
+            f"- difference in the selected pair: **{_signed(agree['delta_pair'])}**\n"
+            f"- difference under the exact model: **{_signed(agree['delta_exact'])}**\n"
+            f"- spread between the two: {_number(agree['spread'])}; "
+            f"error bars: {_number(agree['error_bars'])}\n"
+            f"- reading: **{agree['verdict']}**"
+        )
+        if agree.get("note"):
+            st.caption(agree["note"])
+    else:
+        st.caption("No exact-model companion on both sides: the agreement check needs an exact "
+                   "result of its own for each run (solve both with the *Careful* preset).")
+
+# -- side by side (S-5) -------------------------------------------------
+
+st.markdown("#### Side by side")
+_rows_a = a.plan.get("by_year") or []
+_rows_b = b.plan.get("by_year") or []
+if _rows_a and _rows_b:
+    _diff = st.toggle("Show the difference (B - A)", key="cmp_diff")
+    if units == "today" and not (run_charts.has_deflator(_rows_a) and run_charts.has_deflator(_rows_b)):
+        st.caption("One result was solved before the charts could show today's dollars: both are drawn in "
+                   "nominal dollars. A new solve can show today's dollars.")
+        _units = "nominal"
+    else:
+        _units = units
+    _sa, _sb = run_charts.compare_series(_rows_a, _units), run_charts.compare_series(_rows_b, _units)
+    # MAGI comes from the brackets rows (today's dollars): nominal only when both carry the deflator.
+    _mu = "nominal" if all(run_charts.magi_units(r, _units) == "nominal" for r in (_rows_a, _rows_b)) else "today"
+    _ma = run_charts.magi_series((a.plan.get("brackets") or {}).get("years"), _rows_a, _mu)
+    _mb = run_charts.magi_series((b.plan.get("brackets") or {}).get("years"), _rows_b, _mu)
+    _tabs = st.tabs(list(run_charts.COMPARE_CHARTS))
+    for _tab, _chart in zip(_tabs, run_charts.COMPARE_CHARTS, strict=True):
+        with _tab:
+            if _chart == "MAGI":
+                if not (_ma[0] and _mb[0]):
+                    st.caption("MAGI by year needs both results' conversion and bracket view (a newer solve).")
+                    continue
+                _fig = run_charts.compare_figure(
+                    _chart, _ma[0], _mb[0], ("A", "B"), _diff,
+                    run_charts.TODAY_PER_YEAR if _mu == "today" else run_charts.NOMINAL_PER_YEAR,
+                    lines_a=(("A: IRMAA tier 1", _ma[1]), ("A: 400% FPL", _ma[2])),
+                    lines_b=(("B: IRMAA tier 1", _mb[1]), ("B: 400% FPL", _mb[2])))
+            else:
+                _per_year = _chart == "Spending"
+                _axis = (run_charts.axis_title(_rows_a, _units, per_year=_per_year))
+                _fig = run_charts.compare_figure(_chart, _sa[_chart], _sb[_chart], ("A", "B"), _diff, _axis)
+            st.plotly_chart(_fig, width="stretch")
+    st.caption(f"A = *{run_a.name}*, B = *{run_b.name}*, matched by calendar year.")
 
 # -- what moved (design 9.2) ------------------------------------------
 
-st.markdown("#### What moved (nominal \\$)")
+_row_units = "today's \\$" if comparison.what_moved_units == "today" else "nominal \\$"
+_tot_units = "today's \\$" if comparison.what_moved_totals_units == "today" else "nominal \\$"
+st.markdown(f"#### What moved ({_row_units})")
 if comparison.what_moved:
     labels_by_key = dict(C.WHAT_MOVED)
     keys = list(comparison.what_moved[0]["changes"])
@@ -184,21 +257,15 @@ if comparison.what_moved:
           **{labels_by_key[key]: row["changes"][key] for key in keys}}
          for row in comparison.what_moved]
     )
-    totals = {"year": "lifetime"}
+    # The lifetime row sums years, so it is in today's dollars whenever both results allow it
+    # (S-5: a sum of nominal dollars of different years was a defect).
+    totals = {"year": f"lifetime ({_tot_units.replace(chr(92), '')})"}
     totals.update(dict(comparison.what_moved_totals))
     st.dataframe(pd.concat([frame, pd.DataFrame([totals])], ignore_index=True),
                  width="stretch", hide_index=True,
                  column_config={label: st.column_config.NumberColumn(format="localized")
                                 for label in labels_by_key.values()})
-    st.caption("Year-by-year differences (B - A), nominal dollars. This is why one result "
-               "leads, not only that it leads.")
+    st.caption(f"Year-by-year differences (B - A), {_row_units}; the lifetime row in {_tot_units}. Where "
+               "a difference shows up, not what caused it: in an optimized plan these move together.")
 else:
     st.caption("Nothing moved by more than a dollar in any year.")
-
-st.caption(
-    "Noise rule: a proved plan (branch-and-bound) is judged by its reported gap x "
-    "objective; a loop or local-search solve has no gap, so a difference under 1% of the "
-    "reference is unresolved (grey, ~) -- the loop settling on another fixed point can make "
-    "it, with either sign -- and at or above 1% it counts. When in doubt, run both again "
-    "today with the *Careful* preset."
-)

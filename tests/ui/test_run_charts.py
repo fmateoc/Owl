@@ -545,3 +545,39 @@ class TestUnitsSplitAndMarkers:
         fig = rc.income_sources_figure(rows, {1: 750_000.0}, "today")
         note = next(a.text for a in fig.layout.annotations if "purchase" in a.text)
         assert "600,000" in note  # 750,000 nominal / 1.25
+
+
+class TestCompareCharts:
+    """S-5: Compare's side-by-side charts, matched by calendar year, in the selected units."""
+
+    A = [{"year": y, "deflator": 1.0 + 0.5 * (y - 2026), "spending": 100_000 * (1.0 + 0.5 * (y - 2026)),
+          "liquid_net_worth": 1e6, "federal_income_tax": 10_000, "state_tax": 2_000, "medicare_premiums": 1_000}
+         for y in (2026, 2027, 2028)]
+    B = [{"year": y, "deflator": 1.0 + 0.5 * (y - 2026), "spending": 90_000 * (1.0 + 0.5 * (y - 2026)),
+          "liquid_net_worth": 9e5, "federal_income_tax": 10_000, "state_tax": 2_000, "medicare_premiums": 0}
+         for y in (2027, 2028, 2029)]  # a later plan year
+
+    def test_series_by_calendar_year_in_units(self, rc):
+        a, b = rc.compare_series(self.A, "today"), rc.compare_series(self.B, "today")
+        assert a["Spending"] == {2026: 100_000, 2027: 100_000, 2028: 100_000}
+        assert b["Spending"][2027] == pytest.approx(90_000)
+        assert rc.compare_series(self.A, "nominal")["Spending"][2028] == 200_000
+        assert a["Taxes and health premiums, cumulative"][2026] == 13_000
+
+    def test_the_difference_is_over_the_common_years(self, rc):
+        a, b = rc.compare_series(self.A, "today"), rc.compare_series(self.B, "today")
+        fig = rc.compare_figure("Spending", a["Spending"], b["Spending"], diff=True)
+        assert list(fig.data[0].x) == [2027, 2028]
+        assert list(fig.data[0].y) == pytest.approx([-10_000, -10_000])
+        overlay = rc.compare_figure("Spending", a["Spending"], b["Spending"])
+        assert list(overlay.data[0].x) == [2026, 2027, 2028, 2029]
+        assert overlay.data[0].y[3] is None and overlay.data[1].y[0] is None
+
+    def test_magi_and_its_lines_from_the_brackets_rows(self, rc):
+        years = [{"year": 2027, "magi": 100_000, "irmaa_edges": [{"label": "IRMAA tier 1", "amount": 218_000},
+                                                                  {"label": "IRMAA tier 2", "amount": 274_000}],
+                  "aca_lines": [{"label": "400% FPL (the subsidy cliff)", "amount": 84_600}]}]
+        magi, irmaa, fpl = rc.magi_series(years, self.A, "today")
+        assert magi == {2027: 100_000} and irmaa == {2027: 218_000} and fpl == {2027: 84_600}
+        magi, _irmaa, _fpl = rc.magi_series(years, self.A, "nominal")
+        assert magi == {2027: 150_000}  # today's dollars x the year's deflator

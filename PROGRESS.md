@@ -7928,7 +7928,7 @@ uv/setup-uv bump and dependency updates. Merge commit on `claude/peaceful-tesla-
   fork adaptation). `test_run_options_year_bounds.py` rewritten for the new bound.
 - **Checks:** flake8/ruff only upstream's known lines (ruff's B905 at `ui/Run_Options.py:367`
   now). Full suite **4633 passed, 1 skipped** (9:57, Linux, `-n 4`).
-- **Not filed / not checked:** the user reports six issues #245-#250, all fixed, and one draft
-  withheld; upstream's changelog names #245-#248 and #250, not #249. Which draft was withheld
-  (`issue-balance-units.md` is the one whose status is unchanged) is the user's to say.
+- **#249** (`issue-balance-units.md`, the \$k balance trap): filed by the user and closed by
+  the user before the maintainer answered, after his #245 reply (user, 2026-11-08). The fork
+  keeps its \$20M warning on Account Balances.
 

@@ -458,7 +458,8 @@ st.markdown(f"## {run.name}")
 _draft = st.session_state.get(f"scn_draft_{run.id}") or {}
 if _draft.get("changes"):
     _d1, _d2 = st.columns([4, 1])
-    _d1.info("The Scenario page has unsaved changes for this run: " + "; ".join(_draft["changes"][:3])
+    _d1.info("The Scenario page has unsaved changes for this run: "
+             + libraryjobs.plain("; ".join(_draft["changes"][:3]))
              + ("; ..." if len(_draft["changes"]) > 3 else ""), icon=":material/edit_note:")
     if _d2.button("Back to the Scenario page", key="run_page_to_draft"):
         st.session_state["library_selected_run"] = run.id
@@ -471,7 +472,7 @@ if run.parent:
         parent = lib.get(run.parent).name
     except Exception:  # noqa: BLE001 - a deleted parent shows as deleted (section 7)
         parent = "a deleted run"
-    st.markdown(f"From **{parent}**: {'; '.join(run.change_summary) or 'same inputs'}")
+    st.markdown(f"From **{parent}**: {libraryjobs.plain('; '.join(run.change_summary)) or 'same inputs'}")
 if run.notes:
     st.markdown(run.notes)
 

@@ -891,7 +891,7 @@ try:
 except ScenarioError:
     current = scenario
 changes = diff_summaries(current, edited) if built is not None else []
-st.caption("Changes against this run: " + ("; ".join(changes) if changes else "none yet"))
+st.caption("Changes against this run: " + (libraryjobs.plain("; ".join(changes)) if changes else "none yet"))
 new_draft["changes"] = list(changes)
 st.session_state[_DRAFT_KEY] = new_draft
 
@@ -905,7 +905,7 @@ def _reset():
 if changes or built is None:
     with banner:
         if changes:
-            st.warning(f"Unsaved changes against *{run.name}*: " + "; ".join(changes),
+            st.warning(f"Unsaved changes against *{run.name}*: " + libraryjobs.plain("; ".join(changes)),
                        icon=":material/edit_note:")
         else:
             st.warning(f"The events on this page cannot be built yet (see below); *{run.name}* itself is "

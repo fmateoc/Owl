@@ -201,10 +201,10 @@ for run in runs:
         line += f"  \n`{run.folder_name}` · plan year {run.plan_year}"
     if run.parent:
         parent = _run_name(run.parent) or "a deleted run"
-        changes = "; ".join(run.change_summary[:2]) if run.change_summary else "same inputs"
+        changes = libraryjobs.plain("; ".join(run.change_summary[:2])) if run.change_summary else "same inputs"
         line += f"  \nfrom *{parent}*: {changes}"
     elif run.change_summary:
-        line += f"  \n{'; '.join(run.change_summary[:2])}"
+        line += f"  \n{libraryjobs.plain('; '.join(run.change_summary[:2]))}"
     if run.notes:
         line += f"  \n{run.notes}"
     if run.tags:

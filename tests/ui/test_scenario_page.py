@@ -191,7 +191,8 @@ class TestSecondReview:
         price = next(n for n in at.number_input if n.label.startswith("Price"))
         price.set_value(800000.0)
         at.run()
-        assert "condo at 700000 (today's $) in 2027, cash -> condo at 800000 (today's $)" in _text(at)
+        # Each "$" escaped (S-2's re-drive: two of them started LaTeX math in the browser).
+        assert "condo at 700000 (today's \\$) in 2027, cash -> condo at 800000 (today's \\$)" in _text(at)
         save = next(b for b in at.button if b.label == "Save as a new run")
         save.set_value(True)
         at.run()

@@ -131,11 +131,12 @@ _where = C.where_it_shows_up(comparison.what_moved_totals)
 if _where:
     _tot_units = "today's \\$" if comparison.what_moved_totals_units == "today" else "nominal \\$"
     st.markdown("**Where the difference shows up** (lifetime, B - A, " + _tot_units + "): "
-                + "; ".join(f"{label.lower()} {value:+,.0f}" for label, value in _where) + ".")
+                + "; ".join(f"{label} {value:+,.0f}" for label, value in _where) + ".")
 if run_a.id == run_b.id:
     st.markdown("**Inputs that differ:** none (the same run, solved twice).")
 elif changes:
-    st.markdown("**Inputs that differ:** " + "; ".join(changes[:4]) + ("; ..." if len(changes) > 4 else ""))
+    st.markdown("**Inputs that differ:** " + libraryjobs.plain("; ".join(changes[:4]))
+                + ("; ..." if len(changes) > 4 else ""))
 else:
     st.markdown("**Inputs that differ:** none (identical inputs).")
 for flag in comparison.flags:
@@ -146,7 +147,7 @@ for flag in comparison.flags:
 if len(changes) > 4:
     with st.expander(f"All {len(changes)} input changes"):
         for change in changes:
-            st.markdown(f"- {change}")
+            st.markdown(f"- {libraryjobs.plain(change)}")
 
 # -- outputs (design 9.2, R2, R3) -------------------------------------
 

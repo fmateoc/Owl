@@ -63,3 +63,16 @@ def _offenders():
 
 def test_no_label_has_two_unescaped_dollars():
     assert _offenders() == []
+
+
+def test_change_summaries_are_escaped_for_markdown(monkeypatch):
+    """Ergonomics review S-2's re-drive: a change summary holds "(today's $)" twice, and two
+    `$` in one Markdown element start LaTeX math, which swallowed the text between them."""
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "ui"))
+    import libraryjobs
+
+    text = "condo at 700000 (today's $) in 2027 -> condo at 800000 (today's $)"
+    assert libraryjobs.plain(text) == text.replace("$", "\\$")
+    assert libraryjobs.plain(libraryjobs.plain(text)) == libraryjobs.plain(text)  # idempotent

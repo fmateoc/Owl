@@ -42,6 +42,13 @@ _FLASH_KEY = "library_flash"
 _FLASH_KINDS = ("error", "warning", "info", "success", "caption")
 
 
+def plain(text) -> str:
+    """Plain text (a change summary, a run's name) for a Markdown element: each `$` escaped, so
+    that two of them ("700000 (today's $) ... (today's $)") do not start LaTeX math, which
+    swallowed the text between them in the browser (ergonomics review S-2's re-drive)."""
+    return str(text).replace("\\$", "$").replace("$", "\\$")
+
+
 def flash(kind: str, text: str) -> None:
     """Queue one message for the next render of the page (`show_flashes`)."""
     if kind not in _FLASH_KINDS:

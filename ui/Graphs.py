@@ -57,10 +57,12 @@ else:
 
     with col3:
         if kz.library_mode():
-            # Fork (S-6): Re-run is a background solve of a saved run in library mode.
-            import background_solve
+            # Fork (S-6): Re-run is a background solve of a saved run in library mode (the
+            # notice above already offers it while the case is modified).
+            if not kz.caseIsRunReady():
+                import background_solve
 
-            background_solve.button("graphs_rerun")
+                background_solve.button("graphs_rerun")
         else:
             helpmsg = "Re-run the case, or generate a new set of stochastic rates."
             st.button(

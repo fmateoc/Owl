@@ -76,6 +76,20 @@ def test_the_roth_window_defaults_stay_inside_the_plan(monkeypatch):
     assert dic["stopRothConversions"] == min(date.today().year + 10, end)
 
 
+def test_the_stop_year_cannot_precede_the_start_year(monkeypatch):
+    thisyear = date.today().year
+    at, dic, _ = _render(monkeypatch, caseStatus="solved", startRothConversions=thisyear + 6,
+                         stopRothConversionsEnabled=True, stopRothConversions=thisyear + 2)
+    assert not at.exception, [str(e.value) for e in at.exception]
+    stop = next(w for w in at.number_input if w.label.startswith("Year to stop"))
+    assert stop.min == thisyear + 6
+    assert dic["stopRothConversions"] == thisyear + 6 == stop.value
+    said = "\n".join(c.value for c in at.caption)
+    assert (f"Year to stop considering Roth conversions: {thisyear + 2} is before the start year, "
+            f"{thisyear + 6}; shown as {thisyear + 6}") in said
+    assert dic["caseStatus"] == "modified"
+
+
 def _toggle(at):
     return next(t for t in at.toggle if t.label == "Marketplace coverage from the plan start")
 

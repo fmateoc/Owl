@@ -675,7 +675,10 @@ def year_summary(year: int, sources: dict, uses: dict, star: bool = False) -> st
         else:
             text.append(f"All of it comes from savings: {_parts(s['savings'])}.")
     elif income:
-        text.append(f"All of it comes from income: {_parts(s['income'])}.")
+        if s["conversions"] or s["tax_offsets"]:  # not "all of it": the rest is named below
+            text.append(f"The money comes from income, {_usd(income)} ({_parts(s['income'])}).")
+        else:
+            text.append(f"All of it comes from income: {_parts(s['income'])}.")
     taxes = dict(u["taxes"])
     taxes.setdefault("Federal income tax", 0.0)  # "federal income tax $0" is worth saying
     refunds = s["tax_offsets"]

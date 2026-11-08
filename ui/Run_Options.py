@@ -41,11 +41,11 @@ def _onSSAgesChange(names):
     kz.setCaseKey("ssAgesMode", _ssAgesMode(names, selected))
 
 
-def _moved_text(label, old, new, low, high):
+def _moved_text(label, old, new, low, high, low_name="the plan's first year"):
     """A clamped year in words (review AN2): "Year to stop considering Roth conversions: 2500
     is past the plan's last year, 2053; shown as 2053"."""
     where = (f"past the plan's last year, {high}" if old > high
-             else f"before the plan's first year, {low}")
+             else f"before {low_name}, {low}")
     return f"{label}: {old} is {where}; shown as {new}"
 
 
@@ -61,16 +61,16 @@ def _onAcaFromStart():
     st.session_state[kz.genCaseKey("acaStartYear")] = year
 
 
-def _bound_year(key, low, high):
+def _bound_year(key, low, high, neutral_low=True):
     """Clamp a stored year field into [low, high] (UX remediation QW-8's input bounds).
 
     Streamlit silently shows the bound instead of a stored value outside it, so the case keeps
     what the field shows. Moving a value is never silent (review AM3): the page names every
-    move. A move **up** to the lower bound is the neutral one -- a year before the plan's first
-    year means "from its first year" (what `sanitize_config` does at load) -- so the case keeps
-    its status. A move **down** to the upper bound changes what the input means (a year past
-    the plan can no longer say "never"), so the case is flagged modified: its results are
-    stale. Returns the old value when one moved, else None.
+    move. A move **up** to the plan's first year is the neutral one -- a year before the
+    plan's first year means "from its first year" (what `sanitize_config` does at load) -- so
+    the case keeps its status. A move **down** to the upper bound (or up to a later start year)
+    changes what the input means, so the case is flagged modified: its results are stale.
+    Returns the old value when one moved, else None.
     """
     value = kz.getCaseKey(key)
     if value is None:
@@ -82,10 +82,11 @@ def _bound_year(key, low, high):
     if low <= year <= high:
         return None
     moved = min(max(year, low), high)
-    if year > high:
+    if year > high or not neutral_low:
         kz.setCaseKey(key, moved)  # flags "modified": the meaning changed
     else:
         kz.storeCaseKey(key, moved)  # neutral (before the plan's first year = from it)
+    st.session_state[kz.genCaseKey(key)] = moved
     return year
 
 
@@ -128,9 +129,12 @@ else:
                          ("acaStartYear", "ACA start year")):
         if _key == "acaStartYear" and kz.getCaseKey(_key) in (0, None):
             continue
-        _old = _bound_year(_key, thisyear, plan_end)
+        _by_start = _key == "stopRothConversions" and kz.getCaseKey("stopRothConversionsEnabled")
+        _low = int(kz.getCaseKey("startRothConversions") or thisyear) if _by_start else thisyear
+        _old = _bound_year(_key, _low, plan_end, neutral_low=_low <= thisyear)
         if _old is not None:
-            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), thisyear, plan_end))
+            _low_name = "the start year" if _low > thisyear else "the plan's first year"
+            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), _low, plan_end, _low_name))
     if _moved:
         st.caption("; ".join(_moved) + ".")
     st.markdown("#### :orange[Roth Conversions]")
@@ -165,11 +169,12 @@ else:
         )
         ret = kz.getToggle("Stop Roth conversions mid-plan", "stopRothConversionsEnabled", help=helpmsg)
         if kz.getCaseKey("stopRothConversionsEnabled"):
-            kz.initCaseKey("stopRothConversions", min(thisyear + 10, plan_end))
+            _start = int(kz.getCaseKey("startRothConversions") or thisyear)
+            kz.initCaseKey("stopRothConversions", min(max(thisyear + 10, _start), plan_end))
             helpmsg = "No Roth conversions are performed in this year or later."
             ret = kz.getIntNum(
                 "Year to stop considering Roth conversions", "stopRothConversions",
-                min_value=thisyear, max_value=plan_end, help=helpmsg
+                min_value=_start, max_value=plan_end, help=helpmsg
             )
     with col3:
         if kz.getCaseKey("status") == "married":

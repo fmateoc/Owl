@@ -212,11 +212,15 @@ class TestOneYear:
         assert figures <= nodes
 
     def test_a_refund_bigger_than_the_taxes_is_its_own_clause(self, rc):
-        sources = {"Wages": 10_000.0, "State and local tax, net refund": 4_000.0}
-        uses = {"core": 14_000.0}
+        sources = {"Wages": 10_000.0, "Social Security": 5_000.0, "State and local tax, net refund": 4_000.0}
+        uses = {"core": 19_000.0}
         text = rc.year_summary(2028, sources, uses)
+        assert "All of it comes from income" not in text
+        assert "The money comes from income, \\$15,000 (wages \\$10,000, Social Security \\$5,000)." in text
         assert ("Taxes \\$0: federal income tax \\$0; state and local, a net refund of \\$4,000 "
                 "(a refundable credit is larger than the tax).") in text
+        labels = list(rc.sankey_figure(2028, sources, uses).data[0].node.label)
+        assert "Income: $15,000" in labels
 
     def test_the_sankey_carries_the_amounts_and_the_taxes_total(self, rc):
         fig = rc.sankey_figure(2027, self.SOURCES, self.USES)

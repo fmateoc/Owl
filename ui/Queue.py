@@ -121,6 +121,14 @@ def queue_fragment():
                              help="Re-runs the job in the same results folder (a fresh token)."):
                     manager.run_again(job)
                     st.rerun()
+            elif doc.get("state") == R.DONE and doc.get("run_id"):
+                # Ergonomics review S-6: a finished row opens its run's page (the newest result
+                # shows there). No page switch on completion: several jobs can be queued, and
+                # being pulled off the page being read is worse than one click.
+                if st.button("Open result", key=f"open_{job.id}",
+                             help="The run's page, with its numbers and charts."):
+                    st.session_state["library_selected_run"] = doc["run_id"]
+                    st.switch_page("Run.py")
 
 
 queue_fragment()

@@ -31,7 +31,12 @@ ret = kz.titleBar(":material/stacked_line_chart: Graphs")
 if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
-    if kz.caseIsRunReady():
+    if kz.caseIsRunReady() and kz.library_mode():
+        # Fork (ergonomics review S-6): no foreground solve in library mode; a background one.
+        import background_solve
+
+        background_solve.offer("graphs")
+    elif kz.caseIsRunReady():
         owb.runPlan()
     elif kz.caseHasNotRun():
         st.info("Case definition is not yet complete. Please visit all pages in *Case Setup*.")
@@ -51,13 +56,19 @@ else:
         ret = kz.getRadio("Dollar amounts in plots", choices, "plots", help=helpmsg, callback=owb.setDefaultPlots)
 
     with col3:
-        helpmsg = "Re-run the case, or generate a new set of stochastic rates."
-        st.button(
-            "Re-run",
-            help=helpmsg,
-            on_click=owb.runPlan,
-            disabled=kz.caseIsNotRunReady(),
-        )
+        if kz.library_mode():
+            # Fork (S-6): Re-run is a background solve of a saved run in library mode.
+            import background_solve
+
+            background_solve.button("graphs_rerun")
+        else:
+            helpmsg = "Re-run the case, or generate a new set of stochastic rates."
+            st.button(
+                "Re-run",
+                help=helpmsg,
+                on_click=owb.runPlan,
+                disabled=kz.caseIsNotRunReady(),
+            )
 
     if kz.isCaseUnsolved():
         st.divider()

@@ -122,3 +122,20 @@ def test_job_phase_words():
     assert libraryjobs.job_phase({"state": "running", "step": "solving", "iteration": 3}) == \
         "Solving, loop iteration 3"
     assert libraryjobs.job_phase({"state": "interrupted"}) == "Interrupted"
+
+
+def test_a_finished_row_opens_its_run(library, monkeypatch):
+    """Ergonomics review S-6: "Open result" on a finished row selects the run and goes to Run."""
+    import streamlit as st
+
+    run = library.runs()[0]
+    job = R.JobRecord.create(run.path / "results" / "done", run_id=run.id, run_name=run.name,
+                             preset="quick", options={}, plan_year=2026)
+    job.update(state=R.DONE, finished=R.now_iso())
+    opened = []
+    monkeypatch.setattr(st, "switch_page", lambda page: opened.append(page))
+    at = _page()
+    assert not at.exception, [e.value for e in at.exception]
+    at.button(key=f"open_{job.id}").click().run()
+    assert opened == ["Run.py"]
+    assert at.session_state["library_selected_run"] == run.id

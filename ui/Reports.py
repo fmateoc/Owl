@@ -50,7 +50,12 @@ ret = kz.titleBar(":material/description: Reports")
 if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
-    if kz.caseIsRunReady():
+    if kz.caseIsRunReady() and kz.library_mode():
+        # Fork (ergonomics review S-6): no foreground solve in library mode; a background one.
+        import background_solve
+
+        background_solve.offer("reports")
+    elif kz.caseIsRunReady():
         owb.runPlan()
     elif kz.caseHasNotRun():
         st.info("Case definition is not yet complete. Please visit all pages in *Case Setup*.")

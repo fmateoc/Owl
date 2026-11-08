@@ -101,9 +101,11 @@ def _one_event(scenario: dict, kind: str, dimension: str, person: str = None) ->
         # which no dimension can vary.
         how = {
             "purchase": " An imported case holds its home as workbook rows (Fixed Assets, its "
-                        "loan, the owner's budget lines), not as an event: start from a rent-only "
-                        "run (no home in its workbook) and add the purchase on the Scenario page "
-                        "(\"Edit the scenario\" on the Run page).",
+                        "loan, the owner's budget lines), not as an event: use \"Turn the home rows "
+                        "into a purchase event\" on the Run page (it makes a child run whose events "
+                        "rebuild the same tables, or shows the cells that would differ), then make "
+                        "the variants from that run. A run with no home takes one on the "
+                        "Scenario page (\"Edit the scenario\" on the Run page).",
         }.get(kind, " Add one on the Scenario page (\"Edit the scenario\" on the Run page).")
         raise ScenarioError(
             f"the {dimension!r} dimension needs a {kind} event{who} in the scenario: "

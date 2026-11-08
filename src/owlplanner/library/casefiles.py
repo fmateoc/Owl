@@ -882,3 +882,318 @@ def export_case(scenario: dict, out_dir) -> list:
     case_file.write_text(buf.getvalue(), encoding="utf-8")
     written.append(case_file)
     return written
+
+
+# ---------------------------------------------------------------------------
+# Housing rows into events, on request (ergonomics review S-3)
+# ---------------------------------------------------------------------------
+#
+# An imported case holds its home as hand rows: a Fixed Assets residence, the big-ticket
+# outflow in its year, the owner's Budget lines, maybe a Debts row linked to it by name, and
+# the rent lines before. "Make variants" cannot vary a purchase over a hand home (the builder
+# refuses a second home, B2), so the page offers to turn the rows into `rent` / `purchase` /
+# `care` events -- only when the events rebuild the imported tables cell for cell. Reading a
+# hand-made workbook back into events is a guess at which rows form the pattern; the rebuild
+# check is what makes the guess safe: a wrong guess is refused with the cells that differ, and
+# nothing is saved. Never automatic.
+
+OWNER_LINES = {"property tax": "property tax", "HOA": "maintenance", "condo insurance": "insurance"}
+
+
+def _rows_as_dicts(table: dict) -> list:
+    columns = list((table or {}).get("columns") or [])
+    return [dict(zip(columns, list(row) + [None] * (len(columns) - len(row)), strict=True))
+            for row in (table or {}).get("rows") or []]
+
+
+def _active(row) -> bool:
+    value = row.get("active")
+    return _blank(value) or bool(value)
+
+
+def _int(value, default=0) -> int:
+    return default if _blank(value) else int(float(value))
+
+
+def _snap(value: float, check) -> float:
+    """The shortest decimal of `value` (2 to 6 places) that `check` accepts, else None."""
+    for places in (2, 3, 4, 5, 6):
+        candidate = round(value, places)
+        if check(candidate):
+            return candidate
+    return None
+
+
+def has_housing_rows(scenario: dict) -> bool:
+    """Whether the run holds a hand home a conversion could turn into a purchase event: an
+    active residence in Fixed Assets and no purchase event (the button's condition)."""
+    if any(isinstance(e, dict) and e.get("kind") == "purchase" for e in scenario.get("events") or []):
+        return False
+    rows = _rows_as_dicts((scenario.get("hfp") or {}).get("Fixed Assets"))
+    return any(_active(r) and str(r.get("type") or "").strip().lower() == "residence" for r in rows)
+
+
+def housing_events(scenario: dict) -> dict:
+    """The rent, purchase and care events the run's hand rows look like, with what they replace.
+
+    {"events": [...], "remove": {"Fixed Assets": [names], "Debts": [names], "Budget": [names]},
+    "cells": [(sheet, column, year)], "moves": [index of a case move]} -- or ScenarioError
+    naming why no pattern was found. Nothing is checked here beyond the pattern itself:
+    `convert_housing` rebuilds and compares.
+    """
+    from . import builder
+
+    hfp = scenario.get("hfp") or {}
+    case = scenario.get("case") or {}
+    info = case.get("basic_info") or {}
+    names = list(info.get("names") or [])
+    homes = [r for r in _rows_as_dicts(hfp.get("Fixed Assets"))
+             if _active(r) and str(r.get("type") or "").strip().lower() == "residence"]
+    if not homes:
+        raise ScenarioError("no home in Fixed Assets (an active row of type 'residence')")
+    if len(homes) > 1:
+        raise ScenarioError(f"{len(homes)} homes in Fixed Assets: one purchase event holds one home")
+    home = homes[0]
+    name = str(home.get("name") or "").strip()
+    plan_start = builder._plan_start(case, scenario)
+    year = _int(home.get("year"), plan_start)
+    value = float(home.get("value") or 0.0)
+    if value <= 0:
+        raise ScenarioError(f"the home {name!r} has no value")
+    sale = _int(home.get("yod"), 0)
+    if sale < 0:
+        raise ScenarioError(f"the home {name!r} is sold {sale} years before the plan's end: give a year")
+    table = scenario.get("rates_table")
+    gamma = builder._gamma(case, rates_rows=table["rows"] if table else None)
+    k = year - plan_start
+    if not 0 <= k < len(gamma):
+        raise ScenarioError(f"the home's year {year} is outside the plan")
+
+    def nominal(amount):
+        return round(amount * gamma[k])
+
+    whole = round(value / gamma[k])
+    price = whole if nominal(whole) == round(value) else value / gamma[k]
+
+    # The outflow: the big-ticket cell of the purchase year, on the person who pays.
+    payers = []
+    for person in names:
+        for row in _rows_as_dicts(hfp.get(person)):
+            if _int(row.get("year"), -1) == year and not _blank(row.get("big-ticket items")) \
+                    and float(row["big-ticket items"]) != 0:
+                payers.append((person, float(row["big-ticket items"])))
+    if len(payers) != 1:
+        raise ScenarioError(f"expected one big-ticket outflow in {year} (the purchase), found {len(payers)}")
+    pay_on, outflow = payers[0]
+    if outflow >= 0:
+        raise ScenarioError(f"the big-ticket item of {year} is not an outflow ({outflow:,.0f})")
+
+    debts = [r for r in _rows_as_dicts(hfp.get("Debts")) if _active(r) and str(r.get("property") or "") == name]
+    if len(debts) > 1:
+        raise ScenarioError(f"{len(debts)} loans are linked to {name!r}: one purchase event finances one")
+    if debts:
+        debt = debts[0]
+        if _int(debt.get("year"), plan_start) != year:
+            raise ScenarioError(f"the loan {debt.get('name')!r} does not start in the purchase year {year}")
+        loan = float(debt.get("amount") or 0.0)
+        down = _snap(1.0 - loan / value, lambda d: round(value * (1 - d)) == round(loan))
+        if down is None:
+            raise ScenarioError(f"the loan {loan:,.0f} is no down-payment share of the price {value:,.0f}")
+        defaults = builder.FINANCING_DEFAULTS["loan"]
+        extras = [defaults["extra"]] + [e / 2000.0 for e in range(0, 101)]  # 0-5% in 0.05% steps
+        terms = None
+        for extra in extras:
+            closing = _snap((-outflow - round(loan) * extra) / value - down,
+                            lambda c, e=extra: -round(value * (down + c) + round(loan) * e) == round(outflow))
+            if closing is not None and closing >= 0:
+                terms = (closing, extra)
+                break
+        if terms is None:
+            raise ScenarioError(f"the outflow {outflow:,.0f} is not the down payment plus closing costs")
+        financing = {"kind": "loan", "term": _int(debt.get("term"), 30), "rate": float(debt.get("rate") or 0.0),
+                     "down": down, "closing": terms[0], "extra": terms[1]}
+        if str(debt.get("name") or "") != f"{name} mortgage":
+            financing["name"] = str(debt.get("name") or "")
+    else:
+        closing = _snap(-outflow / value - 1.0, lambda c: -round(value * (1 + c)) == round(outflow))
+        if closing is None or closing < 0:
+            raise ScenarioError(f"the outflow {outflow:,.0f} is not the price {value:,.0f} plus closing costs")
+        financing = {"kind": "cash", "closing": closing}
+
+    budget = _rows_as_dicts(hfp.get("Budget"))
+    last = (sale - 1) if sale else 0
+    owner = {}
+    for row in budget:
+        line = str(row.get("name") or "")
+        if line in OWNER_LINES and _active(row) and _int(row.get("year"), -1) == year:
+            if _int(row.get("end"), 0) != last:
+                raise ScenarioError(f"the owner's line {line!r} does not end with the home ({last or 'kept'})")
+            owner[line] = float(row.get("amount") or 0.0)
+    if not owner:
+        raise ScenarioError(f"no owner's Budget lines ({', '.join(OWNER_LINES)}) from {year}")
+
+    purchase = {"id": "buy", "kind": "purchase", "name": name, "price": price, "year": year,
+                "pay_on": pay_on, "growth": float(home.get("rate") or 0.0),
+                "commission": float(home.get("commission") or 0.0),
+                "costs": {"property tax": owner.get("property tax", 0.0), "hoa": owner.get("HOA", 0.0),
+                          "insurance": owner.get("condo insurance", 0.0)},
+                "financing": financing}
+    if sale:
+        purchase["sale"] = sale
+    if not _blank(home.get("basis")) and float(home["basis"]) != value:
+        purchase["basis"] = float(home["basis"])
+    moves = list(info.get("moves") or [])
+    at = [i for i, m in enumerate(moves) if isinstance(m, dict) and _int(m.get("year"), -1) == year]
+    if at:
+        move = moves[at[0]]
+        purchase["place"] = {"state": move.get("state") or builder.PLACE_DEFAULTS["state"],
+                             "locality": move.get("locality") or builder.NO_PLACE,
+                             "school_district": move.get("school_district") or builder.NO_PLACE, "move": True}
+    else:
+        purchase["place"] = {"state": info.get("state") or builder.PLACE_DEFAULTS["state"], "locality": "",
+                             "school_district": "", "move": False}
+
+    events = []
+    rents = [r for r in budget if _active(r) and str(r.get("type") or "") == "rent"]
+    if rents:
+        rents.sort(key=lambda r: _int(r.get("year"), plan_start))
+        start = _int(rents[0].get("year"), plan_start)
+        tail = [r for r in rents if str(r.get("name") or "").startswith("rent from ")]
+        ends = [_int(r.get("end"), 0) for r in rents]
+        end = 0 if 0 in ends else max(ends)
+        if tail:
+            flat_until = _int(tail[-1].get("year"), start)
+        elif len(rents) == 1 and _int(rents[0].get("end"), 0) != start:
+            flat_until = start  # one row at its own amount, to its end
+        else:
+            flat_until = max(_int(r.get("year"), start) for r in rents) + 1  # one-year rows only
+        rent = {"id": "rent", "kind": "rent", "monthly": float(rents[0].get("amount") or 0.0) / 12.0,
+                "start": start, "flat_until": flat_until}
+        if end != year - 1:
+            if end == 0:
+                raise ScenarioError("the rent runs to the plan's end while the home is owned")
+            rent["end"] = end
+        events.append(rent)
+    events.append(purchase)
+    cares = [r for r in budget if _active(r) and str(r.get("type") or "") == "care"]
+    for n, row in enumerate(cares):
+        care = {"id": "care" if n == 0 else f"care-{n + 1}", "kind": "care",
+                "name": str(row.get("name") or "care"), "amount": float(row.get("amount") or 0.0),
+                "year": _int(row.get("year"), plan_start), "essential": bool(row.get("essential"))}
+        if _int(row.get("end"), 0):
+            care["end"] = _int(row.get("end"), 0)
+        events.append(care)
+
+    taken = {e.get("id") for e in scenario.get("events") or [] if isinstance(e, dict)}
+    for event in events:
+        base, n = event["id"], 2
+        while event["id"] in taken:
+            event["id"], n = f"{base}-{n}", n + 1
+        taken.add(event["id"])
+    return {
+        "events": events,
+        "remove": {"Fixed Assets": [name], "Debts": [str(d.get("name")) for d in debts],
+                   "Budget": [str(r.get("name")) for r in rents + cares]
+                   + [line for line in OWNER_LINES if line in owner]},
+        "cells": [(pay_on, "big-ticket items", year)],
+        "moves": at[:1],
+    }
+
+
+def _apply_housing(scenario: dict, proposal: dict) -> dict:
+    """The scenario with the proposal's hand rows taken out and its events added."""
+    out = copy.deepcopy(scenario)
+    hfp = out.setdefault("hfp", {})
+    for table, names in proposal["remove"].items():
+        sheet = hfp.get(table) or {}
+        columns = list(sheet.get("columns") or [])
+        if "name" not in columns:
+            continue
+        at = columns.index("name")
+        drop = set(names)
+        sheet["rows"] = [row for row in sheet.get("rows") or [] if not (len(row) > at and row[at] in drop)]
+    for person, column, year in proposal["cells"]:
+        sheet = hfp.get(person) or {}
+        columns = list(sheet.get("columns") or [])
+        for row in sheet.get("rows") or []:
+            if int(row[columns.index("year")]) == year:
+                row[columns.index(column)] = 0
+    info = (out.get("case") or {}).get("basic_info") or {}
+    if proposal["moves"]:
+        moves = [m for i, m in enumerate(info.get("moves") or []) if i not in set(proposal["moves"])]
+        if moves:
+            info["moves"] = moves
+        else:
+            info.pop("moves", None)
+    out["events"] = list(out.get("events") or []) + copy.deepcopy(proposal["events"])
+    return out
+
+
+def _differences(expected, got, where="", out=None, limit=12) -> list:
+    """Leaf differences between two built documents (cells compared as `_same_cell`)."""
+    out = [] if out is None else out
+    if len(out) >= limit:
+        return out
+    if isinstance(expected, dict) and isinstance(got, dict):
+        for key in sorted(set(expected) | set(got), key=str):
+            if key not in got:
+                out.append(f"{where}{key}: missing (was {expected[key]!r})")
+            elif key not in expected:
+                out.append(f"{where}{key}: added ({got[key]!r})")
+            else:
+                _differences(expected[key], got[key], f"{where}{key}.", out, limit)
+    elif isinstance(expected, (list, tuple)) and isinstance(got, (list, tuple)):
+        if len(expected) != len(got):
+            out.append(f"{where[:-1]}: {len(expected)} entries != {len(got)}")
+        else:
+            for i, (a, b) in enumerate(zip(expected, got, strict=True)):
+                _differences(a, b, f"{where}{i}.", out, limit)
+    elif not _same_cell(expected, got):
+        out.append(f"{where[:-1]}: {expected!r} -> {got!r}")
+    return out
+
+
+def _table_differences(expected: dict, got: dict) -> list:
+    """Cell differences between two sets of tables, named by sheet, row and column."""
+    out = []
+    for sheet in sorted(set(expected) | set(got)):
+        a, b = expected.get(sheet) or {}, got.get(sheet) or {}
+        columns = list(a.get("columns") or b.get("columns") or [])
+        rows_a, rows_b = list(a.get("rows") or []), list(b.get("rows") or [])
+        if list(a.get("columns") or []) != list(b.get("columns") or []):
+            out.append(f"{sheet}: columns differ")
+            continue
+        if len(rows_a) != len(rows_b):
+            out.append(f"{sheet}: {len(rows_a)} rows -> {len(rows_b)}")
+        for i, (ra, rb) in enumerate(zip(rows_a, rows_b, strict=False)):
+            for j, column in enumerate(columns):
+                va = ra[j] if j < len(ra) else None
+                vb = rb[j] if j < len(rb) else None
+                if not _same_cell(va, vb):
+                    label = ra[columns.index("name")] if "name" in columns else ra[columns.index("year")] \
+                        if "year" in columns else i + 1
+                    out.append(f"{sheet}, row {i + 1} ({label}), {column}: {va!r} -> {vb!r}")
+    return out
+
+
+def convert_housing(scenario: dict) -> tuple:
+    """(converted scenario, []) when the run's housing rows turn into events that rebuild its
+    tables and case exactly; (None, differences) otherwise -- the cells that differ, or why no
+    pattern was found. The converted scenario is a new document (the caller saves it as a
+    child run); the original is untouched."""
+    from . import builder
+
+    try:
+        proposal = housing_events(scenario)
+    except ScenarioError as exc:
+        return None, [f"no housing pattern: {exc}"]
+    converted = _apply_housing(scenario, proposal)
+    try:
+        case_a, tables_a, _ = builder.build(scenario)
+        case_b, tables_b, _ = builder.build(converted)
+    except ScenarioError as exc:
+        return None, [f"the events do not build: {exc}"]
+    problems = _table_differences(tables_a, tables_b) + _differences(case_a, case_b, "case.")
+    if problems:
+        return None, problems
+    return converted, []

@@ -35,7 +35,8 @@ import openpyxl
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from owlplanner.library import export_case  # noqa: E402
+from owlplanner.library import export_case, import_case  # noqa: E402
+from owlplanner.library.casefiles import convert_housing  # noqa: E402
 from owlplanner.library import builder  # noqa: E402
 
 BASE_WORKBOOK = "HFP_ari+noa.xlsx"  # the baseline workbook a work variant's edits apply to
@@ -175,7 +176,28 @@ def main():
         print(f"{ok}/{len(scenarios)} scenarios match make_cases.py "
               f"({workbooks} workbooks cell for cell; the work variants against the baseline "
               "plus their edits; case fields and every cell included).")
-        return 1 if failures else 0
+
+        # Ergonomics review S-3: each workbook imported as a hand case (its case file as the
+        # scenario's events generate it, the workbook as make_cases.py wrote it) turns into
+        # rent / purchase / care events that rebuild its tables and case cell for cell.
+        converted = 0
+        conversion_failures = []
+        for entry in scenarios:
+            for workbook in entry.get("workbooks") or []:
+                case_dir = tmp / "imported" / entry["name"]
+                export_case(copy.deepcopy(entry["scenario"]), case_dir)
+                hand = import_case(case_dir / "Case.toml", hfp_path=made / workbook)
+                result, problems = convert_housing(hand)
+                if result is None:
+                    conversion_failures.append(workbook)
+                    print(f"{workbook}: not converted")
+                    for problem in problems[:8]:
+                        print(f"    {problem}")
+                else:
+                    converted += 1
+        print(f"{converted}/{workbooks} imported workbooks convert to events that rebuild them exactly "
+              "(S-3).")
+        return 1 if failures or conversion_failures else 0
 
 
 if __name__ == "__main__":

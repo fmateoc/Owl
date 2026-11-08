@@ -40,8 +40,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-import libraryjobs
 import disclaimer
+import housing_convert
+import libraryjobs
 import librarypresets
 import run_charts
 import sskeys as kz
@@ -473,6 +474,10 @@ if run.parent:
     st.markdown(f"From **{parent}**: {'; '.join(run.change_summary) or 'same inputs'}")
 if run.notes:
     st.markdown(run.notes)
+
+# S-3: an imported run's home rows as events, on request (an exact rebuild or nothing).
+if housing_convert.offered(lib, run):
+    housing_convert.convert_button(lib, run, key=f"run_housing_{run.id}")
 
 if entries:
     # A model companion (the exact LP, or the tornado's Medicare model, review AJ1) is a

@@ -26,6 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import streamlit as st
 
+import housing_convert
 import library_import
 import libraryjobs
 import owlbridge as owb
@@ -247,6 +248,8 @@ for run in runs:
         line += f"  \n{len(jobs)} solve(s), latest: {latest}"
     cols = st.columns([6, 1, 1, 1, 1, 1])
     cols[0].markdown(line)
+    if housing_convert.offered(lib, run):  # S-3
+        housing_convert.convert_button(lib, run, key=f"housing_{run.id}", container=cols[0])
     # S-1: the baseline is the run the app opens on (the Run page, library mode's landing page).
     if _baseline is not None and run.id == _baseline.id:
         if cols[5].button("Baseline ✓", key=f"unpin_{run.id}",

@@ -429,6 +429,15 @@ if not entries:
 # -- header -----------------------------------------------------------
 
 st.markdown(f"## {run.name}")
+# S-2: edits typed on the Scenario page for this run and not saved yet (its session draft).
+_draft = st.session_state.get(f"scn_draft_{run.id}") or {}
+if _draft.get("changes"):
+    _d1, _d2 = st.columns([4, 1])
+    _d1.info("The Scenario page has unsaved changes for this run: " + "; ".join(_draft["changes"][:3])
+             + ("; ..." if len(_draft["changes"]) > 3 else ""), icon=":material/edit_note:")
+    if _d2.button("Back to the Scenario page", key="run_page_to_draft"):
+        st.session_state["library_selected_run"] = run.id
+        st.switch_page("Scenario.py")
 st.caption(f"`{run.folder_name}` · plan year {run.plan_year or '?'} · "
            f"created {run.created[:10]}" + (f" · {', '.join(run.tags)}" if run.tags else ""))
 if run.parent:

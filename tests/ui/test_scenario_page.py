@@ -53,6 +53,20 @@ def _page():
     return at.run()
 
 
+def _key(at, name):
+    """A year picker's widget key stem: `scn_<name>_<run id>` (S-2's picker, ui/year_ref_input.py)."""
+    stem = f"scn_{name}_"
+    return next(b.key for b in at.selectbox if b.key and b.key.startswith(stem) and b.key.endswith("_mode"))[:-5]
+
+
+def _type_year(at, name, text):
+    """Type a year field in its text form through the picker's "Type it" fallback."""
+    stem = _key(at, name)
+    at.selectbox(key=f"{stem}_mode").set_value("text").run()
+    at.text_input(key=f"{stem}_text").set_value(text).run()
+    return at
+
+
 def _text(at):
     parts = [m.value for m in at.markdown]
     parts += [c.value for c in at.caption]
@@ -83,10 +97,14 @@ class TestScenarioPage:
 
     def test_the_events_are_shown_as_anchors(self, library):
         at = _page()
-        year = next(t for t in at.text_input if t.label == "Year")
-        assert year.value == "after:Bill"  # the purchase's year anchor, in its text form
-        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
-        assert care_from.value == "event:buy+20"
+        # The purchase's year anchor and the care span's, in the structured picker (S-2).
+        stem = _key(at, "buy_year")
+        assert at.selectbox(key=f"{stem}_mode").value == "after"
+        assert at.selectbox(key=f"{stem}_person").value == "Bill"
+        stem = _key(at, "care_year")
+        assert at.selectbox(key=f"{stem}_mode").value == "event"
+        assert at.selectbox(key=f"{stem}_event").value == "buy"
+        assert at.number_input(key=f"{stem}_offset").value == 20
 
     def test_a_changed_price_changes_the_summary_and_saves_a_child_run(self, library):
         at = _page()
@@ -124,9 +142,7 @@ class TestScenarioPage:
 
     def test_an_unbuildable_scenario_says_why(self, library):
         at = _page()
-        year = next(t for t in at.text_input if t.label == "Year")
-        year.set_value("event:nope")
-        at.run()
+        _type_year(at, "buy_year", "event:nope")
         text = _text(at)
         assert "Not buildable yet" in text or "Cannot build" in text
 
@@ -193,8 +209,9 @@ class TestSecondReview:
         assert not at.exception, [e.value for e in at.exception]
         text = _text(at)
         assert "Not buildable yet" not in text and "Cannot build" not in text
-        year = next(t for t in at.text_input if t.label == "Year")
-        assert year.value == "2027"  # the year after the plan year (2026 under the frozen date)
+        stem = _key(at, "buy_year")
+        assert at.selectbox(key=f"{stem}_mode").value == "year"
+        assert at.number_input(key=f"{stem}_year").value == 2027  # the plan year (2026, frozen) + 1
 
     def test_x8_a_schema_1_run_shows_no_phantom_change(self, tmp_path, monkeypatch):
         _library_with(tmp_path, monkeypatch, [], schema_version=1)
@@ -213,8 +230,7 @@ class TestSaveButton:
 
     def test_save_is_enabled_while_not_buildable_and_a_click_says_why(self, library):
         at = _page()
-        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
-        care_from.set_value("bogus").run()
+        _type_year(at, "care_year", "bogus")
         assert any("Not buildable yet" in e.value for e in at.error)
         save = next(b for b in at.button if b.label == "Save as a new run")
         assert not save.disabled
@@ -225,10 +241,8 @@ class TestSaveButton:
 
     def test_once_corrected_one_click_saves(self, library):
         at = _page()
-        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
-        care_from.set_value("bogus").run()
-        care_from = next(t for t in at.text_input if t.key.startswith("scn_care_year_"))
-        care_from.set_value("2045")
+        _type_year(at, "care_year", "bogus")
+        at.text_input(key=f"{_key(at, 'care_year')}_text").set_value("2045")
         next(b for b in at.button if b.label == "Save as a new run").click().run()
         assert not at.exception, [e.value for e in at.exception]
         assert len(library.runs()) == 2

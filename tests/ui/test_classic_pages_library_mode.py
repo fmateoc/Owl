@@ -112,3 +112,75 @@ def test_outside_library_mode_the_pages_still_solve(monkeypatch):
     assert calls == ["Graphs.py"]
     assert not any(b.label == "Save as a new run and solve it in the background" for b in at.button)
     assert any(b.label == "Re-run" for b in at.button)
+
+
+def test_ap3_once_queued_the_page_stops_asking_to_save_until_modified_again(library_mode, monkeypatch):
+    """Review AP3: after clicking *Save as a new run and solve it in the background*, the page
+    rendered the 'The case changed since its last solve' box and save button again right under
+    the confirmation flash, and a second click queued a duplicate Careful solve."""
+    import pandas as pd
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    from owlplanner.library import JobManager
+
+    import sskeys as kz
+
+    monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+
+    def save_twice():
+        import background_solve
+
+        background_solve._save_and_queue()
+        background_solve._save_and_queue()
+
+    at = AppTest.from_function(save_twice, default_timeout=120)
+    at.session_state["cases"] = {"t": _modified_case()}
+    at.session_state["currentCase"] = "t"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    # The second call sees the first's waiting jobs and does not queue a second pair.
+    assert [j.doc["preset"] for j in JobManager(library_mode).jobs()] == ["decision", "decision_exact"]
+
+    graphs = AppTest.from_file(str(UI_DIR / "Graphs.py"), default_timeout=120)
+    graphs.session_state["cases"] = at.session_state["cases"]
+    graphs.session_state["currentCase"] = "t"
+    graphs.run()
+    assert not graphs.exception, [e.value for e in graphs.exception]
+    assert not any("The case changed since its last solve" in i.value for i in graphs.info)
+    assert not any(b.label == "Save as a new run and solve it in the background" for b in graphs.button)
+    assert any("Saved as *t* for a background" in i.value for i in graphs.info)
+
+    # Modifying the case again restores the save-and-solve offer.
+    graphs.session_state["cases"]["t"]["summaryDf"] = pd.DataFrame()
+    kz.ss = graphs.session_state
+    kz.flagModified()
+    graphs.run()
+    assert any(b.label == "Save as a new run and solve it in the background" for b in graphs.button)
+
+
+def test_ap4_reports_in_library_mode_hides_rerun_all_cases(library_mode, monkeypatch):
+    """Review AP4: `Reports.py` replaced *Re-run* with the background-solve button in library
+    mode but kept *Rerun all cases* (`owb.runAllCases`, a foreground solve) beside the synopsis."""
+    import pandas as pd
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    import owlbridge
+    import sskeys as kz
+
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+    monkeypatch.setattr(kz, "compareSummaries", lambda: pd.DataFrame({"t": ["1", "2"]}, index=["a", "b"]))
+    monkeypatch.setattr(owlbridge, "saveContributions", lambda: b"x")
+    monkeypatch.setattr(owlbridge, "getCaseString", lambda: io.StringIO("x"))
+    monkeypatch.setattr(owlbridge, "saveWorkbook", lambda: b"x")
+    monkeypatch.setattr(owlbridge, "plotSummaryMetrics", lambda: None)
+    case = _modified_case()
+    case["caseStatus"] = "solved"
+    case["summaryDf"] = pd.DataFrame({"a": [1]})
+    at = AppTest.from_file(str(UI_DIR / "Reports.py"), default_timeout=120)
+    at.session_state["cases"] = {"t": case}
+    at.session_state["currentCase"] = "t"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert not any(b.label == "Rerun all cases" for b in at.button)

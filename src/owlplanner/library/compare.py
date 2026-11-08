@@ -327,6 +327,7 @@ def what_moved(a: Result, b: Result, units: str = "nominal") -> tuple:
         return years, _delta
 
     years, delta = _deltas(row_units)
+    t_years, t_delta = _deltas(total_units)
     moving = [key for key, _ in WHAT_MOVED
               if any(abs(delta(key, year)) > 1 for year in years)]
     rows = []
@@ -334,10 +335,16 @@ def what_moved(a: Result, b: Result, units: str = "nominal") -> tuple:
         changes = {key: round(delta(key, year)) for key in moving}
         if any(changes.values()):
             rows.append({"year": year, "changes": changes})
-    t_years, t_delta = _deltas(total_units)
+    # Review AP2: a column whose lifetime sum in `total_units` (today's dollars) is >= $1
+    # belongs in `what_moved_totals` even when `row_units` is nominal and its nominal amounts
+    # did not move, so "Where the difference shows up" does not change with the chart toggle.
+    totals_keys = set(moving) | {
+        key for key, _ in WHAT_MOVED
+        if abs(round(sum(t_delta(key, year) for year in t_years))) >= 1
+    }
     totals = tuple(
         (label, round(sum(t_delta(key, year) for year in t_years)))
-        for key, label in WHAT_MOVED if key in moving
+        for key, label in WHAT_MOVED if key in totals_keys
     )
     columns = tuple((key, label) for key, label in WHAT_MOVED if key in moving)
     return tuple(rows), totals, columns

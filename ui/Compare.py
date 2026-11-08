@@ -260,8 +260,9 @@ if comparison.what_moved:
     )
     # The lifetime row sums years, so it is in today's dollars whenever both results allow it
     # (S-5: a sum of nominal dollars of different years was a defect).
+    shown = {labels_by_key[key] for key in keys}
     totals = {"year": f"lifetime ({_tot_units.replace(chr(92), '')})"}
-    totals.update(dict(comparison.what_moved_totals))
+    totals.update({k: v for k, v in comparison.what_moved_totals if k in shown})
     st.dataframe(pd.concat([frame, pd.DataFrame([totals])], ignore_index=True),
                  width="stretch", hide_index=True,
                  column_config={label: st.column_config.NumberColumn(format="localized")

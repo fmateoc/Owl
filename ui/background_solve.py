@@ -56,18 +56,31 @@ def _save_and_queue():
         libraryjobs.flash("error", "Not saved: identical inputs already in the library.")
         return
     queued = []
+    failed = False
     from owlplanner.library import preset_solves
+    from owlplanner.library import results as R
 
+    existing = getattr(manager, "jobs", None)
+    live = ({str(j.doc.get("preset")) for j in existing(run)
+             if j.state in (R.WAITING, R.RUNNING)} if callable(existing) else set())
     for solve in preset_solves(PRESET):
+        if solve in live:
+            continue
         try:
             queued.append(manager.enqueue(run, preset=solve).id)
         except Exception as exc:  # noqa: BLE001 - a run from another plan year, say (R1)
             libraryjobs.flash("error", f"Not queued: {exc}")
+            failed = True
             break
     what = f"Saved as *{run.name}*" if result.created else f"Identical to *{run.name}* (not saved again)"
     if queued:
         libraryjobs.flash("info", f"{what}; its {librarypresets.name(PRESET)} solve is queued "
                                   "(the Queue page shows it; the Run page shows the result).")
+    elif not failed:
+        libraryjobs.flash("info", f"{what}; its {librarypresets.name(PRESET)} solve is already in the queue "
+                                  "(the Queue page shows it; the Run page shows the result).")
+    if not failed:
+        kz.storeCaseKey("library_queued_run", run.name)
     library_save.flash_dropped(dropped)
     st.session_state["library_selected_run"] = run.id
 
@@ -83,6 +96,14 @@ def button(page_key: str, primary: bool = False, container=None) -> None:
 
 def offer(page_key: str) -> None:
     """The notice and the button that stand in for the foreground solve (library mode)."""
+    queued_run = kz.getCaseKey("library_queued_run")
+    if queued_run:
+        st.info(f"Saved as *{queued_run}* for a background *Careful* solve (the Queue page shows "
+                "its progress; the Run page shows the result when it finishes).",
+                icon=":material/schedule:")
+        if st.button("Open the Queue", key=f"bg_queue_{page_key}", icon=":material/schedule:"):
+            st.switch_page("Queue.py")
+        return
     st.info("The case changed since its last solve. In the run library it is solved in the background: "
             "save it as a new run and queue its *Careful* solve; this page is not blocked meanwhile.",
             icon=":material/schedule:")

@@ -789,12 +789,15 @@ with st.expander("Goal and conversions", expanded=False):
     _stop_low = max(_start, plan_year)
     _stop_default = min(max(plan_year + 10, _stop_low), _plan_end)
     _stop_shown = _year_shown("roth_stop", _stop0 if _stop0 is not None else _stop_default,
-                              _stop_low, _plan_end, "Roth conversions stop")
+                              max(_start_shown, plan_year), _plan_end, "Roth conversions stop")
+    _stop_key = f"scn_roth_stop_{key}"
+    if isinstance(st.session_state.get(_stop_key), (int, float)) and st.session_state[_stop_key] < _stop_low:
+        st.session_state[_stop_key] = _stop_low
     _stop = int(_keep("roth_stop", k3.number_input(
         "Year to stop considering Roth conversions", value=min(max(int(_seed("roth_stop", _stop_shown)), _stop_low),
                                                                _plan_end),
         step=1, min_value=_stop_low, max_value=_plan_end, format="%d", disabled=not _stop_on,
-        key=f"scn_roth_stop_{key}", help="No conversions in this year or later.")))
+        key=_stop_key, help="No conversions in this year or later.")))
     _settings["solver_options.stopRothConversions"] = (
         _stop0, (_stop0 if _stop0 is not None and _stop == _stop_shown else _stop) if _stop_on else None,
         _stop0 is not None)

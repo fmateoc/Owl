@@ -518,6 +518,7 @@ def flagModified():
     case = currentCaseDic()
     case["caseStatus"] = "modified"
     case["summaryDf"] = None
+    case.pop("library_queued_run", None)
 
 
 def storeCaseKey(key, val):

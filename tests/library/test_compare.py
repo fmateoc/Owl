@@ -365,6 +365,24 @@ class TestTodaysDollarsTotals:
         c = compare(a, b, units="today")
         assert c.what_moved_units == "nominal" and c.what_moved_totals_units == "nominal"
 
+    def test_ap2_where_it_shows_up_is_the_same_under_nominal_and_today_s_dollars(self):
+        """Review AP2: `what_moved` filtered `what_moved_totals` by `row_units` movement instead
+        of `total_units`, so switching the Compare page's chart toggle to Nominal $ dropped any
+        column whose nominal amounts were equal (such as a nominal $50,000 Roth cap under two
+        inflation paths) from 'Where the difference shows up (lifetime, B - A, today's $)'."""
+        a = make_result(by_year=[
+            {"year": 2026, "deflator": 1.0, "spending": 100_000, "roth_conversions": 0},
+            {"year": 2027, "deflator": 1.02, "spending": 102_000, "roth_conversions": 50_000},
+        ])
+        b = make_result(id="b", by_year=[
+            {"year": 2026, "deflator": 1.0, "spending": 100_000, "roth_conversions": 0},
+            {"year": 2027, "deflator": 1.10, "spending": 110_000, "roth_conversions": 50_000},
+        ])
+        c_today = compare(a, b, units="today")
+        c_nom = compare(a, b, units="nominal")
+        assert C.where_it_shows_up(c_today.what_moved_totals) == [("Roth conversions", -3565)]
+        assert C.where_it_shows_up(c_nom.what_moved_totals) == [("Roth conversions", -3565)]
+
 
 class TestVerdictSentences:
     """S-5: the lead verdict in words, with the runs' names and the amounts."""

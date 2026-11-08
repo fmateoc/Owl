@@ -142,6 +142,35 @@ def test_a_goal_edit_shows_in_the_summary_and_the_saved_case(app):
     assert so["stopRothConversions"] == 2036  # the plan year (2026, frozen) + 10
 
 
+def test_ap1_raising_roth_start_above_stop_moves_the_saved_stop_year(tmp_path, monkeypatch):
+    """Review AP1: raising `startRothConversions` above an existing `stopRothConversions` showed
+    the clamped stop year in the widget while `_year_shown` kept the old stop year in the saved
+    case (`startRothConversions = 2040 > stopRothConversions = 2035`)."""
+    from streamlit.testing.v1 import AppTest
+
+    root = tmp_path / "library"
+    monkeypatch.setenv("OWL_LIBRARY_DIR", str(root))
+    monkeypatch.syspath_prepend(str(UI_DIR))
+    lib = Library.open(root)
+    scenario = dict(import_case(BILL), events=copy.deepcopy(EVENTS))
+    scenario["case"].setdefault("solver_options", {})["stopRothConversions"] = 2035
+    lib.save_run(name="bill", scenario=scenario)
+    at = AppTest.from_file(str(UI_DIR / "Scenario.py"), default_timeout=90)
+    at.session_state["cases"] = {}
+    at.session_state["currentCase"] = None
+    at.run()
+    start = next(n.key for n in at.number_input if n.key and n.key.startswith("scn_roth_start_"))
+    at.number_input(key=start).set_value(2040).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert "Roth conversions stop: 2035 -> 2040" in _changes(at)
+    assert not any("kept unless you change it" in c.value for c in at.caption)
+    _save(at, "bill, roth 2040")
+    child = next(r for r in lib.runs() if r.name == "bill, roth 2040")
+    so = lib.scenario(child.id)["case"]["solver_options"]
+    assert so["startRothConversions"] == 2040
+    assert so["stopRothConversions"] == 2040
+
+
 def test_the_year_picker_offers_the_other_events(app):
     _lib, at = app
     stem = next(b.key for b in at.selectbox if b.key and b.key.startswith("scn_buy_sale_")

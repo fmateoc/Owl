@@ -7931,4 +7931,4 @@ uv/setup-uv bump and dependency updates. Merge commit on `claude/peaceful-tesla-
 - **#249** (`issue-balance-units.md`, the \$k balance trap): filed by the user and closed by
   the user before the maintainer answered, after his #245 reply (user, 2026-11-08). The fork
   keeps its \$20M warning on Account Balances.
-
+- **`main`** fast-forwarded to `claude/peaceful-tesla-tc4vo5` (`986c625` -> `4d76cbb`, then this note) on 2026-11-08.

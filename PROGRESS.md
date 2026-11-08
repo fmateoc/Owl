@@ -7697,7 +7697,7 @@ merged build, with `PYTHONPATH` set to its `src`):
     (14:50, `-n 3`, with a Careful solve beside it); after `3c839e9`, `tests/library`,
     `tests/ui`, `test_thresholds.py` and `test_brackets.py`: 1103 passed;
   - lint: flake8 and ruff report only upstream's listed items (`ui/Run_Options.py`'s B905 is
-    at line 340 now);
+    at line 345 since `986c625e`);
   - `check_library_compare.py` **9/9** ("discretionary spending resolved"; "thresholds: 5
     near a threshold or over a cliff (aca, irmaa, star)"), `check_library_builder.py`
     **46/46**, `check_library_roundtrip.py` **39/39** (after QW-4 too);
@@ -8028,3 +8028,45 @@ S-3 `6c8678b`, S-6 `4e4ab96`; re-drive fixes `78cd5b0`. No existing run's inputs
     `check_library_compare.py` 9/9.
   - Lint: only upstream's listed items.
 - **Next.** The user's call on an independent review and on fast-forwarding `main`.
+
+## Ergonomics review S-1 to S-6: independent review AP1-AP5 folded (2026-11-08, branch `claude/loving-wright-44943l`)
+
+- **Review scope.** Independent review of `986c625e..0f0c68a4` against
+  `fork-notes/ux-structural-handoff.md` (`[ran]`, `[probe]`, `[code]`), then folded AP1-AP5 on
+  the user's instruction (`fold A1-A5`), each code fix preceded by a regression test that
+  failed before the fix (`FFFF` on `pytest -k "ap1 or ap2 or ap3 or ap4"`).
+- **AP1 (S-2, `ui/Scenario.py`):** Raising *Year to start considering Roth conversions*
+  (`_start`) above an existing `stopRothConversions` passed the edited `_stop_low` (`max(_start,
+  plan_year)`) into `_year_shown`, so `_stop_shown` equalled the clamped widget value `_stop`
+  and `_settings["solver_options.stopRothConversions"]` kept the old `_stop0` while the widget
+  displayed `_start` (saving e.g. `startRothConversions = 2040 > stopRothConversions = 2035`).
+  Fixed: `_year_shown` clamps against `max(_start_shown, plan_year)` (the stored start year's
+  bound) and `st.session_state[scn_roth_stop_*]` is clamped to `_stop_low` before rendering, so
+  raising `_start` above `_stop0` moves the saved `stopRothConversions` to `_start`. Test:
+  `tests/ui/test_scenario_drafts.py::test_ap1_raising_roth_start_above_stop_moves_the_saved_stop_year`.
+- **AP2 (S-5, `src/owlplanner/library/compare.py`, `ui/Compare.py`):** `what_moved` filtered
+  `what_moved_totals` by `if key in moving` where `moving` was computed in `row_units`. When the
+  Compare page's chart toggle was switched to `Nominal $`, any column whose nominal amounts
+  were equal between the two runs (such as a nominal \$50,000 Roth conversion cap under two
+  different inflation paths) dropped out of `what_moved_totals` and disappeared from **Where
+  the difference shows up (lifetime, B - A, today's \$)** at the top of the page. Fixed:
+  `what_moved_totals` includes every column in `moving` plus every column whose lifetime sum in
+  `total_units` (today's dollars) is at least \$1, while the **What moved** table's lifetime
+  footer row restricts to the table's displayed columns (`shown`). Test:
+  `tests/library/test_compare.py::TestTodaysDollarsTotals::test_ap2_where_it_shows_up_is_the_same_under_nominal_and_today_s_dollars`.
+- **AP3 (S-6, `ui/background_solve.py`, `ui/sskeys.py`):** Clicking *Save as a new run and
+  solve it in the background* on `Graphs.py`, `Worksheets.py` or `Reports.py` left the *"The
+  case changed since its last solve"* offer box and button on screen directly below the
+  confirmation flash, and a second click queued a duplicate Careful solve. Fixed:
+  `_save_and_queue` skips presets in `preset_solves("decision")` that are already waiting or
+  running for that run (`results.WAITING`, `results.RUNNING`) and stores `library_queued_run`
+  on the case (`kz.flagModified()` clears it when the case is edited again); `offer` shows the
+  queued run's status and *Open the Queue* while `library_queued_run` is set. Test:
+  `tests/ui/test_classic_pages_library_mode.py::test_ap3_once_queued_the_page_stops_asking_to_save_until_modified_again`.
+- **AP4 (S-6, `ui/Reports.py`):** `Reports.py` replaced *Re-run* with `background_solve.button`
+  in library mode but still rendered *Rerun all cases* (`owb.runAllCases`, a foreground solve)
+  beside the synopsis table. Fixed: *Rerun all cases* is hidden when `kz.library_mode()` is
+  true. Test:
+  `tests/ui/test_classic_pages_library_mode.py::test_ap4_reports_in_library_mode_hides_rerun_all_cases`.
+- **AP5 (`CLAUDE.md`, `PROGRESS.md`):** Updated `ui/Run_Options.py`'s pre-existing `B905` line
+  number from 340 to 345 (shifted by `986c625e`).

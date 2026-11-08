@@ -25,7 +25,13 @@ has) is logged in `PROGRESS.md` only.
 - **An imported home turned into events**, only when they rebuild the same tables exactly
   (S-3).
 - **No foreground solves in library mode**: the classic pages save the case as a run and
-  solve it in the background; *Open result* on finished queue rows (S-6).
+  solve it in the background; *Open result* on finished queue rows; *Rerun all cases* hidden on
+  Reports in library mode; clicking the background-solve button does not double-queue or keep
+  asking to save until the case is modified again (S-6, review AP3-AP4).
+- **Review AP1-AP2 folded**: raising the Roth conversion start year above the stop year on the
+  Scenario page moves the saved stop year too (AP1); *Where the difference shows up* on Compare
+  keeps today's-dollar lifetime movers when the chart toggle is switched to nominal dollars
+  (AP2).
 
 ### Run page: the second-pass review's AO1 and AO2 (2026-11-07)
 

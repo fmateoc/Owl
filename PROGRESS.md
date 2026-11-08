@@ -7861,3 +7861,28 @@ against the code at `f854721` and re-read for ergonomics; work order
   - recapture stays inside state tax.
 - **Nine decisions for the user** first; then S-2, S-1, S-4, S-5, S-3, S-6.
 - **Next.** The user's decisions 1-9 in the work order.
+
+## The maintainer's lesson from #245 (2026-11-08)
+
+The user reports issues #245-#250 filed, all fixed upstream, and one draft withheld after the
+maintainer's answer to #245 (B3, `issue-prepare-run-failure.md`). Not checked here: this session
+cannot read `mdlacasse/Owl` (GitHub access refused), so the issue numbers beyond #247 and the
+upstream fixes are the user's report, and no upstream `dev` was merged.
+
+- **His answer:** he validated at the input (the starting state is no longer offered as a move
+  target; bad TOML files were already rejected at load) and called the downstream check "not
+  really relevant"; "Agents can find bugs easily, but I find their proposed solutions often
+  lacking good and basic software engineering design."
+- **What our draft did wrong:** its own text names the entry point (Create Case warns "The new
+  state is the starting state" but keeps both), yet the patch changed six callers of
+  `prepareRun`, added a case status (`invalid input`), a helper and `caseHasNotRun` handling:
+  recovery after the fact instead of a one-line restriction where the state is entered.
+- **The rule** is now in CLAUDE.md, Conventions ("Upstream patches: prevent at the input"):
+  find the entry point and the existing validation, fix there in the code's idiom, add a
+  downstream guard only for a failure the input cannot prevent and with its own repro.
+- **Open for the user:** the fork still carries B3's downstream patch (`ea338d6`,
+  `prepareRun` returning a flag, `caseStatus = "invalid input"`). At the next sync the
+  convention ("take theirs") says to take upstream's input-side fix; whether to drop B3's
+  callers' checks then is the user's call.
+- **Next.** Unchanged: the user's decisions 1-9 in `ux-structural-handoff.md`.
+

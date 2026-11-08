@@ -1,10 +1,9 @@
 """
-Run Options: the year fields are bounded by the plan horizon, and the ACA start year is a
-toggle, "Marketplace coverage from the plan start" (storing 0, the code's own sentinel), with
-a year box bounded by the plan when it is off (UX remediation QW-8; second pass, decision 5).
+Run Options: the year fields take any year up to `last_year_entered` (upstream #250: a year
+past the plan is a legitimate "never"), the stop year cannot precede the start year (fork),
+and the ACA start year is a toggle, "Marketplace coverage from the plan start" (storing 0, the
+code's own sentinel), with a year box when it is off (UX remediation QW-8; decision 5).
 
-The Roth conversion window and the converter switch used to take any year (2500 included);
-the marketplace start year asked for "0 = plan start", an input nobody enters meaningfully.
 A stored year outside the field's bounds is clamped to them: the case keeps what the field
 shows (Streamlit silently shows the bound instead), and the page says so in the field's words.
 
@@ -19,6 +18,8 @@ the Free Software Foundation, either version 3 of the License, or
 import io
 from datetime import date
 from pathlib import Path
+
+from owlplanner.utils import last_year_entered
 
 ROOT = Path(__file__).resolve().parents[2]
 CASE = ROOT / "examples" / "Case_riley+casey.toml"
@@ -45,35 +46,41 @@ def _render(monkeypatch, case=CASE, **updates):
     return at.run(), dic, plan
 
 
-def test_the_roth_conversion_years_are_bounded_by_the_plan(monkeypatch):
-    at, dic, plan = _render(monkeypatch, caseStatus="solved", startRothConversions=2500,
-                            stopRothConversionsEnabled=True, stopRothConversions=2500)
+def test_a_roth_year_past_the_plan_is_kept(monkeypatch):
+    """Upstream #250: a year beyond the plan says "never" and survives a change of longevity;
+    the fork's first build clamped it to the plan's last year, which changed its meaning."""
+    at, dic, plan = _render(monkeypatch, caseStatus="solved", startRothConversions=2100,
+                            stopRothConversionsEnabled=True, stopRothConversions=2120)
     assert not at.exception, [str(e.value) for e in at.exception]
-    end = int(plan.year_n[-1])
+    assert int(plan.year_n[-1]) < 2100
+    last = last_year_entered(date.today().year)
     start = next(w for w in at.number_input if w.label.startswith("Year to start"))
     stop = next(w for w in at.number_input if w.label.startswith("Year to stop"))
-    assert start.max == end and stop.max == end
-    # A stored year past the horizon is clamped to it: the field shows what the case holds.
-    assert dic["startRothConversions"] == end == start.value
-    assert dic["stopRothConversions"] == end == stop.value
-    # Review AM3: a move is never silent. The page names it, and a move that changes what the
-    # input means (a year past the plan can no longer say "never") flags the case modified:
-    # its results are stale.
+    assert start.max == last and stop.max == last
+    assert (dic["startRothConversions"], dic["stopRothConversions"]) == (2100, 2120) == (start.value, stop.value)
+    assert not any("shown as" in c.value for c in at.caption)
+    assert dic["caseStatus"] == "solved"
+
+
+def test_a_roth_year_past_the_last_accepted_year_is_clamped_and_said(monkeypatch):
+    at, dic, _ = _render(monkeypatch, caseStatus="solved", startRothConversions=2500,
+                         stopRothConversionsEnabled=True, stopRothConversions=2500)
+    assert not at.exception, [str(e.value) for e in at.exception]
+    last = last_year_entered(date.today().year)
+    assert dic["startRothConversions"] == last == dic["stopRothConversions"]
+    # Review AM3: a move is never silent, in the field's words (review AN2), never its key.
     said = "\n".join(c.value for c in at.caption)
-    # QW-8's second pass (review AN2): in the field's words, never its key.
-    assert (f"Year to start considering Roth conversions: 2500 is past the plan's last year, "
-            f"{end}; shown as {end}") in said
-    assert f"Year to stop considering Roth conversions: 2500 is past the plan's last year, {end}" in said
+    assert (f"Year to start considering Roth conversions: 2500 is past the last year accepted, "
+            f"{last}; shown as {last}") in said
     assert "RothConversions" not in said
     assert dic["caseStatus"] == "modified"
 
 
-def test_the_roth_window_defaults_stay_inside_the_plan(monkeypatch):
-    at, dic, plan = _render(monkeypatch, stopRothConversionsEnabled=True)
+def test_the_roth_window_defaults(monkeypatch):
+    at, dic, _ = _render(monkeypatch, stopRothConversionsEnabled=True)
     assert not at.exception, [str(e.value) for e in at.exception]
-    end = int(plan.year_n[-1])
     assert dic["startRothConversions"] == date.today().year
-    assert dic["stopRothConversions"] == min(date.today().year + 10, end)
+    assert dic["stopRothConversions"] == date.today().year + 10
 
 
 def test_the_stop_year_cannot_precede_the_start_year(monkeypatch):
@@ -117,14 +124,14 @@ def test_an_unmodified_upstream_example_shows_no_message_and_keeps_zero(monkeypa
 
 
 def test_turning_the_toggle_off_shows_a_bounded_year_box(monkeypatch):
-    at, dic, plan = _render(monkeypatch, slcspAnnual=20.84)
+    at, dic, _ = _render(monkeypatch, slcspAnnual=20.84)
     _toggle(at).set_value(False)
     _rerun(at)
     assert not at.exception, [str(e.value) for e in at.exception]
     thisyear = date.today().year
     assert dic["acaStartYear"] == thisyear + 1
     field = next(w for w in at.number_input if w.label == "ACA start year")
-    assert (field.min, field.max) == (thisyear, int(plan.year_n[-1]))
+    assert (field.min, field.max) == (thisyear, last_year_entered(thisyear))
     assert field.value == thisyear + 1
     _toggle(at).set_value(True)
     _rerun(at)

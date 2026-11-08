@@ -2177,7 +2177,8 @@ class Plan:
             From that calendar year to the next move or the end of the plan, the household
             lives in the new state ("" for none) and locality: the residence on December 31
             taxes the whole year, so the year of the move is taxed by the new residence.
-            Each year must fall after the first plan year and within the plan. Upstream Owl
+            Each year must fall after the first plan year and within the plan. A move to the
+            residence it leaves changes nothing and is ignored with a warning. Upstream Owl
             takes at most one move; this fork takes several. Omitted or empty, the household
             stays in ``state`` throughout.
         locality : str
@@ -2190,8 +2191,14 @@ class Plan:
             (``school_district`` key, or fourth tuple item); it does not carry over.
         """
         state, locality, school_district = residency.normalize(state, locality, school_district)
-        moves = sorted(residency.as_residence(m) for m in (moves or []))
-        residency.residence_by_year(state, locality, moves, int(self.year_n[0]), self.N_n, school_district)  # validates
+        first_year = int(self.year_n[0])
+        # A move to the residence it leaves changes nothing: it is dropped with a warning, not
+        # refused (upstream #245, generalized to the fork's several moves).
+        moves, dropped = residency.changing_moves(state, locality, school_district, moves or [], first_year, self.N_n)
+        for m in dropped:
+            where = " / ".join(filter(None, (m.state, m.locality, m.school_district))) or "no state"
+            self.mylog.print(f"Move in {m.year} to the residence it leaves ('{where}') ignored.", tag="WARNING")
+        residency.residence_by_year(state, locality, moves, first_year, self.N_n, school_district)  # validates
         self.state = state
         self.locality = locality
         self.school_district = school_district
@@ -4596,6 +4603,58 @@ class Plan:
                 rhs = float(np.sum(self.kappa_ijn[i, 2, : n + 1]))
                 self.A.addRow(row, -np.inf, rhs, tag=("roth_early_basis", i, n))
 
+    def _warnClosedRothWindow(self, options):
+        """
+        Log when the conversion years leave no year open for Roth conversions.
+
+        A year past the plan is a legitimate way to say "never", so it is honoured; the log
+        tells it apart from a typo (20300 for 2030) or a stop year at or before the start year.
+        The window follows _add_roth_conversion_constraints: start, stop, swap, and no
+        conversions in the last two years alive.
+        """
+        names = [k for k in ("startRothConversions", "stopRothConversions", "swapRothConverters") if k in options]
+        if not names or u.get_monetary_option(options, "maxRothConversion", -1) == 0:
+            return
+        thisyear = date.today().year
+        nstart = max(int(u.get_numeric_option(options, "startRothConversions", 0)) - thisyear, 0)
+        nstop = (
+            max(int(u.get_numeric_option(options, "stopRothConversions", 0)) - thisyear, 0)
+            if "stopRothConversions" in options
+            else self.N_n
+        )
+        swap = int(u.get_numeric_option(options, "swapRothConverters", 0)) if self.N_i == 2 else 0
+        i_xcluded = -1
+        if swap == 0 and options.get("noRothConversions") in self.inames:
+            i_xcluded = self.inames.index(options["noRothConversions"])
+
+        def isOpen(i, n, limits):
+            if not limits:
+                return True
+            if n < nstart or n >= nstop:
+                return False
+            if swap != 0:
+                nswap = max(abs(swap) - thisyear, 0)
+                i_x = 0 if swap > 0 else 1
+                return n < nswap if i == i_x else n >= nswap
+            return True
+
+        def openYears(limits):
+            return [
+                (i, n)
+                for i in range(self.N_i)
+                if i != i_xcluded
+                for n in range(max(0, self.horizons[i] - 2))
+                if isOpen(i, n, limits)
+            ]
+
+        # Only the year settings are reported: a plan with no open year before them is not their doing.
+        if openYears(False) and not openYears(True):
+            given = ", ".join(f"{k}={int(u.get_numeric_option(options, k, 0))}" for k in names)
+            pinned = "only in the years pinned in 'Roth conv fixed'" if self.rothXfixed_in.any() else "nothing"
+            self.mylog.print(
+                f"No year is open for Roth conversions under {given}: the plan converts {pinned}.", tag="WARNING"
+            )
+
     @_fixedAcrossIterations
     def _add_roth_conversion_constraints(self, options):
         """
@@ -6831,6 +6890,8 @@ class Plan:
         if int(u.get_numeric_option(myoptions, "swapRothConverters", 0)) != 0 and "noRothConversions" in myoptions:
             self.mylog.print("Ignoring 'noRothConversions' as 'swapRothConverters' option present.", tag="WARNING")
             myoptions.pop("noRothConversions")
+
+        self._warnClosedRothWindow(myoptions)
 
         # Go easy on MILP - auto gap somehow.
         if "gap" not in myoptions and myoptions.get("withMedicare", "loop") == "optimize":

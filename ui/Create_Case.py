@@ -143,11 +143,13 @@ def _normResidence(state, locality, district):
 
 
 def _moreMoveWarnings(moves, first, bounds=None):
-    """The moves residency refuses at solve time, reported as the rows are edited.
+    """The moves the plan refuses or ignores at solve time, reported as the rows are edited.
 
-    Every move -- the first included -- is checked against the residence it leaves, walked in
-    year order as `residency._homes_by_year` applies them (it sorts the moves and refuses one
-    that does not change the residence in force). The first move's "goes to the starting
+    A move to the residence it leaves is ignored (`residency.changing_moves`, upstream #245);
+    two moves in one year, or a year outside the plan, is refused. Every move -- the first
+    included -- is checked against the residence it leaves, walked in year order as
+    `residency._homes_by_year` applies them (it sorts the moves and drops one that does not
+    change the residence in force). The first move's "goes to the starting
     residence" case is the page's own warning beside its fields, so it is not repeated here
     (review W3: a further move dated before the first can make the first move the refused one).
     `bounds` is (first plan year, N_n) when the case has a plan: a move outside
@@ -177,7 +179,7 @@ def _moreMoveWarnings(moves, first, bounds=None):
                 )
         if dest == prev and (is_more or prev_label != "the starting residence"):
             where = " / ".join(filter(None, dest)) or "no state"
-            msgs.append(f"{label.capitalize()} goes to {prev_label} ('{where}').")
+            msgs.append(f"{label.capitalize()} goes to {prev_label} ('{where}'): it will be ignored.")
         prev, prev_label = dest, label
     return msgs
 
@@ -268,40 +270,20 @@ def _renderMoreMoves():
         st.warning(msg, icon=":material/warning:")
 
 
+def _lastPlanYear():
+    """Last year of the plan, as Plan computes it: the latest birth year plus longevity."""
+    n = 2 if kz.getCaseKey("status") == "married" else 1
+    # A spouse's date of birth and longevity are set only once the spouse is named.
+    known = [i for i in range(n) if kz.getCaseKey(f"dob{i}") and kz.getCaseKey(f"life{i}") is not None]
+    return max((int(str(kz.getCaseKey(f"dob{i}"))[:4]) + int(kz.getCaseKey(f"life{i}")) for i in known), default=0)
+
+
 def _loadHFPExample(file):
     if file:
         hfp_name = tomlex.getHFPName(file)
         mybytesio = tomlex.loadWagesExample(file)
         if mybytesio is not None:
             owb.readHFP(mybytesio, file=hfp_name)
-
-
-def _count(n, one, many):
-    return f"{n} {one if n == 1 else many}"
-
-
-def _hfpLoadedText():
-    """What the workbook just read brought in (UX review Q11): once read, the uploader below
-    disappears, and nothing said that the upload had worked."""
-    name = str(kz.getCaseKey("hfpFileName") or kz.getCaseKey("stHFP") or "the workbook")
-    name = name[:-2] if name.endswith(" *") else name
-    people = [kz.getCaseKey("iname0")]
-    if kz.getCaseKey("status") == "married":
-        people.append(kz.getCaseKey("iname1"))
-    tables = []
-    for key, one, many in (("houseListDebts", "debt", "debts"),
-                           ("houseListFixedAssets", "fixed asset", "fixed assets"),
-                           ("houseListBudget", "budget line", "budget lines")):
-        df = kz.getCaseKey(key)
-        if df is None:
-            continue
-        if key == "houseListBudget" and len(df) == 0 and kz.getCaseKey("spendingProfile") != "budget":
-            continue  # fork: the Budget sheet matters to a budget profile only
-        tables.append(_count(len(df), one, many))
-    # Fork, QW-7.1: every run's workbook is called HFP.xlsx; say which run it came from.
-    origin = f" (from *{kz.runBaseName()}*)" if kz.runBaseName() else ""
-    text = f":white_check_mark: *{name}*{origin} loaded: wages and contributions for {' and '.join(people)}"
-    return text + (f"; {', '.join(tables)}." if tables else ".")
 
 
 def _createCase():
@@ -459,14 +441,21 @@ else:
         )
         kz.getToggle("Move to another state during the plan", "stateMoveEnabled", help=_move_help)
         if kz.getCaseKey("stateMoveEnabled"):
+            # setStateTax refuses a move outside the plan, whose last year follows the longevities.
+            lastyear = max(_lastPlanYear(), thisyear + 1)
+            moveyear = min(max(int(kz.getCaseKey("stateMoveYear")), thisyear + 1), lastyear)
+            if moveyear != kz.getCaseKey("stateMoveYear"):
+                kz.setCaseKey("stateMoveYear", moveyear)
+                kz.storeGlobalKey(kz.genCaseKey("stateMoveYear"), moveyear)
             mcol1, mcol2 = st.columns(2, gap="small", vertical_alignment="top")
             with mcol1:
                 kz.getIntNum(
                     "Year of the move",
                     "stateMoveYear",
                     min_value=thisyear + 1,
-                    max_value=thisyear + 100,
-                    help="First calendar year taxed by the new state. It must fall within the plan.",
+                    max_value=lastyear,
+                    help=f"First calendar year taxed by the new state, from {thisyear + 1} to {lastyear}, "
+                    "the last year of the plan.",
                 )
             with mcol2:
                 kz.getSelectbox(
@@ -497,7 +486,8 @@ else:
                 kz.getCaseKey("locality"),
                 kz.getCaseKey("schoolDistrict"),
             ):
-                st.warning("The new residence is the starting one.", icon=":material/warning:")
+                st.warning("The new residence is the starting one: the move will be ignored.",
+                           icon=":material/warning:")
         elif kz.getCaseKey("stateMovesMore"):
             # Review W8: with the toggle off the further moves are invisible here and
             # ui_to_config writes no moves at all -- they stay in the case but are neither
@@ -641,7 +631,11 @@ Once changes are complete, click the `Create case` button.""")
                 )
         st.divider()
     elif kz.caseHasPlan():
-        st.caption(_hfpLoadedText())
+        # The uploader above is gone once a workbook is read.
+        kz.hfp_loaded_caption()
+        if kz.runBaseName():
+            # Fork, QW-7.1: every run's workbook is called HFP.xlsx; say which run it came from.
+            st.caption(f"Workbook of run *{kz.runBaseName()}*.")
 
     col1, col2, col3 = st.columns(3, gap="small", vertical_alignment="top")
     with col1:

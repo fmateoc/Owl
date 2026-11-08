@@ -7,6 +7,20 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream 2026.11.07 merged: our #245-#248 and #250 taken their way (2026-11-08)
+
+- **A move that changes nothing is ignored, not refused.** Upstream ignores a move to the
+  starting state (#245); the fork applies the same rule to any of its several moves that goes
+  to the residence it leaves, with a warning in the log and on Create Case. The fork's own
+  #245 patch (the pages refusing to solve after a failed configuration, an "invalid input"
+  status) is removed in favour of upstream's fix.
+- **Year fields reach past the plan again.** The Roth conversion years and the ACA start year
+  accept any year up to 120 years ahead, as upstream now does (#250): a year past the plan
+  means "never". The fork's bound at the plan's last year is gone; the stop year still cannot
+  precede the start year, and the ACA start keeps its "from the plan start" toggle.
+- **Create Case's workbook line is upstream's** (#246); a run's workbook adds "Workbook of run
+  *X*." Case files are read with `tomllib` (#248); the SLCSP field is upstream's (#247).
+
 ### Run page: the second-pass review's AO1 and AO2 (2026-11-07)
 
 - **A year just over a cliff is "over".** A year over an IRMAA tier, the 400% FPL line or the

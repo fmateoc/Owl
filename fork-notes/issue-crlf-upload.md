@@ -1,6 +1,6 @@
 # Issue draft: a case file with Windows line endings uploads as its name alone
 
-Status: **draft, not filed** (2026-11-07; `ux-qw-handoff-2.md` N1, review AN9). For the user
+Status: **filed as #248** by the user; fixed upstream with `tomllib` for reading (`d2ede71`, merged here 2026-11-08; the fork's `_lf` dropped). Was a draft (2026-11-07; `ux-qw-handoff-2.md` N1, review AN9). For the user
 to file on `mdlacasse/Owl`. Checked on upstream `dev` `73dc8815` (2026-11-07). Patch:
 `fork-notes/issue-crlf-upload.patch` (`src/owlplanner/config/toml_io.py` and a new
 `tests/config/test_toml_crlf.py`; applies to stock `dev` with `git apply`; verified there:

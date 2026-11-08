@@ -7880,9 +7880,55 @@ upstream fixes are the user's report, and no upstream `dev` was merged.
 - **The rule** is now in CLAUDE.md, Conventions ("Upstream patches: prevent at the input"):
   find the entry point and the existing validation, fix there in the code's idiom, add a
   downstream guard only for a failure the input cannot prevent and with its own repro.
-- **Open for the user:** the fork still carries B3's downstream patch (`ea338d6`,
-  `prepareRun` returning a flag, `caseStatus = "invalid input"`). At the next sync the
-  convention ("take theirs") says to take upstream's input-side fix; whether to drop B3's
-  callers' checks then is the user's call.
+- **Decided (user, 2026-11-08):** drop B3's downstream patch (`ea338d6`) and take upstream's
+  fix; done in the merge below.
 - **Next.** Unchanged: the user's decisions 1-9 in `ux-structural-handoff.md`.
+
+## Upstream `dev` `d2ede71` merged (2026-11-08)
+
+Nine upstream commits since `73dc881` (version 2026.11.07): our #245-#248 and #250 fixed, a
+uv/setup-uv bump and dependency updates. Merge commit on `claude/peaceful-tesla-tc4vo5`;
+`CHANGELOG.md` is upstream's byte for byte. Seven files conflicted.
+
+- **#245 (`b719efa`), read from the commit:** `setStateTax` ignores a move to the starting
+  state with a log warning instead of refusing it, so a case file carrying one loads; Create
+  Case caps *Year of the move* at the plan's last year (the other refusal the UI could reach)
+  and says the move "will be ignored". The new-state list still offers the starting state
+  (`_state_choices()`, checked on `upstream/dev`), so the commit is not quite what his comment
+  says ("removed from the list"); the lesson is the same: make the bad input harmless where it
+  enters, not in the callers.
+  - **B3 dropped** (the user's call): `owlbridge.prepareRun` / `runPlan` / the five clone
+    callers / `showCaseStatus` / `sskeys.caseHasNotRun` are upstream's again (no `_applyConfig`,
+    no `invalid input` status); `tests/ui/test_prepare_run_failure.py` deleted. The fork-notes
+    draft, patch and repro stay as the record.
+  - **Fork adaptation (several moves):** upstream's rule generalized: any move to the residence
+    it leaves changes nothing and is dropped with a warning (`residency.changing_moves`, called
+    by `setStateTax`; `residence_by_year` itself stays strict). Two moves in one year and a
+    year outside the plan are still refused, a dropped move included. Create Case's warnings say
+    "will be ignored" for those moves; the parity test (`test_the_move_warnings_match_what_the_plan_does`)
+    now checks refusals and ignored moves separately against `changing_moves`. New tests in
+    `test_state_tax.py`: a later no-op move is dropped, an ignored move still counts for "two
+    moves in one year". Upstream's year cap applies to the first move; the further moves keep
+    the fork's warning for a year outside the plan (not capped: a fork design choice left as is).
+- **#246 (`2130052`):** upstream's `kz.hfp_loaded_caption()` replaces the fork's
+  `_hfpLoadedText` (people and table counts dropped; sync rule). The fork keeps QW-7.1's run
+  origin as its own caption, "Workbook of run *X*." The first-click part is "by design"
+  upstream; the fork keeps its enabled-before-names `_createCase`.
+- **#247 (`113ec13`):** upstream's SLCSP field and test taken (also other medical and Part D).
+- **#248 (`d2ede71`):** case files and state data read with `tomllib`; the fork's `_lf` and its
+  CRLF workaround dropped; `toml_io.py` is upstream's again.
+- **#250 (`e78d2a0`), upstream's design taken:** the Roth years and the ACA start year accept
+  any year up to `utils.last_year_entered` (this year + 120): a year past the plan is a
+  legitimate "never" that survives a change of longevity. The fork's QW-8 bound at the plan's
+  last year contradicted that (its clamp flagged the case modified because the meaning changed)
+  and is gone: `_bound_year` keeps only clamping into [this year (or the start year), last
+  accepted year], with the move named. Kept from the fork: the stop year's minimum is the
+  start year (`986c625`), and the ACA toggle (QW-8.3, decision 5); upstream's
+  `test_run_options_year_fields.py` sets `acaStartYear = 2030` so the box shows (marked as a
+  fork adaptation). `test_run_options_year_bounds.py` rewritten for the new bound.
+- **Checks:** flake8/ruff only upstream's known lines (ruff's B905 at `ui/Run_Options.py:367`
+  now). Full suite **4633 passed, 1 skipped** (9:57, Linux, `-n 4`).
+- **Not filed / not checked:** the user reports six issues #245-#250, all fixed, and one draft
+  withheld; upstream's changelog names #245-#248 and #250, not #249. Which draft was withheld
+  (`issue-balance-units.md` is the one whose status is unchanged) is the user's to say.
 

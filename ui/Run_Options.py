@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import streamlit as st
 from datetime import date
+from owlplanner.utils import last_year_entered
 
 import sskeys as kz
 import owlbridge as owb
@@ -43,8 +44,8 @@ def _onSSAgesChange(names):
 
 def _moved_text(label, old, new, low, high, low_name="the plan's first year"):
     """A clamped year in words (review AN2): "Year to stop considering Roth conversions: 2500
-    is past the plan's last year, 2053; shown as 2053"."""
-    where = (f"past the plan's last year, {high}" if old > high
+    is past the last year accepted, 2146; shown as 2146"."""
+    where = (f"past the last year accepted, {high}" if old > high
              else f"before {low_name}, {low}")
     return f"{label}: {old} is {where}; shown as {new}"
 
@@ -113,15 +114,14 @@ ret = kz.titleBar(":material/tune: Run Options")
 if ret is None or kz.caseHasNoPlan():
     kz.no_case_info()
 else:
-    _plan = kz.getCaseKey("plan")
     thisyear = date.today().year
-    # UX remediation QW-8: the year fields below are bounded by the plan's own horizon.
-    _years = getattr(_plan, "year_n", None) if _plan is not None else None
-    plan_end = int(_years[-1]) if _years is not None and len(_years) else thisyear + 40
-    # QW-8 (review AM3): every stored year outside its field's range is set to the nearest
-    # allowed one here, once, and the page says which values moved -- by the field's own
-    # label, never its key (QW-8's second pass, review AN2). The ACA start year's 0 means
-    # "from the plan start" (its toggle below) and is never moved.
+    # Upstream #250: a year field accepts any year up to last_year_entered (past any plan, so a
+    # year beyond the plan still says "never" when longevity changes); an extra digit is refused.
+    last_year = last_year_entered(thisyear)
+    # Fork, QW-8 (review AM3): a stored year outside its field's range is set to the nearest
+    # allowed one here, once, and the page says which values moved, by the field's own label
+    # (review AN2). The low bound is this year, or the start year for the stop year (fork); the
+    # ACA start year's 0 means "from the plan start" (its toggle below) and is never moved.
     _moved = []
     for _key, _label in (("startRothConversions", "Year to start considering Roth conversions"),
                          ("stopRothConversions", "Year to stop considering Roth conversions"),
@@ -131,10 +131,10 @@ else:
             continue
         _by_start = _key == "stopRothConversions" and kz.getCaseKey("stopRothConversionsEnabled")
         _low = int(kz.getCaseKey("startRothConversions") or thisyear) if _by_start else thisyear
-        _old = _bound_year(_key, _low, plan_end, neutral_low=_low <= thisyear)
+        _old = _bound_year(_key, _low, last_year, neutral_low=_low <= thisyear)
         if _old is not None:
             _low_name = "the start year" if _low > thisyear else "the plan's first year"
-            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), _low, plan_end, _low_name))
+            _moved.append(_moved_text(_label, _old, kz.getCaseKey(_key), _low, last_year, _low_name))
     if _moved:
         st.caption("; ".join(_moved) + ".")
     st.markdown("#### :orange[Roth Conversions]")
@@ -156,8 +156,11 @@ else:
         helpmsg = "Do not perform Roth conversions before that year."
         kz.initCaseKey("startRothConversions", thisyear)
         ret = kz.getIntNum(
-            "Year to start considering Roth conversions", "startRothConversions",
-            min_value=thisyear, max_value=plan_end, help=helpmsg
+            "Year to start considering Roth conversions",
+            "startRothConversions",
+            min_value=thisyear,
+            max_value=last_year_entered(thisyear),
+            help=helpmsg,
         )
         # An explicit toggle, not a year derived from the plan horizon: a derived default
         # is stored once and never revisited, so extending life expectancy later would
@@ -170,11 +173,14 @@ else:
         ret = kz.getToggle("Stop Roth conversions mid-plan", "stopRothConversionsEnabled", help=helpmsg)
         if kz.getCaseKey("stopRothConversionsEnabled"):
             _start = int(kz.getCaseKey("startRothConversions") or thisyear)
-            kz.initCaseKey("stopRothConversions", min(max(thisyear + 10, _start), plan_end))
+            kz.initCaseKey("stopRothConversions", max(thisyear + 10, _start))
             helpmsg = "No Roth conversions are performed in this year or later."
             ret = kz.getIntNum(
-                "Year to stop considering Roth conversions", "stopRothConversions",
-                min_value=_start, max_value=plan_end, help=helpmsg
+                "Year to stop considering Roth conversions",
+                "stopRothConversions",
+                min_value=_start,
+                max_value=last_year_entered(thisyear),
+                help=helpmsg,
             )
     with col3:
         if kz.getCaseKey("status") == "married":
@@ -212,8 +218,11 @@ else:
                 kz.initCaseKey("swapRothConvertersYear", thisyear)
                 helpmsg = "Year in which the other spouse takes over Roth conversions."
                 ret = kz.getIntNum(
-                    "Year to switch converters", "swapRothConvertersYear",
-                    min_value=thisyear, max_value=plan_end, help=helpmsg
+                    "Year to switch converters",
+                    "swapRothConvertersYear",
+                    min_value=thisyear,
+                    max_value=last_year_entered(thisyear),
+                    help=helpmsg,
                 )
 
     st.divider()
@@ -227,7 +236,14 @@ else:
             "These expenses are treated as part of general living costs, not as separate healthcare costs. "
             "Ignore if plan has no HSA."
         )
-        kz.getNum("Other medical expenses (\\$k/year)", "otherMedical", min_value=0.0, help=helpmsg_med)
+        kz.getNum(
+            "Other medical expenses (\\$k/year)",
+            "otherMedical",
+            step=1.0,
+            min_value=0.0,
+            format="%.2f",
+            help=helpmsg_med,
+        )
     with cols[1]:
         helpmsg_excess = (
             "How much faster than inflation medical prices grow each year, in percent. "
@@ -254,16 +270,20 @@ else:
     )
     cols = st.columns(3, gap="large", vertical_alignment="top")
     with cols[0]:
-        # Two decimals and a $1k step (UX review Q20): one decimal showed 20.84 as 20.8, and
-        # the default step of 10 moved the premium by $10k a year.
-        kz.getNum("Benchmark Silver plan premium (SLCSP) (\\$k/year)", "slcspAnnual", min_value=0.0,
-                  step=1.0, format="%.2f", help=helpmsg)
+        kz.getNum(
+            "Benchmark Silver plan premium (SLCSP) (\\$k/year)",
+            "slcspAnnual",
+            step=1.0,
+            min_value=0.0,
+            format="%.2f",
+            help=helpmsg,
+        )
     with cols[1]:
         acaoff = (kz.getCaseKey("slcspAnnual") or 0) <= 0
         # QW-8.3's second pass (decision 5, review AN2): a toggle for "from the plan start",
         # which stores 0, the code's own sentinel (no message, no change to a saved file); off,
-        # a year box bounded by the plan's first and last years. The build's year field stored
-        # this year in every case without the key and announced "acaStartYear 0 -> 2026".
+        # a year box from this year on (upstream #250's bound, past any plan). The build's year
+        # field stored this year in every case without the key and announced "acaStartYear 0 -> 2026".
         _from_start = kz.getCaseKey("acaStartYear") in (0, None)
         kz.initGlobalKey(kz.genCaseKey("acaFromPlanStart"), _from_start)
         st.toggle("Marketplace coverage from the plan start", key=kz.genCaseKey("acaFromPlanStart"),
@@ -276,7 +296,7 @@ else:
                 "ACA start year",
                 "acaStartYear",
                 min_value=thisyear,
-                max_value=plan_end,
+                max_value=last_year_entered(thisyear),
                 step=1,
                 help="The calendar year marketplace coverage begins (e.g. 2029 for the year of "
                      "retirement).",
@@ -316,7 +336,9 @@ else:
             kz.getNum(
                 "Part D base premium (\\$/month per person)",
                 "medicarePartDBasePremium",
+                step=1.0,
                 min_value=0.0,
+                format="%.2f",
                 help=helpmsg_partd_base,
             )
 

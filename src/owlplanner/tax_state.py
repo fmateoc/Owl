@@ -26,7 +26,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
-import toml
+import tomllib
 from dataclasses import dataclass, fields
 from datetime import date
 from functools import lru_cache
@@ -162,8 +162,8 @@ class StateTaxParams:
 def _load_state_data(toml_path: str = None) -> dict:
     """Load and cache taxes_state.toml. Returns the raw parsed dict."""
     path = toml_path or str(_TOML_PATH)
-    with open(path, "r", encoding="utf-8") as f:
-        return toml.load(f)
+    with open(path, "rb") as f:
+        return tomllib.load(f)
 
 
 def load_state_data(toml_path=None) -> dict:

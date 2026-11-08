@@ -72,8 +72,25 @@ def school_district_by_year(state: str, locality: str, school_district: str, mov
     return [d for _, _, d in _homes_by_year(state, locality, school_district, moves, first_year, N_n)]
 
 
-def _homes_by_year(state, locality, school_district, moves, first_year, N_n):
-    """(state, locality, school_district) in force in each plan year; see residence_by_year."""
+def changing_moves(state: str, locality: str, school_district: str, moves, first_year: int, N_n: int) -> tuple:
+    """Split *moves* into those that change the residence and those that do not, in year order.
+
+    A move to the residence it leaves changes nothing, so the plan drops it (upstream #245: a
+    move to the starting state is ignored, not refused). The other refusals of
+    residence_by_year (a year outside the plan, two moves in one year) still raise.
+    Returns (kept, dropped), two lists of Residence.
+    """
+    dropped = []
+    _homes_by_year(state, locality, school_district, moves, first_year, N_n, dropped=dropped)
+    kept = [m for m in sorted(as_residence(m) for m in moves) if m not in dropped]
+    return kept, dropped
+
+
+def _homes_by_year(state, locality, school_district, moves, first_year, N_n, dropped=None):
+    """(state, locality, school_district) in force in each plan year; see residence_by_year.
+
+    With a *dropped* list, a move that does not change the residence is appended to it instead
+    of being refused (see changing_moves)."""
     by_year = [normalize(state, locality, school_district)] * N_n
     seen = set()
     for move in sorted(as_residence(m) for m in moves):
@@ -88,6 +105,9 @@ def _homes_by_year(state, locality, school_district, moves, first_year, N_n):
             raise ValueError(f"Two moves in {year}.")
         seen.add(year)
         if dest == by_year[year - first_year]:
+            if dropped is not None:
+                dropped.append(move)
+                continue
             where = "the starting state" if dest == by_year[0] else "the residence it leaves"
             raise ValueError(f"The move in {year} goes to {where} ('{' / '.join(filter(None, dest))}').")
         by_year[year - first_year:] = [dest] * (N_n - (year - first_year))

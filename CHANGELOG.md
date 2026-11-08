@@ -1,3 +1,50 @@
+### Version 2026.11.07
+
+#### Fixed: the health-cost fields on Run Options step by one and show two decimals
+
+The benchmark Silver premium (SLCSP) and other medical expenses, both in \$k a year, and the
+Part D base premium, in \$ a month, took the number field's defaults of one decimal and a step
+of 10. A premium of \$20,840 a year, typed as 20.84, showed as 20.8, and one click on + added
+\$10,000 a year. The three fields now show two decimals and step by 1. The unused
+`getFloatInput` helper in `ui/Fixed_Income.py` is gone. Thanks to Florin Mateoc (@fmateoc) for
+the issue and the fix (#247).
+
+#### Fixed: Create Case confirms a workbook read
+
+Once a Household Financial Profile workbook was read from Create Case, the uploader disappeared
+and nothing on the page said the read had worked. Create Case now shows the line Financial
+Profile shows: the file's name, and whether its values have since been modified. Thanks to Florin
+Mateoc (@fmateoc) for the issue (#246).
+
+#### Fixed: a move to the starting state no longer leaves the UI solving the wrong plan
+
+`setStateTax` refused a move to the starting state. In the UI, the refusal came as *Failed to
+apply configuration*, and the case was solved anyway, on a plan that kept its previous state and
+lacked the Financial Profile tables, and Reports showed those results as the case's. Such a move
+changes nothing, so `setStateTax` now ignores it with a warning in the log, and a case file that
+carries one loads. On Create Case, *Year of the move* now stays within the plan, the other move
+`setStateTax` refuses. Thanks to Florin Mateoc (@fmateoc) for the issue (#245).
+
+#### Fixed: a mistyped Roth conversion year no longer goes unnoticed
+
+The years to start and stop Roth conversions and to switch converters had no upper bound, so a
+typo such as 20300 for 2030 was stored as typed, and the plan converted nothing with the case
+still solved. A year past the plan remains a legitimate way to say "never", one that survives a
+change of longevity, so these fields, and the ACA start year, now accept any year up to 120
+years ahead, past any plan, which refuses an extra digit. A case file with a later year has it
+held at that limit, which keeps its meaning. When the conversion years leave no year open for
+conversions, a start past the plan or a stop at or before the start, the plan is solved as given
+and the log says so. Thanks to Florin Mateoc (@fmateoc) for the issue (#250).
+
+#### Fixed: a case file with Windows line endings uploads whole
+
+Uploaded case files were read with the `toml` package's string parser, which, on text with CRLF
+line endings, drops a triple-quoted string and every key after it, with no error. Create Case
+then failed with *Failed to parse case file: 'basic_info'*. A Git-for-Windows checkout writes the
+examples with CRLF, and 14 of the 19 hold such a string, their description. Case files and the
+state tax data are now read with Python's `tomllib`, which handles either line ending; writing
+still uses `toml`. Thanks to Florin Mateoc (@fmateoc) for the issue (#248).
+
 ### Version 2026.10.30
 
 #### Changed: the Docker images run natively on Apple Silicon

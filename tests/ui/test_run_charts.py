@@ -469,3 +469,79 @@ class TestThingsToLookAt:
         assert list(parts["over"]["Line"]) == [CLIFF, "IRMAA tier 2", "Enhanced STAR limit"]
         assert list(parts["near"]["Line"]) == ["IRMAA tier 1"]
         assert len(parts["small"]) == 5
+
+
+class TestUnitsSplitAndMarkers:
+    """Ergonomics review S-4: today's dollars from each row's deflator, the state tax's parts,
+    and the event markers, all from plan.json."""
+
+    ROWS = [
+        {"year": 2026, "ages": [62, 64], "deflator": 1.0, "spending": 100_000, "federal_income_tax": 10_000,
+         "ltcg_tax": 0, "niit": 0, "payroll_tax": 0, "state_tax": 5_000, "local_tax": 800, "state_recapture": 300,
+         "star_credit": 0, "medicare_premiums": 0, "aca_premiums": 0, "wages": 90_000, "wages_by_person": [90_000, 0],
+         "ss_income": [0, 0], "pension_income": 0, "spia_income": 0, "portfolio_withdrawals": 20_000, "debt": 300_000},
+        {"year": 2027, "ages": [63, 65], "deflator": 1.25, "spending": 125_000, "federal_income_tax": 12_500,
+         "ltcg_tax": 0, "niit": 0, "payroll_tax": 0, "state_tax": -500, "local_tax": 250, "state_recapture": 0,
+         "star_credit": 2_000, "medicare_premiums": 2_500, "aca_premiums": 0, "wages": 0, "wages_by_person": [0, 0],
+         "ss_income": [0, 25_000], "pension_income": 0, "spia_income": 0, "portfolio_withdrawals": 50_000,
+         "debt": 0},
+        {"year": 2028, "ages": [64, 66], "deflator": 1.5, "spending": 150_000, "federal_income_tax": 15_000,
+         "ltcg_tax": 0, "niit": 0, "payroll_tax": 0, "state_tax": 3_000, "local_tax": 300, "state_recapture": 0,
+         "star_credit": 1_500, "medicare_premiums": 3_000, "aca_premiums": 0, "wages": 0, "wages_by_person": [0, 0],
+         "ss_income": [0, 30_000], "pension_income": 0, "spia_income": 0, "portfolio_withdrawals": 60_000,
+         "debt": 0},
+    ]
+
+    def test_today_s_dollars_divide_by_the_deflator(self, rc):
+        shown = rc.in_units(self.ROWS, "today")
+        assert [r["spending"] for r in shown] == [100_000, 100_000, 100_000]
+        assert shown[1]["ss_income"] == [0, 20_000] and shown[1]["ages"] == [63, 65]
+        assert rc.in_units(self.ROWS, "nominal") == self.ROWS
+        fig = rc.taxes_and_premiums_figure(self.ROWS, "today")
+        fed = next(t for t in fig.data if t.name == rc.flow_label("Federal income tax"))
+        assert list(fed.y) == [10_000, 10_000, 10_000]
+        assert fig.layout.yaxis.title.text == rc.TODAY_PER_YEAR
+        assert rc.taxes_and_premiums_figure(self.ROWS, "nominal").layout.yaxis.title.text == rc.NOMINAL_PER_YEAR
+
+    def test_an_older_result_draws_nominal(self, rc):
+        old = [{k: v for k, v in r.items() if k not in ("deflator", "local_tax", "state_recapture", "star_credit",
+                                                        "wages_by_person")} for r in self.ROWS]
+        assert rc.effective_units(old, "today") == "nominal"
+        fig = rc.taxes_and_premiums_figure(old, "today")
+        assert fig.layout.yaxis.title.text == rc.NOMINAL_PER_YEAR
+        names = [t.name for t in fig.data]
+        assert rc.flow_label("State and local tax") in names and rc.flow_label("STAR credit") not in names
+        assert [m[1] for m in rc.event_markers(old, ["A", "B"])] == ["Last loan year", "Last wages", "B: Medicare"]
+
+    def test_the_state_tax_parts_add_up_to_the_net_state_tax(self, rc):
+        parts = rc.state_tax_parts(self.ROWS)
+        for n, row in enumerate(self.ROWS):
+            assert parts["state"][n] + parts["local"][n] + parts["star"][n] == pytest.approx(row["state_tax"])
+        assert parts["state"][1] == 1_250 and parts["star"][1] == -2_000  # a net refund year
+        fig = rc.taxes_and_premiums_figure(self.ROWS, "nominal")
+        by_name = {t.name: t for t in fig.data}
+        assert {"State tax", "Local income tax (NYC / Yonkers)", "NY STAR credit"} <= set(by_name)
+        assert rc.flow_label("State and local tax") not in by_name
+        assert list(by_name["NY STAR credit"].y) == [0, -2_000, -1_500]
+        assert "recapture" in by_name["State tax"].hovertemplate
+        assert fig.layout.barmode == "relative"
+
+    def test_a_part_that_is_zero_everywhere_is_not_drawn(self, rc):
+        rows = [dict(r, local_tax=0, star_credit=0, state_recapture=0) for r in self.ROWS]
+        names = [t.name for t in rc.taxes_and_premiums_figure(rows, "nominal").data]
+        assert "State tax" in names
+        assert "Local income tax (NYC / Yonkers)" not in names and "NY STAR credit" not in names
+
+    def test_the_markers(self, rc):
+        marks = rc.event_markers(self.ROWS, ["Ari", "Noa"], purchases={1: 700_000.0})
+        assert marks == [(2026, "Ari's last work year"), (2026, "Last loan year"), (2027, "Noa: Medicare"),
+                         (2027, "Purchase")]
+        fig = rc.taxes_and_premiums_figure(self.ROWS, "today", marks)
+        texts = [a.text for a in fig.layout.annotations]
+        assert "Ari's last work year<br>Last loan year" in texts and "Noa: Medicare<br>Purchase" in texts
+
+    def test_the_purchase_annotation_follows_the_units(self, rc):
+        rows = [dict(r, portfolio_withdrawals=1_000_000 if r["year"] == 2027 else 20_000) for r in self.ROWS]
+        fig = rc.income_sources_figure(rows, {1: 750_000.0}, "today")
+        note = next(a.text for a in fig.layout.annotations if "purchase" in a.text)
+        assert "600,000" in note  # 750,000 nominal / 1.25

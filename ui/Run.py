@@ -53,9 +53,20 @@ st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
 libraryjobs.show_flashes()  # what the last action said before its rerun (review 3, W3)
 
+
 # The four by-year charts read plan.json's `by_year`, which is in nominal dollars (each year's
-# own); plan.json carries no deflator, so the axes say so (UX review Q6).
-NOMINAL_PER_YEAR = "nominal $ per year"
+# own); since S-4 each row carries its deflator, and the charts default to today's dollars.
+
+
+def units_control(key):
+    """S-4: "Today's $ | Nominal $" for the by-year charts, kept for the session (shared by the
+    Run and Compare pages: `library_units`), today's dollars by default (decision 7)."""
+    current = st.session_state.get("library_units", "today")
+    choice = st.segmented_control("Amounts", list(run_charts.UNITS), default=current,
+                                  format_func=run_charts.UNIT_LABELS.get, key=key)
+    choice = choice or current
+    st.session_state["library_units"] = choice
+    return choice
 
 
 def _frozen_case(run) -> dict:
@@ -592,31 +603,43 @@ if entries:
     # -- charts from plan.json (D7) ------------------------------------
     by_year = result.plan.get("by_year") or []
     if by_year:
-        years = [row["year"] for row in by_year]
+        # S-4: the by-year charts in today's dollars by default (the headline's units), nominal
+        # one click away; the choice is the session's, shared with Compare.
+        units = units_control("run_page_units")
+        if units == "today" and not run_charts.has_deflator(by_year):
+            st.caption("This result was solved before the charts could show today's dollars: they are in "
+                       "nominal dollars (each year's own). A new solve can show today's dollars.")
+        shown = run_charts.in_units(by_year, units)
+        years = [row["year"] for row in shown]
+        purchases = run_charts.big_ticket_years(view.cash_flow(result))
+        marks = run_charts.event_markers(by_year, result.plan.get("individuals") or [], purchases)
         tabs = st.tabs(["Spending", "Account balances", "Taxes and premiums", "Income sources",
                         "Cash flow (one year)"])
         with tabs[0]:
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=years, y=[row.get("spending") for row in by_year],
+            fig.add_trace(go.Scatter(x=years, y=[row.get("spending") for row in shown],
                                      name="Spending", line=dict(width=3)))
-            fig.update_layout(yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year", height=320)
-            st.plotly_chart(fig, width="stretch")
+            fig.update_layout(yaxis_title=run_charts.axis_title(by_year, units), xaxis_title="Year", height=340)
+            st.plotly_chart(run_charts.add_markers(fig, marks), width="stretch")
         with tabs[1]:
             fig = go.Figure()
             for key, label in (("portfolio_total", "Savings accounts"),
                                ("fixed_assets", "Fixed assets"), ("debt", "Debt"),
                                ("net_worth", "Net worth")):
-                fig.add_trace(go.Scatter(x=years, y=[row.get(key) for row in by_year], name=label))
-            fig.update_layout(yaxis_title="nominal $", xaxis_title="Year", height=320)
-            st.plotly_chart(fig, width="stretch")
+                fig.add_trace(go.Scatter(x=years, y=[row.get(key) for row in shown], name=label))
+            fig.update_layout(yaxis_title=run_charts.axis_title(by_year, units, per_year=False),
+                              xaxis_title="Year", height=340)
+            st.plotly_chart(run_charts.add_markers(fig, marks), width="stretch")
         with tabs[2]:
             # UX review Q16: the Medicare (IRMAA included) and marketplace premiums beside the
-            # taxes; they were in plan.json and on no chart.
-            st.plotly_chart(run_charts.taxes_and_premiums_figure(by_year), width="stretch")
+            # taxes; they were in plan.json and on no chart. S-4: the state tax in its parts.
+            st.plotly_chart(run_charts.taxes_and_premiums_figure(by_year, units, marks), width="stretch")
+            if run_charts.has_state_parts(by_year) and any(r.get("star_credit") for r in by_year):
+                st.caption("The NY STAR credit is drawn below the axis: it comes off the state tax, and "
+                           "in a year where it is larger the state pays the difference back.")
         with tabs[3]:
             # Q16: all-zero series left out; a purchase year runs off the top, annotated.
-            purchases = run_charts.big_ticket_years(view.cash_flow(result))
-            st.plotly_chart(run_charts.income_sources_figure(by_year, purchases), width="stretch")
+            st.plotly_chart(run_charts.income_sources_figure(by_year, purchases, units, marks), width="stretch")
             if purchases:
                 st.caption("A year with a big-ticket purchase (from the cash flow's uses) is drawn "
                            "off the top of the chart, its total written on it, so that it does not "

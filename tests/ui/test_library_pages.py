@@ -1142,3 +1142,24 @@ class TestEditAsNewRunTwice:
             errors = [e.value for e in at.error]
             assert any("could not be read: nothing was opened" in e for e in errors), errors
             assert not any("already exists" in e for e in errors)
+
+
+class TestUnitsOnTheRunPage:
+    """Ergonomics review S-4: the by-year charts default to today's dollars; a result solved
+    before plan.json carried the deflator (this fixture's) draws nominal and says so."""
+
+    def test_an_older_result_draws_nominal_with_a_caption(self, library):
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert "A new solve can show today's dollars" in _text(at)
+
+    def test_a_result_with_the_deflator_has_no_caption(self, library):
+        for run in library.runs():
+            for plan_json in run.path.glob("results/*/plan.json"):
+                doc = json.loads(plan_json.read_text(encoding="utf-8"))
+                for n, row in enumerate(doc["by_year"]):
+                    row.update(deflator=1.0 + 0.03 * n, local_tax=0, state_recapture=0, star_credit=0)
+                plan_json.write_text(json.dumps(doc), encoding="utf-8")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert "A new solve can show today's dollars" not in _text(at)

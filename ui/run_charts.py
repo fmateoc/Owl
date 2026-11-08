@@ -457,6 +457,10 @@ FLOW_LABELS = {
     "NIIT": ("NIIT (3.8%)", "NIIT (3.8%)"),
     "Payroll tax": ("Payroll tax", "payroll tax"),
     "State and local tax": ("State and local tax", "state and local tax"),
+    # The parts of "State and local tax" on the taxes chart (S-4; plan.json's by_year parts).
+    "State tax": ("State tax", "state tax"),
+    "Local tax": ("Local income tax (NYC / Yonkers)", "local income tax"),
+    "STAR credit": ("NY STAR credit", "the NY STAR credit"),
     "Medicare premiums": ("Medicare premiums (with IRMAA)", "Medicare premiums (with IRMAA)"),
     "ACA premiums": ("Marketplace (ACA) premiums", "marketplace (ACA) premiums"),
     "Taxable-account withdrawals": ("Taxable (brokerage) accounts", "the taxable (brokerage) accounts"),
@@ -524,18 +528,161 @@ def _series(by_year, key):
     return [row.get(key) or 0.0 for row in by_year]
 
 
-def taxes_and_premiums_figure(by_year):
-    """Taxes stacked, the health premiums as their own (hatched) series on the same stack."""
+# -- S-4: today's dollars, the state tax's parts, the event markers ---------------------------
+
+UNITS = ("today", "nominal")
+UNIT_LABELS = {"today": "Today's \\$", "nominal": "Nominal \\$"}
+# by_year keys that are not amounts: never divided by the deflator.
+_NOT_MONEY = {"year", "ages", "deflator"}
+
+
+def has_deflator(by_year) -> bool:
+    """Whether every row carries its deflator (results solved since S-4)."""
+    return bool(by_year) and all(isinstance(row.get("deflator"), (int, float)) and row["deflator"] > 0
+                                 for row in by_year)
+
+
+def effective_units(by_year, units: str) -> str:
+    """The units a chart can be drawn in: today's dollars need the deflator (an older result
+    draws nominal)."""
+    return "today" if units == "today" and has_deflator(by_year) else "nominal"
+
+
+def in_units(by_year, units: str):
+    """The rows with every amount in `units`: today's dollars divide each year's amounts by
+    that year's deflator (S-4); nominal returns the rows as they are."""
+    if effective_units(by_year, units) == "nominal":
+        return list(by_year)
+    out = []
+    for row in by_year:
+        d = float(row["deflator"])
+        new = {}
+        for k, v in row.items():
+            if k in _NOT_MONEY:
+                new[k] = v
+            elif isinstance(v, list):
+                new[k] = [x / d if isinstance(x, (int, float)) else x for x in v]
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                new[k] = v / d
+            else:
+                new[k] = v
+        out.append(new)
+    return out
+
+
+def axis_title(by_year, units: str, per_year: bool = True) -> str:
+    if effective_units(by_year, units) == "today":
+        return TODAY_PER_YEAR if per_year else "today's $"
+    return NOMINAL_PER_YEAR if per_year else "nominal $"
+
+
+def has_state_parts(by_year) -> bool:
+    return bool(by_year) and all("local_tax" in row and "star_credit" in row for row in by_year)
+
+
+def state_tax_parts(by_year) -> dict:
+    """The state tax's parts per year (plan.json since S-4):
+    state = state_tax - local_tax + star_credit (the state's own tax, NY recapture inside),
+    local = local_tax, star = -star_credit (negative: a credit). They add up to `state_tax`
+    in every year, a net STAR refund included."""
+    return {
+        "state": [(r.get("state_tax") or 0.0) - (r.get("local_tax") or 0.0) + (r.get("star_credit") or 0.0)
+                  for r in by_year],
+        "local": [r.get("local_tax") or 0.0 for r in by_year],
+        "star": [-(r.get("star_credit") or 0.0) for r in by_year],
+        "recapture": [r.get("state_recapture") or 0.0 for r in by_year],
+    }
+
+
+def _state_traces(by_year, years):
+    """The state tax as one series (an older result) or as its parts, each drawn where it is
+    not zero (the STAR credit below the axis, the Sankey's W1 rule for a refund)."""
+    if not has_state_parts(by_year):
+        return [go.Bar(x=years, y=_series(by_year, "state_tax"), name=flow_label("State and local tax"))]
+    parts = state_tax_parts(by_year)
+    state = go.Bar(x=years, y=parts["state"], name=flow_label("State tax"))
+    if any(abs(v) >= 0.5 for v in parts["recapture"]):
+        state.update(customdata=parts["recapture"],
+                     hovertemplate="%{x}: %{y:,.0f}<br>NY benefit recapture inside: %{customdata:,.0f}"
+                                   "<extra>" + flow_label("State tax") + "</extra>")
+    traces = [state]
+    if any(abs(v) >= 0.5 for v in parts["local"]):
+        traces.append(go.Bar(x=years, y=parts["local"], name=flow_label("Local tax")))
+    if any(abs(v) >= 0.5 for v in parts["star"]):
+        traces.append(go.Bar(x=years, y=parts["star"], name=flow_label("STAR credit"),
+                             marker_pattern_shape="x"))
+    return traces
+
+
+def event_markers(by_year, individuals=(), purchases=None) -> list:
+    """(year, label) of the marked events, from plan.json alone (S-4): each person's last work
+    year (`wages_by_person`; the household's last wage year on an older result), the purchase
+    years (`big_ticket_years`), each person's Medicare start (the year they turn 65) and the
+    last year with a debt (the year before `debt` falls to 0)."""
     years = [row["year"] for row in by_year]
+    if not years:
+        return []
+    marks = []
+    names = list(individuals or [])
+    if all("wages_by_person" in row for row in by_year):
+        for i, name in enumerate(names):
+            worked = [row["year"] for row in by_year if (row["wages_by_person"][i] or 0) > 0.5]
+            if worked and worked[-1] < years[-1]:
+                marks.append((worked[-1], f"{name}'s last work year"))
+    else:
+        worked = [row["year"] for row in by_year if (row.get("wages") or 0) > 0.5]
+        if worked and worked[-1] < years[-1]:
+            marks.append((worked[-1], "Last wages"))
+    for n in sorted(purchases or {}):
+        if 0 <= n < len(years):
+            marks.append((years[n], "Purchase"))
+    for i, name in enumerate(names):
+        for row in by_year:
+            ages = row.get("ages") or []
+            if i < len(ages) and ages[i] == 65:
+                marks.append((row["year"], f"{name}: Medicare"))
+                break
+    debts = [row.get("debt") or 0.0 for row in by_year]
+    for n in range(1, len(debts)):
+        if debts[n - 1] > 0.5 and debts[n] <= 0.5:
+            marks.append((years[n - 1], "Last loan year"))
+    return sorted(marks)
+
+
+def add_markers(fig, marks):
+    """Vertical dotted lines with a short label; labels of the same year are joined."""
+    by_year = {}
+    for year, label in marks:
+        by_year.setdefault(year, []).append(label)
+    for k, (year, labels) in enumerate(sorted(by_year.items())):
+        fig.add_vline(x=year, line_dash="dot", line_color=_EDGE, line_width=1)
+        fig.add_annotation(x=year, y=1.0, yref="paper", yanchor="bottom" if k % 2 == 0 else "top",
+                           text="<br>".join(labels), showarrow=False, font=dict(size=9),
+                           bgcolor="rgba(255,255,255,0.7)")
+    return fig
+
+
+def taxes_and_premiums_figure(by_year, units="nominal", marks=()):
+    """Taxes stacked, the health premiums as their own (hatched) series on the same stack. The
+    state tax is split into the state's own tax, the local tax and the STAR credit where the
+    result carries the parts (S-4); amounts in `units`."""
+    rows = in_units(by_year, units)
+    years = [row["year"] for row in rows]
     fig = go.Figure()
     for key, label in TAX_SERIES:
-        fig.add_trace(go.Bar(x=years, y=_series(by_year, key), name=label))
+        if key == "state_tax":
+            for trace in _state_traces(rows, years):
+                fig.add_trace(trace)
+            continue
+        fig.add_trace(go.Bar(x=years, y=_series(rows, key), name=label))
     for key, label in PREMIUM_SERIES:
-        values = _series(by_year, key)
+        values = _series(rows, key)
         if any(values):
             fig.add_trace(go.Bar(x=years, y=values, name=label, marker_pattern_shape="/"))
-    fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year", height=340)
-    return fig
+    # "relative": a negative bar (the STAR credit) stacks below the axis.
+    fig.update_layout(barmode="relative", yaxis_title=axis_title(by_year, units), xaxis_title="Year",
+                      height=360)
+    return add_markers(fig, marks)
 
 
 def big_ticket_years(cash_flow: dict) -> dict:
@@ -544,21 +691,25 @@ def big_ticket_years(cash_flow: dict) -> dict:
     return {n: float(v) for n, v in enumerate(values) if v and float(v) > 0.5}
 
 
-def income_sources_figure(by_year, purchases=None):
+def income_sources_figure(by_year, purchases=None, units="nominal", marks=()):
     """Income sources stacked, all-zero series left out. A big-ticket purchase year whose bar
     would set the scale (twice the other years' highest or more) runs off the top of the chart
-    with its amount written on it (Q16)."""
-    years = [row["year"] for row in by_year]
+    with its amount written on it (Q16). Amounts in `units` (S-4)."""
+    rows = in_units(by_year, units)
+    years = [row["year"] for row in rows]
     fig = go.Figure()
     totals = [0.0] * len(years)
     for key, label in INCOME_SERIES:
-        values = _series(by_year, key)
+        values = _series(rows, key)
         if not any(values):
             continue
         totals = [t + (v or 0.0) for t, v in zip(totals, values, strict=True)]
         fig.add_trace(go.Bar(x=years, y=values, name=label))
-    fig.update_layout(barmode="stack", yaxis_title=NOMINAL_PER_YEAR, xaxis_title="Year", height=340)
+    fig.update_layout(barmode="stack", yaxis_title=axis_title(by_year, units), xaxis_title="Year", height=360)
+    add_markers(fig, marks)
     purchases = purchases or {}
+    if effective_units(by_year, units) == "today":  # the cash flow's amounts are nominal
+        purchases = {n: a / float(by_year[n]["deflator"]) for n, a in purchases.items() if n < len(by_year)}
     others = [t for n, t in enumerate(totals) if n not in purchases]
     rest = max(others) if others else 0.0
     if purchases and rest > 0 and max(totals[n] for n in purchases) >= 2 * rest:

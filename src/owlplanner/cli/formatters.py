@@ -5,6 +5,18 @@ Converts a solved Plan to a structured dict suitable for JSON serialization.
 All monetary values are in nominal dollars unless the key ends with ``_today``
 or ``_today_dollars``.
 
+Fork (ergonomics review S-4): each ``by_year`` row also carries its ``deflator`` (the plan's
+cumulative inflation factor ``gamma_n``, 1 in the first year): an amount in today's dollars is
+the nominal amount divided by it. The row's ``state_tax`` is ``st_T_n``, the state and local tax
+net of the NY STAR credit, and three of its parts are given beside it:
+
+    state_tax = state base + state_recapture + local_tax - star_credit
+
+``local_tax`` is ``lt_T_n`` (NYC / Yonkers), ``state_recapture`` is ``st_recap_n`` (NY's
+benefit recapture), ``star_credit`` is ``st_star_n`` (the STAR credit received, positive), and
+the state base (the bracket tax less personal credits) is what is left. ``wages_by_person`` is
+each person's wages (``omega_in``), for the run page's "last work year" markers.
+
 Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 """
 
@@ -172,6 +184,13 @@ def plan_to_dict(plan) -> dict:
     ss_income = plan.zetaBar_in[:, :N]
     portfolio_total = np.sum(plan.b_ijn[:, :, :N], axis=(0, 1))
     gamma = plan.gamma_n[:N]
+    # The parts of st_T_n (fork; see the module docstring). Plans built before these existed
+    # lack the attributes: zeros keep plan.json well-formed.
+    zeros = np.zeros(N)
+    local_tax = np.asarray(getattr(plan, "lt_T_n", zeros), dtype=float)[:N]
+    state_recapture = np.asarray(getattr(plan, "st_recap_n", zeros), dtype=float)[:N]
+    star_credit = np.asarray(getattr(plan, "st_star_n", zeros), dtype=float)[:N]
+    wages_in = np.asarray(plan.omega_in, dtype=float)[:, :N]  # each person's wages (the markers)
     # Income sources and the cash drawn from the savings accounts (the mix is in today's
     # dollars; back to nominal, like every other by_year amount).
     streams = fixedIncomeStreams(plan, N)
@@ -193,6 +212,11 @@ def plan_to_dict(plan) -> dict:
                 "niit": _round(niit[n]),
                 "payroll_tax": _round(payroll[n]),
                 "state_tax": _round(state_tax[n]),
+                "local_tax": _round(local_tax[n]),
+                "state_recapture": _round(state_recapture[n]),
+                "star_credit": _round(star_credit[n]),
+                "deflator": round(float(gamma[n]), 6),
+                "wages_by_person": [_round(wages_in[i, n]) for i in range(plan.N_i)],
                 "medicare_premiums": _round(medicare[n]),
                 "aca_premiums": _round(aca[n]),
                 "roth_conversions": _round(roth_conv[n]),

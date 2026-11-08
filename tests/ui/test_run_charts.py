@@ -574,8 +574,8 @@ class TestCompareCharts:
         assert overlay.data[0].y[3] is None and overlay.data[1].y[0] is None
 
     def test_magi_and_its_lines_from_the_brackets_rows(self, rc):
-        years = [{"year": 2027, "magi": 100_000, "irmaa_edges": [{"label": "IRMAA tier 1", "amount": 218_000},
-                                                                  {"label": "IRMAA tier 2", "amount": 274_000}],
+        edges = [{"label": "IRMAA tier 1", "amount": 218_000}, {"label": "IRMAA tier 2", "amount": 274_000}]
+        years = [{"year": 2027, "magi": 100_000, "irmaa_edges": edges,
                   "aca_lines": [{"label": "400% FPL (the subsidy cliff)", "amount": 84_600}]}]
         magi, irmaa, fpl = rc.magi_series(years, self.A, "today")
         assert magi == {2027: 100_000} and irmaa == {2027: 218_000} and fpl == {2027: 84_600}

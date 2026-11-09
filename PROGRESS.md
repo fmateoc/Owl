@@ -8141,3 +8141,11 @@ S-3 `6c8678b`, S-6 `4e4ab96`; re-drive fixes `78cd5b0`. No existing run's inputs
   `tests/ui/test_classic_pages_library_mode.py::test_ap4_reports_in_library_mode_hides_rerun_all_cases`.
 - **AP5 (`CLAUDE.md`, `PROGRESS.md`):** Updated `ui/Run_Options.py`'s pre-existing `B905` line
   number (345 on `claude/loving-wright-44943l`; 367 after merging `origin/main`).
+
+## Upstream `dev` `8ec9c43b` merged (2026-11-09)
+
+Three upstream commits since `d2ede71`:
+- `520e7612`: `scripts/capture_amo_reference.py` writes `tests/data/amo_mip_reference.json` with `encoding="utf-8"`.
+- `a3f899c3`: `.gitignore` ignores `scripts-local/` instead of `scripts/` so tracked scripts in `scripts/` are not hidden by `.gitignore` (local untracked `rebaseline_state_tax.py` moved from `scripts/` to `scripts-local/`).
+- `8ec9c43b` (#251): `tests/utils/test_text_encoding.py` scans `scripts/` in addition to `src`, `ui`, `tests`, and `scripts/make_lowwealth_case.py` writes its TOML file with `encoding="utf-8"`.
+- Clean merge; `tests/utils/test_text_encoding.py` passed.

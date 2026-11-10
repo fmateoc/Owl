@@ -34,6 +34,49 @@ The first `uv run` installs everything. The repository pins Python 3.14 (`.pytho
 
 To update later: `git pull`, then `uv sync`.
 
+## 1b. The simple way in: a household folder (2026-11-10)
+
+For running it yourself with no case file to write. Pick a folder for the household's plan,
+anywhere outside the checkout, and start the program on it:
+
+```bash
+bash /path/to/Owl/owlplanner-library.sh "$HOME/Our Plan"
+```
+
+On Windows:
+
+```bat
+C:\path\to\Owl\owlplanner-library.cmd "%USERPROFILE%\Our Plan"
+```
+
+- The folder is made if it is not there. Everything the program makes or keeps is in it: the
+  run library (`library/`), the workbook the setup writes (`Household.xlsx`), and a starter file
+  (`Start Owl.cmd` on Windows, `Start Owl.command` on macOS, `start-owl.sh` on Linux) to
+  double-click the next time. To back up, copy the folder.
+- With no plan in the folder the program opens on **Start**, which offers *Set up our plan*: a
+  form for who the plan is for, where you live, the savings (in dollars), Social Security and
+  pensions, and the goal. Wages, a budget and a home are tables and stay in Excel: the page uses a
+  workbook already in the folder, takes one from elsewhere, or writes an empty one (its first
+  sheet says how to fill it) and reads it back in words before anything is solved. What is typed
+  is kept as you go (`library/setup-draft.json`).
+- *Make our plan and solve it* saves the plan, makes it the one the program opens on, and solves
+  it a first time (Quick look, seconds). Afterwards **Start** asks what you want to do with it
+  (read it, try a change, compare options, bring the numbers up to date or start the new year,
+  find the files) and shows the steps.
+- Assumptions nobody is asked at the start (a fixed "conservative" rate path, federal tax law as
+  enacted, 60% of spending for a survivor) are listed in `library/household.py` (`ASSUMPTIONS`)
+  and can be changed with *Edit as new run* on the plan's page.
+
+**Checked** in a cloud session on Linux with a headless browser (the launcher called from another
+directory on a new folder with a space in its name, the whole setup with a workbook filled by a
+script standing in for Excel, a solved plan). **Not checked:** Windows and macOS (the `.cmd`
+launcher's folder argument and the two starter files are written from the documentation, not
+run), and Excel itself.
+
+Sections 2-4 below are the developer's route (a case file and `owlcli`); they predate the run
+library, and two of the limits listed in 3a no longer hold (the Financial Profile page edits the
+Budget lines; Run Options has `withItemized` and `withSTAR`).
+
 ## 2. Enter the data
 
 Two files, kept in `otherFiles/` (gitignored by upstream itself, so they never reach GitHub):

@@ -103,15 +103,20 @@ if os.environ.get("OWL_LIBRARY_DIR"):
         # Ergonomics review S-1: in library mode the Run Library comes first in the menu and the
         # app opens on the Run page (the pinned baseline); Welcome stays under Help.
         pages["Help"][0] = st.Page("Welcome.py", icon=":material/campaign:")
+        # With no plan in the folder yet, the app opens on the Start page (make a plan, or bring
+        # in files made earlier); once there is one, on the plan itself.
+        _manager = libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
+        _empty = not _manager.library.runs()
         pages = {"Run Library": [
-            st.Page("Run.py", icon=":material/monitoring:", default=True),
+            st.Page("Start.py", icon=":material/flag:", default=_empty),
+            st.Page("Run.py", icon=":material/monitoring:", default=not _empty),
+            st.Page("Setup.py", icon=":material/assignment:", title="Set up our plan"),
             st.Page("Library.py", icon=":material/database:"),
             st.Page("Scenario.py", icon=":material/edit_note:"),
             st.Page("Collections.py", icon=":material/grid_view:"),
             st.Page("Compare.py", icon=":material/compare_arrows:"),
             st.Page("Queue.py", icon=":material/schedule:"),
         ], **pages}
-        libraryjobs.get_manager()  # the server's one manager; its ticker moves the queue (H5)
     else:
         st.error(
             "The Run Library is switched off: it holds household data and runs on localhost "

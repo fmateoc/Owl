@@ -414,7 +414,9 @@ if disclaimer.show_disclaimer() and not kz.getGlobalKey(disclaimer.DISMISSED_KEY
 
 runs = list(reversed(lib.runs()))
 if not runs:
-    st.info("The library has no runs yet: import a case on the Library page.")
+    st.info("There is no plan here yet: the Start page makes one, or brings in files made earlier.")
+    if st.button("Open the Start page", type="primary", key="run_page_to_start"):
+        st.switch_page("Start.py")
     st.stop()
 
 # -- the conversion and bracket view (design 14.1, I8) -----------------

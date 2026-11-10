@@ -8259,3 +8259,57 @@ was edited under it, not a defect.
 
 Next: the report's D5-D12 are not built. The user's next request (2026-11-10): starting in a local
 household folder with guided first-time data entry.
+
+## Operating it alone: a household folder and a first-time setup (2026-11-10)
+
+The user's request (2026-11-10, after D4): "a nice way of starting in a local folder where the
+generated and edited files would be stored. If there are no household data local files there, the
+user should be prompted to enter it, no toml file editing. ... using Excel is acceptable, but the
+user should be prompted to either select an existing, populated, or to populate an unpopulated
+Excel file template. Not quite wizard, but the user should be guided through the steps ... after
+asking the user what they want to do." The install was excluded by the user.
+
+Built on `claude/loving-carson-a2dfi9`:
+
+- **The folder.** `owlplanner-library.sh` / `.cmd [folder]`: a first argument that is not an option
+  is the household folder (`OWL_HOME_DIR`, library in `<folder>/library`); the scripts `cd` to
+  the checkout themselves, so they run from anywhere. `owlplanner-library.sh` was not executable
+  in git (mode 100644; `owlplanner.sh` is 100755): fixed, and the starter file calls it through
+  `bash` anyway. The Start page writes a starter file into the folder once
+  (`household.write_starter`).
+- **`library/household.py`.** Answers in dollars (`blank_answers`, `problems` in plain words),
+  `case_from_answers` (the case dictionary; the assumptions nobody is asked are in `ASSUMPTIONS`:
+  the "conservative" fixed rate path, since the builder refuses rates redrawn at every build;
+  federal law as enacted, D1; a 60% survivor share), `write_workbook` (Instructions, a sheet per
+  person with a row per plan year and a note on every heading, Budget / Debts / Fixed Assets with
+  their headers; never replaces a file), `read_workbook` (the plan's own reader, then what was
+  found, in words), `first_scenario` (through `import_case`; Budget lines make the profile
+  "budget", else "flat"), the draft (`setup-draft.json` in the library folder).
+- **`ui/Setup.py`.** Six short sections on one page (who, where, savings, Social Security and
+  pensions, the workbook, the goal), "Still needed" above one button, which is enabled whatever
+  is missing (AL1's lesson). The plan is saved, pinned as the baseline when there is none, queued
+  for a Quick look, and its Run page opens (D3 shows the result).
+- **`ui/Start.py`.** No plan: *Set up our plan* or *Bring in files made earlier*. A plan: "What do
+  you want to do with it?" (read it, try a change, compare options, bring the numbers up to date
+  or start the new year, find the files), each with numbered steps marked done or next and one
+  button. `ui/main.py` opens on Start while the folder has no plan, on the plan otherwise (S-1
+  kept).
+- **Decisions taken without asking, the user's to revisit:** the folder's layout; Start as the
+  landing page only while there is no plan; which figures count as minimal (no asset-allocation
+  detail, no rate choice, no tax-law choice at the start); spending "flat" without Budget lines;
+  a first solve at Quick look, not Careful.
+- **Checked (browser, Linux):** the launcher called from another directory on a new folder with a
+  space in its name; Start; the form typed field by field (birth dates in the segmented date
+  field); `Household.xlsx` made, filled by a script standing in for Excel, read back ("Ari: wages
+  from 2026 to 2026 (the largest year \$168,000) ... Budget: 2 budget lines"); the plan made and
+  its Quick look shown with no reload; Start with the plan. In the browser `uv` was replaced by a
+  shim to the session's venv (the real `uv run` would rebuild the environment on Python 3.14).
+- **Not checked:** Windows and macOS (the `.cmd` launcher's folder argument, `Start Owl.cmd`,
+  `Start Owl.command`); Excel itself; a single person through the browser (unit-tested).
+- Tests: `tests/library/test_household.py` 38, `tests/ui/test_first_time.py` 13;
+  `tests/library` + `tests/ui` + `tests/utils` 1326 passed. Docs: `fork-notes/running-locally.md`
+  section 1b.
+
+Not built, from the local-use review's section D: D5-D10, D12, and of D11 the quiet terminal, the
+second-launch guard and `client.showErrorDetails`.
+

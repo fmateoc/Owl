@@ -7,6 +7,20 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: start in a folder, first-time setup without a case file (2026-11-10)
+
+- **A household folder.** `owlplanner-library.sh` / `.cmd` take a folder as their first argument
+  and can be called from anywhere: the run library, the workbook and a starter file to
+  double-click next time live in that folder.
+- **Set up our plan.** With no plan in the folder the app opens on a Start page; *Set up our
+  plan* asks for the household's figures in a form (who, where, savings in dollars, Social
+  Security and pensions, the goal) and makes the first plan from them: no case file to write.
+  The year-by-year tables stay in Excel: the page uses a workbook from the folder or elsewhere,
+  or writes an empty one with instructions, and reads it back in words. What is typed is kept as
+  you go.
+- **Start** then asks what you want to do with the plan and shows the steps to it.
+- Not checked on Windows or macOS.
+
 ### Run library: the new year, a live Run page, a what-if in one step (2026-11-10)
 
 From `fork-notes/ux-review-local-use.md`, section D, items 1-4.

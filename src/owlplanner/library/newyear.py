@@ -313,14 +313,26 @@ def _without(doc: dict, paths, copy_first: bool = True) -> dict:
 
 
 def _sorted_tables(tables: dict) -> dict:
-    """Tables with their rows in one order (a frozen row sits among the hand rows, a generated
-    one after them: the same plan, another row order)."""
+    """Tables as the rebuild check compares them: what the plan reads, not how it is laid out.
+
+    The rows in one order (a frozen row sits among the hand rows, a generated one after them:
+    the same plan, another row order). And nothing for what holds nothing: a table without
+    rows, and a person-sheet row that is zero apart from its year. A build with events lays
+    out every house table and a zero row per plan year; one with no events left is the hand
+    document as it is. Comparing the layouts refused every cash purchase the year after it,
+    in the yearly use (2026 -> 2027 drops the rent and the work that are over, 2027 -> 2028
+    checks the home with no other event: "Debts: columns differ", review AQ1)."""
     out = {}
     for sheet, table in tables.items():
         columns = list(table["columns"])
+        rows = [list(r) for r in table["rows"]]
+        if sheet not in builder.HOUSE_TABLES and "year" in columns:
+            year_at = columns.index("year")
+            rows = [r for r in rows if any(v for i, v in enumerate(r) if i != year_at)]
+        if not rows:
+            continue
         keys = [columns.index(c) for c in ("name", "year") if c in columns]
-        out[sheet] = {"columns": columns,
-                      "rows": sorted((list(r) for r in table["rows"]), key=lambda r: [str(r[k]) for k in keys])}
+        out[sheet] = {"columns": columns, "rows": sorted(rows, key=lambda r: [str(r[k]) for k in keys])}
     return out
 
 

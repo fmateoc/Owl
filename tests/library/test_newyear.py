@@ -192,6 +192,29 @@ class TestABoughtHome:
         for sheet in ("Fixed Assets", "Debts"):
             assert sorted(map(str, tables[sheet]["rows"])) == sorted(map(str, built[sheet]["rows"]))
 
+    def test_year_by_year_with_the_purchase_the_only_event_left(self):
+        """The yearly use: 2026 -> 2027 drops the rent that ended, 2027 -> 2028 freezes the home
+        with no other event left, so the rebuild check builds a scenario with no events, which
+        is the hand document as it is (no empty Debts table, where the build with the purchase
+        has one). It refused every cash purchase the year after it: "Debts: columns differ"."""
+        first, _ = newyear.start_year(_scenario([RENT, BUY_CASH]), 2027)
+        assert [e["id"] for e in first["events"]] == [BUY_CASH["id"]]
+        second, notes = newyear.start_year(first, 2028)
+        assert second["events"] == [] and second["plan_year"] == 2028
+        assert _rows(second["hfp"], "Fixed Assets", BUY_CASH["name"])
+        assert any("was bought in 2027" in n for n in notes)
+        third, _ = newyear.start_year(second, 2029)  # hand rows from then on
+        assert _rows(third["hfp"], "Fixed Assets", BUY_CASH["name"])
+
+    def test_the_check_still_sees_a_row_that_differs(self, monkeypatch):
+        """Leaving empty tables and zero rows out of the comparison hides no row with a value."""
+        tables = {"Ari": {"columns": ["year", "anticipated wages"], "rows": [[2026, 0], [2027, 5]]},
+                  "Debts": {"columns": ["name", "year"], "rows": []}}
+        other = {"Ari": {"columns": ["year", "anticipated wages"], "rows": [[2027, 6]]}}
+        a, b_ = newyear._sorted_tables(tables), newyear._sorted_tables(other)
+        assert "Debts" not in a and a["Ari"]["rows"] == [[2027, 5]]
+        assert newyear._table_differences(a, b_) == ["Ari, row 1 (2027), anticipated wages: 5 -> 6"]
+
     def test_a_rebuild_that_differs_is_refused(self, monkeypatch):
         real = newyear._table_differences
         monkeypatch.setattr(newyear, "_table_differences", lambda a, b_: real(a, b_) + ["Debts: tampered"])

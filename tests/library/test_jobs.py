@@ -404,3 +404,29 @@ class TestDeleteRun:
     def test_a_run_with_no_solve_is_deleted(self, library, manager, run):
         target = manager.delete_run(run.id)
         assert target.is_dir() and library.runs() == []
+
+
+def test_jobs_of_one_second_keep_the_order_they_were_queued_in(tmp_path, monkeypatch):
+    """Local-use review D4: `queued` is whole seconds, so jobs of two runs queued by one click
+    tied on it and on the folder name, and were dispatched in the library's run order: a
+    what-if queued before its parent waited behind it. `queued_at` keeps the fractions."""
+    from owlplanner.library import JobManager, Library, import_case
+    from owlplanner.library import results as R
+    from owlplanner.library.jobs import _queued_order
+
+    lib = Library.open(tmp_path / "library")
+    older = lib.save_run(name="parent", scenario=import_case("examples/Case_bill.toml")).run
+    scenario = import_case("examples/Case_bill.toml")
+    scenario["case"]["basic_info"]["life_expectancy"] = [88]
+    newer = lib.save_run(name="what-if", scenario=scenario, parent=older.id).run
+    monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+    monkeypatch.setattr(R, "now_iso", lambda at=None: "2026-01-01T10:00:00+00:00")  # one second
+    manager = JobManager(lib)
+    first = manager.enqueue(newer, preset="quick")
+    second = manager.enqueue(older, preset="quick")
+    assert first.id == second.id and first.doc["queued"] == second.doc["queued"]
+    assert [job.doc["run_id"] for job in manager.jobs()] == [newer.id, older.id]
+    # A record from before `queued_at`: the readable stamp orders it, as it did.
+    old = dict(first.doc, queued="2026-01-01T09:59:59+00:00")
+    old.pop("queued_at")
+    assert _queued_order(R.JobRecord(first.results_dir, old)) < _queued_order(second)

@@ -257,6 +257,9 @@ class JobRecord:
             "token": secrets.token_hex(16),
             "cancel": False,
             "queued": queued or now_iso(),
+            # The queue's order (`jobs._queued_order`): `queued` reads well but is whole
+            # seconds, and two jobs of one click share it.
+            "queued_at": stamp_seconds(queued) if queued else time.time(),
             "started": None,
             "finished": None,
             "pid": None,

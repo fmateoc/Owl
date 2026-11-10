@@ -50,9 +50,11 @@ import libraryjobs
 import librarypresets
 import run_charts
 import sskeys as kz
+import whatif
 from owlplanner.library import JobsError, ScenarioError, agemap, export_case, load_plan, preset_solves
 from owlplanner.library import results as R
 from owlplanner.library import grid, newyear, tornado, view
+from owlplanner.library.presets import preset_name as presets_name
 
 st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
@@ -156,7 +158,7 @@ def _start_new_year(lib, run, year):
 
 
 @st.fragment(run_every=2.0)
-def _solving(manager, run):
+def _solving(manager, run, parent=None):
     """Local-use review D3: the run's live solves, refreshed every two seconds, and the whole
     page redrawn on the newest result when one ends. Before it, the page stayed on "This run
     has no results yet" after *Solve*: a toast was the only sign, and only the Queue page
@@ -168,6 +170,15 @@ def _solving(manager, run):
             libraryjobs.flash(*libraryjobs.ended_message(job))
         st.session_state[libraryjobs.SHOW_NEWEST_KEY] = True  # not the result picked before
         st.rerun()  # the whole page: the fragment alone cannot redraw the result below it
+    if parent is not None:
+        # D4: *Compare with its parent* and its caption depend on the parent's results too (a
+        # what-if queues its parent's solve after its own).
+        _waiting, parent_ended = libraryjobs.ended_jobs(manager, parent, watcher=f"{run.id}<-")
+        if parent_ended:
+            if any(job.state == R.DONE for job in parent_ended) and not _waiting:
+                libraryjobs.flash("caption", f"*{libraryjobs.plain(parent.name)}* is solved: "
+                                             "*Compare with its parent* reads its new result.")
+            st.rerun()
     if not live:
         return
     running = any(job.state == R.RUNNING for job in manager.jobs())
@@ -567,12 +578,13 @@ if _draft.get("changes"):
         st.switch_page("Scenario.py")
 st.caption(f"`{run.folder_name}` · plan year {run.plan_year or '?'} · "
            f"created {run.created[:10]}" + (f" · {', '.join(run.tags)}" if run.tags else ""))
+_parent_run = None  # the run this one was made from, when the library still holds it
 if run.parent:
-    parent = None
     try:
-        parent = lib.get(run.parent).name
+        _parent_run = lib.get(run.parent)
     except Exception:  # noqa: BLE001 - a deleted parent shows as deleted (section 7)
-        parent = "a deleted run"
+        _parent_run = None
+    parent = _parent_run.name if _parent_run is not None else "a deleted run"
     st.markdown(f"From **{parent}**: {libraryjobs.plain('; '.join(run.change_summary)) or 'same inputs'}")
 if run.notes:
     st.markdown(run.notes)
@@ -600,7 +612,7 @@ elif _other_year:
 if housing_convert.offered(lib, run):
     housing_convert.convert_button(lib, run, key=f"run_housing_{run.id}")
 
-_solving(manager, run)  # D3: what is solving now; the page redraws when it ends
+_solving(manager, run, _parent_run)  # D3: what is solving now; the page redraws when it ends
 
 if entries:
     if st.session_state.pop(libraryjobs.SHOW_NEWEST_KEY, False):
@@ -619,6 +631,35 @@ if entries:
     # families, branch-and-bound gap, commit) in a collapsed expander below.
     st.markdown(f"**Solved** {finished[:16].replace('T', ' ') or job.state} · "
                 f"{view.method_text(result)}")
+    # Local-use review D4: a what-if ends on its comparison with the run it was made from.
+    # Compare's own default pair is the library's newest solve against that run's parent,
+    # which is this pair only until something else is solved; the labels to pick it by hand
+    # are some 190 characters long.
+    if _parent_run is not None:
+        _pair = whatif.parent_pair(manager, run, _parent_run, shown=job)
+        _p1, _p2 = st.columns([2, 5], vertical_alignment="center")
+        if _p1.button("Compare with its parent", key="run_page_compare_parent", disabled=_pair is None,
+                      icon=":material/compare_arrows:", use_container_width=True,
+                      help=f"Opens Compare on this result against *{_parent_run.name}*'s."):
+            whatif.open_compare(_parent_run, run, _pair)
+        if _pair is None:
+            _waiting = libraryjobs.live_jobs(manager, _parent_run)
+            _p2.caption(f"*{libraryjobs.plain(_parent_run.name)}* "
+                        + ("is being solved: the comparison opens when it has a result."
+                           if _waiting else "has no solved result yet: solve it to compare."))
+        else:
+            _a, _b = _pair[0][1].record, _pair[1][1].record
+            _same = _a.get("preset") == _b.get("preset")
+            _days = [((r.get("solve_date") or {}).get("finished") or "")[:10] for r in (_a, _b)]
+            _note = f"Against *{libraryjobs.plain(_parent_run.name)}*"
+            if not _same:
+                _note += (f", solved another way ({presets_name(_a.get('preset'))}): "
+                          "small differences are then not meaningful")
+            elif _days[0] != _days[1]:
+                _note += f", solved on {_days[0]} (plans start on the day they are solved)"
+            if libraryjobs.live_jobs(manager, _parent_run):
+                _note += "; it is being solved again now"
+            _p2.caption(_note + ".")
     search = record.get("age_search")
     if search:
         decided = search.get("decided")

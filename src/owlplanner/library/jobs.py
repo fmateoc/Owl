@@ -33,8 +33,19 @@ RESULTS_DIR = "results"
 
 
 def _queued_order(job: R.JobRecord):
-    """Queue order: the queued instant (not its text, H3), then the folder name."""
-    return (R.stamp_seconds(job.doc.get("queued")) or 0.0, job.id)
+    """Queue order, first come first served: the queued instant (not its text, H3), then the
+    folder name.
+
+    `queued_at` is the instant with its fractions. `queued`, the stamp people read, is whole
+    seconds: jobs of two runs queued by one click tied on it and on the folder name (the same
+    "<second>_<preset>" in each run), and came out in the library's run order -- a what-if
+    queued before its parent was solved after it (local-use review D4). A record written
+    before `queued_at` existed falls back on `queued`.
+    """
+    at = job.doc.get("queued_at")
+    if not isinstance(at, (int, float)) or isinstance(at, bool):
+        at = R.stamp_seconds(job.doc.get("queued")) or 0.0
+    return (float(at), job.id)
 
 
 # One ticker thread per library folder per process (H5). A Streamlit code reload can build a

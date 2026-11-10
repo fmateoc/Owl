@@ -180,14 +180,15 @@ def live_jobs(manager, run) -> list:
     return [job for job in manager.jobs(run) if job.state in (R.WAITING, R.RUNNING)]
 
 
-def ended_jobs(manager, run) -> tuple:
+def ended_jobs(manager, run, watcher="") -> tuple:
     """(the run's live jobs, those that were live at the last look and are not any more).
 
     The session keeps the live set between looks (`watch_jobs` seeds it at queue time); every
-    call replaces it, so an ended job is reported once."""
+    call replaces it, so an ended job is reported once. `watcher` names another reader of the
+    same run's jobs (a child's page watching its parent's solve), which keeps its own set."""
     jobs = manager.jobs(run)
     live = [job for job in jobs if job.state in (R.WAITING, R.RUNNING)]
-    key = _WATCH_KEY.format(run_id=run.id)
+    key = _WATCH_KEY.format(run_id=f"{watcher}{run.id}")
     seen = set(st.session_state.get(key) or ())
     now = {job_key(job) for job in live}
     ended = [job for job in jobs if job_key(job) in seen - now]

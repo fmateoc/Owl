@@ -51,7 +51,9 @@ import pandas as pd
 import streamlit as st
 
 import libraryjobs
+import librarypresets
 import sskeys as kz
+import whatif
 from owlplanner.library import SCHEMA_VERSION, ScenarioError, canonicalize, diff_summaries
 from owlplanner.library import builder
 from owlplanner.library.sequences import sequences as _sequences
@@ -947,33 +949,70 @@ collection = n3.selectbox(
 # Enabled whatever the events say (review AL1, as Q18): disabled while the page could not
 # build, the button was still disabled when the click that leaves the corrected field landed
 # (a field commits on blur), so that first click did nothing.
-save_clicked = st.button("Save as a new run", type="primary")
-if save_clicked and built is None:
+# Local-use review D4: *Save and solve* is the what-if's one step -- save, queue the Careful
+# solve, open the new run's page (where *Compare with its parent* is). *Save as a new run*
+# stays for a run to keep editing or to solve another way.
+b1, b2, _b3 = st.columns([2, 2, 5])
+solve_clicked = b1.button(
+    "Save and solve", type="primary", key="scenario_save_solve",
+    help=f"Saves the new run, queues its *{librarypresets.name(whatif.PRESET)}* solve and opens its "
+         "page, which shows the result when it is ready and offers *Compare with its parent*. "
+         f"*{run.name}* is solved the same way too if it has no such result from today, so that "
+         "the two compare like for like.")
+save_clicked = b2.button("Save as a new run", key="scenario_save",
+                         help="Saves the new run without solving it; this page then shows it.")
+if (save_clicked or solve_clicked) and built is None:
     st.warning("Not saved: the events above cannot be built yet (see the message above).",
                icon=":material/warning:")
-elif save_clicked:
+elif save_clicked or solve_clicked:
+    saved = None
     try:
         result = lib.save_run(name=name.strip() or f"{run.name} variant", scenario=edited,
                               parent=run.id, notes=notes.strip())
     except Exception as exc:  # noqa: BLE001 - shown to the user, not raised
         libraryjobs.flash("error", f"Not saved: {exc}")
     else:
+        saved = result.run if result.created else result.identical_to
         if result.created:
-            libraryjobs.flash("info", f"Saved as *{result.run.name}* ({result.run.folder_name}); "
-                                      "the page now shows it.")
+            said = f"Saved as *{libraryjobs.plain(result.run.name)}*"
+            if not solve_clicked:
+                libraryjobs.flash("info", f"{said} ({result.run.folder_name}); the page now shows it.")
             # The edits are the new run now: drop the draft and open the page on it (S-2).
             st.session_state.pop(_DRAFT_KEY, None)
             st.session_state[_VERSION_KEY] = version + 1
             st.session_state["library_selected_run"] = result.run.id
         else:
             other = result.identical_to
-            libraryjobs.flash(
-                "info",
-                f"Identical to *{other.name}* ({other.folder_name}): not saved again."
-                if other else "Not saved: identical inputs already in the library.",
-            )
-        if collection is not None:
-            saved = result.run if result.created else result.identical_to
-            if saved is not None:  # a member already keeps its values (review AG6)
-                lib.join_collection(collection.id, saved)
+            said = (f"Identical to *{libraryjobs.plain(other.name)}* ({other.folder_name}): not saved again"
+                    if other else "Not saved: identical inputs already in the library")
+            if not solve_clicked or other is None:
+                libraryjobs.flash("info", said + ".")
+        if collection is not None and saved is not None:
+            lib.join_collection(collection.id, saved)  # a member already keeps its values (review AG6)
+    if solve_clicked and saved is not None:
+        # The pair to compare is the saved run and its own parent: this page's run for a new
+        # run, and for inputs the library held already, the parent that run has.
+        parent = None
+        if saved.parent:
+            try:
+                parent = lib.get(saved.parent)
+            except Exception:  # noqa: BLE001 - a deleted parent: nothing to compare with
+                parent = None
+        try:
+            mine, theirs = whatif.queue_what_if(manager, saved, parent)
+        except Exception as exc:  # noqa: BLE001 - a run from another plan year (R1)
+            libraryjobs.flash("info", said + ".")
+            libraryjobs.flash("error", f"Not queued: {libraryjobs.plain(exc)}")
+        else:
+            # One message on the page it opens (three boxes pushed the run off the first screen).
+            _how = librarypresets.name(whatif.PRESET)
+            said += (f". Its *{_how}* solve is queued; this page shows the result when it is ready."
+                     if mine else f". It has a *{_how}* result from today (or one on the way): not solved again.")
+            if theirs:
+                said += (f" *{libraryjobs.plain(parent.name)}* is solved the same way after it, "
+                         "for the comparison.")
+            libraryjobs.flash("info", said)
+        st.session_state["library_selected_run"] = saved.id
+        st.session_state[libraryjobs.SHOW_NEWEST_KEY] = True
+        st.switch_page("Run.py")
     st.rerun()

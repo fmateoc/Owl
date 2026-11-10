@@ -31,6 +31,7 @@ import libraryjobs
 import librarypresets
 import run_charts
 import sskeys as kz
+import whatif
 from owlplanner.library import compare as C
 from owlplanner.library import results as R
 from owlplanner.library import view
@@ -89,9 +90,21 @@ a_idx, b_idx = C.default_pair([
      record.get("status") == "solved" and view.record_companion(record) is None,
      _baseline is not None and run.id == _baseline.id)
     for _label, run, _job, record in catalog])
+# A pair another page asked for (local-use review D4: the Run page's *Compare with its
+# parent*). The selectors are driven through the session, as "Open" drives the Run page's
+# (P2): a drawn widget keeps its value and would override `index`.
+_asked = st.session_state.pop(whatif.PAIR_KEY, None)
+_default = {"cmp_a": a_idx, "cmp_b": b_idx}
+if _asked:
+    for _side, _widget in (("a", "cmp_a"), ("b", "cmp_b")):
+        _label = next((label for label, run, job, _record in catalog
+                       if (run.id, job.id) == tuple(_asked.get(_side) or ())), None)
+        if _label is not None:
+            st.session_state[_widget] = _label
+            _default[_widget] = 0  # no default beside a session-set value (Streamlit warns)
 col1, col2 = st.columns(2)
-a_label = col1.selectbox("Result A (the reference)", labels, key="cmp_a", index=a_idx)
-b_label = col2.selectbox("Result B", labels, key="cmp_b", index=b_idx)
+a_label = col1.selectbox("Result A (the reference)", labels, key="cmp_a", index=_default["cmp_a"])
+b_label = col2.selectbox("Result B", labels, key="cmp_b", index=_default["cmp_b"])
 
 (_, run_a, job_a, _), (_, run_b, job_b, _) = (
     next(entry for entry in catalog if entry[0] == a_label),

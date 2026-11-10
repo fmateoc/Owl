@@ -99,6 +99,18 @@ def get_manager():
     return _manager(str(default_library_root()))
 
 
+def job_key(job) -> str:
+    """A widget-key part naming one job among all the library's: its run's folder and its own.
+
+    `job.id` is the results folder's name, "<second>_<preset>", unique inside one run only
+    (`JobManager.enqueue` claims it with a `mkdir` there). Two runs queued in the same second
+    under one preset share it (*Make variants* with "Queue them when created"), so the Queue
+    page keys its rows by the path's two folder names, fixed when each was created.
+    """
+    results_dir = Path(job.results_dir)
+    return f"{results_dir.parent.parent.name}/{results_dir.name}"
+
+
 _LS_STEP = re.compile(r"Local search, iteration\s+(\d+)")
 
 

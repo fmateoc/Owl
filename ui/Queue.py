@@ -89,6 +89,10 @@ def queue_fragment():
     running = any(j.doc.get("state") == R.RUNNING for j in jobs)
     for job in reversed(jobs):
         doc = job.doc
+        # A results folder's name is unique inside its run only: variants queued together get
+        # the same "<second>_<preset>" in several runs, and keys built from it alone raised
+        # StreamlitDuplicateElementKey for as long as those rows were listed (local-use review B1).
+        key = libraryjobs.job_key(job)
         row = st.columns([4, 2, 2, 4, 2])
         row[0].markdown(f"**{doc.get('run')}**  \n`{job.id}` · {librarypresets.name(doc.get('preset'))}")
         beat_note = "" if doc.get("state") != R.RUNNING else f"  \nbeat {_since(doc.get('heartbeat'), now)} ago"
@@ -105,19 +109,19 @@ def queue_fragment():
                 # Two stages (N1): the cooperative cancel is pending; the worker stops at its
                 # next step or log line and writes its own record. A long solve can delay it.
                 st.caption("cancel pending")
-                if st.button("Kill", key=f"kill_{job.id}",
+                if st.button("Kill", key=f"kill_{key}",
                              help="Stops the worker now (only the recorded process). Its record "
                                   "says it was killed; the partial results are dropped."):
                     manager.cancel(job, force=True)
                     st.rerun()
             elif doc.get("state") in (R.WAITING, R.RUNNING):
-                if st.button("Cancel", key=f"cancel_{job.id}",
+                if st.button("Cancel", key=f"cancel_{key}",
                              help="A waiting job stops at once. A running worker stops at its next "
                                   "step or log line and keeps its record; Kill appears meanwhile."):
                     manager.cancel(job)
                     st.rerun()
             elif doc.get("state") in (R.INTERRUPTED, R.FAILED):
-                if st.button("Run again", key=f"again_{job.id}",
+                if st.button("Run again", key=f"again_{key}",
                              help="Re-runs the job in the same results folder (a fresh token)."):
                     manager.run_again(job)
                     st.rerun()
@@ -125,7 +129,7 @@ def queue_fragment():
                 # Ergonomics review S-6: a finished row opens its run's page (the newest result
                 # shows there). No page switch on completion: several jobs can be queued, and
                 # being pulled off the page being read is worse than one click.
-                if st.button("Open result", key=f"open_{job.id}",
+                if st.button("Open result", key=f"open_{key}",
                              help="The run's page, with its numbers and charts."):
                     st.session_state["library_selected_run"] = doc["run_id"]
                     st.switch_page("Run.py")

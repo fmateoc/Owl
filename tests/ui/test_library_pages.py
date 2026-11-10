@@ -1178,3 +1178,129 @@ class TestUnitsOnTheRunPage:
         at = _page("Run.py")
         assert not at.exception, [e.value for e in at.exception]
         assert "A new solve can show today's dollars" not in _text(at)
+
+
+class TestTheRunPageWhileSolving:
+    """Local-use review D3: after *Solve* the Run page stayed on "This run has no results yet"
+    (a toast was the only sign; only the Queue page refreshed itself). It now shows the run's
+    live solves and, when one ends, redraws on the newest result and says so. The fragment's
+    two-second timer is the browser's; here each `run()` is one tick."""
+
+    def _fresh(self, library, name="bill fresh"):
+        scenario = import_case(BILL)
+        scenario["case"]["case_name"] = name
+        scenario["case"]["basic_info"]["life_expectancy"] = [88]  # other inputs: a run of its own
+        return library.save_run(name=name, scenario=scenario).run
+
+    def _no_worker(self, monkeypatch):
+        from owlplanner.library import JobManager
+
+        monkeypatch.setattr(JobManager, "_spawn", lambda self, job: False)
+
+    def test_solve_shows_the_solve_on_the_page(self, library, monkeypatch):
+        self._no_worker(monkeypatch)
+        run = self._fresh(library)
+        at = _page("Run.py")
+        assert any("no results yet" in i.value for i in at.info)
+        assert not any("Solving this run" in i.value for i in at.info)
+        next(b for b in at.button if b.label == "Solve").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        solving = next(i.value for i in at.info if "Solving this run" in i.value)
+        assert "**Quick look**: waiting to start" in solving
+        assert not any("no results yet" in i.value for i in at.info)
+        assert len(list((run.path / "results").iterdir())) == 1
+
+    def test_a_running_solve_says_what_it_is_doing(self, library, monkeypatch):
+        import os
+
+        from owlplanner.library import JobManager
+
+        self._no_worker(monkeypatch)
+        run = self._fresh(library)
+        manager = JobManager(library)
+        job = manager.enqueue(run, preset="decision")
+        manager.enqueue(run, preset="decision_exact")
+        job.update(state=R.RUNNING, pid=os.getpid(), heartbeat=R.now_iso(), started=R.now_iso(), step="solving",
+                   last_log="... | Local search, iteration 12: SS ball: moved in 1.20s.")
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        solving = next(i.value for i in at.info if "Solving this run" in i.value)
+        assert "**Careful**: solving: searching the tax breakpoints, step 12, " in solving
+        assert "so far" in solving
+        assert "**Careful: the exact-model check**: waiting for another solve to finish" in solving
+
+    def test_the_page_redraws_on_the_result_when_the_solve_ends(self, library, monkeypatch):
+        self._no_worker(monkeypatch)
+        run = self._fresh(library)
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Solve").click().run()
+        waiting = next((run.path / "results").iterdir())
+        assert not any(m.label == "First year's total spending" for m in at.metric)
+        # The worker's part: the result's files, the job done.
+        _write_result(run, waiting.name, preset="quick", score=91_000.0)
+        at.run()  # the next tick
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("Quick look finished: its result is shown below." in s.value for s in at.success)
+        assert not any("Solving this run" in i.value for i in at.info)
+        assert any(m.label == "First year's total spending" for m in at.metric)
+        at.run()  # said once
+        assert not any("Quick look finished" in s.value for s in at.success)
+
+    def test_a_solve_that_ended_before_the_page_drew_is_noticed_too(self, library, monkeypatch):
+        """A Quick look takes two seconds: *Solve* names its job at the click (`watch_jobs`),
+        so the first look that finds it finished still reports it and shows its result."""
+        import libraryjobs
+
+        self._no_worker(monkeypatch)
+        run = self._fresh(library)
+        _write_result(run, "2026-11-02T09-00-00_quick", preset="quick", score=70_000.0,
+                      finished="2026-11-02T09:00:05+01:00")
+        at = _page("Run.py")
+        older = at.selectbox(key="run_page_result").value
+        next(b for b in at.button if b.label == "Solve").click()
+        # Done before the click's own rerun draws the page (the worker is that fast).
+        from owlplanner.library import JobManager
+
+        real_enqueue = JobManager.enqueue
+
+        def enqueue_and_finish(self, target, **kwargs):
+            job = real_enqueue(self, target, **kwargs)
+            _write_result(target, job.id, preset="quick", score=93_000.0, finished="2026-11-03T09:00:05+01:00")
+            return R.JobRecord.read(job.results_dir)
+
+        monkeypatch.setattr(JobManager, "enqueue", enqueue_and_finish)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("Quick look finished" in s.value for s in at.success)
+        newest = at.selectbox(key="run_page_result").value
+        assert newest != older and newest.startswith(max(p.name for p in (run.path / "results").iterdir()))
+        assert libraryjobs.SHOW_NEWEST_KEY not in at.session_state
+
+    def test_a_failed_solve_is_said_in_the_queues_words(self, library, monkeypatch):
+        self._no_worker(monkeypatch)
+        run = self._fresh(library)
+        at = _page("Run.py")
+        next(b for b in at.button if b.label == "Solve").click().run()
+        job = R.JobRecord.read(next((run.path / "results").iterdir()))
+        job.finish(R.FAILED, error="No plan satisfies all the constraints.")
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any("Quick look did not finish. Failed: No plan satisfies all the constraints." in e.value
+                   for e in at.error)
+
+    def test_a_companion_ending_is_a_caption_not_the_headline(self, library):
+        import libraryjobs
+
+        run = library.runs()[0]
+        job = R.JobRecord.read(run.path / "results" / "2026-11-02T10-30-00_decision_exact")
+        kind, text = libraryjobs.ended_message(job)
+        assert kind == "caption" and text.startswith("Careful: the exact-model check finished")
+
+    def test_since(self):
+        import libraryjobs
+
+        now = R.stamp_seconds("2026-11-02T10:00:00+00:00")
+        assert libraryjobs.since("2026-11-02T09:59:30+00:00", now) == "30s"
+        assert libraryjobs.since("2026-11-02T09:55:00+00:00", now) == "5m"
+        assert libraryjobs.since("2026-11-02T08:30:00+00:00", now) == "1.5h"
+        assert libraryjobs.since("not a stamp", now) == "-"

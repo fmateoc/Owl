@@ -35,18 +35,6 @@ _ICON = {"waiting": ":material/hourglass_top:", "running": ":material/autorenew:
          "interrupted": ":material/warning:"}
 
 
-def _since(iso, now=None):
-    then = R.stamp_seconds(iso)  # offset-aware (H3); an unreadable stamp shows "-" (M6)
-    if then is None:
-        return "-"
-    seconds = max(0.0, (now or datetime.now().timestamp()) - then)
-    if seconds < 60:
-        return f"{seconds:.0f}s"
-    if seconds < 3600:
-        return f"{seconds / 60:.0f}m"
-    return f"{seconds / 3600:.1f}h"
-
-
 manager = libraryjobs.get_manager()  # one per server (R5); it ticks on its own (H5)
 
 # -- queue a solve -----------------------------------------------------
@@ -95,11 +83,12 @@ def queue_fragment():
         key = libraryjobs.job_key(job)
         row = st.columns([4, 2, 2, 4, 2])
         row[0].markdown(f"**{doc.get('run')}**  \n`{job.id}` · {librarypresets.name(doc.get('preset'))}")
-        beat_note = "" if doc.get("state") != R.RUNNING else f"  \nbeat {_since(doc.get('heartbeat'), now)} ago"
+        beat_note = ("" if doc.get("state") != R.RUNNING
+                     else f"  \nbeat {libraryjobs.since(doc.get('heartbeat'), now)} ago")
         row[1].markdown(f"{_ICON.get(doc.get('state'), '')} {doc.get('state')}{beat_note}")
         started = doc.get("started") or doc.get("queued")
         finished = doc.get("finished")
-        row[2].markdown(_since(started, R.stamp_seconds(finished) or now))
+        row[2].markdown(libraryjobs.since(started, R.stamp_seconds(finished) or now))
         # The phase in words (UX review Q8); the raw log line in the tooltip.
         logline = (doc.get("last_log") or "")[-300:]
         row[3].markdown(libraryjobs.job_phase(doc, another_running=running),
@@ -132,6 +121,9 @@ def queue_fragment():
                 if st.button("Open result", key=f"open_{key}",
                              help="The run's page, with its numbers and charts."):
                     st.session_state["library_selected_run"] = doc["run_id"]
+                    # The newest result, as said above: the Run page's selector otherwise
+                    # keeps the result it held (local-use review D3).
+                    st.session_state[libraryjobs.SHOW_NEWEST_KEY] = True
                     st.switch_page("Run.py")
 
 

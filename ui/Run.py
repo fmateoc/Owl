@@ -155,6 +155,31 @@ def _start_new_year(lib, run, year):
     st.switch_page("Account_Balances.py")
 
 
+@st.fragment(run_every=2.0)
+def _solving(manager, run):
+    """Local-use review D3: the run's live solves, refreshed every two seconds, and the whole
+    page redrawn on the newest result when one ends. Before it, the page stayed on "This run
+    has no results yet" after *Solve*: a toast was the only sign, and only the Queue page
+    refreshed itself. The fragment polls with nothing live too (a solve queued from another
+    page or tab is then seen): one read of this run's job records per tick."""
+    live, ended = libraryjobs.ended_jobs(manager, run)
+    if ended:
+        for job in ended:
+            libraryjobs.flash(*libraryjobs.ended_message(job))
+        st.session_state[libraryjobs.SHOW_NEWEST_KEY] = True  # not the result picked before
+        st.rerun()  # the whole page: the fragment alone cannot redraw the result below it
+    if not live:
+        return
+    running = any(job.state == R.RUNNING for job in manager.jobs())
+    box, link = st.columns([5, 1], vertical_alignment="center")
+    box.info("**Solving this run.** This page shows the result when it is ready; the solve goes on "
+             "if you leave the page or close the tab.\n\n"
+             + "\n".join(f"- {line}" for line in libraryjobs.solving_lines(live, another_running=running)),
+             icon=":material/autorenew:")
+    if link.button("Open the Queue", key="run_page_to_queue", help="Every solve, with Cancel."):
+        st.switch_page("Queue.py")
+
+
 def _usd(value):
     """A metric's value: plain text (st.metric is not markdown), "-" when there is none."""
     return "-" if value is None else f"{value:,.0f}"
@@ -524,7 +549,7 @@ for job in reversed(manager.jobs(run)):
 # Local-use review D2: a run is solved only in its plan year (`check_plan_year`).
 _this_year = date.today().year
 _other_year = run.plan_year is not None and run.plan_year != _this_year
-if not entries and not _other_year:
+if not entries and not _other_year and not libraryjobs.live_jobs(manager, run):
     st.info("This run has no results yet: solve it below.")
 
 # -- header -----------------------------------------------------------
@@ -575,7 +600,13 @@ elif _other_year:
 if housing_convert.offered(lib, run):
     housing_convert.convert_button(lib, run, key=f"run_housing_{run.id}")
 
+_solving(manager, run)  # D3: what is solving now; the page redraws when it ends
+
 if entries:
+    if st.session_state.pop(libraryjobs.SHOW_NEWEST_KEY, False):
+        # A solve just ended (or another page sent the reader here for one): the newest main
+        # solve, not the result the selector held -- a drawn widget keeps its value (P2's rule).
+        st.session_state.pop("run_page_result", None)
     # A model companion (the exact LP, or the tornado's Medicare model, review AJ1) is a
     # check, not the headline (R2): default to the newest main solve, not to it.
     default_idx = next((i for i, e in enumerate(entries) if not view.is_companion(e[2])), 0)
@@ -805,6 +836,7 @@ with st.expander("Solve this run"):
                 # Shown after the rerun below (review 3, W3: an st.error here vanished).
                 libraryjobs.flash("error", f"Not queued: {exc}")
                 break
+            libraryjobs.watch_jobs(run.id, [job])  # D3: its end is noticed even if it comes first
             st.toast(f"Queued {job.id} ({solve})")
         st.rerun()
 

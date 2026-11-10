@@ -16,11 +16,14 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
 
 from owlplanner.library import JobManager, Library, run_zip
+from owlplanner.library import results as R
+from owlplanner.library.presets import COMPANION_PRESETS, preset_name
 from owlplanner.library.store import default_library_root
 
 
@@ -139,3 +142,77 @@ def job_phase(doc: dict, *, another_running: bool = False) -> str:
     if doc.get("iteration") is not None:
         return f"{text}, loop iteration {doc['iteration']}"
     return text
+
+
+def since(iso, now=None) -> str:
+    """The time from a job stamp to `now` (seconds since the epoch; default: this instant) as
+    "12s", "3m" or "1.5h"; "-" for an unreadable stamp (M6). Stamps are offset-aware (H3)."""
+    then = R.stamp_seconds(iso)
+    if then is None:
+        return "-"
+    seconds = max(0.0, (now or datetime.now().timestamp()) - then)
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
+
+
+# -- a run's live solves, for its own page (local-use review D3) --------------------------
+# The Run page stayed on "This run has no results yet" after *Solve*: only the Queue page
+# refreshed itself. The pages that queue a solve name its jobs here, the Run page's fragment
+# shows the live ones and, when one of them ends, says so and redraws the whole page on the
+# newest result.
+
+_WATCH_KEY = "run_page_live_{run_id}"
+SHOW_NEWEST_KEY = "run_page_show_newest"
+
+
+def watch_jobs(run_id, jobs) -> None:
+    """Name jobs just queued for a run, so its page notices their end even when they finish
+    before it is drawn (a Quick look takes two seconds)."""
+    key = _WATCH_KEY.format(run_id=run_id)
+    st.session_state[key] = sorted(set(st.session_state.get(key) or ()) | {job_key(j) for j in jobs})
+
+
+def live_jobs(manager, run) -> list:
+    """The run's jobs still waiting or running, oldest first."""
+    return [job for job in manager.jobs(run) if job.state in (R.WAITING, R.RUNNING)]
+
+
+def ended_jobs(manager, run) -> tuple:
+    """(the run's live jobs, those that were live at the last look and are not any more).
+
+    The session keeps the live set between looks (`watch_jobs` seeds it at queue time); every
+    call replaces it, so an ended job is reported once."""
+    jobs = manager.jobs(run)
+    live = [job for job in jobs if job.state in (R.WAITING, R.RUNNING)]
+    key = _WATCH_KEY.format(run_id=run.id)
+    seen = set(st.session_state.get(key) or ())
+    now = {job_key(job) for job in live}
+    ended = [job for job in jobs if job_key(job) in seen - now]
+    st.session_state[key] = sorted(now)
+    return live, ended
+
+
+def solving_lines(live, *, another_running=False, now=None) -> list:
+    """One line per live job of a run: the preset's name, what it is doing, for how long."""
+    lines = []
+    for job in live:
+        doc = job.doc
+        waiting = doc.get("state") == R.WAITING
+        phase = job_phase(doc, another_running=another_running and waiting)
+        clock = "" if waiting else f", {since(doc.get('started') or doc.get('queued'), now)} so far"
+        lines.append(f"**{preset_name(doc.get('preset'))}**: {phase[:1].lower() + phase[1:]}{clock}")
+    return lines
+
+
+def ended_message(job) -> tuple:
+    """(message kind, text) for a job that just ended, for `flash`."""
+    doc = job.doc
+    words = preset_name(doc.get("preset"))
+    if doc.get("state") == R.DONE:
+        if doc.get("preset") in COMPANION_PRESETS:
+            return "caption", f"{words} finished (comparisons read it; the result shown is the main solve's)."
+        return "success", f"{words} finished: its result is shown below."
+    return "error", f"{words} did not finish. {plain(job_phase(doc))}"

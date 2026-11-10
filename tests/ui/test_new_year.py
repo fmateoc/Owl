@@ -107,8 +107,8 @@ def test_start_opens_the_carried_over_inputs_on_account_balances(library, monkey
     assert case["library_base_run_id"] == library.runs()[0].id
     assert case["library_new_year"] == 2026
     assert case["plan"].year_n[0] == 2026
-    kind, text = at.session_state["library_flash"][-1]
-    assert kind == "info" and "**2026, started from *our plan - 2025*.**" in text
+    text = case["library_new_year_steps"]  # kept with the case, drawn by the Case Setup pages
+    assert "**2026, started from *our plan - 2025*.**" in text
     assert "this year's account balances" in text and "now read in 2026's dollars" in text
     assert "The rent started in 2025 and goes on" in text  # the roll's own notes
     assert len(library.runs()) == 1  # nothing is stored yet
@@ -119,9 +119,14 @@ def test_account_balances_draws_the_steps(library, monkeypatch):
 
     at, _ = _started(monkeypatch)
     monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
-    page = _page("Account_Balances.py", {**_session(at), "library_flash": at.session_state["library_flash"]})
+    page = _page("Account_Balances.py", _session(at))
     assert not page.exception, [e.value for e in page.exception]
     assert any("started from *our plan - 2025*" in i.value and "Financial Profile" in i.value for i in page.info)
+    for box in page.selectbox:  # keep the decorated case option (as test_library_pages does)
+        if box.label == "Case selector":
+            box.set_value(box.options[0])
+    page.run()  # still there after an edit's rerun: a one-time message was gone at the first one
+    assert any("started from *our plan - 2025*" in i.value for i in page.info)
 
 
 def test_the_save_is_a_run_for_this_year_with_its_events(library, monkeypatch):

@@ -138,22 +138,22 @@ def _start_new_year(lib, run, year):
         st.rerun()
     if not _open_in_pages(run, case_text, hfp_bytes, library_save.new_year_name(run.name, year)):
         return
-    kz.setRunNewYear(year)
     old = run.plan_year
     steps = [
-        "**On this page:** this year's account balances, and the date they are from.",
+        "**Account Balances:** this year's account balances, and the date they are from.",
         f"**Financial Profile:** the {old} row{'s' if year - old > 1 else ''} of *Wages and Contributions* "
         f"{'are' if year - old > 1 else 'is'} history now. Put in what was really earned and contributed "
         "(Social Security's earnings test reads it for someone already claiming).",
         newyear.TODAYS_DOLLARS_NOTE.format(year=year),
     ] + [libraryjobs.plain(note) for note in notes]
-    libraryjobs.flash(
-        "info",
+    # Kept with the case and drawn by the Case Setup pages' title bar until it is saved (a
+    # one-time message was gone at the first edit).
+    kz.setRunNewYear(year, (
         f"**{year}, started from *{libraryjobs.plain(run.name)}*.** Its inputs are open as the case "
         f"**{libraryjobs.plain(kz.currentCaseName())}**, carried over to {year}. Nothing is saved yet: "
         "bring them up to date, then save on the Library page (*Save the current case*), which makes "
         f"the run for {year} with *{libraryjobs.plain(run.name)}* as its parent.\n\n"
-        + "\n".join(f"- {step}" for step in steps))
+        + "\n".join(f"- {step}" for step in steps)))
     st.switch_page("Account_Balances.py")
 
 

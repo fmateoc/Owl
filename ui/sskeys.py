@@ -171,6 +171,7 @@ def has_current_case() -> bool:
 RUN_BASE_KEY = "library_base_run_id"
 RUN_BASE_NAME_KEY = "library_base_run_name"
 RUN_NEW_YEAR_KEY = "library_new_year"
+RUN_NEW_YEAR_STEPS_KEY = "library_new_year_steps"
 
 
 def setRunBase(run_id, run_name=None):
@@ -181,11 +182,14 @@ def setRunBase(run_id, run_name=None):
         currentCaseDic()[RUN_BASE_NAME_KEY] = run_name
 
 
-def setRunNewYear(year):
+def setRunNewYear(year, steps=None):
     """Mark the current case as the run base's inputs carried over to plan year `year` (the Run
     page's "Start <year> from this run", local-use review D2): its save is a run for that year,
-    built against the base rolled the same way (`library_save`)."""
+    built against the base rolled the same way (`library_save`). `steps` (Markdown) is what to
+    bring up to date, shown under the title bar of the Case Setup pages."""
     currentCaseDic()[RUN_NEW_YEAR_KEY] = int(year)
+    if steps:
+        currentCaseDic()[RUN_NEW_YEAR_STEPS_KEY] = str(steps)
 
 
 def runNewYear():
@@ -1174,5 +1178,11 @@ def titleBar(txt):
         import libraryjobs
 
         libraryjobs.show_flashes()
+
+    # Fork: a case started for a new plan year ("Start <year> from this run", local-use review
+    # D2) keeps its list of what to bring up to date on every Case Setup page until it is
+    # saved: as a one-time message it was gone at the first edit.
+    if library_mode() and has_current_case() and currentCaseDic().get(RUN_NEW_YEAR_STEPS_KEY):
+        st.info(currentCaseDic()[RUN_NEW_YEAR_STEPS_KEY], icon=":material/event_repeat:")
 
     return ret

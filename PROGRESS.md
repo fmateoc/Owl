@@ -8149,3 +8149,44 @@ Three upstream commits since `d2ede71`:
 - `a3f899c3`: `.gitignore` ignores `scripts-local/` instead of `scripts/` so tracked scripts in `scripts/` are not hidden by `.gitignore` (local untracked `rebaseline_state_tax.py` moved from `scripts/` to `scripts-local/`).
 - `8ec9c43b` (#251): `tests/utils/test_text_encoding.py` scans `scripts/` in addition to `src`, `ui`, `tests`, and `scripts/make_lowwealth_case.py` writes its TOML file with `encoding="utf-8"`.
 - Clean merge; `tests/utils/test_text_encoding.py` passed.
+
+## Ergonomics review: local use by a non-technical person (2026-11-10)
+
+Branch `claude/loving-carson-a2dfi9` (from `a7b539b`). Report only, no code change:
+`fork-notes/ux-review-local-use.md`. The question (user): how well the fork, run locally, suits a
+non-technical user. The app was driven in library mode on an empty library with Playwright at
+1366x768, Streamlit 1.67.0, synthetic household: import, Quick look (2 s), Careful (5 min 4 s +
+8 s), the home conversion, a Scenario what-if (purchase 2029 → 2031), Compare, a collection of
+three purchase-year variants queued together, the grid, a failed solve (\$7M home), *Edit as new
+run* with three classic pages, a second server on the same library; the year rollover with the
+clock at 2027-01-02 (library code). Not checked: Windows, printing, Stress Tests, the tornado and
+regret results.
+
+- **Answer:** as a reader of a library someone else set up and maintains, workable after a
+  walkthrough; as its sole operator (install, start, data entry, new year, updates), no.
+- **A1, the new year (ran):** on 2027-01-02 `check_plan_year` refuses every 2026 run; its message
+  says "save it as a new run from the pages", but a save against a base run keeps the base's plan
+  year (`test_the_base_plan_year_is_kept` passes; `ui/library_save.py:56` passes no `plan_year`),
+  and a re-import of the same files reads `start_date`'s 2026. The yearly check-in (I4) is not
+  built. Working routes, by the code, not driven: edit `start_date` in the TOML and import, or
+  upload through Create Case (no base).
+- **B1, a defect (seen):** the Queue page raises `StreamlitDuplicateElementKey`
+  (`open_<job id>`, `ui/Queue.py:128`) once two runs are queued in the same second, which
+  *Make variants* with "Queue them when created" does: job ids are unique per run folder only.
+  The error box offers Ask Google / Ask ChatGPT links.
+- **Seen:** the Run page does not redraw after *Solve* (only `ui/Queue.py` has a polling
+  fragment); a what-if is 13 actions over 4 pages and Compare's default pair was not the what-if;
+  the home conversion leaves the pin and the results on the unconverted run; the collection grid
+  is empty until the parent is added by hand with its value and set as the reference; a failed
+  solve's Run page says "Solved", "infeasible", "maximizes the final bequest" and "the Results
+  workbook is gone"; the landing page's first screen at 1366x768 has no number.
+- **Ran + code:** a converted import has `purchase` and `rent` events only, so the *Last work
+  year* dimension (one full-time work event per person, `variants.py:308-315`) cannot vary the
+  retirement year of an imported plan.
+- **Grep:** `owlplanner-library` is named in no user-facing document; `running-locally.md`
+  describes only the classic launcher and two limits since removed; no library help or glossary in
+  `ui/`.
+- Twelve recommendations in the report's section D (the Queue keys, a "start *year* from this
+  run" action, a live Run page first).
+
+Next: the user's call on what to build; D1 (the Queue keys) and D2 (the new year) first if any.

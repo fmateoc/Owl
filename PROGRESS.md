@@ -8363,3 +8363,42 @@ AQ1-AQ12. Not an independent review, and nothing was driven in a browser.
 
 Next: the user's call on AQ9-AQ11, on fast-forwarding `main`, and a Windows run of the
 launcher and the starter file.
+
+
+## Performance review (2026-11-10, branch `claude/sleepy-bardeen-y2k2ov`)
+
+The user's request: "review the project from a performance improvement perspective. Look for any
+significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
+Report only, no change in `src/`, `ui/` or `tests/`: `fork-notes/performance-review.md` (P1-P8),
+scripts in `fork-notes/performance/`. Measured on the synthetic household at `abd8b6c`, ages fixed
+at 70/70, HiGHS, this container.
+
+- **Where the time goes:** a Careful solve is 346-349 s, 344 s of it in 71 HiGHS calls; Owl's
+  Python is under 1%. 83% is twelve node-capped local-search steps ((b) and (b'), 3,000 nodes
+  each, none proved), ten of which found nothing. Quick look 0.5-1 s, the exact-model check 6 s.
+- **P1:** the interface never sets `JobManager(max_parallel=...)` (default 1). Four solves at once
+  cost +5% wall each.
+- **P2 (upstream's `localsearch.py`, a prototype only, `quiet_patch.py`):** skipping the capped
+  steps in loop iterations where the binaries did not move gave the same plan to the cent in 6 of
+  6 variants; CPU -16% to -48% in the four that settle, nothing in the two that keep moving
+  (-20% over the six). With `localSearchStepNodes = 1000` as well: -36% over the six, same plan
+  in 5, +\$1.75/yr in one.
+- **Found on the way:** local search's 300 s wall-clock budget binds here. Run four at a time, 4
+  of 6 base Careful solves logged "time budget spent" in one to three loop iterations; with the
+  budget lifted one of the two variants tried moved by \$2.81/yr (688 s of CPU). The library's
+  `decision` preset keeps the default budget (`work_sweep.py` lifts it) and a result cut by it is
+  not marked anywhere the pages read.
+- **P4-P5 (read in the code, not timed):** the `ages` preset's final solve repeats the winning
+  stage-2 solve and stage 2 is serial; `ages_thorough` runs its sweep on `_SerialPool`.
+- **P6:** `Library.get` scans every `run.json`; at 120 runs the Library page takes 1.5 s per
+  click (15,480 file reads), the Collections page 0.58 s.
+- **P7-P8:** 1.5-2.0 s of imports per worker (scipy, matplotlib, pandas; upstream modules); the 60
+  slowest tests are 59% of the suite's worker time, two fork files among them (12%).
+- **No opportunity:** seven HiGHS option settings on two dumped steps (nothing faster on both), a
+  looser step gap, the Python model build, the what-if's parent (already reused), the ticker.
+- **Not measured:** the household's case and machine, stock upstream examples, more than 6 of the
+  36 grid variants, P4/P5 end to end, Windows/macOS, MOSEK.
+- Tests: 4838 passed / 1 skipped (14:39, Linux, `-n 4` with two solves running beside it, at
+  `abd8b6c`; code unchanged).
+
+Next: the user's call on which of P1-P8 to build, and on an upstream issue for P2.

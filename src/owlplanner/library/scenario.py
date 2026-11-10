@@ -40,6 +40,9 @@ SCHEMA_VERSION = 3
 # 6 (UX review B2): a purchase without a move whose school district is blank keeps the case's
 # district (it used to set it to ""; "-" now states none), and a purchase over a hand home
 # still owned is refused.
+# Not bumped (local-use review D2): a purchase with a move in the plan's first year now sets the
+# starting residence instead of `moves = [{year = <first year>}]`. Owl refuses that move, so no
+# run built the old way could be solved, and a bump would move every run's inputs hash.
 BUILDER_VERSION = 6
 
 

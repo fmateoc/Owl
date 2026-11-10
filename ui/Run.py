@@ -34,7 +34,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import tempfile
+from datetime import date
 from io import BytesIO, StringIO
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -42,13 +45,14 @@ import streamlit as st
 
 import disclaimer
 import housing_convert
+import library_save
 import libraryjobs
 import librarypresets
 import run_charts
 import sskeys as kz
-from owlplanner.library import JobsError, ScenarioError, agemap, load_plan, preset_solves
+from owlplanner.library import JobsError, ScenarioError, agemap, export_case, load_plan, preset_solves
 from owlplanner.library import results as R
-from owlplanner.library import grid, tornado, view
+from owlplanner.library import grid, newyear, tornado, view
 
 st.markdown("# :material/monitoring: Run")
 kz.divider("orange")
@@ -80,6 +84,75 @@ def _has_star(run) -> bool:
     districts = [info.get("school_district")] + [m.get("school_district") for m in info.get("moves") or []]
     mode = str((case.get("solver_options") or {}).get("withSTAR") or "loop").lower()
     return any(districts) and mode != "none"
+
+
+def _open_in_pages(run, case_text, hfp_bytes, name) -> bool:
+    """Open a run's inputs (a Case.toml's text, an HFP workbook's bytes) as a case of the
+    session, marked as edited from `run`; False when nothing was opened (the reason is shown,
+    or queued for after the rerun)."""
+    # QW-7.3 (review AN4): under a name of the run's, made unique in the session -- the frozen
+    # Case.toml carries its import's case name, shared by every descendant.
+    if not kz.createCaseFromFile(StringIO(case_text), name=kz.uniqueCaseName(name)):
+        return False
+    if hfp_bytes is not None:
+        import owlbridge as owb
+
+        if not owb.readHFP(BytesIO(hfp_bytes), file="HFP.xlsx"):
+            # UX remediation QW-7: a workbook that could not be read must not be announced as
+            # open and followed by a page switch (the error readHFP shows would not survive
+            # it). QW-7.2 (review AN4): nor left behind as the current case, half opened,
+            # where a retry hit "already exists".
+            kz.deleteCurrentCase()
+            libraryjobs.flash(
+                "error",
+                f"The workbook of *{run.name}* could not be read: nothing was opened. "
+                "Its household tables (HFP.xlsx in the run's inputs) may be damaged.",
+            )
+            st.rerun()
+    kz.setRunBase(run.id, run.name)  # saved on the Library page as its child
+    # Review AL2: a run's case is complete, as after "Open in Owl" (Q12); the progress strip
+    # on Run Options read "(25%) - Step 2 of 8".
+    import case_progress
+
+    kz.storeCaseKey("case_setup_visited_pages", case_progress.all_setup_pages())
+    return True
+
+
+def _start_new_year(lib, run, year):
+    """Local-use review D2: the run's inputs carried over to plan year `year`
+    (`newyear.start_year`: the events rolled forward, nothing re-priced, the balances last
+    year's) opened in the case pages on Account Balances. Nothing is stored here: the Library
+    page's save makes the run for `year`, against the same carried-over inputs."""
+    try:
+        rolled, notes = newyear.start_year(lib.scenario(run.id), year)
+        with tempfile.TemporaryDirectory() as tmp:
+            export_case(rolled, tmp)
+            case_text = (Path(tmp) / "Case.toml").read_text(encoding="utf-8")
+            workbook = Path(tmp) / "HFP.xlsx"
+            hfp_bytes = workbook.read_bytes() if workbook.exists() else None
+    except (ScenarioError, OSError) as exc:
+        libraryjobs.flash("error", f"{year} was not started from *{libraryjobs.plain(run.name)}*: "
+                                   f"{libraryjobs.plain(exc)}")
+        st.rerun()
+    if not _open_in_pages(run, case_text, hfp_bytes, library_save.new_year_name(run.name, year)):
+        return
+    kz.setRunNewYear(year)
+    old = run.plan_year
+    steps = [
+        "**On this page:** this year's account balances, and the date they are from.",
+        f"**Financial Profile:** the {old} row{'s' if year - old > 1 else ''} of *Wages and Contributions* "
+        f"{'are' if year - old > 1 else 'is'} history now. Put in what was really earned and contributed "
+        "(Social Security's earnings test reads it for someone already claiming).",
+        newyear.TODAYS_DOLLARS_NOTE.format(year=year),
+    ] + [libraryjobs.plain(note) for note in notes]
+    libraryjobs.flash(
+        "info",
+        f"**{year}, started from *{libraryjobs.plain(run.name)}*.** Its inputs are open as the case "
+        f"**{libraryjobs.plain(kz.currentCaseName())}**, carried over to {year}. Nothing is saved yet: "
+        "bring them up to date, then save on the Library page (*Save the current case*), which makes "
+        f"the run for {year} with *{libraryjobs.plain(run.name)}* as its parent.\n\n"
+        + "\n".join(f"- {step}" for step in steps))
+    st.switch_page("Account_Balances.py")
 
 
 def _usd(value):
@@ -448,7 +521,10 @@ for job in reversed(manager.jobs(run)):
     label = (f"{job.id} · {librarypresets.name(record.get('preset') or job.doc.get('preset'))} · "
              f"{when[:10] or 'no solve'} · {record.get('status') or job.state}")
     entries.append((label, job, view.load_result(job.results_dir)))
-if not entries:
+# Local-use review D2: a run is solved only in its plan year (`check_plan_year`).
+_this_year = date.today().year
+_other_year = run.plan_year is not None and run.plan_year != _this_year
+if not entries and not _other_year:
     st.info("This run has no results yet: solve it below.")
 
 # -- header -----------------------------------------------------------
@@ -475,6 +551,25 @@ if run.parent:
     st.markdown(f"From **{parent}**: {libraryjobs.plain('; '.join(run.change_summary)) or 'same inputs'}")
 if run.notes:
     st.markdown(run.notes)
+
+if _other_year and run.plan_year < _this_year:
+    # The way into a new year (review A1: from 1 January every run is refused, and "save it as
+    # a new run from the pages" kept the old plan year). Said here, before any click on Solve.
+    _y1, _y2 = st.columns([4, 1], vertical_alignment="center")
+    _y1.warning(
+        f"This run was made for {run.plan_year}: its account balances are that year's, so it is not "
+        f"solved in {_this_year}" + (" (its results stay here to read)" if entries else "") + ". "
+        f"*Start {_this_year} from this run* opens its inputs for {_this_year}, with its events carried "
+        "over, on the Account Balances page; this year's balances go there, and saving on the Library "
+        f"page makes the run for {_this_year}.",
+        icon=":material/event_repeat:")
+    if _y2.button(f"Start {_this_year} from this run", type="primary", key="run_page_new_year",
+                  help="Opens the inputs in the case pages. Nothing is saved until you save on the "
+                       "Library page."):
+        _start_new_year(lib, run, _this_year)
+elif _other_year:
+    st.warning(f"This run is for {run.plan_year}, and this computer's date says {_this_year}: it is not "
+               "solved before its year.", icon=":material/event_repeat:")
 
 # S-3: an imported run's home rows as events, on request (an exact rebuild or nothing).
 if housing_convert.offered(lib, run):
@@ -678,33 +773,9 @@ if entries:
         if st.button("Edit as new run", use_container_width=True,
                      help="Opens the run's frozen files in the case pages. Edit there and "
                           "save on the Library page: a new run, with this one as its parent."):
-            case_path = run.path / "inputs" / "Case.toml"
-            # QW-7.3 (review AN4): under the run's own name, made unique in the session -- the
-            # frozen Case.toml carries its import's case name, shared by every descendant.
-            if kz.createCaseFromFile(StringIO(case_path.read_text(encoding="utf-8")),
-                                     name=kz.uniqueCaseName(run.name)):
-                hfp = run.path / "inputs" / "HFP.xlsx"
-                if hfp.exists():
-                    import owlbridge as owb
-
-                    if not owb.readHFP(BytesIO(hfp.read_bytes()), file="HFP.xlsx"):
-                        # UX remediation QW-7: a workbook that could not be read must not be
-                        # announced as open and followed by a page switch (the error readHFP
-                        # shows would not survive it). QW-7.2 (review AN4): nor left behind
-                        # as the current case, half opened, where a retry hit "already exists".
-                        kz.deleteCurrentCase()
-                        libraryjobs.flash(
-                            "error",
-                            f"The workbook of *{run.name}* could not be read: nothing was opened. "
-                            "Its household tables (HFP.xlsx in the run's inputs) may be damaged.",
-                        )
-                        st.rerun()
-                kz.setRunBase(run.id, run.name)  # saved on the Library page as its child
-                # Review AL2: a run's case is complete, as after "Open in Owl" (Q12); the
-                # progress strip on Run Options read "(25%) - Step 2 of 8".
-                import case_progress
-
-                kz.storeCaseKey("case_setup_visited_pages", case_progress.all_setup_pages())
+            hfp = run.path / "inputs" / "HFP.xlsx"
+            if _open_in_pages(run, (run.path / "inputs" / "Case.toml").read_text(encoding="utf-8"),
+                              hfp.read_bytes() if hfp.exists() else None, run.name):
                 # UX review Q13: go where the what-if is made. A toast does not survive the
                 # page switch; the flash is drawn under Run Options' title bar (sskeys.titleBar).
                 libraryjobs.flash(
@@ -724,7 +795,9 @@ if entries:
 
 with st.expander("Solve this run"):
     preset = librarypresets.select("Preset", "run_page_preset")
-    if st.button("Solve", type="primary"):
+    if _other_year:
+        st.caption(f"Not in {_this_year}: this run is for {run.plan_year} (see the top of the page).")
+    if st.button("Solve", type="primary", disabled=_other_year):
         for solve in preset_solves(preset):
             try:
                 job = manager.enqueue(run, preset=solve)

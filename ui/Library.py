@@ -155,6 +155,9 @@ with st.expander("Add a run to the library", expanded=_import_open):
             base_run_id = kz.runBase()
             base_name = _run_name(base_run_id) if base_run_id else None
             base_note = f" against *{base_name}*" if base_name else ""
+            _new_year = kz.runNewYear() if base_name else None
+            if _new_year:  # "Start <year> from this run" (local-use review D2)
+                base_note = f" for plan year {_new_year}, with *{base_name}* as its parent"
             st.caption(f"The case **{kz.currentCaseName()}** will be saved as a new run{base_note}.")
             col1, col2 = st.columns([3, 2], gap="large")
             with col1:
@@ -164,7 +167,7 @@ with st.expander("Add a run to the library", expanded=_import_open):
                 # condo baseline" -- and the widget is keyed by the case, so the default
                 # follows a switch of case (Streamlit keeps a drawn widget's value).
                 _case = kz.currentCaseName() or ""
-                _name = f"{base_name} variant" if base_name else _case
+                _name = library_save.default_name(base_name, _case)
                 name = st.text_input("Run name", key=f"lib_save_name|{_case}", value=_name)
                 if name.strip() and name.strip() in {r.name for r in lib.runs()}:
                     st.warning(f"A run is already called *{name.strip()}*: saving makes another "

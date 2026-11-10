@@ -1035,12 +1035,26 @@ def build(scenario: dict, *, rates_table=_TABLE_UNSET) -> tuple[dict, dict, dict
                 # A move states its new place: a blank or "-" field there is none.
                 _check_place(purchase["id"], place["state"], place_text(place["locality"]),
                              place_text(place["school_district"]))
-                _set_path(case, "basic_info.moves", [{
-                    "year": year,
-                    "state": place["state"],
-                    "locality": place_text(place["locality"]),
-                    "school_district": place_text(place["school_district"]),
-                }])
+                if year == plan_start:
+                    # A move in the plan's first year is where the plan starts: the residence in
+                    # force on December 31 taxes the whole year, and Owl refuses a move there
+                    # ("A move must fall after the first plan year"), so the generated case
+                    # could not be planned (found by the new-year roll, local-use review D2: a
+                    # 2027 purchase in a plan made in 2027). The event's move replaces the
+                    # case's own moves, as below.
+                    for field, value in (("state", place["state"]),
+                                         ("locality", place_text(place["locality"])),
+                                         ("school_district", place_text(place["school_district"]))):
+                        _set_path(case, f"basic_info.{field}", value)
+                        provenance["case_fields"][f"basic_info.{field}"] = purchase["id"]
+                    (case.get("basic_info") or {}).pop("moves", None)
+                else:
+                    _set_path(case, "basic_info.moves", [{
+                        "year": year,
+                        "state": place["state"],
+                        "locality": place_text(place["locality"]),
+                        "school_district": place_text(place["school_district"]),
+                    }])
                 provenance["case_fields"]["basic_info.moves"] = purchase["id"]
             elif str(place["school_district"] or "").strip():
                 # Stated ("-" for none); a blank field keeps the case's district (B2).

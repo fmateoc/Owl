@@ -22,10 +22,36 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import re
+from datetime import date
+
 import libraryjobs
 import owlbridge as owb
 import sskeys as kz
-from owlplanner.library import scenario_from_ui
+from owlplanner.library import newyear, scenario_from_ui
+
+_BALANCES = ("taxable_savings_balances", "tax_deferred_savings_balances", "tax_free_savings_balances",
+             "hsa_savings_balances")
+
+
+def new_year_name(base_name, year):
+    """"<base run> - <year>": a run started for a new plan year. A year the base's own name
+    ends with is replaced, so the name stays put from one year to the next."""
+    return f"{re.sub(r' - (19|20)[0-9]{2}$', '', str(base_name))} - {year}"
+
+
+def default_name(base_name, case_name=None):
+    """The save form's default run name: "<base run> variant" for a run's edited inputs (QW-8),
+    `new_year_name` for a run started for a new plan year, else the case's own name."""
+    year = kz.runNewYear()
+    if base_name and year:
+        return new_year_name(base_name, year)
+    return f"{base_name} variant" if base_name else (case_name or "")
+
+
+def _balances(scenario):
+    assets = (scenario.get("case") or {}).get("savings_assets") or {}
+    return [assets.get(key) for key in _BALANCES]
 
 
 def save_current_case(lib, name, notes="", tags=()):
@@ -39,6 +65,17 @@ def save_current_case(lib, name, notes="", tags=()):
             base = lib.scenario(base_run_id)
         except Exception:  # noqa: BLE001 - a deleted run is simply not the base any more
             base = None
+    new_year = kz.runNewYear()
+    stored = base
+    try:
+        if base is not None and new_year and base.get("plan_year") != new_year:
+            # The case was opened from the base carried over to `new_year` ("Start <year> from
+            # this run"): the pages' edits are applied to that document, whose plan year the
+            # save keeps -- against the stored base it would keep the old year (review A1).
+            base, _notes = newyear.start_year(base, new_year)
+    except Exception as exc:  # noqa: BLE001 - shown, not raised
+        libraryjobs.flash("error", f"Cannot save this case yet: {exc}")
+        return None
     try:
         # The tables come from the plan (`scenario_from_ui`), not from the case keys: sync the
         # page-edited ones in first, or a table edited and not yet run or downloaded would be
@@ -60,6 +97,23 @@ def save_current_case(lib, name, notes="", tags=()):
     except Exception as exc:  # noqa: BLE001 - an incomplete case is shown, not raised
         libraryjobs.flash("error", f"Cannot save this case yet: {exc}")
         return None
+    saved_year = scenario.get("plan_year")
+    this_year = date.today().year
+    if new_year and stored is not None and stored.get("plan_year") != new_year \
+            and _balances(scenario) == _balances(stored):
+        # The reason a run has a plan year at all: last January's balances read as this one's.
+        libraryjobs.flash(
+            "warning",
+            f"Saved for {new_year} with the account balances of {stored.get('plan_year')}: they were "
+            f"not changed. Enter this year's on the Account Balances page and save again, or the "
+            f"plan for {new_year} starts from last year's money.",
+        )
+    elif saved_year is not None and saved_year != this_year:
+        libraryjobs.flash(
+            "warning",
+            f"This run is for plan year {saved_year}, like the run it was edited from, and cannot "
+            f"be solved in {this_year}. Use *Start {this_year} from this run* on its Run page.",
+        )
     return result, dropped
 
 

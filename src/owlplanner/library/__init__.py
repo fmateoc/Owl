@@ -10,7 +10,8 @@ rule). Build step 6 adds the collections (`store.Collection`, section 9.3), the 
 dimensions ("make variants", `variants`), the grid view (`grid`) and the "Ages" preset's
 two-stage claiming-age search (`agesearch`, shared with `fork-notes/synthetic/run_suite.py`);
 its second increment adds the death (I2) and downturn-sequence (I11) dimensions and the
-sensitivity tornado (I9, `tornado`).
+sensitivity tornado (I9, `tornado`). `newyear.start_year` makes a run's scenario for the next
+plan year (the events carried over), the way on from `check_plan_year`'s refusal each January.
 """
 
 from .scenario import (  # noqa: F401

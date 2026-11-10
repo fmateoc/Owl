@@ -424,6 +424,19 @@ So (D4, revised again 2026-11-02, the user's call):
   is withdrawn.
 - A run for a new year is made by the yearly check-in (I4): new balances, a new plan year, the
   old run as its parent.
+  - **Built 2026-11-10 (the local-use review's D2), without I4's drift chart:**
+    `library.newyear.start_year(scenario, year)` and the Run page's *Start \<year\> from this
+    run*. Moving the plan year alone does not build (`rent.start = 2026 is outside the plan
+    (2027-2053)`), so the events are carried over: one that is over is dropped; one under way
+    starts at the new year; a home bought before it becomes hand rows (accepted only on an exact
+    rebuild at the old plan year); years anchored to an event that left or moved become calendar
+    years; the person sheets' past years become hand rows (history); `previousMAGIs` /
+    `previousSTARIncomes` shift; a move no longer ahead of the plan becomes the starting
+    residence. No amount is re-priced: amounts in today's dollars are read in the new year's.
+    Nothing is stored at the click: the carried-over inputs open in the case pages on Account
+    Balances, and the Library page's save makes the run (against the same carried-over
+    document, so the new plan year is kept). `check_plan_year`'s message names this route; its
+    first wording, "save it as a new run from the pages", kept the old plan year (T3).
 
 ## 9. Reviewing and comparing
 

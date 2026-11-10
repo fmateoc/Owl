@@ -210,7 +210,10 @@ def check_plan_year(scenario: dict) -> int:
     later, January's balances would be read as the new January's. Within the plan year a run
     solves the same on any day (with fixed claiming ages); the claiming-age search reads the
     current month on purpose, since a month already past cannot be claimed. A run for a new
-    year is made by the yearly check-in (I4): new balances, a new plan year.
+    year is made from last year's by `newyear.start_year` (the Run page's *Start <year> from
+    this run*): a new plan year, the events carried over, this year's balances. The message
+    names that route: "save it as a new run from the pages", its first wording, led back
+    here, because a save against a run keeps that run's plan year (local-use review A1).
     """
     plan_year = scenario.get("plan_year")
     this_year = date.today().year
@@ -219,8 +222,9 @@ def check_plan_year(scenario: dict) -> int:
     if int(plan_year) != this_year:
         raise ScenarioError(
             f"the run's plan year is {plan_year} but this is {this_year}: its balances and year rows "
-            f"were entered for {plan_year}, and Owl would read them as {this_year}'s. Make a run for "
-            f"{this_year} with this year's balances (save it as a new run from the pages)."
+            f"were entered for {plan_year}, and Owl would read them as {this_year}'s. Open the run's "
+            f"page and use *Start {this_year} from this run*: it makes a run for {this_year} with the "
+            "events carried over, to which you give this year's balances."
         )
     return int(plan_year)
 

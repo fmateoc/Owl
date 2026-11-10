@@ -46,7 +46,7 @@ def _save_and_queue():
             base_name = lib.get(base_id).name
         except Exception:  # noqa: BLE001 - a deleted base run names nothing
             base_name = None
-    name = f"{base_name} variant" if base_name else (kz.currentCaseName() or "case")
+    name = library_save.default_name(base_name, kz.currentCaseName()) or "case"
     saved = library_save.save_current_case(lib, name)
     if saved is None:
         return

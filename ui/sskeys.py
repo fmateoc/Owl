@@ -170,6 +170,7 @@ def has_current_case() -> bool:
 # case with it -- `copyCase` and `deleteCurrentCase`).
 RUN_BASE_KEY = "library_base_run_id"
 RUN_BASE_NAME_KEY = "library_base_run_name"
+RUN_NEW_YEAR_KEY = "library_new_year"
 
 
 def setRunBase(run_id, run_name=None):
@@ -178,6 +179,20 @@ def setRunBase(run_id, run_name=None):
     currentCaseDic()[RUN_BASE_KEY] = run_id
     if run_name:
         currentCaseDic()[RUN_BASE_NAME_KEY] = run_name
+
+
+def setRunNewYear(year):
+    """Mark the current case as the run base's inputs carried over to plan year `year` (the Run
+    page's "Start <year> from this run", local-use review D2): its save is a run for that year,
+    built against the base rolled the same way (`library_save`)."""
+    currentCaseDic()[RUN_NEW_YEAR_KEY] = int(year)
+
+
+def runNewYear():
+    """The plan year the current case was started for from its run base, or None."""
+    if not has_current_case():
+        return None
+    return currentCaseDic().get(RUN_NEW_YEAR_KEY)
 
 
 def runBaseName():

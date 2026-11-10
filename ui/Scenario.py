@@ -85,6 +85,16 @@ run = _by_id[st.selectbox("Run to edit", list(_by_id), index=_index, key="scenar
                           format_func=lambda i: f"{_by_id[i].name} ({_by_id[i].folder_name})")]
 st.session_state["scenario_last_run"] = run.id
 scenario = lib.scenario(run.id)
+if run.plan_year is not None and run.plan_year != date.today().year:
+    # Local-use review D2: a child keeps its parent's plan year, and a run is solved only in
+    # its plan year. Said before the edits are typed, not at the refused solve.
+    _c1, _c2 = st.columns([4, 1], vertical_alignment="center")
+    _c1.warning(f"This run is for {run.plan_year}. A what-if saved from it is for {run.plan_year} too, "
+                f"and is not solved in {date.today().year}: start {date.today().year} from it on its "
+                "page first, then ask the what-if of that run.", icon=":material/event_repeat:")
+    if _c2.button("Open its page", key="scenario_to_run_page"):
+        st.session_state["library_selected_run"] = run.id
+        st.switch_page("Run.py")
 
 # -- the draft (ergonomics review S-2) -----------------------------------
 # Streamlit drops a widget's state when its page is not drawn, so an edit typed here was lost

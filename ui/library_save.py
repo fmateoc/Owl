@@ -99,15 +99,25 @@ def save_current_case(lib, name, notes="", tags=()):
         return None
     saved_year = scenario.get("plan_year")
     this_year = date.today().year
-    if new_year and stored is not None and stored.get("plan_year") != new_year \
-            and _balances(scenario) == _balances(stored):
+    rolled = bool(new_year and stored is not None and stored.get("plan_year") != new_year)
+    if rolled and _balances(scenario) == _balances(stored):
         # The reason a run has a plan year at all: last January's balances read as this one's.
+        # The case stays marked as started for the new year, its steps on the pages: the next
+        # save is again the run for that year, from the same parent.
         libraryjobs.flash(
             "warning",
             f"Saved for {new_year} with the account balances of {stored.get('plan_year')}: they were "
             f"not changed. Enter this year's on the Account Balances page and save again, or the "
             f"plan for {new_year} starts from last year's money.",
         )
+    elif rolled:
+        # The run for the new year exists: the case is its inputs from here on. Left marked, the
+        # pages went on saying "Nothing is saved yet" above the list of steps, and every later
+        # save made another "<name> - <year>" beside it from last year's run (review AQ5).
+        run = result.run if result.created else result.identical_to
+        if run is not None and run.plan_year == new_year:
+            kz.setRunBase(run.id, run.name)
+            kz.clearRunNewYear()
     elif saved_year is not None and saved_year != this_year:
         libraryjobs.flash(
             "warning",

@@ -155,6 +155,37 @@ def test_a_save_with_last_years_balances_says_so(library, monkeypatch):
     assert any("with the account balances of 2025" in w.value for w in page.warning)
 
 
+def test_once_saved_the_case_is_the_new_runs(library, monkeypatch):
+    """After the save with this year's balances the pages stop saying "Nothing is saved yet",
+    and a later save is a child of the run for the new year, not another one beside it from
+    last year's run (review AQ5)."""
+    import streamlit as st
+
+    at, _ = _started(monkeypatch)
+    state = _session(at)
+    case = state["cases"][state["currentCase"]]
+    case["txbl0"] = float(case["txbl0"]) + 25.0
+    state = _session(_save(state))
+    base, new = library.runs()
+    case = state["cases"][state["currentCase"]]
+    assert case["library_base_run_id"] == new.id and case["library_base_run_name"] == "our plan - 2026"
+    assert "library_new_year" not in case and "library_new_year_steps" not in case
+    monkeypatch.setattr(st, "page_link", lambda *a, **k: None)
+    assert not any("Nothing is saved yet" in i.value for i in _page("Account_Balances.py", state).info)
+    case["txbl0"] = float(case["txbl0"]) + 5.0  # a correction after the save
+    _save(state)
+    later = library.runs()[-1]
+    assert (later.name, later.plan_year, later.parent) == ("our plan - 2026 variant", 2026, new.id)
+
+
+def test_saved_with_last_years_balances_the_steps_stay(library, monkeypatch):
+    at, _ = _started(monkeypatch)
+    state = _session(_save(_session(at)))
+    case = state["cases"][state["currentCase"]]
+    assert case["library_new_year"] == 2026 and "Nothing is saved yet" in case["library_new_year_steps"]
+    assert case["library_base_run_id"] == library.runs()[0].id
+
+
 def test_the_library_page_names_the_year(library, monkeypatch):
     at, _ = _started(monkeypatch)
     page = _page("Library.py", _session(at))

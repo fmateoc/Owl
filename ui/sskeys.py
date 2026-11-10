@@ -192,6 +192,12 @@ def setRunNewYear(year, steps=None):
         currentCaseDic()[RUN_NEW_YEAR_STEPS_KEY] = str(steps)
 
 
+def clearRunNewYear():
+    """The run for the new plan year is saved: the current case is an ordinary edit of it."""
+    currentCaseDic().pop(RUN_NEW_YEAR_KEY, None)
+    currentCaseDic().pop(RUN_NEW_YEAR_STEPS_KEY, None)
+
+
 def runNewYear():
     """The plan year the current case was started for from its run base, or None."""
     if not has_current_case():

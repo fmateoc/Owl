@@ -247,6 +247,15 @@ def case_from_answers(answers: dict, *, workbook_name: Optional[str] = None, nam
 # The workbook
 # ---------------------------------------------------------------------------
 
+# Owl deposits a contribution without taking it out of the year's cash (its Documentation,
+# "Contributions are deposited into their respective accounts but are not subtracted from the
+# annual cash flow"): a pre-tax one is already out of the wages, an after-tax one is paid for
+# with a negative big-ticket amount. Left unsaid, a workbook filled column by column made
+# money: 8,000 of Roth IRA and 20,000 of taxable contributions a year for three years raised
+# the plan's spending by 3,627 a year (review AQ4).
+_PAID_FOR = ("The plan does not take it out of the year's cash by itself: put the same amount, as a "
+             "negative number, in big-ticket items of that year.")
+_AFTER_TAX = ("taxable ctrb", "Roth 401k ctrb", "Roth IRA ctrb")
 _PERSON_HELP = {
     "year": "One row per year of the plan. Do not change this column.",
     "anticipated wages": "Wages for the year as they appear on the tax return: pay minus what goes "
@@ -255,18 +264,20 @@ _PERSON_HELP = {
                      "while already receiving Social Security; leave 0 otherwise.",
     "other inc": "Other taxable income of the year (consulting, royalties). Negative for a deduction.",
     "net inv": "Net investment income from outside the accounts in the plan (usually 0).",
-    "taxable ctrb": "Money added to the taxable (brokerage) account.",
-    "401k ctrb": "The employee's own pre-tax 401k contribution.",
+    "taxable ctrb": "Money added to the taxable (brokerage) account. " + _PAID_FOR,
+    "401k ctrb": "The employee's own pre-tax 401k contribution (the wages are already net of it).",
     "employer ctrb": "The employer's 401k contribution (match or other).",
-    "Roth 401k ctrb": "Roth 401k contribution.",
-    "IRA ctrb": "Deductible IRA contribution.",
-    "Roth IRA ctrb": "Roth IRA contribution.",
-    "HSA ctrb": "HSA contribution.",
+    "Roth 401k ctrb": "Roth 401k contribution, paid from pay after tax. " + _PAID_FOR,
+    "IRA ctrb": "Deductible IRA contribution (the wages are already net of it).",
+    "Roth IRA ctrb": "Roth IRA contribution, paid from pay after tax. " + _PAID_FOR,
+    "HSA ctrb": "HSA contribution through payroll (the wages are already net of it).",
     "Roth conv": "Leave empty: the plan chooses Roth conversions.",
     "Roth conv fixed": "Leave empty unless a conversion of that year is already decided.",
     "QCD": "Charitable distribution from an IRA (from age 70 1/2).",
     "big-ticket items": "One-time amounts: negative for a large expense (a car, a roof), positive "
-                        "for money coming in (an inheritance, a sale).",
+                        "for money coming in (an inheritance, a sale). Also, as a negative amount, "
+                        "the year's taxable, Roth 401k and Roth IRA contributions: the plan puts "
+                        "them in the accounts and takes them out of the year's cash only here.",
 }
 _INSTRUCTIONS = [
     "How to fill this workbook",
@@ -275,7 +286,10 @@ _INSTRUCTIONS = [
     "Fill only what applies; a sheet left as it is adds nothing to the plan.",
     "",
     "A sheet per person: wages, contributions and one-time amounts, year by year. Every column's",
-    "meaning is in a note on its heading (rest the pointer on it).",
+    "meaning is in a note on its heading (rest the pointer on it). Wages are what the tax return shows,",
+    "so pre-tax contributions (401k, deductible IRA, HSA from pay) are already out of them. A taxable,",
+    "Roth 401k or Roth IRA contribution is not: enter it in its column AND, as a negative amount, in",
+    "big-ticket items of the same year, or the plan counts that money twice.",
     "",
     "Budget: what you spend, one line each (rent, food and everything else, property tax, insurance,",
     "medical). name: your words. type: rent, property tax, maintenance, insurance, medical, charity,",
@@ -284,9 +298,12 @@ _INSTRUCTIONS = [
     "essential: TRUE for a line that cannot shrink (rent, taxes); the plan then finds how much is left",
     "for the others. With no Budget line, the plan spends as much as is safe, the same every year.",
     "",
-    "Fixed Assets: a home or other property you own. year: when bought. basis: what was paid. value:",
-    "what it is worth in the dollars of that year. rate: yearly growth in percent. yod: the year it is",
-    "sold (0 = kept). commission: selling costs in percent. type: residence for the home you live in.",
+    "Fixed Assets: a home or other property. For one you own now: year is this year, value is what it",
+    "is worth now, basis is what was paid. (A year in the past is read as this year, with the value",
+    "as today's.) For one you expect to buy: the year, and the price in that year's dollars as both",
+    "value and basis. rate: yearly growth in percent, above inflation for a home (0 = it keeps up with",
+    "prices). yod: the year it is sold (0 = kept). commission: selling costs in percent. type:",
+    "residence for the home you live in.",
     "",
     "Debts: loans. year: when it started. term: years. amount: borrowed. rate: percent. property: the",
     "Fixed Assets name of the home it is on (the loan is paid off when the home is sold).",
@@ -405,6 +422,21 @@ def read_workbook(path, answers: dict, today: Optional[date] = None) -> dict:
             said += "; one-time amounts: " + ", ".join(f"{y}: {v:+,.0f}" for y, v in once[:4]) + (
                 ", ..." if len(once) > 4 else "")
         lines.append(f"**{person}**: {said}.")
+        # After-tax contributions the year's big-ticket amount does not pay for (`_PAID_FOR`).
+        after_tax: dict[int, float] = {}
+        for name in _AFTER_TAX:
+            for y, v in column(name):
+                after_tax[y] = after_tax.get(y, 0.0) + v
+        paid = dict(column("big-ticket items"))
+        short = {y: v for y, v in after_tax.items() if v > 0 and -min(paid.get(y, 0.0), 0.0) < v}
+        if short:
+            years = sorted(short)
+            lines.append(
+                f"**Check {person}'s contributions**: ${sum(short.values()):,.0f} of taxable, Roth 401k or Roth "
+                f"IRA contributions ({years[0]}" + (f" to {years[-1]}" if len(years) > 1 else "") + ") have no "
+                "negative *big-ticket items* amount of at least their size in the same year. The plan puts "
+                "a contribution in the account without taking it out of the year's cash, so that money "
+                "would be counted twice: add the same amounts, negative, to *big-ticket items*.")
     for sheet, what in (("Budget", "budget line"), ("Fixed Assets", "property"), ("Debts", "loan")):
         table = hfp.get(sheet) or {"columns": [], "rows": []}
         names = [str(r[table["columns"].index("name")]) for r in table["rows"]] if "name" in table["columns"] else []

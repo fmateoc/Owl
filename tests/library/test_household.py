@@ -168,6 +168,43 @@ class TestTheWorkbook:
         # Budget lines make the plan spend by them.
         assert read["scenario"]["case"]["optimization_parameters"]["spending_profile"] == "budget"
 
+    def test_the_notes_say_what_owl_does_with_a_contribution(self, tmp_path):
+        """Owl deposits a contribution without taking it out of the year's cash: an after-tax
+        one is paid for with a negative big-ticket amount (review AQ4)."""
+        book = openpyxl.load_workbook(H.write_workbook(tmp_path / "Household.xlsx", _answers(), TODAY))
+        notes = {cell.value: cell.comment.text for cell in book["Ari"][1]}
+        for column in ("taxable ctrb", "Roth 401k ctrb", "Roth IRA ctrb"):
+            assert "negative number, in big-ticket items" in notes[column], column
+        for column in ("401k ctrb", "IRA ctrb", "HSA ctrb"):
+            assert "already net of it" in notes[column], column
+        text = " ".join(str(row[0].value or "") for row in book["Instructions"].iter_rows())
+        assert "counts that money twice" in text
+
+    def test_a_property_owned_now_is_valued_now(self, tmp_path):
+        """Owl's reader resets a Fixed Assets year in the past to this year and reads the value
+        as today's (review AQ3): "year: when bought, value: in the dollars of that year" valued
+        a home bought long ago at its purchase price."""
+        book = openpyxl.load_workbook(H.write_workbook(tmp_path / "Household.xlsx", _answers(), TODAY))
+        text = " ".join(str(row[0].value or "") for row in book["Instructions"].iter_rows())
+        assert "year is this year, value is what it is worth now, basis is what was paid" in text
+        assert "when bought" not in text
+
+    def test_an_after_tax_contribution_nothing_pays_for_is_said(self, tmp_path):
+        book = H.write_workbook(tmp_path / "Household.xlsx", _answers(), TODAY)
+        wb = openpyxl.load_workbook(book)
+        head = {cell.value: cell.column for cell in wb["Ari"][1]}
+        for row, big in ((2, None), (3, -8_000), (4, -3_000)):  # 2026 unpaid, 2027 paid, 2028 short
+            wb["Ari"].cell(row=row, column=head["anticipated wages"], value=150_000)
+            wb["Ari"].cell(row=row, column=head["Roth IRA ctrb"], value=8_000)
+            wb["Ari"].cell(row=row, column=head["401k ctrb"], value=20_000)  # pre-tax: nothing to pay
+            if big is not None:
+                wb["Ari"].cell(row=row, column=head["big-ticket items"], value=big)
+        wb.save(book)
+        lines = H.read_workbook(book, _answers(), TODAY)["lines"]
+        check = [line for line in lines if line.startswith("**Check Ari's contributions**")]
+        assert len(check) == 1 and "$16,000" in check[0] and "(2026 to 2028)" in check[0]
+        assert not any("Check Noa" in line for line in lines)
+
     def test_a_mistyped_heading_is_refused_by_name(self, tmp_path):
         book = H.write_workbook(tmp_path / "Household.xlsx", _answers(), TODAY)
         wb = openpyxl.load_workbook(book)

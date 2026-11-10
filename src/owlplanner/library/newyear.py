@@ -14,11 +14,17 @@ builder (`rent.start = 2026 is outside the plan (2027-2053)`). The rules, with Y
   and sold before Y; a downturn placed before Y) is dropped: what it did is in the balances.
 - **A home bought before Y and still owned** stops being an event and becomes hand rows: the
   Fixed Assets row, the loan, the owner's budget lines and the move or school district the
-  event generated, taken from the run's own build. The purchase's price and loan stay in the
-  dollars of the year it was bought in, which a purchase *event* (today's dollars, grown by
-  the plan's inflation from the plan start) could not express once that year is past. This
-  step is accepted only on an exact rebuild at the old plan year (`convert_housing`'s rule,
-  the other way round).
+  event generated, taken from the run's own build. The rows hold the price and the loan in
+  the dollars of the year it was bought in, which a purchase *event* (today's dollars, grown
+  by the plan's inflation from the plan start) could not express once that year is past. The
+  loan is exact from there (Owl amortizes it from its start year). The home's *value* is not:
+  Owl's reader resets a Fixed Assets year in the past to the plan's first year and reads the
+  value as the worth at its start, so the price left as it is loses a year of growth and
+  inflation at every roll (700,000 at 0.5% real and 2.8% inflation: 25,089 less home at the
+  end, in the new year's dollars, review AQ2). No amount is re-priced here, so the notes say
+  it, for the home just frozen and for every property a run already held as rows
+  (`_note_owned_assets`). This step is accepted only on an exact rebuild at the old plan year
+  (`convert_housing`'s rule, the other way round).
 - **An event under way** (work, rent or care that started before Y and goes on) starts at Y.
   A rent's monthly amount is not changed: within its flat years that is exact (the nominal
   rent is the same), after them it is last year's rent read in Y's dollars, like every other
@@ -85,8 +91,10 @@ def _start_year(scenario: dict, year: int) -> tuple[dict, list[str]]:
     # First, so that every build below reads a case Owl accepts: it refuses a move dated in
     # the plan's first year or before, and the builder's inflation path comes from a plan.
     _fold_moves(base["case"].setdefault("basic_info", {}), year, notes)
+    owned = _owned_assets(base.get("hfp") or {}, year)  # before a purchase event joins them
     if base.get("events"):
         base["events"] = _roll_events(base, year, notes)
+    notes.extend(owned)
     _roll_case(base["case"], int(old), year, notes)
     base["plan_year"] = year
     rolled = canonicalize(base)
@@ -131,8 +139,10 @@ def _roll_events(base: dict, new_year: int, notes: list[str]) -> list[dict]:
                     frozen.add(event["id"])
                     notes.append(f"{event['name']} was bought in {where['year']}: it is now a home the "
                                  "plan starts with (Fixed Assets, its loan and the owner's budget lines "
-                                 "as rows), no longer a purchase event. Check its price and loan against "
-                                 "what was paid.")
+                                 "as rows), no longer a purchase event. In Fixed Assets its *value* is the "
+                                 f"planned price, which the plan reads as what the home is worth in January "
+                                 f"{new_year}: put in what it is worth now, and in *basis* what was paid. "
+                                 "Check the loan against what was borrowed.")
         elif kind == "rent":
             end = where.get("end") or ((purchase_year - 1) if purchase_year is not None else 0)
             if end and end < new_year:
@@ -297,6 +307,33 @@ def _freeze_home(base, events, years, built_case, built_tables, provenance, froz
             info["state"] = move.get("state", info.get("state", ""))
             info["locality"] = move.get("locality", "") or ""
             info["school_district"] = move.get("school_district", "") or ""
+
+
+def _owned_assets(hfp: dict, new_year: int) -> list[str]:
+    """Notes for the properties the run holds as Fixed Assets rows valued before `new_year`.
+
+    Owl reads such a row's value as the worth at the start of the plan's first year (its
+    reader resets a year in the past to it), so a value carried over unchanged stands still
+    while prices move: the note asks for today's value, every year."""
+    table = hfp.get("Fixed Assets") or {}
+    columns = list(table.get("columns") or [])
+    if not {"name", "year", "value"} <= set(columns):
+        return []
+    at = {c: columns.index(c) for c in columns}
+    out = []
+    for row in table.get("rows") or []:
+        try:
+            valued, value = int(row[at["year"]]), float(row[at["value"]])
+            sold = int(row[at["yod"]] or 0) if "yod" in at else 0
+        except (TypeError, ValueError):
+            continue  # a blank year is read as the plan's first year: nothing is behind
+        if "active" in at and row[at["active"]] in (False, 0, "FALSE", "false"):
+            continue
+        if valued >= new_year or 0 < sold < new_year:
+            continue
+        out.append(f"Fixed Assets: *{row[at['name']]}* is valued at {value:,.0f}, as of {valued}. The plan "
+                   f"reads that as what it is worth in January {new_year}: put in what it is worth now.")
+    return out
 
 
 def _without(doc: dict, paths, copy_first: bool = True) -> dict:

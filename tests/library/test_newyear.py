@@ -215,6 +215,27 @@ class TestABoughtHome:
         assert "Debts" not in a and a["Ari"]["rows"] == [[2027, 5]]
         assert newyear._table_differences(a, b_) == ["Ari, row 1 (2027), anticipated wages: 5 -> 6"]
 
+    def test_the_notes_ask_for_the_homes_value_every_year(self):
+        """Owl reads a Fixed Assets value dated in the past as the worth at the plan's start
+        (its reader resets the year), so a price carried over unchanged stands still: the
+        freeze says so, and so does every later roll, for the row the run then holds."""
+        first, _ = newyear.start_year(_scenario([RENT, BUY_CASH]), 2027)
+        second, notes = newyear.start_year(first, 2028)
+        frozen = [n for n in notes if "was bought in 2027" in n]
+        assert len(frozen) == 1 and "worth in January 2028" in frozen[0] and "what was paid" in frozen[0]
+        assert not any(n.startswith("Fixed Assets:") for n in notes)  # said once, by the freeze
+        _third, notes = newyear.start_year(second, 2029)
+        value = _rows(second["hfp"], "Fixed Assets", BUY_CASH["name"])[0][5]
+        assert notes == [f"Fixed Assets: *{BUY_CASH['name']}* is valued at {value:,.0f}, as of 2027. The plan "
+                         "reads that as what it is worth in January 2029: put in what it is worth now."]
+
+    def test_a_property_sold_or_switched_off_or_valued_this_year_has_no_note(self):
+        columns = list(b.ASSET_COLUMNS)
+        rows = [[True, "sold", "residence", 2020, 1, 2, 0, 2026, 5], [False, "off", "residence", 2020, 1, 2, 0, 0, 5],
+                [True, "now", "residence", 2027, 1, 2, 0, 0, 5], [True, "kept", "residence", 2020, 1, 300000, 0, 0, 5]]
+        notes = newyear._owned_assets({"Fixed Assets": {"columns": columns, "rows": rows}}, 2027)
+        assert len(notes) == 1 and "*kept* is valued at 300,000, as of 2020" in notes[0]
+
     def test_a_rebuild_that_differs_is_refused(self, monkeypatch):
         real = newyear._table_differences
         monkeypatch.setattr(newyear, "_table_differences", lambda a, b_: real(a, b_) + ["Debts: tampered"])

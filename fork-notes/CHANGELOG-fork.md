@@ -7,6 +7,31 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: the new year, a live Run page, a what-if in one step (2026-11-10)
+
+From `fork-notes/ux-review-local-use.md`, section D, items 1-4.
+
+- **A run for the new year.** A run is solved only in the year it was made for, so from
+  1 January every run is refused. The Run page of last year's run now says so before any click
+  and offers *Start \<year\> from this run*: its inputs open for the new year on Account
+  Balances, with a list of what to bring up to date, and saving on the Library page makes the
+  new run with last year's as its parent. The events are carried over: one that is over is
+  dropped, one under way starts in the new year, a home already bought becomes part of what
+  the plan starts with. No amount is re-priced: amounts in today's dollars are read in the new
+  year's dollars. The refusal message used to point at a route that kept the old year (D2).
+- **Fixed: a home bought with a move in the plan's first year could not be planned** (Owl
+  refuses a move dated in the first plan year): the plan now starts in the new place (D2).
+- **The Run page follows its solves.** After *Solve* the page shows what is solving and for how
+  long, and shows the result when it is ready, with no reload (D3).
+- **Save and solve.** On the Scenario page, one button saves the what-if, queues its *Careful*
+  solve and opens its page; *Compare with its parent* there opens Compare on that pair. The
+  parent is solved the same way when it has no *Careful* result from today, so the comparison
+  is like for like (D4).
+- **Fixed: the Queue page stopped at an error** once two runs were queued in the same second
+  (*Make variants* with "Queue them when created") (D1).
+- **Fixed: solves queued in the same second ran in the library's run order**, not the order
+  they were queued in (D4).
+
 ### Run library: the structural items S-1 to S-6 (2026-11-08)
 
 - **The app opens on your baseline.** In library mode the Run Library comes first and the

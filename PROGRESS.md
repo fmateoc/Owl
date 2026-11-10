@@ -8190,3 +8190,72 @@ regret results.
   run" action, a live Run page first).
 
 Next: the user's call on what to build; D1 (the Queue keys) and D2 (the new year) first if any.
+
+## Local-use review: D1 to D4 built (2026-11-10)
+
+Branch `claude/loving-carson-a2dfi9`, one commit per item (the user's call: "Build D1, D2, D3, and
+D4 from the ux-review-local-use.md report, one commit each"), plus one follow-up.
+
+- **D1 `feaf587`, the Queue's keys.** `libraryjobs.job_key` (the run's folder and the job's):
+  Kill, Cancel, Run again and Open result no longer share a key across runs. The test (two runs,
+  one results-folder name, the four button states) fails on the old keys with the report's
+  `StreamlitDuplicateElementKey`.
+- **D2 `0b92cd5`, the new year.** `library/newyear.py`, `start_year(scenario, year)`, and the Run
+  page's *Start \<year\> from this run*.
+  - **Found:** the report's sketch (a child with this year as its plan year, the events kept) does
+    not build. With the year at 2027 a run whose rent event starts in 2026 stops at
+    `rent.start = 2026 is outside the plan (2027-2053)` (ran, clock moved). So the events are
+    carried over: one that is over is dropped; one under way starts at the new year (a rent keeps
+    its monthly amount, exact within its flat years: 48,000 in 2027 before and after); a home
+    bought before the new year becomes hand rows, accepted only on an exact rebuild at the old plan
+    year; a year anchored to an event that left or moved becomes its calendar year; the person
+    sheets' past years become hand rows (history); `previousMAGIs` / `previousSTARIncomes` shift
+    (the year now needed reads 0 and is named in a note); a move no longer ahead of the plan
+    becomes the starting residence.
+  - **Not done by it:** no amount is re-priced (amounts in today's dollars are read in the new
+    year's: 700,000 for a 2029 purchase is 739,749 in 2029 dollars from 2027, 760,462 from 2026),
+    and the balances stay last year's. The action stores nothing: it opens the carried-over inputs
+    in the case pages on Account Balances with the list of what to bring up to date (kept on every
+    Case Setup page until the save, `0c2ec51`); the Library page's save builds against
+    the same carried-over document, warns when the balances were not changed, and warns when an
+    ordinary *Edit as new run* of an old run was saved for the old year.
+  - **A builder defect found by the roll (ran):** a purchase with a move in the plan's first year
+    built `moves = [{year = <first year>}]`, which Owl refuses ("A move must fall after the first
+    plan year"): a 2027 purchase in Queens could not be planned in 2027. It is the starting
+    residence now. `BUILDER_VERSION` not bumped (no run built the old way could be solved).
+  - **Checked with the clock moved, outside the suite:** the 46 synthetic scenarios carried to
+    2027, 2028 and 2030 all build (46/46 each; 22 homes bought in 2027 pass the rebuild check in
+    2028); three solved under the Quick preset (queens-2027-mortgage in 2027 and 2028,
+    yonkers-2029-cash in 2028). A 25-year jump refuses 18 of 46 with "outside the case's inflation
+    path" (the builder reads the path from a plan that starts at the clock's year): not a case
+    anyone has. `check_library_builder.py` 46/46 and 39/39.
+  - **Not built:** I4's plan-against-actual drift chart. A downturn event's drop is not unit-tested.
+- **D3 `4fc78a4`, the live Run page.** A fragment under the run's header (two seconds): "Solving
+  this run", one line per live job, and on a job's end a rerun of the whole page on the newest
+  main result with one message. *Solve* names its jobs at the click (`libraryjobs.watch_jobs`), so
+  a solve that ends before the page is drawn is still reported. Browser (Quick look): the box 0.5 s
+  after the click, the result 4.6 s in, no reload.
+- **D4 `b7ba0d6`, the what-if in one step.** *Save and solve* on the Scenario page (`ui/whatif.py`):
+  the child saved, its Careful solve queued, its Run page opened; the parent queued for a Careful
+  solve too when it has none from today, so the pair is like for like. *Compare with its parent*
+  on the Run page opens Compare on the shown result against the parent's newest result solved the
+  same way; Compare takes the pair from the session.
+  - **Found by the browser drive:** a job's `queued` stamp is whole seconds, so jobs of two runs
+    queued by one click tied on it and on the folder name and ran in the library's run order: the
+    parent's five-minute solve ran before the what-if's exact-model check. Job records carry
+    `queued_at` now and the queue orders by it.
+  - **Browser (condo price 700,000 -> 750,000):** the what-if's Careful result after 323 s with no
+    reload, the parent's after 653 s, Compare on the two Careful results with "A trade-off: ...
+    spends \$2,493/yr more, ... keeps \$53,807 more home at the end", no warning. That drive ran
+    on the queue order before the fix; the order and the child page's watch on its parent's solve
+    are covered by tests, not re-driven.
+- **Follow-up `0c2ec51`:** the new-year list of steps stays under the title bar of the Case Setup
+  pages (seen in a browser: as a one-time message it was gone at the first edit).
+
+Tests: 4774 passed / 1 skipped (2026-11-10, 10:38, Linux, `-n 4`, at `b7ba0d6`); the follow-up
+touched `ui/` only, its page tests re-run (11 + 68). An earlier full run during the work showed 35
+failures in `test_library_pages.py`: a test worker held the old `libraryjobs` module while `Run.py`
+was edited under it, not a defect.
+
+Next: the report's D5-D12 are not built. The user's next request (2026-11-10): starting in a local
+household folder with guided first-time data entry.

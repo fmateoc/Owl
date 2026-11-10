@@ -8307,7 +8307,7 @@ Built on `claude/loving-carson-a2dfi9`:
 - **Not checked:** Windows and macOS (the `.cmd` launcher's folder argument, `Start Owl.cmd`,
   `Start Owl.command`); Excel itself; a single person through the browser (unit-tested).
 - Tests: `tests/library/test_household.py` 38, `tests/ui/test_first_time.py` 13;
-  `tests/library` + `tests/ui` + `tests/utils` 1326 passed. Docs: `fork-notes/running-locally.md`
+  the full suite 4825 passed / 1 skipped (10:43, Linux, `-n 4`, at `709766f`). Docs: `fork-notes/running-locally.md`
   section 1b.
 
 Not built, from the local-use review's section D: D5-D10, D12, and of D11 the quiet terminal, the

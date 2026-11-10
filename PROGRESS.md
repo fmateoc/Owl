@@ -8313,3 +8313,53 @@ Built on `claude/loving-carson-a2dfi9`:
 Not built, from the local-use review's section D: D5-D10, D12, and of D11 the quiet terminal, the
 second-launch guard and `client.showErrorDetails`.
 
+
+## Local-use build: reviewed, AQ1-AQ8 folded (2026-11-10)
+
+The user's request: "continue on branch `claude/loving-carson-a2dfi9`. Review the work you've
+performed on it." The nine commits of the branch (D1-D4, the household folder, the first-time
+setup) reviewed by the session that built them: `fork-notes/local-use-build-review.md`,
+AQ1-AQ12. Not an independent review, and nothing was driven in a browser.
+
+- **Baseline:** 4825 passed / 1 skipped at `74b6ec6` (9:30, `-n 4`), as recorded; lint clean
+  apart from upstream's listed items.
+- **A correction to "Local-use review: D1 to D4 built" above:** "the 46 synthetic scenarios
+  carried to 2027, 2028 and 2030 all build (46/46 each)" was one jump from 2026 each. Rolled
+  year by year, as the feature is used, 42/46 built through 2028 and 36/46 through 2032.
+- **Folded, one commit each (AQ3 and AQ4 share one), each with a test:**
+  - **AQ1 `54e782c`:** the rebuild check of a bought home compared table layouts; with no other
+    event left (the rent and work dropped the year before) a cash purchase was refused the
+    year after it, "Debts: columns differ". Year by year to 2032: 46/46 now;
+    `yonkers-2027-cash` to 2028 and `queens-2029-cash` to 2030 solve (Quick look's options,
+    clock moved).
+  - **AQ2 `0f9f4fd`:** Owl's reader resets a Fixed Assets year in the past and reads the value
+    as the worth at the plan's start, so the frozen home lost a year of growth and inflation
+    per roll (`yonkers-2027-mortgage`, 2027 -> 2028: 25,089 less home at the end in 2028
+    dollars). Nothing is re-priced; the notes ask for today's value, at the freeze and for
+    every property held as rows at every later roll.
+  - **AQ3, AQ4 `36f6e18`:** the empty workbook's Instructions said "year: when bought ...
+    value: what it is worth in the dollars of that year" (an owned home valued at its purchase
+    price); its heading notes left out that an after-tax contribution is paid for with a
+    negative big-ticket amount (8,000 Roth IRA + 20,000 taxable a year for three years, typed
+    as the notes said: +3,627/yr of spending; with the offsets -3/yr). Both corrected; the
+    Setup page's read-back names after-tax contributions nothing pays for.
+  - **AQ5 `ef48edf`:** the new-year marks on the case were never cleared (the pages kept
+    "Nothing is saved yet" after the save). A save with this year's balances makes the new run
+    the case's base and drops them.
+  - **AQ6 `9c7db7f`:** no starter file for a library that is not `<home>/library`.
+  - **AQ7 `2984580`:** an uploaded workbook is copied once per upload; its corrected copy is
+    the one read (it was shadowed by a "(2)" copy of the old bytes).
+  - **AQ8 `519e3e2`:** a run with a downturn placed before the new year stopped the roll at
+    "the window starts at 2026, before the plan (2027-2053)"; the drop written for it was
+    after the build that raised. Dropped first now.
+- **Standing:** AQ9 (a jump of two or more years under a year-by-year rates table prices the
+  frozen home on a shifted path: 735,000 where the run held 714,000), AQ10 (the setup refuses
+  a cost basis above the account's value; Owl accepts it with a warning), AQ11 (the year just
+  ended reads a MAGI of 0; the parent's result could fill it), AQ12 (the record above).
+- **Not checked:** Windows and macOS launchers and starter files; a browser (D3, D4, the
+  landing page's move from Start to Run; today's folds through AppTest and scripts only);
+  Excel.
+- Tests: 4838 passed / 1 skipped (9:41, Linux, `-n 4`, at `519e3e2`; 13 new tests). `check_library_builder.py` 46/46 and 39/39.
+
+Next: the user's call on AQ9-AQ11, on fast-forwarding `main`, and a Windows run of the
+launcher and the starter file.

@@ -7,6 +7,28 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: review of the new year and the first-time setup (2026-11-10)
+
+`fork-notes/local-use-build-review.md` (AQ1-AQ12; AQ1-AQ8 fixed).
+
+- **The new year, rolled every year.** A home bought with cash was refused the year after the
+  purchase ("Debts: columns differ") when no other event was left; it is carried over now. A
+  run with a downturn placed before the new year could not be started for it; the downturn is
+  dropped with a note.
+- **A home you own.** Owl reads the value of a property dated in the past as its worth at the
+  start of the plan. *Start \<year\> from this run* now asks for today's value of every
+  property held as rows (the price left as it was lost a year of growth and inflation at every
+  roll), and the empty workbook's instructions say: year is this year, value is what it is
+  worth now, basis is what was paid.
+- **Contributions in the workbook.** The heading notes now say that a taxable, Roth 401k or
+  Roth IRA contribution also goes, as a negative amount, in *big-ticket items* (Owl deposits a
+  contribution without taking it out of the year's cash), and the Setup page names the ones
+  nothing pays for.
+- After the new year's run is saved with this year's balances, the case pages stop showing its
+  list of steps and later saves are its children. No starter file is written for a library the
+  launcher would not open. An uploaded workbook is copied into the folder once, and its copy
+  is the one read.
+
 ### Run library: start in a folder, first-time setup without a case file (2026-11-10)
 
 - **A household folder.** `owlplanner-library.sh` / `.cmd` take a folder as their first argument

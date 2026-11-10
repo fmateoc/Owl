@@ -437,6 +437,14 @@ So (D4, revised again 2026-11-02, the user's call):
     Balances, and the Library page's save makes the run (against the same carried-over
     document, so the new plan year is kept). `check_plan_year`'s message names this route; its
     first wording, "save it as a new run from the pages", kept the old plan year (T3).
+  - **Amended 2026-11-10 (review `local-use-build-review.md`, AQ1, AQ2, AQ5, AQ8):** the
+    rebuild check compares what the plan reads, not the tables' layout (a table without rows
+    and a zero row are nothing), so a cash purchase is carried over in the yearly use too. A
+    home held as rows keeps its price as its value, which Owl reads as the worth at the new
+    plan's start (its reader resets a Fixed Assets year in the past): the notes ask for
+    today's value at every roll. A downturn placed before the new year is dropped before
+    anything is built (the builder refuses its window otherwise). After a save with the new
+    year's balances the case is an edit of the new run; with last year's it stays marked.
 
 ## 9. Reviewing and comparing
 

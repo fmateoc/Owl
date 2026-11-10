@@ -287,3 +287,10 @@ class TestTheFolder:
         assert starter.name == name and calls in starter.read_text(encoding="utf-8")
         starter.write_text("mine", encoding="utf-8")
         assert H.write_starter(tmp_path, platform).read_text(encoding="utf-8") == "mine"  # left alone
+
+    def test_no_starter_for_a_library_the_launcher_would_not_open(self, tmp_path):
+        """The launcher opens `<folder>/library`. For a library of another name (OWL_LIBRARY_DIR
+        set by hand) a starter in its parent folder would start an empty library (review AQ6)."""
+        assert H.write_starter(tmp_path, "linux", library_root=tmp_path / "owl-lib") is None
+        assert not list(tmp_path.iterdir())
+        assert H.write_starter(tmp_path, "linux", library_root=tmp_path / "library").name == "start-owl.sh"

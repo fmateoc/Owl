@@ -43,7 +43,9 @@ libraryjobs.show_flashes()
 manager = libraryjobs.get_manager()
 lib = manager.library
 home = H.home_dir(lib.root)
-starter = H.write_starter(home)  # a file to double-click next time (written once)
+# A file to double-click next time (written once; none for a library the launcher's folder
+# argument would not open).
+starter = H.write_starter(home, library_root=lib.root)
 
 
 # The reminder, once per library (S-1, decision 2): with no plan yet this is the landing page.

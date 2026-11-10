@@ -522,19 +522,24 @@ def drop_draft(library_root) -> None:
     (Path(library_root) / DRAFT_JSON).unlink(missing_ok=True)
 
 
-def write_starter(home, platform: Optional[str] = None) -> Optional[Path]:
+def write_starter(home, platform: Optional[str] = None, *, library_root=None) -> Optional[Path]:
     """A file in the household folder that starts the app on this folder with a double click
     ("Start Owl.cmd" on Windows, "Start Owl.command" on macOS, "start-owl.sh" elsewhere).
 
     Written once (an existing one is left alone) and only from a checkout (the launcher it
     calls, `owlplanner-library.cmd` / `.sh`, is at the repository's root). Returns its path,
-    or None when there is no launcher to call.
+    or None when there is no launcher to call -- or when the library in use (`library_root`)
+    is not `<home>/library`, the one the launcher opens for a folder: with OWL_LIBRARY_DIR
+    set by hand to a folder of another name, the starter would be written into its parent
+    and would start the app on a different, empty library (review AQ6).
     """
     import sys
 
     platform = platform or sys.platform
     repo = Path(__file__).resolve().parents[3]
     home = Path(home)
+    if library_root is not None and Path(library_root).resolve() != (home / "library").resolve():
+        return None
     if platform.startswith("win"):
         launcher, starter = repo / "owlplanner-library.cmd", home / "Start Owl.cmd"
         text = f'@echo off\r\ncall "{launcher}" "%~dp0."\r\n'

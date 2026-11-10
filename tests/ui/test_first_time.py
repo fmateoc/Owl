@@ -154,6 +154,26 @@ class TestSetup:
         row = next(r for r in table["rows"] if r[table["columns"].index("year")] == 2026)
         assert row[table["columns"].index("anticipated wages")] == 121_000 and opened == ["Run.py"]
 
+    def test_an_uploaded_workbook_is_copied_once_and_its_copy_is_the_one_read(self, home, tmp_path):
+        """The uploader holds its bytes for as long as the page lives. Copied at every rerun,
+        a copy corrected in Excel no longer matched them: the old bytes were written again as
+        "theirs (2).xlsx" and that file was read, so the correction never showed (review AQ7)."""
+        elsewhere = H.write_workbook(tmp_path / "theirs.xlsx", _answers())
+        at = _page("Setup.py", {"setup_answers": _answers()})
+        at.radio(key="setup_book_mode").set_value("existing").run()
+        at.file_uploader(key="setup_book_up").set_value(("theirs.xlsx", elsewhere.read_bytes(),
+                                                         "application/vnd.ms-excel")).run()
+        assert not at.exception, [e.value for e in at.exception]
+        copy = home / "theirs.xlsx"
+        assert copy.exists() and "Read from `theirs.xlsx`" in _text(at) and "**Ari**: no wages." in _text(at)
+        wb = openpyxl.load_workbook(copy)  # corrected in Excel, in the folder
+        wb["Ari"]["B2"] = 168_000
+        wb.save(copy)
+        at.button(key="setup_book_again").click().run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert sorted(p.name for p in home.glob("*.xlsx")) == ["theirs.xlsx"]
+        assert "the largest year \\$168,000" in _text(at)
+
     def test_a_workbook_that_cannot_be_read_says_why_and_is_not_used(self, home):
         home.mkdir(parents=True)
         book = H.write_workbook(home / "ours.xlsx", _answers())

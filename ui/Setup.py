@@ -30,6 +30,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import copy
 from datetime import date
+from pathlib import Path
 
 import streamlit as st
 
@@ -187,7 +188,14 @@ with st.container(border=True):
         up = c2.file_uploader("Or one from elsewhere (it is copied into the folder)", type=["xlsx"],
                               key="setup_book_up")
         if up is not None:
-            workbook = H.keep_upload(home, up.name, up.getvalue())
+            # Copied once per upload, then the copy is the workbook: the uploader holds its
+            # bytes for as long as the page lives, and copied at every rerun they were written
+            # again as "<name> (2).xlsx" once the copy had been corrected in Excel -- the page
+            # read that file, and the correction never showed (review AQ7).
+            kept = st.session_state.setdefault("setup_book_kept", {})
+            if up.file_id not in kept or not Path(kept[up.file_id]).exists():
+                kept[up.file_id] = str(H.keep_upload(home, up.name, up.getvalue()))
+            workbook = Path(kept[up.file_id])
     elif mode == "new":
         target = home / H.WORKBOOK_NAME
         if target.exists():

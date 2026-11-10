@@ -11,7 +11,9 @@ alone does not: an event that starts in the old plan year is "outside the plan" 
 builder (`rent.start = 2026 is outside the plan (2027-2053)`). The rules, with Y the new year:
 
 - **An event that is over** (a work span, a rent or a care span ending before Y; a home bought
-  and sold before Y; a downturn placed before Y) is dropped: what it did is in the balances.
+  and sold before Y) is dropped: what it did is in the balances. So is **a downturn placed
+  before Y**, whether or not its window still runs: its years behind the plan are in the
+  balances, and the run follows the case's own rates again.
 - **A home bought before Y and still owned** stops being an event and becomes hand rows: the
   Fixed Assets row, the loan, the owner's budget lines and the move or school district the
   event generated, taken from the run's own build. The rows hold the price and the loan in
@@ -115,6 +117,17 @@ def _roll_events(base: dict, new_year: int, notes: list[str]) -> list[dict]:
     case, hfp = base["case"], base["hfp"]
     events = copy.deepcopy(base["events"])
     years = builder.resolve_years(events, case)
+    # A downturn placed before the new year goes first, before anything is built: the builder
+    # reads the rate path from a plan that starts in the clock's year, and refuses a window
+    # that starts before it. Dropped after the build below, as first written, it was never
+    # reached: the roll of such a run stopped at "the window starts at 2026, before the plan
+    # (2027-2053), and would be cut" (review AQ8).
+    for event in [e for e in events if e["kind"] == "downturn" and years[e["id"]]["start"] < new_year]:
+        events.remove(event)
+        notes.append(f"The {event['sequence']} downturn was placed at {years[event['id']]['start']}, "
+                     f"before {new_year}: it is dropped, and the plan follows the case's own rates "
+                     "again (place one on the Scenario page to stress the new year's plan).")
+    base["events"] = copy.deepcopy(events)
     built_case, built_tables, provenance = builder.build(base)
 
     purchase = next((e for e in events if e["kind"] == "purchase"), None)
@@ -153,11 +166,6 @@ def _roll_events(base: dict, new_year: int, notes: list[str]) -> list[dict]:
             if end and end < new_year:
                 over.add(event["id"])
                 notes.append(f"{event.get('name', 'care')} ended in {end}: the event is dropped.")
-        elif kind == "downturn":
-            if where["start"] < new_year:
-                over.add(event["id"])
-                notes.append(f"The {event['sequence']} downturn was placed at {where['start']}, now "
-                             "behind the plan: it is dropped (place it again on the Scenario page).")
 
     # History first, from the build every event still takes part in.
     _freeze_history(hfp, built_tables, new_year)

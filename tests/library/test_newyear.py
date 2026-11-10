@@ -140,6 +140,40 @@ class TestEventsThatAreOver:
         assert any("bought in 2027 and sold in 2028" in n for n in notes)
 
 
+class TestADownturnBehindThePlan:
+    def test_it_is_dropped_before_anything_is_built(self, monkeypatch):
+        """On 2 January 2027 the builder reads the rate path from a plan that starts in 2027 and
+        refuses a window that starts in 2026. The downturn was dropped after the roll's first
+        build, so it was never reached: the roll stopped at "would be cut" (review AQ8)."""
+        import types
+
+        import numpy as np
+
+        years = 30
+        monkeypatch.setattr(b, "_throwaway_plan", lambda case, rates_rows=None: types.SimpleNamespace(
+            year_n=list(range(2027, 2027 + years)), tau_kn=np.full((4, years), 0.03)))
+        down = {"id": "down", "kind": "downturn", "sequence": "poor-decade", "start": 2026}
+        base = _scenario([RENT, down])
+        with pytest.raises(ScenarioError, match="starts at 2026, before the plan"):
+            b.build(base)  # what the roll's own build met
+        rolled, notes = newyear.start_year(base, 2027)
+        assert [e["kind"] for e in rolled["events"]] == ["rent"]
+        assert any("poor-decade downturn was placed at 2026, before 2027: it is dropped" in n for n in notes)
+
+    def test_one_ahead_of_the_plan_stays(self, monkeypatch):
+        import types
+
+        import numpy as np
+
+        years = 30
+        monkeypatch.setattr(b, "_throwaway_plan", lambda case, rates_rows=None: types.SimpleNamespace(
+            year_n=list(range(2027, 2027 + years)), tau_kn=np.full((4, years), 0.03)))
+        down = {"id": "down", "kind": "downturn", "sequence": "crash-30", "start": 2030}
+        rolled, notes = newyear.start_year(_scenario([RENT, down]), 2027)
+        assert [e["kind"] for e in rolled["events"]] == ["rent", "downturn"]
+        assert not any("downturn" in n for n in notes)
+
+
 class TestABoughtHome:
     """A home bought before the new plan year is the plan's own from then on: hand rows."""
 

@@ -298,18 +298,34 @@ def solve_one(job, out_dir):
     t0 = time.time()
     rec = {"group": group, "name": name, "what": what, "overrides": sets, "case": case_file, **extra}
     buf, sbuf = io.StringIO(), io.StringIO()  # the final solve's log; the age stages' log
+    winner = None  # the winning stage-2 candidate, published as solved there (agesearch.Winner)
     try:
         diconf, dirname, _ = load_toml(case_file)
         diconf = apply_overrides(diconf, sets)
         if str(diconf.get("solver_options", {}).get("withSSAges", "fixed")).lower() != "fixed":
-            ages, cands = two_stage_ages(diconf, dirname, sbuf)
+            # The winning candidate's own plan is the run's (the library's "ages" preset does
+            # the same, performance review P4a): it was solved at those ages with the case's
+            # options, which is what the final solve did again. Not where the run rescales the
+            # workbook's nominal amounts first (`nominal_gamma`): the candidates are scored on
+            # the amounts as written, so the final plan there is built and solved again. (No
+            # row of the suite does both: the rate groups take the baseline's ages.)
+            keep = not extra.get("nominal_gamma")
+            found = two_stage_ages(diconf, dirname, sbuf, keep=keep)
+            ages, cands = found[:2]
+            winner = found[2] if keep else None
             rec["age_candidates"] = cands
+            rec["stage_2_plan"] = keep
             diconf = apply_overrides(diconf, fixed_ages(ages))
-        p = _plan(diconf, dirname, buf)
+        if winner is not None:
+            p = winner.plan
+            p.setLogstreams(True, [buf])
+        else:
+            p = _plan(diconf, dirname, buf)
         if extra.get("nominal_gamma"):
             rec["rescale_max_min"] = rescale_nominal(p, extra["nominal_gamma"])
             rec.pop("nominal_gamma", None)
-        p = _solve(p)
+        if winner is None:
+            p = _solve(p)
         rec["status"] = p.caseStatus
         rec["objective"] = p.objective
         if p.caseStatus == "solved":
@@ -348,8 +364,15 @@ def solve_one(job, out_dir):
         if sbuf.getvalue():
             f.write("===== claiming-age stages (their warnings are not in the report) =====\n")
             f.write(sbuf.getvalue())
-            f.write("===== final solve =====\n")
+            if winner is not None:
+                f.write(f"===== final plan: the stage-2 candidate at {rec.get('ages')}, published as "
+                        "solved there (not solved again); its log is the one above for those ages =====\n")
+            else:
+                f.write("===== final solve =====\n")
         f.write(log)
+    # The final solve's warnings; with a published candidate, its own solve's (in the stages'
+    # log above) and what came after it.
+    log = (winner.log if winner is not None else "") + log
     rec["warnings"] = sorted({ln.split("|", 3)[-1].strip() if "|" in ln else ln.strip()
                               for ln in log.splitlines() if "WARNING" in ln or "ERROR" in ln})
     rec["seconds"] = round(time.time() - t0, 1)

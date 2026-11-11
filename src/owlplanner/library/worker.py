@@ -316,6 +316,7 @@ class Worker:
         self.job = R.JobRecord.read(self.results_dir)
         self.tee = None
         self.pool = None  # the claiming-age presets' pool, on the cores the queue gave
+        self._keep_dir = None  # "Ages, thorough": the scored plans' staging folder
         self._beat_stop = threading.Event()
         self._beat_thread = None
 
@@ -373,6 +374,10 @@ class Worker:
         finally:
             if self.pool is not None:
                 self.pool.close()
+            if self._keep_dir is not None:
+                # Again after the pool's end: a pool process stopped by a cancel can finish a
+                # file after the sweep's own cleanup.
+                shutil.rmtree(self._keep_dir, ignore_errors=True)
             self._beat_stop.set()
             if self._beat_thread is not None:
                 self._beat_thread.join(timeout=5.0)
@@ -414,17 +419,21 @@ class Worker:
 
         # The Ages presets (design 8.1, step 6): the search first, then the plan at the ages
         # it picked. "ages" runs run_suite.py's two-stage search (`library.agesearch`) and
-        # publishes the winning candidate's own plan (P4a: it was solved again here, with
-        # the same options); "ages_thorough" runs work_sweep.py's whole-year sweep
-        # (`_ages_thorough`, section 8.1's "Ages, thorough") and solves the decided cell
-        # again. The stages' logs go to solve.log but their warnings stay out of the record
-        # (run_suite.py's rule); the kept candidate's are read as the published solve's.
+        # publishes the winning candidate's own plan; "ages_thorough" runs work_sweep.py's
+        # whole-year sweep (`_ages_thorough`, section 8.1's "Ages, thorough") and publishes
+        # the decided cell's own plan (P4a: each was solved again here, with the same
+        # options). The stages' logs go to solve.log but their warnings stay out of the
+        # record (run_suite.py's rule); the published plan's are read as the solve's own.
         preset = str(self.job.doc.get("preset") or "custom")
         overrides = self.job.doc.get("options")
         age_search = None
         scores = None
-        thorough = None  # "Ages, thorough": (work_sweep, its scorer config, the decided cell)
-        winner = None  # "ages": the winning stage-2 candidate (`agesearch.Winner`), published as it is
+        # "Ages, thorough": (work_sweep, its scorer config, the decided cell, its kept plan)
+        thorough = None
+        # The searched plan published as it was solved there: "ages"' winning stage-2
+        # candidate (`agesearch.Winner`) or "ages_thorough"'s decided cell
+        # (`work_sweep.KeptPlan`); both carry the plan, its log and its options.
+        winner = None
         if preset in ("ages", "ages_thorough") and str(
                 diconf.get("solver_options", {}).get("withSSAges", "fixed")
         ).strip().lower() != "fixed":
@@ -434,7 +443,8 @@ class Worker:
             try:
                 if preset == "ages_thorough":
                     self.job.touch(self.token, step="the claiming-age sweep (every whole-year pair)")
-                    ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname)
+                    ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname, overrides)
+                    winner = thorough[3]
                 else:
                     pool = self._pool()
                     ages, candidates, winner = two_stage_ages(
@@ -445,9 +455,11 @@ class Worker:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
             if winner is not None:
-                age_search["stage_2_plan"] = True  # published as scored, not solved again (P4a)
+                # Published as scored, not solved again (P4a).
+                age_search["decided_plan" if thorough is not None else "stage_2_plan"] = True
             if thorough is not None:
-                # What scored the decided cell (review AH1): the final solve repeats it.
+                # What scored the decided cell (review AH1): the plan published is that cell's,
+                # or, where none was kept, the cell solved again the same way.
                 cell = thorough[2]
                 age_search["decided"] = {"used": cell.get("used"), "value": cell.get("value"),
                                          "proved": cell.get("proved"), "gap": cell.get("gap")}
@@ -457,27 +469,36 @@ class Worker:
                 self.check()
 
         if winner is not None:
-            # P4a: the winning candidate was solved at these ages with the options this solve
-            # would use (`agesearch.candidate_options`, which `resolve_options` reads for
-            # "ages"), so its plan is the one published. Its log is in solve.log among the
-            # candidates'; the record reads it as this solve's.
+            # P4a: the plan was solved at these ages with the options this solve would use, so
+            # it is the one published. "ages": the winning candidate, solved with
+            # `agesearch.candidate_options` (which `resolve_options` reads for "ages"); its log
+            # is in solve.log among the candidates', and the record reads it as this solve's.
+            # "ages_thorough": the decided cell, solved with `work_sweep.scorer_options` (what
+            # the solve again below would use); its log was kept beside the plan and not
+            # written yet, so it is written here, as this solve's.
             plan, options = winner.plan, winner.options
-            self.tee.write(f"The plan at claiming ages {ages} is the stage-2 candidate's own, "
-                           "published as solved there (not solved again).\n")
-            self.tee.adopt(winner.log)
+            if thorough is None:
+                self.tee.write(f"The plan at claiming ages {ages} is the stage-2 candidate's own, "
+                               "published as solved there (not solved again).\n")
+                self.tee.adopt(winner.log)
+            else:
+                self.tee.write(f"The plan at claiming ages {ages} is the sweep's decided cell, "
+                               "published as solved there (not solved again). Its log:\n")
+                self.tee.write(winner.log if winner.log.endswith("\n") else winner.log + "\n")
             self.check()
         else:
             plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
             self.job.touch(self.token, step="solving")
             self.check()
             options = resolve_options(preset, plan.solverOptions, overrides)
-        if thorough is not None:
-            # "Ages, thorough" publishes the plan its sweep decided on (review AH1): the decided
-            # cell re-solved with the options that scored it (branch-and-bound at the sweep's
-            # gap, or the local search it fell back to), not the case's own -- with no gap,
-            # `plan.py` loosens it to MILP_GAP under withMedicare = "optimize", and the plan
-            # came out 1,208 below the decided cell on the synthetic household.
-            ws, cfg, cell = thorough
+        if thorough is not None and winner is None:
+            # "Ages, thorough" with no plan kept at the decided cell (it did not solve there):
+            # the decided cell solved again with the options that scored it (review AH1:
+            # branch-and-bound at the sweep's gap, or the local search it fell back to), not
+            # the case's own -- with no gap, `plan.py` loosens it to MILP_GAP under
+            # withMedicare = "optimize", and the plan came out 1,208 below the decided cell on
+            # the synthetic household. The job's overrides are in `cfg` (`scorer_options`).
+            ws, cfg, cell, _ = thorough
             options = {k: v for k, v in options.items() if k not in ws.PRESET_KEYS}
             options.update(ws.scorer_options(plan, cfg, cell.get("used") or "branch-and-bound"))
         options = parse_solver_options(options)
@@ -615,9 +636,9 @@ class Worker:
             shutil.rmtree(staging, ignore_errors=True)
         return summary
 
-    def _ages_thorough(self, diconf, dirname) -> tuple:
+    def _ages_thorough(self, diconf, dirname, overrides=None) -> tuple:
         """(ages in years, candidates, scores.json's row, (work_sweep, scorer config, decided
-        cell)): section 8.1's "Ages, thorough".
+        cell, its kept plan or None)): section 8.1's "Ages, thorough".
 
         `owlplanner.work_sweep`'s own `run_variant`: stage (a)'s exact-LP search
         and stage (c)'s sweep of every whole-year pair of the searched people, each scored
@@ -626,32 +647,50 @@ class Worker:
         are sensitivities, not the decision. Decided ages are months in the row (`best`);
         they come back as years for `fixed_ages`, and the row itself is `scores.json` (the
         claiming-age map reads it, I7). Runs a while (29-51 min per variant on the chris+pat
-        dry run); the cancel checks run at every sweep message. The last item is what the final
-        solve needs to re-solve the decided cell the way it was scored (review AH1). The plans
-        of a pass are scored side by side when the queue gave the job more than one core
-        (`_pool`): each cell is an independent solve, so the scores are the serial ones.
+        dry run); the cancel checks run at every sweep message. The plans of a pass are scored
+        side by side when the queue gave the job more than one core (`_pool`): each cell is an
+        independent solve, so the scores are the serial ones.
+
+        Every scored plan is kept in a file (`work_sweep.score` with `keep_dir`, a staging
+        folder of this attempt's, which `results.drop_staging` also clears after a kill), and
+        the decided cell's is loaded and returned, to be published as scored (the performance
+        review's P4a, as for "ages"): the final solve used to solve it again, the same way. The
+        job's `overrides` reach every scored plan (`work_sweep.scorer_options`), as they reach
+        the published solve. The scorer config and the decided cell are what a solve again
+        needs when no plan was kept there (review AH1).
         """
         import types
 
         from .agemap import parse_scores
 
         ws = _load_work_sweep()
+        keep_dir = self.results_dir / f".attempt-{self.token[:8]}-plans"
+        shutil.rmtree(keep_dir, ignore_errors=True)
+        keep_dir.mkdir()
+        self._keep_dir = keep_dir
         args = types.SimpleNamespace(
             no_loop=True, decider="bb", gap=1e-5, max_time=ws.TIME_LIMIT,
-            ls_time=7200.0, ls_step_time=1800.0, passes=2, eta=[])
-        cfg = ws.scorer_config(args)  # `run_variant`'s own scorer settings, for the final solve
+            ls_time=7200.0, ls_step_time=1800.0, passes=2, eta=[],
+            keep_dir=str(keep_dir), overrides=dict(overrides or {}))
+        cfg = ws.scorer_config(args)  # `run_variant`'s own scorer settings, for a solve again
 
         def log(message):
             self.tee.write(str(message) + "\n")
             self.check()
 
-        row = ws.run_variant("base", diconf, dirname, args, self._pool(), log)
+        try:
+            row = ws.run_variant("base", diconf, dirname, args, self._pool(), log)
+            kept = ws.load_kept_plan(keep_dir, row["best"]) if row.get("best") else None
+        finally:
+            shutil.rmtree(keep_dir, ignore_errors=True)
+        if kept is not None:
+            kept.plan.setLogstreams(True, [self.tee])
         scores = {k: v for k, v in row.items() if k != "_cache"}
         chosen = [m / 12.0 for m in row.get("best") or []]
         amap = parse_scores([scores])[0]
         candidates = [[[m / 12.0 for m in cell.ages], cell.value]
                       for cell in sorted(amap.cells, key=lambda c: c.ages)]
-        return chosen, candidates, scores, (ws, cfg, dict(row.get("result") or {}))
+        return chosen, candidates, scores, (ws, cfg, dict(row.get("result") or {}), kept)
 
     def _write_json(self, folder, name, doc):
         from owlplanner.cli.formatters import _NumpyEncoder

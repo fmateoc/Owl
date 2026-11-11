@@ -362,6 +362,11 @@ with the options the published solve uses (`agesearch.candidate_options`: the ca
 job's options on top, the effort above where local search is the method), and `record.json`'s
 `age_search` says so (`stage_2_plan`). "Ages, thorough" still solves its decided cell again.)*
 
+*(Amended again later on 2026-11-11, P4a for "Ages, thorough": the sweep keeps every plan it
+scores (`work_sweep.score`'s `keep_dir`), and the decided cell's own plan is published
+(`age_search.decided_plan`); the cell is solved again only where no plan was kept there. The
+job's options reach every scored plan (`work_sweep.scorer_options`).)*
+
 The preset is part of the scenario, so it is in the inputs hash and in the change summary.
 Every preset except the two Ages presets fixes the claiming ages (R4). The template's
 `withSSAges = "optimize"` with `withMedicare = "optimize"` would make every age candidate a

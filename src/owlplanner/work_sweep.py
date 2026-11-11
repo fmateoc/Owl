@@ -105,9 +105,11 @@ import copy
 import io
 import json
 import os
+import pickle
 import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
+from typing import Any, NamedTuple
 import multiprocessing as mp
 
 import numpy as np
@@ -306,25 +308,78 @@ def _solved(p, t0):
 
 
 def scorer_config(args):
-    """The scorer's settings from the command's arguments (`decide`'s `cfg`)."""
-    return {"decider": args.decider, "gap": args.gap, "max_time": args.max_time,
-            "ls_time": args.ls_time, "ls_step": args.ls_step_time}
+    """The scorer's settings from the command's arguments (`decide`'s `cfg`).
+
+    Two settings only the run library gives (its "Ages, thorough" worker builds `args` itself;
+    the command has neither): `keep_dir`, a folder where `score` keeps every plan it scores
+    (`kept_plan_path`), so the decided cell's plan can be published without solving it again;
+    and `overrides`, the job's own solver options, put over the case's in every scored plan
+    (`scorer_options`).
+    """
+    cfg = {"decider": args.decider, "gap": args.gap, "max_time": args.max_time,
+           "ls_time": args.ls_time, "ls_step": args.ls_step_time}
+    if getattr(args, "keep_dir", None):
+        cfg["keep_dir"] = str(args.keep_dir)
+    if getattr(args, "overrides", None):
+        cfg["overrides"] = dict(args.overrides)
+    return cfg
 
 
 def scorer_options(p, cfg, used="branch-and-bound"):
     """The solve options a plan at fixed ages is scored with: branch-and-bound at the sweep's
     gap, or the local search `score` falls back to (`used`, a scored cell's own record).
 
-    One definition for `_score_bb`, `_score_ls` and the run library's "Ages, thorough" final
-    solve, which re-solves the decided cell this way so the plan it publishes is the one the
-    sweep scored (review AH1: the case's own options, with no gap, published a plan 1.1% below
-    the decided cell on the synthetic household).
+    The case's options less the method keys (`PRESET_KEYS`), the job's `overrides` (`cfg`, the
+    run library only) less the same keys on top, then the scorer's: the ages fixed and its
+    method. One definition for `_score_bb`, `_score_ls` and the run library's "Ages, thorough"
+    final solve when it has no kept plan to publish (review AH1: the case's own options, with no
+    gap, published a plan 1.1% below the decided cell on the synthetic household).
     """
+    opts = base_options(p)
+    opts.update({k: v for k, v in (cfg.get("overrides") or {}).items() if k not in PRESET_KEYS})
     if used == "local search":
-        return base_options(p, withSSAges="fixed", breakpointMethod="local-search",
-                            localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
-    return base_options(p, withSSAges="fixed", breakpointMethod="branch-and-bound",
-                        gap=cfg["gap"], maxTime=cfg["max_time"])
+        opts.update(withSSAges="fixed", breakpointMethod="local-search",
+                    localSearchTime=cfg["ls_time"], localSearchStepTime=cfg["ls_step"])
+    else:
+        opts.update(withSSAges="fixed", breakpointMethod="branch-and-bound",
+                    gap=cfg["gap"], maxTime=cfg["max_time"])
+    return opts
+
+
+class KeptPlan(NamedTuple):
+    """A scored plan kept by `score` (`cfg["keep_dir"]`): the solved Plan, its own solve log
+    (the plan's build and solve, as `make_plan`'s buffer held it) and the options it was solved
+    with (`scorer_options`)."""
+
+    plan: Any
+    log: str
+    options: dict
+
+
+def kept_plan_path(keep_dir, ages_months):
+    """The file where `score` keeps the plan scored at these ages (whole months, `months`)."""
+    return os.path.join(str(keep_dir), "-".join(str(int(m)) for m in ages_months) + ".pkl")
+
+
+def _keep_plan(path, p, buf, opts):
+    """Pickle a scored plan to `path` (written aside, then renamed: a reader never sees half a
+    file). Its logger goes first: the log is the text kept beside it, and a log stream is this
+    process's (a solved Plan pickles without its streams: `Logger.__getstate__`)."""
+    p.setLogger(None)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        pickle.dump(KeptPlan(p, buf.getvalue(), dict(opts)), f, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(tmp, path)
+
+
+def load_kept_plan(keep_dir, ages_months):
+    """The plan `score` kept at these ages (`KeptPlan`), or None when it kept none there (the
+    plan did not solve). Read only what this process's own sweep wrote: a pickle runs code."""
+    path = kept_plan_path(keep_dir, ages_months)
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
 
 def _score_ls(diconf, dirname, ages, cfg):
@@ -349,6 +404,8 @@ def _score_ls(diconf, dirname, ages, cfg):
     })
     out["default_caps_bind"] = (out["search_seconds"] > localsearch.TOTAL_TIME
                                 or out["max_step_seconds"] > localsearch.STEP_TIME)
+    if cfg.get("keep_dir"):
+        out["_kept"] = (p, buf, opts)  # `score` keeps it or drops it, and pops the key
     return out
 
 
@@ -356,7 +413,7 @@ def _score_bb(diconf, dirname, ages, cfg):
     _record_highs_runs()
     _record_netting()
     _HIGHS_RUNS.clear()
-    p, _ = make_plan(diconf, dirname, ages, cfg.get("eta"))
+    p, buf = make_plan(diconf, dirname, ages, cfg.get("eta"))
     opts = scorer_options(p, cfg, "branch-and-bound")
     t0 = time.time()
     p.solve(p.objective, opts)
@@ -380,6 +437,8 @@ def _score_bb(diconf, dirname, ages, cfg):
         "metrics": {k: v for k, v in plan_metrics(p).items() if k in METRICS},
         "netting": _netting(p),
     })
+    if cfg.get("keep_dir"):
+        out["_kept"] = (p, buf, opts)  # `score` keeps it or drops it, and pops the key
     return _prove(out)
 
 
@@ -395,21 +454,33 @@ def _prove(c):
 
 
 def score(args):
-    """Worker: one plan at fixed ages. Picklable arguments, a plain dict back."""
+    """Worker: one plan at fixed ages. Picklable arguments, a plain dict back.
+
+    With `cfg["keep_dir"]` (the run library's "Ages, thorough") the plan whose value the cell
+    records -- branch-and-bound's, or local search's where it was kept instead -- is also
+    pickled to `kept_plan_path(keep_dir, the cell's ages)`. Not for the deposit-split check's
+    cells (`cfg["eta"]`), which would share the decided cell's file name.
+    """
     diconf, dirname, ages, cfg = args
     if cfg["decider"] == "ls":
         out = _score_ls(diconf, dirname, ages, cfg)
+        kept = out.pop("_kept", None)
     else:
         out = _score_bb(diconf, dirname, ages, cfg)
+        kept = out.pop("_kept", None)
         if not out.get("proved"):
             ls = _score_ls(diconf, dirname, ages, cfg)
+            ls_kept = ls.pop("_kept", None)
             out["fallback"] = {k: v for k, v in ls.items() if k != "metrics"}
             if ls.get("value") is not None and (out.get("value") is None or ls["value"] > out["value"]):
                 keep = {k: out[k] for k in ("highs_runs", "highs_statuses", "time_limit_runs", "node_limit_runs",
                                             "gap", "fallback") if k in out}
                 out = dict(ls, bb=dict(keep, value=out.get("value"), status=out["status"]), proved=False,
                            tolerance=None)
+                kept = ls_kept
     out["ages"] = list(months(ages))
+    if kept is not None and cfg.get("eta") is None:
+        _keep_plan(kept_plan_path(cfg["keep_dir"], out["ages"]), *kept)
     return out
 
 
@@ -538,6 +609,7 @@ def eta_check(diconf, dirname, best, pool, cfg, etas, log):
         return []
     t0 = time.time()
     ages = [m / 12 for m in best]
+    cfg = {k: v for k, v in cfg.items() if k != "keep_dir"}  # a sensitivity, never published
     cells = list(pool.map(score, [(diconf, dirname, ages, dict(cfg, eta=e)) for e in others]))
     log(f"  deposit split at the decided ages ({time.time() - t0:.0f}s): case's {_eta_label(own)}; "
         + ", ".join(f"{_eta_label(e)} -> {c.get('value', float('nan')):,.2f}"

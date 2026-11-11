@@ -17,8 +17,9 @@ two stages, as `fork-notes/synthetic/run_suite.py` runs it:
   rule, the library's `view.score` over a plan). The best score wins.
 
 The search is one implementation, shared by the suite and the interface (the fork's rule,
-run-library-design.md section 6.2): `run_suite.py` imports it, and the worker runs it for
-the ``ages`` preset and publishes the winning candidate's own plan (``keep``).
+run-library-design.md section 6.2): the worker runs it for the ``ages`` preset, and
+`run_suite.py` for its rows that search the ages; both publish the winning candidate's own
+plan (``keep``), the suite except where it rescales the workbook's nominal amounts first.
 
 ``check`` (optional) is called between steps and may raise to stop the search (the worker's
 cancellation hook, S8); ``log`` is a stream for the stages' own solve logs (their warnings

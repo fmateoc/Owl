@@ -52,12 +52,16 @@ step 6.
 - ``ages_thorough`` (section 8.1's "Ages, thorough") runs `owlplanner.work_sweep`'s
   own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
   gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
-  skipped) -- writes its `scores.json` (the claiming-age map reads it, I7) and solves at the
-  ages it decided **the way the decided cell was scored** (`work_sweep.scorer_options`:
-  branch-and-bound at the sweep's gap, or the local search it fell back to), so the published
-  plan is the one the map's best cell shows (review AH1: the case's own options, with no gap,
-  published a plan 1,208 below it on the synthetic household). That final solve repeats one
-  scored plan's time. The same implementation `fork-notes/synthetic/run_suite.py` runs
+  skipped) -- writes its `scores.json` (the claiming-age map reads it, I7) and publishes **the
+  decided cell's own plan**, solved there the way every cell is scored
+  (`work_sweep.scorer_options`: branch-and-bound at the sweep's gap, or the local search it
+  fell back to), so the published plan is the one the map's best cell shows (review AH1: the
+  case's own options, with no gap, published a plan 1,208 below it on the synthetic
+  household). Each scored plan is kept in a file while the sweep runs (`work_sweep.score`'s
+  `keep_dir`), and the decided cell's is published without solving it again (performance
+  review P4a, as for ``ages``); where none was kept (the cell did not solve), the cell is
+  solved again the same way. The job's options reach every scored plan. The same
+  implementation `fork-notes/synthetic/run_suite.py` runs
   (`owlplanner.work_sweep`, moved into `src/owlplanner` 2026-11-05). A slow job (29-51 min
   per variant on the chris+pat dry run), one per request.
 - ``regret`` (I8, one per request from the run page) solves as ``custom`` with the ages

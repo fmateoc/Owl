@@ -515,9 +515,12 @@ class TestAgesThorough:
             return dict(work_sweep.base_options(p, withSSAges="fixed"), gap=cfg["gap"],
                         breakpointMethod="loop")
 
+        # The canned sweep scores no plan, so none is kept: the final solve solves the decided
+        # cell again (the path of a cell that did not solve), which these tests check.
         monkeypatch.setattr(W, "_load_work_sweep", lambda: types.SimpleNamespace(
             TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config,
-            scorer_options=scorer_options, PRESET_KEYS=work_sweep.PRESET_KEYS))
+            scorer_options=scorer_options, PRESET_KEYS=work_sweep.PRESET_KEYS,
+            load_kept_plan=work_sweep.load_kept_plan))
 
     def test_the_sweep_lives_in_the_package(self):
         """The move (2026-11-05): `_load_work_sweep` is a plain import of `owlplanner.work_sweep`,
@@ -625,6 +628,128 @@ class TestAgesThorough:
         state = run_job(job.results_dir, job.token)
         assert state == R.INTERRUPTED
         assert scored == [1]
+
+
+class TestAgesThoroughPublishesTheDecidedCell:
+    """Performance review P4a for "Claiming ages, every pair tried": the sweep keeps every
+    plan it scores (`work_sweep.score`'s `keep_dir`), and the worker publishes the decided
+    cell's own plan instead of solving it again. The real sweep, on Case_bill (one cell)."""
+
+    @pytest.fixture
+    def searching_run(self, library, scenario):
+        import copy
+
+        doc = copy.deepcopy(scenario)
+        doc["case"]["solver_options"]["withSSAges"] = "optimize"
+        return library.save_run(name="bill searches", scenario=doc).run
+
+    @pytest.fixture
+    def counted(self, monkeypatch):
+        """Count `Plan.solve` calls after the sweep returned (True) and before it (False). The
+        sweep's in-process scorer wraps two Plan methods for the process (`_record_highs_runs`,
+        `_record_netting`); `monkeypatch` puts the originals back after the test."""
+        from owlplanner import work_sweep
+        from owlplanner.plan import Plan
+
+        for name in ("_run_highs", "_netSurplusRoundTrip", "solve"):
+            monkeypatch.setattr(Plan, name, getattr(Plan, name))
+        calls, done = [], []
+        run_variant, solve = work_sweep.run_variant, Plan.solve
+
+        def counted_run_variant(*args, **kwargs):
+            row = run_variant(*args, **kwargs)
+            done.append(True)
+            return row
+
+        def counted_solve(plan, *args, **kwargs):
+            calls.append(bool(done))
+            return solve(plan, *args, **kwargs)
+
+        monkeypatch.setattr(work_sweep, "run_variant", counted_run_variant)
+        monkeypatch.setattr(Plan, "solve", counted_solve)
+        return calls, done
+
+    @staticmethod
+    def _read(job, name):
+        return json.loads((job.results_dir / name).read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _drop_clock(doc):
+        if isinstance(doc, dict):
+            doc.pop("solve_time_seconds", None)
+            for value in doc.values():
+                TestAgesThoroughPublishesTheDecidedCell._drop_clock(value)
+        return doc
+
+    def test_the_decided_cell_s_plan_is_published_as_the_solve_again_gave_it(
+            self, searching_run, counted, monkeypatch):
+        from owlplanner import work_sweep
+
+        calls, done = counted
+        kept = make_job(searching_run, name="2026-01-01T00-00-07_ages_thorough", preset="ages_thorough")
+        assert run_job(kept.results_dir, kept.token) == R.DONE
+        assert calls and True not in calls  # nothing solved after the sweep
+        record = self._read(kept, R.RECORD_JSON)
+        assert record["age_search"]["decided_plan"] is True
+        log = (kept.results_dir / R.SOLVE_LOG).read_text(encoding="utf-8")
+        mark = "is the sweep's decided cell, published as solved there (not solved again)"
+        # The sweep's plans log to their own buffers; the published plan's log follows the mark.
+        assert log.count("SS benefits claimed at age(s)") == 1
+        assert log.index(mark) < log.index("SS benefits claimed at age(s)")
+        assert not [p.name for p in kept.results_dir.iterdir() if p.name.startswith(".attempt-")]
+
+        # The route before P4a, for comparison: no plan kept, so the decided cell is solved again.
+        monkeypatch.setattr(work_sweep, "load_kept_plan", lambda keep_dir, ages: None)
+        calls.clear()
+        done.clear()
+        again = make_job(searching_run, name="2026-01-01T00-00-08_ages_thorough", preset="ages_thorough")
+        assert run_job(again.results_dir, again.token) == R.DONE
+        assert calls.count(True) == 1
+        record_again = self._read(again, R.RECORD_JSON)
+        assert "decided_plan" not in record_again["age_search"]
+
+        for name in (R.PLAN_JSON, R.SUMMARY_JSON):
+            assert self._drop_clock(self._read(kept, name)) == self._drop_clock(self._read(again, name)), name
+        assert record["method"]["options"] == record_again["method"]["options"]
+        assert record["age_search"]["published_value"] == record_again["age_search"]["published_value"]
+        assert record["age_search"]["published_value"] == record["age_search"]["decided"]["value"]
+        assert record["warnings"] == record_again["warnings"]
+        assert record["iterations"] == record_again["iterations"]
+
+    def test_the_job_s_options_reach_the_scored_plans(self, searching_run, counted):
+        """As for "ages" (P4a): the plan published is a scored one, so the job's options must
+        reach the sweep. Before, they reached the solve again only where the case did not state
+        them (`spendingSlack` is 0 in Case_bill)."""
+        job = make_job(searching_run, name="2026-01-01T00-00-09_ages_thorough", preset="ages_thorough",
+                       options={"withSSAges": "fixed", "spendingSlack": 3})
+        assert run_job(job.results_dir, job.token) == R.DONE
+        record = self._read(job, R.RECORD_JSON)
+        assert record["age_search"]["decided_plan"] is True
+        assert record["method"]["options"]["spendingSlack"] == 3
+
+    def test_the_kept_plans_go_with_a_cancelled_job(self, searching_run, monkeypatch):
+        import types
+
+        from owlplanner import work_sweep
+        from owlplanner.library import worker as W
+
+        job = make_job(searching_run, name="2026-01-01T00-00-10_ages_thorough", preset="ages_thorough")
+        seen = []
+
+        def run_variant(name, diconf, dirname, args, pool, log):
+            seen.append(args.keep_dir)
+            with open(work_sweep.kept_plan_path(args.keep_dir, [804]), "wb") as f:
+                f.write(b"a scored plan")
+            job.request_cancel()
+            log("a pass")  # the cancel check rides on every sweep message
+            raise AssertionError("the sweep should have stopped")
+
+        monkeypatch.setattr(W, "_load_work_sweep", lambda: types.SimpleNamespace(
+            TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config,
+            load_kept_plan=work_sweep.load_kept_plan))
+        assert run_job(job.results_dir, job.token) == R.INTERRUPTED
+        assert seen and seen[0].startswith(str(job.results_dir / ".attempt-"))
+        assert not [p.name for p in job.results_dir.iterdir() if p.name.startswith(".attempt-")]
 
 
 def _gone(pid) -> bool:
@@ -756,7 +881,7 @@ class TestThePool:
             TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config,
             scorer_options=lambda p, cfg, used="branch-and-bound": dict(
                 work_sweep.base_options(p, withSSAges="fixed"), gap=cfg["gap"], breakpointMethod="loop"),
-            PRESET_KEYS=work_sweep.PRESET_KEYS))
+            PRESET_KEYS=work_sweep.PRESET_KEYS, load_kept_plan=work_sweep.load_kept_plan))
         job = make_job(run, name="2026-01-01T00-00-00_ages_thorough", preset="ages_thorough", options={})
         job.update(cores=2)
         assert run_job(job.results_dir, job.token) == R.DONE

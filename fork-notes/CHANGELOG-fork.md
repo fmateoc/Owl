@@ -7,6 +7,25 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: "every pair tried" publishes its decided cell's plan (2026-11-11)
+
+Performance review P4a for `ages_thorough` (`fork-notes/performance-review.md`, section 6c).
+
+- *Claiming ages, every pair tried* no longer solves the decided cell again: the sweep keeps
+  each plan it scores in a file (`work_sweep.score` with `keep_dir`; `KeptPlan`,
+  `kept_plan_path`, `load_kept_plan`), in a staging folder of the attempt's
+  (`.attempt-<token>-plans`, removed with the job, after a kill by `drop_staging`), and the
+  worker publishes the decided cell's. Where no plan was kept there (the cell did not solve),
+  the cell is solved again as before. `record.json`'s `age_search` has `decided_plan: true`;
+  the Run page says the plan is the decided cell's own.
+- Options given for the one job reach every scored plan (`work_sweep.scorer_options`: the
+  case's, the job's, then the scorer's). Before, they reached only the solve again, and only
+  where the case did not state them. The interface queues this preset with none.
+- `python -m owlplanner.work_sweep` is unchanged: it names no folder and keeps nothing.
+- `fork-notes/synthetic/run_suite.py` publishes the winning stage-2 candidate's plan as well
+  (`two_stage_ages(keep=True)`), except on a row that rescales the workbook's nominal amounts
+  (`nominal_gamma`; no row searches the ages and rescales).
+
 ### Run library: the claiming-age search publishes its winning candidate's plan (2026-11-11)
 
 Performance review P4a (`fork-notes/performance-review.md`, section 6b).
@@ -20,7 +39,8 @@ Performance review P4a (`fork-notes/performance-review.md`, section 6b).
   given for the one job now reach stage 2 too.
 - The winner's log is read as the published solve's (`_LogTee.adopt`); `record.json`'s
   `age_search` has `stage_2_plan: true`.
-- *Claiming ages, every pair tried* still solves its decided cell again.
+- *Claiming ages, every pair tried* still solves its decided cell again (changed later the
+  same day, above).
 
 ### Run library: the queue's default is 4 cores (2026-11-11)
 

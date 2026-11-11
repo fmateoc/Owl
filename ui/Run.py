@@ -666,18 +666,23 @@ if entries:
     if search:
         decided = search.get("decided")
         if decided:
-            # "Ages, thorough" (review AH1): the published plan re-solved the same way as the
-            # decided cell; both values shown, so a gap between them is visible. The scorer
-            # itself ("branch-and-bound at gap 1e-5") is technical detail (QW-6).
+            # "Ages, thorough": the published plan is the decided cell's own (P4a,
+            # `decided_plan`), or, in an older result or where no plan was kept there, the
+            # decided cell re-solved the same way (review AH1), both values shown so a gap
+            # between them is visible. The scorer itself ("branch-and-bound at gap 1e-5") is
+            # technical detail (QW-6).
             published = search.get("published_value")
+            if search.get("decided_plan"):
+                how = ("; this plan is the decided cell's own, not solved again"
+                       + (f" (objective {published:,.2f})" if published is not None else ""))
+            else:
+                how = ("; this plan is the decided cell re-solved the same way"
+                       + (f" (objective {published:,.2f}; the sweep's cell {decided['value']:,.2f})"
+                          if published is not None and decided.get("value") is not None else ""))
             st.caption("Claiming ages searched (every pair tried): picked "
                        f"{view.claiming_ages_text(result)} from "
                        f"{len(search.get('candidates') or [])} whole-year pair(s), each scored "
-                       "at fixed ages; this plan is the decided cell "
-                       "re-solved the same way"
-                       + (f" (objective {published:,.2f}; the sweep's cell {decided['value']:,.2f})"
-                          if published is not None and decided.get("value") is not None else "")
-                       + ".")
+                       "at fixed ages" + how + ".")
         else:
             st.caption("Claiming ages chosen by Owl: picked "
                        f"{view.claiming_ages_text(result)} from "

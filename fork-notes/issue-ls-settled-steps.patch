@@ -1,0 +1,104 @@
+diff --git a/src/owlplanner/localsearch.py b/src/owlplanner/localsearch.py
+index d5b95ef..f272b6f 100644
+--- a/src/owlplanner/localsearch.py
++++ b/src/owlplanner/localsearch.py
+@@ -167,6 +167,10 @@ class LocalSearch:
+         self.prev = None  # the previous loop iteration's plan
+         self.A = None  # the plan's rows with the LTCG links relaxed (_relax_links)
+         self._last = None  # (problem fingerprint, objective, plan) of the previous loop iteration
++        # The previous iteration started from the binaries it was handed and moved none of them: its
++        # capped steps found nothing, and this iteration's problem differs only by the loop's
++        # fed-back parameters. Its capped steps are skipped until a cheap step moves again.
++        self.settled = False
+         self.iteration = 0
+         self.log = []  # one entry per loop iteration: {"steps": [...], "time": s}
+ 
+@@ -354,6 +358,9 @@ class LocalSearch:
+         fams = self._families()
+         others = [f for f in fams if f != "zs"]
+         joint_done = False
++        settled = self.settled
++        from_prev = steps[-1]["step"] == "start: previous binaries (LP)"
++        start_obj = best[0]
+         for rnd in range(8):
+             if time.time() > self.deadline:
+                 p.mylog.vprint("Local search: time budget spent; keeping the current plan.")
+@@ -366,7 +373,7 @@ class LocalSearch:
+                 if self._better(res, best):
+                     best, improved = res, True
+             # (b) SS taxability within a local-branching ball; the others pinned.
+-            if "zs" in fams:
++            if "zs" in fams and not settled:
+                 A = copy.deepcopy(self.A)
+                 row, ones = {}, 0
+                 for c in self._cols("zs"):
+@@ -383,7 +390,7 @@ class LocalSearch:
+             if improved:
+                 continue
+             # (b') nothing moved: SS within the ball with LTCG free alongside it, once per iteration.
+-            if "zs" in fams and "zl" in fams and not joint_done:
++            if "zs" in fams and "zl" in fams and not joint_done and not settled:
+                 joint_done = True
+                 pinned = [f for f in others if f != "zl"]
+                 res, dt = self._mip(options, overrides=self._pin(best[1], pinned), A=A, warm=best[1])
+@@ -392,7 +399,7 @@ class LocalSearch:
+                     best = res
+                     continue
+             # (a') nothing moved one family at a time: the others jointly, once.
+-            if len(others) > 1:
++            if len(others) > 1 and not settled:
+                 pinned = [f for f in fams if f not in others]
+                 res, dt = self._mip(options, overrides=self._pin(best[1], pinned), warm=best[1])
+                 self._step(steps, f"round {rnd} (a'): {', '.join(FAMILY_LABEL[f] for f in others)} free", res, dt)
+@@ -412,6 +419,10 @@ class LocalSearch:
+                 continue
+             break
+ 
++        self.settled = from_prev and not self._better(best, (start_obj,))
++        if settled:
++            p.mylog.vprint(f"Local search, iteration {self.iteration}: the previous iteration moved nothing; "
++                           "capped steps skipped.")
+         best = (best[0], self._restore_links(best[1]), *best[2:])
+         self.prev = best[1].copy()
+         p._highs_warm_start = best[1].copy()
+diff --git a/tests/plan/test_local_search.py b/tests/plan/test_local_search.py
+index b31045e..baa3ae9 100644
+--- a/tests/plan/test_local_search.py
++++ b/tests/plan/test_local_search.py
+@@ -236,6 +236,36 @@ def test_repeated_problem_is_not_searched_again():
+     assert log[-1]["steps"] == [], log[-1]
+ 
+ 
++@pytest.mark.toml
++def test_a_settled_search_skips_its_capped_steps(monkeypatch):
++    """An iteration that follows one whose search started from the binaries it was handed and moved
++    none of them runs the cheap steps only: (b), (b') and (a') found nothing on those binaries, and
++    the problem differs by the loop's fed-back parameters alone."""
++    from owlplanner.plan import Plan
++
++    real = Plan._check_obj_convergence
++    # Four loop iterations, each a new problem (none reused): a repair start, then three from the
++    # previous binaries.
++    monkeypatch.setattr(Plan, "_check_obj_convergence",
++                        lambda self, it, *a, **k: None if it < 3 else real(self, it, *a, **k))
++    fresh = iter(range(1_000_000))
++    monkeypatch.setattr(localsearch.LocalSearch, "_fingerprint", lambda self: next(fresh))
++    p = _load("Case_bill.toml")
++    p.solve(p.objective, options={**p.solverOptions, "breakpointMethod": "local-search"})
++    assert p.caseStatus == "solved"
++    capped = ("(b)", "(b')", "(a')")
++    labels = [[s["step"].split(": ")[0] for s in it["steps"]] for it in p.localSearchLog]
++    assert len(labels) >= 4, labels
++    assert not labels[0][0].startswith("start: previous") and any(x.endswith(capped) for x in labels[0])
++    assert labels[1][0] == "start" and any(x.endswith(capped) for x in labels[1]), labels[1]
++    second = p.localSearchLog[1]["steps"]
++    start = second[0]["objective"]
++    assert all(s["objective"] >= start - 1e-7 * abs(start) for s in second if s["ok"]), "it moved: nothing to test"
++    for later in labels[2:]:
++        assert later[0] == "start" and any(x.endswith("(a)") for x in later), later
++        assert not any(x.endswith(capped) for x in later), later
++
++
+ def _john_sally_without_payroll_tax(monkeypatch):
+     """john+sally as #197 found it. The payroll tax on John's 2026 wages (#227) costs this plan the
+     room the moves below need: with it, the full search, the search without (b'), the search with

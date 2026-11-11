@@ -8,8 +8,12 @@ P8 are as written on 2026-11-10.
 **Built on 2026-11-11** (the user's call: "build both as recommended, one commit each"; section
 6): P3's budget (`668a730`) and the cores, which are P1, P4b and P5 with the tick of P6
 (`945c21f`). Later the same day (the user's call, section 6b): the queue's default of 4 cores,
-no more than half the logical ones (`9063580`), and P4a (`cfd26e1`). Not built: P2 (upstream's
-code), P6's pages, P7-P10, section 3b; the same repeat in *Claiming ages, every pair tried*.
+no more than half the logical ones (`9063580`), and P4a (`cfd26e1`); then P4a for *Claiming
+ages, every pair tried* and `run_suite.py` (`9e35def`, section 6c). Later still (the user's call
+"build P9, P6's pages and P8, and prepare P2 issue", section 6d): P9 (`1628a9e`) and P6's pages
+(`b5c2d7b`) built; P8 measured and not built (the node cap does not shorten those tests); P2
+measured on stock upstream and drafted as an issue (`fork-notes/issue-ls-settled-steps.md`, not
+filed). Not built: P7, P10, section 3b.
 
 The user's request: "review the project from a performance improvement perspective. Look for any
 significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
@@ -316,6 +320,9 @@ on, the worker's pool and the queue's parallel jobs must share the cores.
 
 ### P6. Library pages: one scan per run shown
 
+**Built** (`b5c2d7b`, section 6d): `Library.get` reads the one run's folder. The tick's part was
+built in `945c21f` (section 6).
+
 `Library.get(run_id)` is `for info in self.runs()`, and `runs()` reads every `run.json`. The
 Library page calls it once per row (`_run_name`), the Collections page once per member.
 
@@ -363,6 +370,10 @@ for `owlcli`). Irrelevant for Careful. Low priority.
 
 ### P8. Test suite
 
+**Measured, not built** (section 6d): a node cap does not shorten the two fork tests below; what
+they spend is P2's pattern (loop iterations re-running steps that find nothing) and the size of
+each restricted solve, not the node count.
+
 One run with `--durations=60` (4,838 passed, 1 skipped, 879 s; two solves were running beside it,
 so the seconds are inflated and the shares are what to read): the 60 slowest tests are 2,061 of
 about 3,516 worker-seconds (59%), the 10 slowest 1,113 (32%). By file: `test_snap_binaries.py`
@@ -375,6 +386,8 @@ about 3,516 worker-seconds (59%), the 10 slowest 1,113 (32%). By file: `test_sna
 features make upstream's slow tests slower than on stock `dev` was not measured.
 
 ### P9. The Run page's workbook (added 2026-11-11)
+
+**Built** (`1628a9e`, section 6d): read only while the expander is open, once per file.
 
 `ui/Run.py:816-817`: inside `st.expander("Results workbook")` the page runs
 `pd.read_excel(BytesIO(xlsx.read_bytes()), sheet_name=None)`. Streamlit runs an expander's body
@@ -669,6 +682,69 @@ ages). `results.json` records `stage_2_plan`.
   is the one solved during stage 2). 139.2 s and 127.7 s, one run each; the final solve the
   old suite repeated took 10.5 s.
 - The full suite: 4903 passed, 1 skipped at `9e35def` (Linux, `-n 3`).
+
+## 6d. Later on 2026-11-11: P9 and P6's pages built, P8 measured, P2 on stock upstream
+
+The user's call: "build P9, P6's pages and P8, and prepare P2 issue". One commit each for P9
+and P6; P8 not built (below); P2 as an issue draft.
+
+**P9 (`1628a9e`).** The Run page's *Results workbook* expander tracks its state
+(`on_change="rerun"`, Streamlit 1.67, the pinned version) and reads the workbook only while
+open, through `_workbook_sheets(path, mtime_ns)` (`st.cache_data`, four entries). Test
+(`tests/ui/test_library_pages.py`): no read with the expander closed, one when opened, none on
+a change of sheet; it fails on the old page ("the workbook was read with its expander closed").
+The 93 ms is the audit's measurement of the read (section P9); the page's render was not timed
+again.
+
+**P6's pages (`b5c2d7b`).** `Library.get` reads the folder where the last listing saw the run
+and checks the id in its `run.json` (so the run returned is never a stale copy); a run it does
+not hold any more costs one listing, as every call did. Every listing refreshes the index. So
+the change is in the store, not the pages, and every caller gains (`JobManager.enqueue`, the
+Collections members, the Library page's parents).
+
+- Measured (`page_timing.py`, AppTest, median of five reruns, the 120-run library of
+  `library_bench.py`, with three P2 solves running beside it): Library page 1.48 -> 0.76 s,
+  Collections 0.64 -> 0.23 s; Run 0.22 s and Queue 0.42 s were not touched.
+- What is left on the Library page (yappi, after): about 0.8 s of the 3.1 profiled seconds is the
+  library layer, all of it linear in the runs (each run's job records, its zip's cache check,
+  the housing-conversion check); the rest is Streamlit drawing 120 rows of buttons, popovers and
+  columns.
+- Tests (`tests/library/test_store.py`, `TestGet`, 6): one `run.json` read per `get` after a
+  listing (fails on the old store: five reads per get with five runs), a new instance, a run
+  saved by another instance, a rename and a delete through another instance, a damaged
+  `run.json`, a folder holding another run's `run.json`.
+- Not done: `grid.latest_result` still reads a folder's three files before the preset check,
+  and `Library.save_run` still exports before the duplicate check (both small, P6's last
+  paragraph).
+
+**P8, measured, not built.** The recommendation was a `localSearchStepNodes` cap on the two fork
+tests instead of a `deep` mark. Measured with three P2 solves on the other cores
+(`tests/tax/test_itemized.py::test_local_search_keeps_the_loops_itemizing_branch`,
+`tests/tax/test_star.py::test_local_search_carries_the_star_family`, through a scratch copy of
+their setup):
+
+| Test | As written | 300 nodes | 50 nodes | Other |
+|---|---|---|---|---|
+| itemizing | 88-100 s | 66-78 s | 67 s | 100 nodes, radius 1: 79 s; horizon 78/80: 59 s |
+| STAR (`localSearchTime = 60`) | 83-97 s, the 60 s budget cut 3 searches | 188 s with the budget lifted (8 full searches) | | |
+
+The restricted solves are slow per solve, not per node: in the itemizing test at 300 nodes, steps
+that visit 1-3 nodes take 0.6-3.5 s and the capped ones 5-11 s, and its second and third searches
+start from the previous binaries, move nothing, and spend 16 of their 17 s each in (b), (b') and
+(a'), which is P2's pattern. The STAR test is bounded today by its wall-clock budget; a node cap
+alone makes it slower. So the cap gives at most a fifth of these tests' time, and the options
+left change what the default run covers (a `deep` mark: about 170 worker-seconds, some 40 s of
+wall at `-n 4`) or wait for P2 upstream. The user's call; nothing changed.
+
+**P2 on stock upstream.** The issue needs a stock repro, so the prototype was written as a
+patch to upstream's `localsearch.py` (`fork-notes/issue-ls-settled-steps.patch`, with a test)
+and every shipped example solved on `dev` `8ec9c43` and on the patched checkout
+(`performance/p2_stock_run.sh`, interleaved three at a time, both wall-clock caps lifted, the
+date frozen at 2026-01-01; table by `performance/p2_stock_table.py`). The patch's rule is the
+prototype's: an iteration that follows one whose search started from the previous binaries and
+moved nothing runs (a) and (c) only.
+
+P2_STOCK_RESULTS
 
 ## 7. Files
 

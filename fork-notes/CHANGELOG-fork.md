@@ -7,6 +7,18 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: faster Library, Collections and Run pages (2026-11-11)
+
+Performance review P6 (the pages) and P9 (`fork-notes/performance-review.md`, section 6d).
+
+- `Library.get` reads the one run's folder, found through the folder where the last listing saw
+  it, and checks the id in its `run.json`; it used to read every `run.json` in the library, and
+  the Library page calls it once per row, Collections once per member. On a 120-run library:
+  Library page 1.48 -> 0.76 s per rerun, Collections 0.64 -> 0.23 s.
+- The Run page reads the results workbook only while its *Results workbook* expander is open
+  (`on_change="rerun"`), once per file (`st.cache_data` on path and modification time). It used
+  to parse every sheet on every render (93 ms).
+
 ### Run library: "every pair tried" publishes its decided cell's plan (2026-11-11)
 
 Performance review P4a for `ages_thorough` (`fork-notes/performance-review.md`, section 6c).

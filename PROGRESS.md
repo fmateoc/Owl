@@ -8574,3 +8574,24 @@ performance review, its audit, the search budget, the cores, and P4a for both cl
 presets and the suite.
 
 Next: the user's call on an upstream issue for P2.
+
+## Performance review: P9 and P6's pages built, P8 measured, P2 drafted (2026-11-11, branch `claude/eager-meitner-cpeu9p`)
+
+The user's call: "build P9, P6's pages and P8, and prepare P2 issue". Details:
+`fork-notes/performance-review.md`, section 6d; `fork-notes/CHANGELOG-fork.md`.
+
+- **P9 (`1628a9e`)**: the Run page reads the results workbook only while its expander is open
+  (`on_change="rerun"`, Streamlit 1.67), once per file (`_workbook_sheets`, `st.cache_data` on
+  path and mtime). Test: no read while closed, one on opening, none on a change of sheet (fails
+  on the old page).
+- **P6's pages (`b5c2d7b`)**: `Library.get` reads the folder where the last listing saw the run
+  and checks the id in its `run.json`; a miss costs one listing, as every call did. 120-run
+  library (`library_bench.py`, `page_timing.py`, median of five AppTest reruns, three solves
+  beside it): Library page 1.48 -> 0.76 s, Collections 0.64 -> 0.23 s. `TestGet` (6 tests; the
+  read count fails on the old store).
+- **P8, not built**: a `localSearchStepNodes` cap does not shorten the two fork tests (itemizing
+  88-100 s -> 66-78 s at 300 nodes, 67 s at 50; STAR, bounded today by its 60 s budget, 188 s at
+  300 nodes with the budget lifted). Their time is per restricted solve, and their later loop
+  iterations are P2's pattern. Left: a `deep` mark (drops them from the default run) or nothing;
+  the user's call.
+- **P2 on stock upstream**: P2_PROGRESS_LINE

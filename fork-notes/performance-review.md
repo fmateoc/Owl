@@ -810,6 +810,7 @@ problem, as on stock. Not covered: a loop that ends on a cycle, stagnation or it
 accepts an earlier iterate, whose problem is not the one in memory; there nothing is confirmed.
 Two tests: the settled test extended (one confirmation, last in the log, with the capped steps);
 a confirmation that finds a better plan sends the loop on (fails when the loop stops at it).
+Upstream's suite with the variant: 3319 passed, 1 skipped (6:54, `-n 4`).
 
 **Measured.** Same plans to the cent in every run; the confirming search found nothing in all 8
 runs where it ran.

@@ -8625,6 +8625,6 @@ whether it is still worth doing. Details: `fork-notes/performance-review.md`, se
   today's *Careful* preset 2,112 -> 1,565 (-25.9%) without, 1,841 (-12.8%) with (wall -26.8% /
   -13.7%; the confirming search 38-46 s each). Over the 19 stock examples about -2% with, -5%
   without (computed from two runs).
-- **Upstream's suite** with the variant: UPSTREAM_CONFIRM_SUITE.
+- **Upstream's suite** with the variant: 3319 passed / 1 skipped (6:54, `-n 4`; stock's tests and the two new).
 
 Next: the user's call on whether to file, and with which patch.

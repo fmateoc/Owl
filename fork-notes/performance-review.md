@@ -1,4 +1,9 @@
-# Performance review (2026-11-10)
+# Performance review (2026-11-10, revised 2026-11-11)
+
+Revised on 2026-11-11 after a second review of the same request was audited claim by claim
+(`performance-review-audit.md`): the first paragraph of section 1 is scoped, P6 gained the job
+tick, P9, P10 and section 3b are new, section 4 carries the per-function timings. P1-P5, P7 and
+P8 are as written on 2026-11-10.
 
 The user's request: "review the project from a performance improvement perspective. Look for any
 significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
@@ -10,11 +15,16 @@ whether it was measured, read in the code, or inferred.
 
 ## 1. Answer
 
-Solve time is solver time. In a *Careful* solve 344 of 346 s are inside `highspy.run` (71
-calls); all of Owl's own Python, the model build included, is under 1%. So nothing in the
-Python layer (vectorizing, caching the constraint build, `deepcopy`) can matter for solves, and
-no HiGHS option tried made the slow calls faster. What can matter is how many solver calls are
-made and how many run at once.
+A Careful solve's time is solver time. 344 of 346 s are inside `highspy.run` (71 calls); all
+of Owl's own Python, the model build included, is under 1% (by function in section 4). So
+nothing in the Python layer (vectorizing, caching the constraint build, `deepcopy`) can matter
+for a Careful solve, and no HiGHS option tried made the slow calls faster. What can matter is
+how many solver calls are made and how many run at once.
+
+That does not hold for the small solves (revised 2026-11-11): a Quick look is 58% HiGHS and 42%
+Python, a fifth of it the constraint build. One Quick look is under a second either way, but the
+stress tests run hundreds of solves of that kind on a thread pool, and there the Python share
+is what the pool cannot run in parallel (section 3b).
 
 | # | Opportunity | Measured effect | Whose code | Cost |
 |---|---|---|---|---|
@@ -23,12 +33,15 @@ made and how many run at once.
 | P3 | Local search: node cap 1,000 instead of 3,000 (`localSearchStepNodes`, an existing option), with P2 | same plan to the cent in 5 of 6, +\$1.75/yr in one; CPU -46% to -63% in the 4 that settle; -36% over the six | fork preset (`presets.py`) for the option; upstream for the default | a preset value |
 | P4 | *Let Owl choose the claiming ages*: the final solve repeats a stage-2 candidate; stage 2 is serial | read in the code, not timed: 1 of 4-6 Careful solves is a repeat (about 6 min here); the others are independent | fork (`worker.py`, `agesearch.py`) | small (P4a), medium (P4b) |
 | P5 | *Claiming ages, every pair tried* runs its sweep on a serial pool | read in the code; the same sweep's CLI runs on a process pool | fork (`worker.py:69`) | small |
-| P6 | Library and Collections pages re-read every `run.json` once per run shown | 120 runs: Library page 1.5 s per click, 15,480 file reads; quadratic in the number of runs | fork (`store.py:415`) | small |
+| P6 | Library and Collections pages re-read every `run.json` once per run shown; the job tick scans the library three times | 120 runs: Library page 1.5 s per click, 15,480 file reads; quadratic in the number of runs. Tick: 47 ms every 2 s | fork (`store.py:415`, `jobs.py:146`) | small |
 | P7 | Worker start: 1.5-2.0 s of imports before a 0.5-1 s Quick look | measured | upstream modules | lazy imports upstream; or leave |
 | P8 | Test suite: 60 tests are 59% of the worker time | measured under load | 2 fork files (12%), the rest upstream's | `deep` marks on fork tests |
+| P9 | Run page parses the whole results workbook on every render, expander closed or not | 93 ms of a 260 ms render | fork (`ui/Run.py:816`) | small |
+| P10 | Download buttons build their workbook on every rerun of the page | 13-126 ms (Financial Profile), 58 ms and more (Reports) | upstream pages | a callable instead of the bytes |
+| 3b | Stress tests: the thread pool gives 1.6x on 4 cores | 60 scenarios: 24.6 s on four threads, 39.6 s on one | upstream (`stresstests.py`) | a process pool; an upstream issue |
 
-Not worth doing (section 4): solver options, the Python model build, a looser step gap, caching
-the what-if parent (already done), the job ticker.
+Not worth doing (section 4): solver options, the Python model build and its caches in a Careful
+solve, a looser step gap, caching the what-if parent (already done).
 
 A 36-cell condo grid at *Careful* is about 3.3 hours as the interface queues it today (36 x 331 s,
 the average wall time of the six variants measured, one at a time; computed, not run). With P1
@@ -216,7 +229,21 @@ One scan per rerun (a dict by id passed down, or `get` reading the one folder) w
 about half of the Library page's time at this size (inferred from the profile's shares, not
 built); most of the rest is per-run job reads. At 40 runs
 the page is already fast (the cost is quadratic). The library layer itself is cheap:
-`Library.runs()` 4 ms, `JobManager.tick()` 47 ms every 2 s, `view.load_result` 0.8 ms.
+`Library.runs()` 4 ms, `view.load_result` 0.8 ms.
+
+The job tick (added 2026-11-11; the first version filed it under "no opportunity").
+`JobManager.tick()` calls `self.jobs()` three times (`adopt()`, the running count, the waiting
+list; `jobs.py:146-158`, read), each a scan of every `run.json` and every `status.json`: 47 ms
+per tick at 239 results, every 2 s from the ticker thread, and again from the Queue and Run
+pages' own 2 s fragments while they are open (`ui/Queue.py:63`, `ui/Run.py:160`). `enqueue` ends
+with a tick as well, so queuing a collection's variants scans the library three times per job.
+One `jobs()` per tick, passed to `adopt`, removes two thirds of it; not built. On Linux this is
+2% of one core and nothing a person sees. File opens cost more on Windows, where it was not
+measured. Also small and in fork code, read and not timed: `grid.latest_result` loads a
+folder's three files before it looks at the record's preset (`grid.py:388-391`), and
+`Library.save_run` exports the case before it checks for a duplicate inputs hash
+(`store.py:535` before `551`; a check before the export could be added, the one under the lock
+has to stay).
 
 ### P7. Worker start
 
@@ -244,6 +271,74 @@ about 3,516 worker-seconds (59%), the 10 slowest 1,113 (32%). By file: `test_sna
 85 s) could carry upstream's `deep` mark or a `localSearchStepNodes` cap. Whether the fork's
 features make upstream's slow tests slower than on stock `dev` was not measured.
 
+### P9. The Run page's workbook (added 2026-11-11)
+
+`ui/Run.py:816-817`: inside `st.expander("Results workbook")` the page runs
+`pd.read_excel(BytesIO(xlsx.read_bytes()), sheet_name=None)`. Streamlit runs an expander's body
+whether it is open or not, so every render of the Run page parses all 16 sheets of the 48 kB
+workbook: 93 ms (`audit/workbook_read.py`, three runs: 95, 93, 93 ms), against 260 ms for the
+whole render (section P6's table; the two were measured a day apart on different libraries, so
+the share, about a third, is approximate). It is the page library mode opens on. A read keyed
+on the file's path and modification time (`st.cache_data`), or one that waits for a "show the
+sheets" toggle, removes it; not built.
+
+The same page loads every result of the run (`ui/Run.py:554-561`, then `whatif.main_results`
+again): 0.8 ms each, so nothing until a run has hundreds of solves.
+
+### P10. Download buttons (added 2026-11-11, upstream pages)
+
+`ui/Financial_Profile.py:725` passes `data=owb.saveContributions()`, and `ui/Reports.py:69` and
+`174` build `owb.saveContributions()` and `owb.saveWorkbook()`, on every rerun of the page,
+which on the Financial Profile is every cell edit. Measured: 13 ms to build the contributions
+workbook and 32-126 ms with the save to bytes; 58 ms for the results workbook before the save.
+Streamlit 1.67.0's `download_button` takes a callable ("it is executed when the user clicks the
+download button"; its docstring, read). Upstream's pages: an issue with these numbers, or leave.
+
+## 3b. Stress tests (added 2026-11-11; upstream's `stresstests.py`)
+
+Not looked at in the first version. In the library only the `regret` job runs this module; the
+Stress Tests and Spending vs Bequest pages are upstream's.
+
+Measured (`audit/stress_probe.py 60`): `run_stochastic_spending` over 60 historical start years
+with Quick-look options takes 24.6 s on its four worker threads and 39.6 s on one: 1.6x. A
+scenario takes 0.65 s alone and 1.6 s of thread time among four. The code's comment says "HiGHS
+releases the GIL during solve, so threads give real parallelism"; that covers the 58% of a
+loop-mode solve that is HiGHS and not the 42% that is Python. Two consequences, neither built
+or measured:
+
+- A process pool (spawn, as `work_sweep.py` and `run_suite.py` use) should give close to the
+  core count, as P1 measured for whole jobs (+5% wall each at four at once). The clones would
+  have to pickle; a solved Plan does not (`issue-run-library.md`), and whether these unsolved
+  ones do was not checked.
+- Or the Python share goes down: here, and only here, caching more of `_buildConstraints`
+  across loop iterations (19% of a Quick look) would show.
+
+`run_historical_range` and `run_mc` solve one scenario after another on the plan itself
+(`stresstests.py:1309-1500`; no executor, grep). Giving them the same thread pool would be
+worth the same 1.6x, not the core count.
+
+Small, in the same module:
+
+- The frontier. `_compute_efficient_frontier` solves 61 dense LPs and is called twice per run:
+  0.13, 0.33 and 1.05 s per call at 100, 500 and 1,000 scenarios, 1.2% of the 60-scenario run.
+  The LP has a closed form: with the bases sorted ascending, g* is the basis at index
+  `min(ceil(S / lam) - 1, S - 1)` for lam > 1 and the largest basis otherwise. Checked against
+  the LP at every lambda of the sweep for S = 7, 100 and 1,000 (`audit/quantile_check.py`):
+  identical except at one tie (S = 1,000, lam = 1,000, where S / lam is an integer and the LP
+  returns the other end of an interval of equal objective), 1.1 ms for the 61 points. The
+  second review's index, `floor(S (1 - 1/lam))`, is the mirror image and wrong at 45 of 61
+  points. Upstream's comment at `stresstests.py:1816` already weighs the second call ("Sixty
+  small LPs against minutes of scenario solves").
+- Clones. Every scenario's clone is built on the main thread before the pool starts
+  (`stresstests.py:1665-1669`, `1732-1733`): 2.7 ms each without longevity sampling (0.6% of
+  the run). With longevity sampling a clone is 47 ms, 41 ms of it `hfp_io._conditionTimetables`
+  on the in-memory tables; against 0.4-0.65 s per scenario that is about a tenth of the run
+  (inferred; Monte Carlo was not run, the synthetic case's rates are not stochastic). Held
+  memory is 0.15 MB per clone.
+- `run_spending_bequest_frontier` calls `run_stochastic_spending` once per bequest level
+  (`stresstests.py:2078-2111`), cloning and drawing again each time. The solves, which differ
+  per level, are nearly all of it.
+
 ## 4. Checked, no opportunity
 
 - **HiGHS options** (`mip_probe.py` on two dumped capped steps, one that improves and one that
@@ -254,14 +349,27 @@ features make upstream's slow tests slower than on stock `dev` was not measured.
   `pscost_minreliable=1` were within 1.5 s of the defaults and ended the first step on a worse
   plan; `mip_heuristic_effort=0.3` and presolve off each found a slightly better plan on one
   step for 1.5x the time. Nothing is faster on both.
-- **Owl's Python in a solve**: under 1% of a Careful solve; a few tenths of a second of a Quick
-  look (0.29 s of it is HiGHS).
+- **Owl's Python in a Careful solve** (timed by function on 2026-11-11, `audit/overhead_probe.py`,
+  the `decision` preset at a 300-node cap, 129.4 s): `_run_highs` 128.74 s in 56 calls (99.48%);
+  `_buildConstraints` 0.204 s in 18 calls; every top-level `copy.deepcopy` together 0.126 s in
+  11 calls; `ConstraintMatrix.to_csr` 0.061 s in 60 calls; money scaling 0.014 s in 56 calls;
+  `_adjustParameters` (the tax tables, the SS streams) 0.008 s in 20 calls; the repairs after
+  the loop 0.004 s. Caching the CSR form or the scaling, dropping the deep copies, or not
+  recomputing the SS streams (0.39 ms a call) would save under half a second. For a Quick look
+  see section 1 and 3b.
+- **Re-reading the workbook in `work_sweep.py`**: `make_plan` reads the `.xlsx` at every scored
+  candidate, 89 ms a read, in a sweep whose scored plans take 94-288 s each.
+- **Throwaway plans in `library/builder.py`**: 3.7 ms each.
+- **`thresholds.threshold_proximity`**: 32 ms, once per result. **`star.star_schedule`'s district
+  scan**: 75 districts in the data.
+- **`git` in `code_stamp`**: `version.engine_commit` is cached per process; a dirty tree adds a
+  3 ms `git diff` per call.
 - **`STEP_GAP`**: see P3.
 - **The what-if's parent** is already solved only when it has no Careful result from today
   (`ui/whatif.py`, `is_current` and `queue_what_if`).
 - **The exact-model companion** of Careful is 6 s beside 340.
 - **The tornado**: its movers run under the exact models, 2.7-6 s each plus the worker start.
-- **The job ticker and the library layer**: 47 ms every 2 s at 239 results.
+- **The library layer** apart from P6: `Library.runs()` 4 ms, `view.load_result` 0.8 ms.
 
 ## 5. Not measured
 
@@ -271,7 +379,9 @@ features make upstream's slow tests slower than on stock `dev` was not measured.
 - P2 and P3 on stock upstream examples, on more than six of the 36 grid variants, or at other
   claiming ages.
 - P4 and P5 end to end.
-- Windows and macOS (process start cost, `spawn` pools).
+- Windows and macOS (process start cost, `spawn` pools, the cost of the tick's file opens, `git`).
+- Stress tests under Monte Carlo and longevity sampling, on a process pool, and with other than
+  Quick-look options; the bequest frontier and the regret sweep.
 - MOSEK (no license here).
 
 ## 6. Files
@@ -282,3 +392,4 @@ features make upstream's slow tests slower than on stock `dev` was not measured.
 - `fork-notes/performance/mip_probe.py`: one dumped HiGHS call re-solved with other options.
 - `fork-notes/performance/library_bench.py`, `page_profile.py`: the 120-run library and the page
   profiles (the second needs `yappi`).
+- `fork-notes/performance/audit/`: the 2026-11-11 scripts (its `README.md`).

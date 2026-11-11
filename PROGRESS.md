@@ -8402,3 +8402,42 @@ at 70/70, HiGHS, this container.
   `abd8b6c`; code unchanged).
 
 Next: the user's call on which of P1-P8 to build, and on an upstream issue for P2.
+
+## Performance review: a second review audited (2026-11-11, branch `claude/sleepy-bardeen-y2k2ov`)
+
+The user pasted a second, anonymized answer to the same request (a priority matrix of 13
+items, no timings) and asked for its claims to be checked one by one and for
+`fork-notes/performance-review.md` to be revised. Docs and scripts only; nothing in `src/`,
+`ui/` or `tests/` changed, so the suite was not run again.
+
+- **The audit:** `fork-notes/performance-review-audit.md`; scripts and their outputs in
+  `fork-notes/performance/audit/`. 36 claims checked against the code at the same commit: 25 as
+  stated in structure, 2 supported, 4 partly wrong, 4 false, 1 prediction contradicted by a
+  measurement.
+- **False, each reproduced:** its closed form for `stresstests._stochastic_lp` (the index is
+  mirrored: wrong at 45 of 61 lambdas, the largest basis where the LP gives the smallest; the
+  corrected index `ceil(S / lam) - 1` matches the LP except at one tie); a `_repairAmo` call
+  "on every intermediate SC-loop iteration" (no such method or `self.amo` in the repository;
+  the real repairs run once after the loop); `load_historical_slice` reading the CSV on every
+  call (it is `lru_cache`d); the tornado's results loaded twice (once each); 700 school
+  districts (75 in the data).
+- **Its priorities, measured:** timers on a real Careful solve (129.4 s at a 300-node cap):
+  99.48% in `_run_highs`; every deep copy 0.126 s, every CSR build 0.061 s, money scaling
+  0.014 s, the SS streams 0.002 s. Its P0 "cache CSR and money scaling, stop deep-copying" is
+  0.2% of the solve.
+- **Valid and taken into the review:** the Run page parses the whole results workbook on every
+  render (93 ms of a 260 ms page; new P9); `JobManager.tick()` scans the library three times
+  (verified; 47 ms every 2 s; folded into P6, which had dismissed the tick); download buttons
+  that build their workbook on every rerun (upstream pages; Streamlit 1.67 takes a callable;
+  new P10); the stress tests, which the first version had not looked at (new section 3b).
+- **Found on the way:** `run_stochastic_spending`'s thread pool gives 1.6x on four cores (60
+  historical scenarios at Quick-look options: 24.6 s on four threads, 39.6 s on one), because
+  42% of a loop-mode solve is Python (a Quick look: 58% HiGHS, 19% `_buildConstraints`). The
+  first version's "nothing in the Python layer can matter for solves" is now scoped to Careful
+  solves.
+- **Not checked:** anything on Windows (the second review's paths are a Windows checkout);
+  Monte Carlo and longevity sampling (the synthetic case's rates are not stochastic); its
+  claims about `generate_historical_series`, `debts.py`, `fixedassets.py`, `copula.py`.
+
+Next: the user's call on which of P1-P10 and 3b to build, and on upstream issues for P2, P10
+and 3b.

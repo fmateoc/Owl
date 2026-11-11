@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from owlplanner.library import JobManager, JobsError, Library, ScenarioError
+from owlplanner.library import jobs as jobs_module
 from owlplanner.library import results as R
 from owlplanner.library.procs import kill_process, process_start_token
 
@@ -136,6 +137,145 @@ class TestQueueOnDisk:
         assert len(manager.jobs()) == 2                   # neither record lost
         for job in queued:
             assert R.JobRecord.read(job.results_dir).token == job.token
+
+
+class TestCores:
+    """Performance review, 2026-11-11: the queue counts cores. A job states how many solves it
+    runs at once when it can, the queue gives it that or all it has at dispatch and counts it
+    while the job runs; the worker sizes its pool by its record."""
+
+    @pytest.fixture
+    def wide(self, library, monkeypatch):
+        """A queue with four cores whose dispatch is the record's own swap, no worker started."""
+        m = JobManager(library, cores=4)
+        m.dispatched = []
+
+        def spawn(job):
+            if job.take_for_dispatch(m.share(job)):
+                job.update(pid=os.getpid(), pid_started=process_start_token(os.getpid()))
+                m.dispatched.append(job.id)
+                return True
+            return False
+
+        monkeypatch.setattr(m, "_spawn", spawn)
+        return m
+
+    def states(self, manager):
+        return [(job.doc["preset"], job.state, job.doc.get("cores")) for job in manager.jobs()]
+
+    def test_one_core_is_one_job_at_a_time_as_before(self, library, run, monkeypatch):
+        m = JobManager(library)
+        monkeypatch.setattr(m, "_spawn", lambda job: job.take_for_dispatch(m.share(job))
+                            and job.update(pid=os.getpid(), pid_started=process_start_token(os.getpid())))
+        assert m.cores == 1
+        for preset in ("ages_thorough", "quick", "ages"):
+            m.enqueue(run, preset=preset)
+        assert self.states(m) == [("ages_thorough", R.RUNNING, 1), ("quick", R.WAITING, None),
+                                  ("ages", R.WAITING, None)]
+
+    def test_single_solves_run_side_by_side_up_to_the_cores(self, wide, run):
+        for _ in range(6):
+            wide.enqueue(run, preset="quick")
+        states = [state for _, state, _ in self.states(wide)]
+        assert states == [R.RUNNING] * 4 + [R.WAITING] * 2
+        assert all(cores == 1 for _, state, cores in self.states(wide) if state == R.RUNNING)
+
+    def test_a_job_states_what_it_wants_and_gets_what_fits(self, wide, run, library):
+        job = wide.enqueue(run, preset="ages")
+        assert fresh(job).cores_wanted == 5 and fresh(job).cores == 4  # five wanted, four there are
+        assert JobManager(library, cores=8).share(job) == 5
+        assert JobManager(library, cores=1).share(job) == 1
+        sweep = R.JobRecord.create(run.path / "results" / "x_ages_thorough", run_id=run.id, run_name=run.name,
+                                   preset="ages_thorough", options={}, plan_year=2026, cores_wanted=0)
+        assert JobManager(library, cores=6).share(sweep) == 6  # 0: as many as the queue has
+
+    def test_enqueue_records_what_each_preset_wants(self, wide, run):
+        wanted = {preset: wide.enqueue(run, preset=preset).cores_wanted
+                  for preset in ("quick", "decision", "decision_exact", "custom", "regret", "ages", "ages_thorough")}
+        assert wanted == {"quick": 1, "decision": 1, "decision_exact": 1, "custom": 1, "regret": 2,
+                          "ages": 5, "ages_thorough": 0}
+
+    def test_a_job_that_does_not_fit_waits_and_nothing_jumps_it(self, wide, run):
+        """First come, first served: a sweep that wants every core waits for the running solve
+        to end, and the quick solve queued behind it waits too, though it would fit."""
+        first = wide.enqueue(run, preset="quick")
+        sweep = wide.enqueue(run, preset="ages_thorough")
+        wide.enqueue(run, preset="quick")
+        assert self.states(wide) == [("quick", R.RUNNING, 1), ("ages_thorough", R.WAITING, None),
+                                     ("quick", R.WAITING, None)]
+        fresh(first).finish(R.DONE)
+        wide.tick()
+        assert self.states(wide) == [("quick", R.DONE, 1), ("ages_thorough", R.RUNNING, 4),
+                                     ("quick", R.WAITING, None)]
+        fresh(sweep).finish(R.DONE)
+        wide.tick()
+        assert self.states(wide)[2] == ("quick", R.RUNNING, 1)
+
+    def test_the_running_jobs_shares_are_what_is_counted(self, wide, run):
+        """A regret job counts for two (its thread pool), so two of them and no more fit
+        beside... nothing: 2 + 2 = 4; the third job waits."""
+        for _ in range(2):
+            wide.enqueue(run, preset="regret")
+        wide.enqueue(run, preset="quick")
+        assert [(state, cores) for _, state, cores in self.states(wide)] == [
+            (R.RUNNING, 2), (R.RUNNING, 2), (R.WAITING, None)]
+
+    def test_the_count_survives_a_restart(self, wide, run, library, monkeypatch):
+        """The shares are in the records: a new server over the same folder counts the jobs
+        the old one started and dispatches nothing on top of them."""
+        wide.enqueue(run, preset="ages")  # takes the four cores
+        waiting = wide.enqueue(run, preset="quick")
+        restarted = JobManager(library, cores=4)
+        monkeypatch.setattr(restarted, "_spawn", lambda job: pytest.fail("no core is free"))
+        restarted.tick()
+        assert fresh(waiting).state == R.WAITING
+
+    def test_a_record_from_before_the_count_is_one_core(self, wide, run):
+        job = make_running_job(run.path / "results" / "2026-01-01T00-00-00_quick", pid=os.getpid(),
+                               pid_started=process_start_token(os.getpid()))
+        doc = dict(job.doc)
+        doc.pop("cores"), doc.pop("cores_wanted")
+        (job.results_dir / R.STATUS_JSON).write_text(json.dumps(doc), encoding="utf-8")
+        assert fresh(job).cores == 1 and fresh(job).cores_wanted == 1
+        for _ in range(4):
+            wide.enqueue(run, preset="quick")
+        assert [state for _, state, _ in self.states(wide)].count(R.RUNNING) == 4  # the old job and three
+
+    def test_run_again_gets_a_new_share(self, wide, run, library):
+        job = wide.enqueue(run, preset="ages")
+        assert fresh(job).cores == 4
+        fresh(job).finish(R.INTERRUPTED, error="stopped")
+        fresh(job).requeue()
+        assert fresh(job).cores == 1 and fresh(job).doc["cores"] is None  # waiting: no share yet
+        narrow = JobManager(library, cores=2)
+        narrow._spawn = lambda j: j.take_for_dispatch(narrow.share(j))
+        narrow.tick()
+        assert fresh(job).doc["cores"] == 2
+
+    def test_the_interface_s_cores(self, monkeypatch):
+        monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 8)
+        monkeypatch.delenv(jobs_module.CORES_ENV, raising=False)
+        assert jobs_module.default_cores() == 4  # half the logical cores
+        monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 1)
+        assert jobs_module.default_cores() == 1
+        monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: None)
+        assert jobs_module.default_cores() == 1
+        monkeypatch.setenv(jobs_module.CORES_ENV, "6")
+        assert jobs_module.default_cores() == 6
+        monkeypatch.setenv(jobs_module.CORES_ENV, "0")
+        assert jobs_module.default_cores() == 1  # at least one
+        monkeypatch.setenv(jobs_module.CORES_ENV, "many")
+        monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 12)
+        assert jobs_module.default_cores() == 6  # an unreadable setting is no setting
+
+    def test_a_tick_reads_the_library_once(self, wide, run, monkeypatch):
+        """Performance review P6: a tick scanned every run and every job record three times."""
+        wide.enqueue(run)
+        scans = []
+        real = wide.jobs
+        monkeypatch.setattr(wide, "jobs", lambda *a, **k: scans.append(1) or real(*a, **k))
+        wide.tick()
+        assert len(scans) == 1
 
 
 class TestAdoption:

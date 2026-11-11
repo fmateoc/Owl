@@ -7,6 +7,27 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: solves run side by side, and the queue counts cores (2026-11-11)
+
+Performance review P1, P4b, P5 (`fork-notes/performance-review.md`).
+
+- The queue has a number of cores (`JobManager(cores=...)`; it was one job at a time). The
+  interface uses half of the computer's logical cores, or `OWL_LIBRARY_CORES` when set
+  (`jobs.default_cores`); the Queue page says how many solves run at once.
+- Each job states how many solves it runs at once when it can (`cores_wanted` in `status.json`,
+  `presets.CORES_WANTED`), is given that or all the queue has at dispatch (`cores`), and is
+  counted for it while it runs. First come, first served: a job that does not fit waits, and
+  nothing queued behind it jumps it.
+- *Let Owl choose the claiming ages* scores its stage-2 candidates, and *Claiming ages, every
+  pair tried* its sweep, on a pool of as many processes as the job was given
+  (`worker._ProcessPool`; `agesearch.two_stage_ages(pool=...)`, `agesearch.score_trial`). With
+  one core both run in a row as before. The pool's processes are spawned, end when a cancel
+  is seen (a serial sweep could only stop between two plans) and end with the worker if it is
+  killed.
+- A tick reads the library once (it was three scans; performance review P6).
+
+Check: `fork-notes/synthetic/check_library_cores.py`.
+
 ### Run library: Careful's search no longer depends on how busy the computer is (2026-11-11)
 
 Performance review P3 (`fork-notes/performance-review.md`). Upstream's local search caps each

@@ -104,6 +104,18 @@ def test_the_other_presets_carry_no_search_effort(preset):
     assert not set(LOCAL_SEARCH_EFFORT) & set(options)
 
 
+def test_what_each_preset_runs_at_once():
+    """The queue counts cores (performance review, 2026-11-11): a single solve is one, the
+    claiming-age presets score several plans side by side, the regret sweep is a thread pool."""
+    from owlplanner.library.presets import cores_wanted
+
+    assert {preset: cores_wanted(preset) for preset in SOLVE_PRESETS} == {
+        "quick": 1, "decision": 1, "decision_exact": 1, "exact_medicare": 1, "custom": 1,
+        "regret": 2, "ages": 5, "ages_thorough": 0}
+    with pytest.raises(ValueError):
+        cores_wanted("nonsense")
+
+
 def test_decision_exact_is_run_suite_s_exact_model():
     """The EXACT_GROUP of run_suite.py: loop, Medicare off, SS taxability 0.85, LTCG exact."""
     options = resolve_options("decision_exact", TEMPLATE_LIKE)

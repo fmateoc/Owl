@@ -373,6 +373,20 @@ branch-and-bound MIP (`phase0-scenarios.md`, section 4), so "quick" would not be
   (`st.cache_resource`), so two browser tabs see one queue, and the queue itself lives on disk.
   It ticks in a background thread (dispatch, adoption, interruption), so the queue moves with no
   Queue page open (step 2 review 3, H5).
+- **The queue counts cores** *(added 2026-11-11, performance review P1, P4b, P5).* A job is not
+  always one solve: the two claiming-age presets score many plans and can score them side by
+  side. Each job's record states how many solves it runs at once when it can (`cores_wanted`,
+  from `presets.CORES_WANTED`: 1 for a single solve, 5 for "Ages", every core for "Ages,
+  thorough", 2 for the regret sweep's thread pool); at dispatch the queue gives it that or all
+  it has, whichever is less (`cores` in the record), and counts what the running jobs were given
+  against its own cores (`JobManager(cores=...)`). The worker sizes its pool by its record:
+  spawned processes that end with the worker, one plan each (`worker._ProcessPool`). Jobs are
+  dispatched first come, first served; one that does not fit waits and nothing queued after it
+  jumps it. The count is in the records, so a restarted server counts the jobs the old one
+  started. The interface's queue uses `OWL_LIBRARY_CORES` cores, else half the computer's
+  logical cores (`jobs.default_cores`; not measured outside the four-core container: there,
+  four solves at once cost 5% of wall each and six cost 17-18% of CPU). With one core the
+  queue is what it was: one job at a time, everything in a row.
 - **Detached workers (R5).** Without a choice made here, whether a worker outlives the server
   depends on how the server stops (recalled POSIX and `multiprocessing` behaviour, not tested
   here):

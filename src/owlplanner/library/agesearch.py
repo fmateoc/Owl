@@ -28,6 +28,11 @@ are not part of the record).
 local search (`search_effort`; the library passes `presets.LOCAL_SEARCH_EFFORT`): stage 2
 picks by the raw score, so a candidate whose search a wall-clock cap cut short can lose to
 its neighbour by a dollar (performance review, 2026-11-11).
+
+``pool`` (optional) scores stage 2's candidates side by side: an object with
+``map(fn, items) -> list`` whose `fn` runs in another process (`score_trial`, the worker's
+pool on the cores the queue gave the job). The candidates are independent solves, so the
+scores are the serial ones; each candidate's log reaches ``log`` when it ends.
 """
 
 from __future__ import annotations
@@ -157,8 +162,23 @@ def _trials(pick, free, first=None) -> list:
     return trials
 
 
+def score_trial(job) -> tuple:
+    """One stage-2 candidate, start to finish: `(ages, score or None, its solve log)`.
+
+    `job` is `(diconf, dirname, ages, effort)`, all plain data: this is what a pool runs in
+    another process, where the caller's log stream does not exist -- the log comes back as
+    text for the caller to write.
+    """
+    diconf, dirname, ages, effort = job
+    buf = io.StringIO()
+    q = _plan(diconf, dirname, buf, fixed_ages(ages))
+    q = _solve(q, search_effort(q.solverOptions, effort) if effort else None)
+    return ([round(float(a), 4) for a in q.ssecAges],
+            score_plan(q) if q.caseStatus == "solved" else None, buf.getvalue())
+
+
 def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], Any]] = None,
-                   effort: Optional[dict] = None):
+                   effort: Optional[dict] = None, pool=None):
     """Claiming ages for a case that searches them (run_suite's `two_stage_ages`).
 
     Returns ``(ages, candidates)`` with ``candidates = [(ages, score or None)]``. ``ages`` is
@@ -178,7 +198,15 @@ def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], An
     # Each person's first open claiming age (review AJ4); 70 for someone with none left.
     first = [(p._ssaOpenAges(i) or [70.0])[0] for i in range(len(names))]
     scored = []
-    for t in _trials(pick, free, first):
+    trials = _trials(pick, free, first)
+    if pool is not None:
+        if check is not None:
+            check()
+        for ages, value, text in pool.map(score_trial, [(diconf, dirname, t, effort) for t in trials]):
+            log.write(text)
+            scored.append((ages, value))
+        trials = []  # all scored
+    for t in trials:
         if check is not None:
             check()
         q = _plan(diconf, dirname, log, fixed_ages(t))

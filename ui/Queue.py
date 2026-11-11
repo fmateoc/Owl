@@ -69,6 +69,11 @@ def queue_fragment():
         return
 
     now = datetime.now().timestamp()
+    st.caption(
+        "One solve runs at a time." if manager.cores == 1
+        else f"Up to {manager.cores} solves run side by side; the rest wait their turn.",
+        help="The claiming-age searches try several plans at once and take several places. "
+             "The number is half of this computer's cores unless OWL_LIBRARY_CORES sets it.")
     header = st.columns([4, 2, 2, 4, 2])
     header[0].markdown("**Run**")
     header[1].markdown("**State**")

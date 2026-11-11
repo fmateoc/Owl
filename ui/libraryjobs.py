@@ -22,6 +22,7 @@ from pathlib import Path
 import streamlit as st
 
 from owlplanner.library import JobManager, Library, run_zip
+from owlplanner.library.jobs import default_cores
 from owlplanner.library import results as R
 from owlplanner.library.presets import COMPANION_PRESETS, preset_name
 from owlplanner.library.store import default_library_root
@@ -92,7 +93,8 @@ def run_zip_bytes(run) -> bytes:
 
 @st.cache_resource
 def _manager(root: str):
-    manager = JobManager(Library.open(root))
+    # The queue's cores: `OWL_LIBRARY_CORES`, else half the computer's (`jobs.default_cores`).
+    manager = JobManager(Library.open(root), cores=default_cores())
     manager.start_ticker()
     return manager
 

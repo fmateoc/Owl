@@ -603,3 +603,140 @@ class TestAgesThorough:
         state = run_job(job.results_dir, job.token)
         assert state == R.INTERRUPTED
         assert scored == [1]
+
+
+def _gone(pid) -> bool:
+    """The process has ended (a zombie nobody reaps has ended too)."""
+    from owlplanner.library.procs import pid_alive
+
+    if not pid_alive(pid):
+        return True
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] == "Z"
+    except (OSError, IndexError):
+        return False
+
+
+def _wait(condition, seconds=30.0):
+    end = time.time() + seconds
+    while time.time() < end:
+        if condition():
+            return True
+        time.sleep(0.1)
+    return condition()
+
+
+class TestThePool:
+    """Performance review, 2026-11-11: the queue gives a job a share of its cores, and the two
+    claiming-age presets score their plans in that many processes."""
+
+    def test_the_job_s_record_sizes_the_pool(self, run):
+        from owlplanner.library.worker import Worker, _ProcessPool, _SerialPool
+
+        alone = Worker(make_job(run, name="a_ages", preset="ages").results_dir, "t")
+        assert isinstance(alone._pool(), _SerialPool)  # no share in the record: this process alone
+        job = make_job(run, name="b_ages", preset="ages")
+        job.update(cores=3)
+        shared = Worker(job.results_dir, job.token)
+        try:
+            assert isinstance(shared._pool(), _ProcessPool) and shared._pool().cores == 3
+        finally:
+            shared._pool().close()
+
+    def test_it_maps_in_order_on_as_many_processes(self):
+        from owlplanner.library.worker import _ProcessPool
+
+        pool = _ProcessPool(2)
+        try:
+            assert pool.map(abs, [-3, 2, -1, -7]) == [3, 2, 1, 7]
+            assert pool.map(len, ["a", "", "abc"]) == [1, 0, 3]  # the processes are kept between maps
+            assert 1 <= len(pool._executor._processes) <= 2
+        finally:
+            pool.close()
+        assert pool._executor is None
+
+    def test_a_cancel_ends_the_processes_at_once(self):
+        """The serial pool can only stop between two plans; this one stops the plans."""
+        from owlplanner.library.worker import JobCancelled, _ProcessPool
+
+        calls, processes = [], []
+
+        def check():
+            calls.append(1)
+            if len(calls) > 1:  # the first call is before anything is submitted
+                processes.extend(pool._executor._processes.values())
+                raise JobCancelled("cancelled")
+
+        pool = _ProcessPool(2, check)
+        started = time.time()
+        with pytest.raises(JobCancelled):
+            pool.map(time.sleep, [120, 120, 120])
+        assert time.time() - started < 60
+        assert processes and _wait(lambda: all(_gone(p.pid) for p in processes))
+        assert pool._executor is None
+
+    def test_a_plan_that_fails_fails_the_map(self):
+        from owlplanner.library.worker import _ProcessPool
+
+        pool = _ProcessPool(2)
+        with pytest.raises(TypeError):
+            pool.map(len, ["ab", 3])
+        assert pool._executor is None  # closed: nothing is left solving
+
+    def test_the_processes_end_with_the_worker(self, tmp_path):
+        """A forced cancel kills the worker's process alone: its pool must not go on solving
+        on cores the queue then counts as free."""
+        import subprocess
+        import sys
+
+        script = (
+            "import time\n"
+            "from owlplanner.library.worker import _ProcessPool\n"
+            "if __name__ == '__main__':\n"
+            "    pool = _ProcessPool(1)\n"
+            "    pool.map(abs, [-1])\n"  # the process is up, its initializer has run
+            "    pool._pool().submit(time.sleep, 300)\n"
+            "    print(list(pool._executor._processes)[0], flush=True)\n"
+            "    time.sleep(300)\n"
+        )
+        path = tmp_path / "parent.py"
+        path.write_text(script, encoding="utf-8")
+        parent = subprocess.Popen([sys.executable, str(path)], stdout=subprocess.PIPE, text=True)
+        try:
+            child = int(parent.stdout.readline())
+            assert not _gone(child)
+            parent.kill()
+            parent.wait(timeout=30)
+            assert _wait(lambda: _gone(child)), "the pool's process outlived its worker"
+        finally:
+            if parent.poll() is None:
+                parent.kill()
+
+    def test_the_sweep_gets_the_job_s_pool(self, library, scenario, monkeypatch):
+        """ "Claiming ages, every pair tried" scores its plans on the worker's pool."""
+        import copy
+        import types
+
+        from owlplanner import work_sweep
+        from owlplanner.library import worker as W
+
+        doc = copy.deepcopy(scenario)
+        doc["case"]["solver_options"]["withSSAges"] = "optimize"
+        run = library.save_run(name="bill searches", scenario=doc).run
+        pools = []
+
+        def run_variant(name, diconf, dirname, args, pool, log):
+            pools.append(pool)
+            return dict(TestAgesThorough.ROW)
+
+        monkeypatch.setattr(W, "_load_work_sweep", lambda: types.SimpleNamespace(
+            TIME_LIMIT=900.0, run_variant=run_variant, scorer_config=work_sweep.scorer_config,
+            scorer_options=lambda p, cfg, used="branch-and-bound": dict(
+                work_sweep.base_options(p, withSSAges="fixed"), gap=cfg["gap"], breakpointMethod="loop"),
+            PRESET_KEYS=work_sweep.PRESET_KEYS))
+        job = make_job(run, name="2026-01-01T00-00-00_ages_thorough", preset="ages_thorough", options={})
+        job.update(cores=2)
+        assert run_job(job.results_dir, job.token) == R.DONE
+        assert len(pools) == 1 and isinstance(pools[0], W._ProcessPool) and pools[0].cores == 2
+        assert pools[0]._executor is None  # closed with the job

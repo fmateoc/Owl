@@ -49,6 +49,9 @@ On Windows:
 C:\path\to\Owl\owlplanner-library.cmd "%USERPROFILE%\Our Plan"
 ```
 
+- Solves run side by side, on half of the computer's cores (since 2026-11-11). To choose the
+  number, set `OWL_LIBRARY_CORES` before starting the program (`1`: one solve at a time, as
+  before). A solve takes about one core and 260 MB; the Queue page says how many run at once.
 - The folder is made if it is not there. Everything the program makes or keeps is in it: the
   run library (`library/`), the workbook the setup writes (`Household.xlsx`), and a starter file
   (`Start Owl.cmd` on Windows, `Start Owl.command` on macOS, `start-owl.sh` on Linux) to

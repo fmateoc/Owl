@@ -7,6 +7,7 @@ set stage 2 scores, the option sets, the score rule, and the worker's wiring (th
 ages reach the final solve and the record's `age_search` block).
 """
 
+import io
 import json
 
 import pytest
@@ -183,8 +184,8 @@ class TestWorkerWiring:
     def test_the_search_picks_and_the_final_solve_uses_them(self, searched_case, monkeypatch):
         calls = {}
 
-        def fake_search(diconf, dirname, log=None, *, check=None, effort=None):
-            calls["effort"] = effort
+        def fake_search(diconf, dirname, log=None, *, check=None, effort=None, pool=None):
+            calls["effort"], calls["pool"] = effort, pool
             calls["withSSAges"] = diconf.get("solver_options", {}).get("withSSAges")
             return [66.0], [([66.0], 123.0), ([67.0], 100.0)]
 
@@ -199,6 +200,7 @@ class TestWorkerWiring:
         assert calls["withSSAges"] == "optimize"
         # Stage 2 runs at the library's search effort (performance review, 2026-11-11).
         assert calls["effort"] == LOCAL_SEARCH_EFFORT
+        assert calls["pool"] is None  # a job with one core scores its candidates in a row
         assert record["method"]["options"]["withSSAges"] == "fixed"
         plan_doc = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))
         assert plan_doc["claiming_ages"] == [66.0]
@@ -229,3 +231,59 @@ class TestWorkerWiring:
         assert run_job(job.results_dir, job.token) == R.DONE
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
         assert record["age_search"] is None
+
+
+class TestStageTwoOnAPool:
+    """Performance review, 2026-11-11 (P4b): stage 2's candidates are independent solves; with
+    a pool they are scored side by side and decided exactly as in a row."""
+
+    class Pool:
+        """`map` in this process: the scoring's logic, without the processes (the worker's
+        pool is tested with them in test_worker.py)."""
+
+        def __init__(self):
+            self.jobs = []
+
+        def map(self, fn, items):
+            self.jobs = list(items)
+            return [fn(item) for item in self.jobs]
+
+    @pytest.fixture
+    def searched(self):
+        from owlplanner.cli.set_override import apply_overrides
+        from owlplanner.config import load_toml
+
+        diconf, dirname, _ = load_toml(BILL)
+        return apply_overrides(diconf, ["solver_options.withSSAges=optimize"]), dirname
+
+    def test_the_pool_scores_what_the_row_scores(self, searched):
+        diconf, dirname = searched
+        log_a, log_b = io.StringIO(), io.StringIO()
+        pool = self.Pool()
+        in_a_row = agesearch.two_stage_ages(diconf, dirname, log_a)
+        on_a_pool = agesearch.two_stage_ages(diconf, dirname, log_b, pool=pool)
+        assert on_a_pool == in_a_row
+        assert len(pool.jobs) == len(in_a_row[1]) >= 2  # every candidate went to the pool
+        # Each candidate's solve log reaches the caller's stream, as it does in a row.
+        assert log_b.getvalue().count("Objective:") == log_a.getvalue().count("Objective:") > 0
+
+    def test_a_candidate_is_plain_data(self, searched):
+        """What crosses to another process pickles, and comes back as (ages, score, log)."""
+        import pickle
+
+        diconf, dirname = searched
+        job = (diconf, dirname, [67.0], LOCAL_SEARCH_EFFORT)
+        ages, value, text = agesearch.score_trial(pickle.loads(pickle.dumps(job)))
+        assert ages == [67.0] and value > 0 and isinstance(text, str) and text
+        pickle.dumps((ages, value, text))
+
+    def test_the_check_still_runs_before_the_pool(self, searched):
+        diconf, dirname = searched
+
+        def stop():
+            raise RuntimeError("cancelled")
+
+        pool = self.Pool()
+        with pytest.raises(RuntimeError, match="cancelled"):
+            agesearch.two_stage_ages(diconf, dirname, check=stop, pool=pool)
+        assert pool.jobs == []

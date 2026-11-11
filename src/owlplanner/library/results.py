@@ -226,6 +226,13 @@ def code_stamp(engine: Optional[dict] = None) -> dict:
     return stamp
 
 
+def _whole(value, default: int, *, low: int) -> int:
+    """A whole number from a record field, `default` when it holds none, never under `low`."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return max(low, int(value))
+
+
 class JobRecord:
     """status.json: the job record on disk from the moment the job is queued (S2).
 
@@ -242,7 +249,7 @@ class JobRecord:
 
     @classmethod
     def create(cls, results_dir, *, run_id: str, run_name: str, preset: str, options: dict,
-               plan_year: int, queued: Optional[str] = None) -> "JobRecord":
+               plan_year: int, queued: Optional[str] = None, cores_wanted: int = 1) -> "JobRecord":
         results_dir = Path(results_dir)
         results_dir.mkdir(parents=True, exist_ok=True)
         doc = {
@@ -260,6 +267,12 @@ class JobRecord:
             # The queue's order (`jobs._queued_order`): `queued` reads well but is whole
             # seconds, and two jobs of one click share it.
             "queued_at": stamp_seconds(queued) if queued else time.time(),
+            # How many solves the job runs at once when it can (`presets.cores_wanted`; 0: as
+            # many as the queue has), and what the queue gave it at dispatch (`cores`, None
+            # while it waits): the queue counts `cores` against its own, and the worker sizes
+            # its pool by it.
+            "cores_wanted": max(0, int(cores_wanted)),
+            "cores": None,
             "started": None,
             "finished": None,
             "pid": None,
@@ -369,17 +382,19 @@ class JobRecord:
             write_record(self.results_dir, doc)
             return True
 
-    def take_for_dispatch(self) -> bool:
+    def take_for_dispatch(self, cores: int = 1) -> bool:
         """Mark a waiting job running *before* its worker starts (only one dispatcher wins).
 
         Two Queue fragments can tick at once; without this compare-and-swap one waiting job
         could be spawned twice, and "run again" then means two workers on one run (S8).
+        `cores` is what the queue gives the job (written in the same swap): its share of the
+        queue's cores for as long as it runs.
         """
         with _status_lock(self.results_dir):
             doc = type(self).read(self.results_dir).doc
             if doc.get("state") != WAITING:
                 return False
-            doc.update(state=RUNNING, started=now_iso(), heartbeat=now_iso())
+            doc.update(state=RUNNING, started=now_iso(), heartbeat=now_iso(), cores=max(1, int(cores)))
             self.doc = doc
             atomic_write(self.results_dir / STATUS_JSON, pretty_json(doc))
             return True
@@ -402,6 +417,17 @@ class JobRecord:
     def plan_year(self) -> Optional[int]:
         value = self.doc.get("plan_year")
         return int(value) if value is not None else None
+
+    @property
+    def cores(self) -> int:
+        """The cores the queue gave this job at dispatch; 1 for a record without the field
+        (a job dispatched before the queue counted cores) and for one that still waits."""
+        return _whole(self.doc.get("cores"), 1, low=1)
+
+    @property
+    def cores_wanted(self) -> int:
+        """The solves the job runs at once when it can (0: as many as the queue has)."""
+        return _whole(self.doc.get("cores_wanted"), 1, low=0)
 
     # -- worker side ---------------------------------------------------
 
@@ -505,6 +531,7 @@ class JobRecord:
                 "state": WAITING,
                 "token": secrets.token_hex(16),
                 "cancel": False,
+                "cores": None,  # the next dispatch gives its own
                 "started": None,
                 "finished": None,
                 "pid": None,

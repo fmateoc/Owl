@@ -8,6 +8,11 @@ for; design section 8.3), builds the plan from the run's frozen files (`inputs/C
 `HFP.xlsx`, the `owlcli run` route), solves it with the job's preset options, and writes the
 results folder's artifacts and `record.json`.
 
+Cores (performance review, 2026-11-11): the queue gives the job a share of its cores at
+dispatch (`cores` in `status.json`, `JobManager.tick`). The two claiming-age presets score
+many plans; with more than one core they score them side by side in that many processes
+(`_ProcessPool`). Every other job is one solve and ignores the number.
+
 Cancellation (S8, S9): every step, every heartbeat (30 s) and (throttled) every log line,
 the worker re-reads its own `status.json`. It stops when the record carries a cancel flag,
 a state other than running, or a different token -- so a worker that wakes after the machine
@@ -66,13 +71,94 @@ def _load_work_sweep():
     return work_sweep
 
 
+def _follow_parent():
+    """A pool process ends when the worker that started it does (its initializer).
+
+    A forced cancel kills the worker's process alone (`procs.kill_process`, against its start
+    token); without this its pool would go on solving, each process to the end of its plan,
+    on cores the queue already counts as free. A thread waits on the parent's handle (the
+    solver releases the interpreter lock while it runs) and exits the process when it fires.
+    """
+    import multiprocessing
+
+    parent = multiprocessing.parent_process()
+    if parent is None:
+        return
+
+    def watch():
+        parent.join()
+        os._exit(1)
+
+    threading.Thread(target=watch, daemon=True, name="owl-follow-parent").start()
+
+
+class _ProcessPool:
+    """`pool.map` on the cores the queue gave the job: one process a core (spawned).
+
+    The interface of `_SerialPool` below, for `work_sweep.run_variant` and
+    `agesearch.two_stage_ages`: `map(fn, items)` returns the results in the items' order, so
+    what is decided from them is what the serial pool decides. `fn` and the items cross a
+    process boundary (`work_sweep.score` and `agesearch.score_trial` are module-level
+    functions over plain data). Spawned, never forked: a forked child of a process that has
+    already solved spins in its first MIP (CLAUDE.md, "Fork after HiGHS hangs"), and the
+    age search's first stage solves in this process before the pool is used.
+
+    `check` (the worker's cancellation hook) runs while the pool works, every
+    `CHECK_SECONDS`. When it raises, or a plan does, `close` ends the processes at once: the
+    serial pool can only stop between two plans.
+    """
+
+    def __init__(self, cores, check=None):
+        self.cores = max(1, int(cores))
+        self._check = check
+        self._executor = None
+
+    def _pool(self):
+        if self._executor is None:
+            import multiprocessing
+            from concurrent.futures import ProcessPoolExecutor
+
+            self._executor = ProcessPoolExecutor(
+                max_workers=self.cores, mp_context=multiprocessing.get_context("spawn"),
+                initializer=_follow_parent)
+        return self._executor
+
+    def map(self, fn, items):
+        from concurrent.futures import wait
+
+        if self._check is not None:
+            self._check()
+        try:
+            futures = [self._pool().submit(fn, item) for item in items]
+            pending = set(futures)
+            while pending:
+                _, pending = wait(pending, timeout=CHECK_SECONDS)
+                if pending and self._check is not None:
+                    self._check()
+            return [future.result() for future in futures]
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self):
+        """End the pool's processes now, whatever they are solving."""
+        executor, self._executor = self._executor, None
+        if executor is None:
+            return
+        stop = getattr(executor, "terminate_workers", None)  # Python 3.14
+        if stop is not None:
+            stop()
+            return
+        for process in list((getattr(executor, "_processes", None) or {}).values()):
+            process.terminate()
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 class _SerialPool:
     """`work_sweep`'s pool interface (`pool.map`), run in this process.
 
-    The CLI's default is `--jobs 1`, which is serial too. (`score` is picklable across
-    processes now that the sweep lives in `owlplanner.work_sweep`, so a pool would work;
-    the worker keeps the sweep serial -- one job at a time, and the plans inside it are
-    the expensive part.) `check` (the worker's cancellation hook) runs before every item:
+    What a job with one core uses (the CLI's default, `--jobs 1`, is serial too); with more,
+    `_ProcessPool`. `check` (the worker's cancellation hook) runs before every item:
     the sweep logs once per person pass, and a pass of nine ages at up to `TIME_LIMIT`
     (900 s) each kept a cooperative cancel waiting up to two hours (review AG11).
     """
@@ -87,6 +173,9 @@ class _SerialPool:
                 self._check()
             out.append(fn(item))
         return out
+
+    def close(self):
+        pass
 
 
 _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
@@ -209,6 +298,7 @@ class Worker:
         self.run_dir = self.results_dir.parent.parent
         self.job = R.JobRecord.read(self.results_dir)
         self.tee = None
+        self.pool = None  # the claiming-age presets' pool, on the cores the queue gave
         self._beat_stop = threading.Event()
         self._beat_thread = None
 
@@ -264,11 +354,21 @@ class Worker:
         else:
             self.job.finish(state, token=self.token)
         finally:
+            if self.pool is not None:
+                self.pool.close()
             self._beat_stop.set()
             if self._beat_thread is not None:
                 self._beat_thread.join(timeout=5.0)
             self.tee.close()
         return state
+
+    def _pool(self):
+        """The pool the claiming-age presets score their plans on: one process for each core
+        the queue gave this job (`cores` in its record), this process alone with one."""
+        if self.pool is None:
+            cores = self.job.cores  # as `claim` read it: the dispatcher wrote it before this process
+            self.pool = _ProcessPool(cores, self.check) if cores > 1 else _SerialPool(self.check)
+        return self.pool
 
     def _solve(self):
         from owlplanner.cli.formatters import plan_to_dict
@@ -315,8 +415,10 @@ class Worker:
                     self.job.touch(self.token, step="the claiming-age sweep (every whole-year pair)")
                     ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname)
                 else:
-                    ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check,
-                                                      effort=LOCAL_SEARCH_EFFORT)
+                    pool = self._pool()
+                    ages, candidates = two_stage_ages(
+                        diconf, dirname, log=self.tee, check=self.check, effort=LOCAL_SEARCH_EFFORT,
+                        pool=pool if isinstance(pool, _ProcessPool) else None)
             finally:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
@@ -489,7 +591,9 @@ class Worker:
         they come back as years for `fixed_ages`, and the row itself is `scores.json` (the
         claiming-age map reads it, I7). Runs a while (29-51 min per variant on the chris+pat
         dry run); the cancel checks run at every sweep message. The last item is what the final
-        solve needs to re-solve the decided cell the way it was scored (review AH1).
+        solve needs to re-solve the decided cell the way it was scored (review AH1). The plans
+        of a pass are scored side by side when the queue gave the job more than one core
+        (`_pool`): each cell is an independent solve, so the scores are the serial ones.
         """
         import types
 
@@ -505,7 +609,7 @@ class Worker:
             self.tee.write(str(message) + "\n")
             self.check()
 
-        row = ws.run_variant("base", diconf, dirname, args, _SerialPool(self.check), log)
+        row = ws.run_variant("base", diconf, dirname, args, self._pool(), log)
         scores = {k: v for k, v in row.items() if k != "_cache"}
         chosen = [m / 12.0 for m in row.get("best") or []]
         amap = parse_scores([scores])[0]

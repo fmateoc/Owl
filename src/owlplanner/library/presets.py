@@ -161,6 +161,25 @@ _FORCED = {
 }
 
 
+# How many solves a job of each preset runs at once when the queue has the cores (the
+# queue counts them, `JobManager.tick`; the worker sizes its pool by what it was given).
+# Every other preset is one solve: about one core (1.1 measured on a Careful solve).
+# 0 means "as many as the queue has".
+# - ``ages``: stage 2 scores the pick and each searched person's two neighbours, five solves
+#   for a couple; stage 1's thread pool runs inside the same share.
+# - ``ages_thorough``: 81 whole-year pairs for a couple, each a branch-and-bound solve.
+# - ``regret``: upstream's sweep solves its scenarios on a thread pool of every core, of which
+#   the Python share holds the interpreter lock: 1.6 cores' worth measured on four threads
+#   (`fork-notes/performance-review.md`, section 3b), counted as 2.
+CORES_WANTED = {"ages": 5, "ages_thorough": 0, "regret": 2}
+
+
+def cores_wanted(preset: str) -> int:
+    """The solves a job of `preset` runs at once when it can (0: as many as the queue has)."""
+    _check(preset)
+    return CORES_WANTED.get(preset, 1)
+
+
 def _check(preset: str) -> None:
     if preset not in _FORCED:
         raise ValueError(f"unknown preset {preset!r}: this build runs {SOLVE_PRESETS}")

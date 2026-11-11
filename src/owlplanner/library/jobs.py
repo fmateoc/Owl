@@ -4,7 +4,20 @@ A job is one solve of one run in a fresh interpreter. The job record (`status.js
 in the run's results folder from the moment the job is queued, so a closed tab, a server
 restart or a still-waiting queue never loses one: this manager adopts live workers (a live
 PID with a heartbeat under two minutes old), marks dead ones interrupted with "run again",
-and dispatches waiting jobs up to `max_parallel` (default 1).
+and dispatches waiting jobs, first come first served, while they fit the cores the queue
+may use (`cores`, default 1: one job at a time).
+
+Cores (performance review, 2026-11-11). A job is not always one solve: the claiming-age
+presets score several plans, and can score them side by side. So each job states how many
+solves it runs at once when it can (`cores_wanted` in its record, from
+`presets.cores_wanted`), the queue gives it that or all it has, whichever is less, when it
+dispatches it (`cores` in the record), and counts what the running jobs were given against
+its own cores. The worker sizes its pool by its record. The count lives in the records, so it
+survives a server restart with the jobs it counts, and the processes of a library's jobs stay
+within the queue's cores by construction: six solves on four cores cost 17-18% more CPU on
+the synthetic household. A job that does not fit waits, and so does everything queued after
+it (nothing jumps the queue): with the cores free a waiting job always fits, so none waits
+longer than the running jobs take.
 
 Workers are started detached in their own session (`start_new_session` / DETACHED_PROCESS)
 so they survive the server; cancellation is the per-job token first (the worker checks it
@@ -15,6 +28,7 @@ against the recorded process start token, S9). One manager per server process: h
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -25,11 +39,32 @@ from typing import List
 
 from . import results as R
 from .casefiles import check_plan_year
-from .presets import SOLVE_PRESETS, preset_options
+from .presets import SOLVE_PRESETS, cores_wanted, preset_options
 from .procs import kill_process, pid_alive, process_start_token
 from .store import Library, RunInfo
 
 RESULTS_DIR = "results"
+
+# The interface's setting for the queue's cores: a whole number in this environment variable.
+CORES_ENV = "OWL_LIBRARY_CORES"
+
+
+def default_cores() -> int:
+    """The cores the interface's queue uses: `OWL_LIBRARY_CORES`, else half the computer's.
+
+    `os.cpu_count()` counts logical cores, and two solves on the two threads of one physical
+    core are not two cores' worth; half of it is the physical count on most desktop
+    processors, and leaves the browser and the server room on the others. Not measured on any
+    computer but the four-core container the review ran in: set the variable after timing a
+    batch (four solves at once cost 5% of wall each there; six cost 17-18% of CPU).
+    """
+    raw = os.environ.get(CORES_ENV, "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass  # an unreadable setting is no setting
+    return max(1, (os.cpu_count() or 2) // 2)
 
 
 def _queued_order(job: R.JobRecord):
@@ -62,10 +97,10 @@ class JobsError(RuntimeError):
 class JobManager:
     """The queue of solves over one library folder."""
 
-    def __init__(self, library: Library, *, max_parallel: int = 1,
+    def __init__(self, library: Library, *, cores: int = 1,
                  heartbeat_max_age: float = R.HEARTBEAT_MAX_AGE, worker_argv=None):
         self.library = library
-        self.max_parallel = max(1, int(max_parallel))
+        self.cores = max(1, int(cores))  # what the running jobs may use together
         self.heartbeat_max_age = float(heartbeat_max_age)
         self.worker_argv = worker_argv  # tests substitute their own command
         self._tick_lock = threading.Lock()  # Queue fragments tick concurrently (R5 is one manager)
@@ -137,6 +172,7 @@ class JobManager:
             preset=preset,
             options=overrides,
             plan_year=plan_year,
+            cores_wanted=cores_wanted(preset),
         )
         self.tick()
         return job
@@ -146,20 +182,29 @@ class JobManager:
     def tick(self) -> List[R.JobRecord]:
         """Adopt what runs, interrupt what died, dispatch what waits. Returns dispatched."""
         with self._tick_lock:
-            self.adopt()
+            jobs = self.jobs()  # one scan of the library a tick (it was three)
+            self.adopt(jobs)  # a job it interrupts reads so in this list: `finish` updates it
+            used = sum(job.cores for job in jobs if job.state == R.RUNNING)
             dispatched = []
-            running = sum(1 for j in self.jobs() if j.state == R.RUNNING)
-            waiting = sorted((j for j in self.jobs() if j.state == R.WAITING), key=_queued_order)
-            for job in waiting:
-                if running + len(dispatched) >= self.max_parallel:
-                    break
+            for job in jobs:  # in queue order (`_queued_order`)
+                if job.state != R.WAITING:
+                    continue
+                share = self.share(job)
+                if used + share > self.cores:
+                    break  # first come, first served: nothing jumps a job waiting for room
                 if self._spawn(job):  # one dispatcher takes a waiting job (F1)
                     dispatched.append(job)
+                    used += share
             return dispatched
 
-    def adopt(self) -> None:
+    def share(self, job: R.JobRecord) -> int:
+        """The cores a job gets at dispatch: what it wants, or all the queue has if that is less."""
+        wanted = job.cores_wanted
+        return self.cores if wanted == 0 else max(1, min(wanted, self.cores))
+
+    def adopt(self, jobs=None) -> None:
         """Start-up rule (S8): live, ours and fresh is adopted; a dead or silent one is interrupted."""
-        for job in self.jobs():
+        for job in (self.jobs() if jobs is None else jobs):
             if job.state != R.RUNNING:
                 continue
             pid = job.doc.get("pid")
@@ -177,8 +222,9 @@ class JobManager:
                 job.finish(R.INTERRUPTED, error="the worker's heartbeat stopped")
 
     def _spawn(self, job: R.JobRecord) -> bool:
-        """Start one worker for a waiting job; False when another dispatcher took it (F1)."""
-        if not job.take_for_dispatch():
+        """Start one worker for a waiting job, with its share of the cores in its record;
+        False when another dispatcher took it (F1)."""
+        if not job.take_for_dispatch(self.share(job)):
             return False
         argv = self.worker_argv or [
             sys.executable, "-m", "owlplanner.library.worker", str(job.results_dir), job.token,
@@ -287,7 +333,7 @@ class JobManager:
 
         A waiting or running job lives in the run's own folder: moving it took the job out of
         the queue (the manager scans `runs/` only) while its worker kept solving, uncounted by
-        `max_parallel` and with nothing left on the Queue page to cancel; the trashed record
+        the queue's cores and with nothing left on the Queue page to cancel; the trashed record
         then said "running" forever (step-3 review 3, W4). The check and the move happen under
         the tick lock, so the ticker cannot dispatch a waiting job in between.
         """

@@ -8628,3 +8628,6 @@ whether it is still worth doing. Details: `fork-notes/performance-review.md`, se
 - **Upstream's suite** with the variant: 3319 passed / 1 skipped (6:54, `-n 4`; stock's tests and the two new).
 
 Next: the user's call on whether to file, and with which patch.
+
+`main` fast-forwarded to this branch the same day (the user's call), from `b4f1a11`: P9, P6's pages,
+P8 measured, the P2 issue draft with both patches.

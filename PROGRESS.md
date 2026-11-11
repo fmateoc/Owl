@@ -8446,3 +8446,25 @@ items, no timings) and asked for its claims to be checked one by one and for
 
 Next: the user's call on which of P1-P10 and 3b to build, and on upstream issues for P2, P10
 and 3b.
+
+## Performance review: the budget and the cores (2026-11-11, same branch)
+
+The user's two questions on P3 and P1. Docs and one script; nothing in `src/` changed.
+
+- **Measured** (`fork-notes/performance/lifted_budget.sh`; the review's "P3, measured on
+  2026-11-11"): the two variants whose search keeps moving, both wall-clock caps lifted
+  (`localSearchTime = 7200`, `localSearchStepTime = 1800`), six solves at once on four cores.
+  whiteplains_2029_mortgage: 495 / 443 / 365 CPU-s at 3,000 nodes, 1,000 nodes, 1,000 with the P2
+  prototype, 105,853.35 in all three. whiteplains_2038_cash: 804 / 572 / 483 CPU-s, 105,260.34
+  at 3,000 and 105,259.28 at 1,000. The 3,000-node values are those of 2026-11-10 to the cent.
+- **Found:** the step cap binds as well (an 81 s step at 3,000 nodes under this load;
+  `STEP_TIME` is 60 s), so lifting the total alone is not enough; and six solves on four cores
+  cost +17% to +18% of CPU on the same two solves (418 -> 495, 688 -> 804), not only wall.
+- **Recommended, not built:** `presets._FORCED["decision"]` with 1,000 nodes and both caps
+  lifted, the same for `ages` where the case's model is local search (its stage 2 picks by the
+  raw score), and a mark in `record.json` when the round-level cut is logged. For the cores: a
+  weight per job in `status.json`, counted by `JobManager.tick()` against a capacity, the worker
+  sizing its pool from its own record.
+
+Next: the user's call on both, on the `ages` preset gaining forced keys (R4), and on the
+capacity default.

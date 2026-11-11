@@ -182,6 +182,102 @@ Two fork-side choices follow, both in `presets.py`, neither built:
 A looser step gap does nothing: `STEP_GAP` 1e-3 instead of 1e-4 gave the same plan in the same
 time (378 vs 381 s CPU), because the capped steps end at gaps near 0.7%.
 
+### P3, measured on 2026-11-11: the caps lifted at 1,000 nodes, and what follows for P1
+
+The user's two questions: lift the 300 s budget in the `decision` preset or keep it and mark a
+result it cut; and how the queue's parallel jobs (P1) and the pools inside a worker (P4b, P5)
+share the cores.
+
+Measured (`lifted_budget.sh`): the two variants whose search keeps moving, both wall-clock caps
+lifted as `work_sweep.py` does (`localSearchTime = 7200`, `localSearchStepTime = 1800`), all six
+solves at once on the four cores.
+
+| Variant | Nodes | P2 | CPU | Wall | First-year discretionary | Longest steps |
+|---|---|---|---|---|---|---|
+| whiteplains_2029_mortgage | 3,000 | | 495 s | 711 s | 105,853.35 | 57, 53, 47 s |
+| whiteplains_2029_mortgage | 1,000 | | 443 s | 641 s | 105,853.35 | 30, 28, 27 s |
+| whiteplains_2029_mortgage | 1,000 | yes | 365 s | 542 s | 105,853.35 | 29, 28, 27 s |
+| whiteplains_2038_cash | 3,000 | | 804 s | 1,002 s | 105,260.34 | 81, 54, 53 s |
+| whiteplains_2038_cash | 1,000 | | 572 s | 762 s | 105,259.28 | 47, 31, 31 s |
+| whiteplains_2038_cash | 1,000 | yes | 483 s | 674 s | 105,259.28 | 48, 32, 31 s |
+
+What this shows:
+
+- **Lifted, the result does not depend on the load or the day.** The 3,000-node rows are the
+  values of 2026-11-10 to the cent (105,853.35 and 105,260.34), measured then at another
+  load (418 and 688 CPU-seconds) and now six at a time on four cores, a day later.
+- **The step cap binds too.** `STEP_TIME = 60` s ("a backstop; the node limit below is the real
+  cap", `localsearch.py:84`) would have cut the 81 s step, which ran to its 3,000 nodes here only
+  because the step cap was lifted as well. So lifting `localSearchTime` alone leaves a second
+  wall-clock dependence at 3,000 nodes under load; at 1,000 nodes the longest step was 48 s.
+- **Six solves on four cores cost CPU, not only wall.** The same two 3,000-node solves took 418
+  and 688 CPU-seconds on 2026-11-10 and 495 and 804 here: +17% to +18%. P1 measured +5% of wall
+  for four solves on four cores. Past the core count the work itself grows.
+- **Cost of the fork-only setting** (1,000 nodes, both caps lifted, no P2) against today's
+  preset (3,000 nodes, 300 s budget; 318 CPU-seconds on both variants on 2026-11-10, cut by the
+  budget): 443 and 572 CPU-seconds here, which at the load of 2026-11-10 would be about 375 and
+  485 (scaled by 418/495 and 688/804; an estimate, not a run), so about +18% and +53%. On the two
+  settling variants measured on 2026-11-10 the same node cap gave -37% (382 -> 240 and 349 -> 219 s)
+  with the identical plan. The other two settling variants were not run at 1,000 nodes without P2.
+- **Result of the fork-only setting** against the 3,000-node lifted reference: the identical
+  plan on three of the four variants measured, \$1.06/yr less on whiteplains_2038_cash
+  (105,259.28 against 105,260.34). The library reads local-search results with a 1% band, about
+  \$1,050 here.
+
+**Recommendation on the budget: lift both caps, with the 1,000-node cap, and mark a cut as well.**
+Not one or the other:
+
+1. The dollars do not matter (every difference seen is under \$3/yr against a \$1,050 band); what
+   the budget costs is repeatability. Once P1 runs jobs side by side, load is the normal state
+   (4 of 6 solves hit the budget at four at a time), and the same run solved twice on one day can
+   show two numbers. The library's own checks compare to the dollar, and the what-if reuses "a
+   Careful result from today" as *the* result.
+2. `ages` picks by the raw score (`agesearch.py:164`, `max(good, key=...)`, no tolerance) among
+   three to five local-search solves. Run on a pool (P4b) they load one another, so a
+   budget-cut candidate can lose by a dollar or two to a neighbour. `_FORCED["ages"]` is empty
+   (R4: the case's own model), so the lift has to reach that preset too, wherever the case's
+   model is local search. A decision for the user: it adds two keys to a preset that forces
+   nothing today.
+3. With the result independent of load, running more processes than cores costs time only (the
+   third bullet above), never the answer. That is what makes the core-sharing question below a
+   matter of throughput.
+4. The mark is still needed because a lifted cap is a larger cap. The round-level cut has a log
+   line the worker already receives ("Local search: time budget spent", `localsearch.py:363`;
+   the worker tees every log line), so `record.json` can carry it without touching upstream's
+   file; a test would have to pin the wording. For a step ended by its time cap no marker was
+   found (`grep -i "time limit\|kTimeLimit\|time_limit"` in `plan.py`, `localsearch.py`,
+   `export.py` finds the option being set, nothing that reports it).
+
+Where: `presets._FORCED["decision"]` gains `localSearchStepNodes`, `localSearchTime` and
+`localSearchStepTime` (all three are existing solver options, `plan.py:6825`); nothing upstream
+changes. Not built.
+
+**Recommendation on the cores: the queue counts cores, the worker is told its share.** Each job
+carries a weight in its `status.json`, the number of solves it will run at once (1 for a single
+solve; for `ages` and `ages_thorough` the pool size it wants, at most the capacity).
+`JobManager.tick()` dispatches the first waiting job while the weights of the running jobs plus
+its own fit the capacity, and stops at the first that does not fit (first come first served, as
+today). The worker reads its weight from its own record and sizes its pool by it.
+
+- The manager is the only place that sees every job, the record is on disk, and dispatch is
+  already a compare-and-swap under the job's lock, so the count survives a restart and adoption
+  (S8) with no new race. A worker that sizes its pool from the slots it finds free at its start
+  decides once, from a state that changes for the hours an `ages_thorough` sweep runs.
+- It bounds the processes at the core count by construction, which the +17% above says is
+  worth doing.
+- It costs no throughput. With a full queue an inner pool adds nothing (the same solves, the
+  same cores); it matters for a lone heavy job, and a lone job is dispatched with the whole
+  capacity.
+- Its cost: a heavy job at the head of the queue waits for the running jobs to end while cores
+  go idle, at most one Careful solve's time (5-17 minutes here).
+- P1 needs the weight even without P4b and P5 (read in the code, not measured in this
+  combination): `_ssAgeSearch` already starts `os.cpu_count()` threads (`plan.py:7150`, stage 1
+  of `ages`) and the regret sweep the same (`stresstests.py:845`), so an `ages` or `regret` job
+  is more than one core's worth today. Section 3b measured such a thread pool at 1.6x.
+- Not measured: the right capacity. `os.cpu_count()` counts logical cores; this container has
+  four with no stated hyper-threading, and a laptop's eight logical cores are not eight solves'
+  worth. A setting, with one four-variant batch timed on the machine that will run it.
+
 ### P4. *Let Owl choose the claiming ages* (`ages`)
 
 Read in the code, not timed (a run is 20-35 min here).

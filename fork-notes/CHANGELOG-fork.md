@@ -7,13 +7,34 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: the claiming-age search publishes its winning candidate's plan (2026-11-11)
+
+Performance review P4a (`fork-notes/performance-review.md`, section 6b).
+
+- *Let Owl choose the claiming ages* (`ages`) no longer solves the plan again at the chosen
+  ages: it publishes the winning stage-2 candidate's own plan (`two_stage_ages(keep=True)`,
+  `agesearch.Winner`; a candidate solved on the pool comes back pickled). One solve of four to
+  six fewer.
+- Every candidate solves with the options the published solve uses
+  (`agesearch.candidate_options`, which `presets.resolve_options("ages", ...)` calls); options
+  given for the one job now reach stage 2 too.
+- The winner's log is read as the published solve's (`_LogTee.adopt`); `record.json`'s
+  `age_search` has `stage_2_plan: true`.
+- *Claiming ages, every pair tried* still solves its decided cell again.
+
+### Run library: the queue's default is 4 cores (2026-11-11)
+
+`jobs.default_cores`: 4, or half of the computer's logical cores when that is fewer, unless
+`OWL_LIBRARY_CORES` is set (the user's call; it was half of the logical cores, uncapped).
+
 ### Run library: solves run side by side, and the queue counts cores (2026-11-11)
 
 Performance review P1, P4b, P5 (`fork-notes/performance-review.md`).
 
 - The queue has a number of cores (`JobManager(cores=...)`; it was one job at a time). The
-  interface uses half of the computer's logical cores, or `OWL_LIBRARY_CORES` when set
-  (`jobs.default_cores`); the Queue page says how many solves run at once.
+  interface uses half of the computer's logical cores (capped at 4 later the same day, above),
+  or `OWL_LIBRARY_CORES` when set (`jobs.default_cores`); the Queue page says how many solves
+  run at once.
 - Each job states how many solves it runs at once when it can (`cores_wanted` in `status.json`,
   `presets.CORES_WANTED`), is given that or all the queue has at dispatch (`cores`), and is
   counted for it while it runs. First come, first served: a job that does not fit waits, and

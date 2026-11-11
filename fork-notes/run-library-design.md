@@ -356,6 +356,12 @@ case does not state, in stage 2 and in the final solve: stage 2 picks by the raw
 solve, and while a preset scored other solves), and the Run page lists it among the result's
 problems.)*
 
+*(Amended later on 2026-11-11, performance review P4a: "Ages" publishes the winning stage-2
+candidate's own plan instead of solving it again at the chosen ages. Every candidate solves
+with the options the published solve uses (`agesearch.candidate_options`: the case's own, the
+job's options on top, the effort above where local search is the method), and `record.json`'s
+`age_search` says so (`stage_2_plan`). "Ages, thorough" still solves its decided cell again.)*
+
 The preset is part of the scenario, so it is in the inputs hash and in the change summary.
 Every preset except the two Ages presets fixes the claiming ages (R4). The template's
 `withSSAges = "optimize"` with `withMedicare = "optimize"` would make every age candidate a

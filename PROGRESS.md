@@ -8502,3 +8502,33 @@ The user's call: "build both as recommended, one commit each". Details and what 
 
 Next: the user's call on the default for the cores after a batch on the machine that will run
 it, on P4a (the repeated final solve) and on an upstream issue for P2.
+
+## Performance review: the default and P4a built (2026-11-11, same branch)
+
+The user's two calls: "we should default to 4 but no more than half the computer's logical
+cores. Drop the repeated final solve of the age search." Details: `fork-notes/performance-review.md`,
+section 6b; `fork-notes/CHANGELOG-fork.md`.
+
+- **`9063580`, the default.** `jobs.default_cores`: `OWL_LIBRARY_CORES` when set (any number),
+  else `min(4, os.cpu_count() // 2)`, at least 1. The Queue page's tooltip, the launchers and
+  `running-locally.md` say so.
+- **`cfd26e1`, P4a for `ages`.** The worker publishes the winning stage-2 candidate's own plan
+  (`two_stage_ages(keep=True)` -> `agesearch.Winner`; on the pool a solved candidate comes back
+  pickled, 213 KB for Case_bill, 409 KB for the synthetic condo case). Every candidate solves
+  with `agesearch.candidate_options` (case, then the job's options, then the effort), which
+  `presets.resolve_options("ages", ...)` now calls: the job's options did not reach stage 2
+  before (the interface queues `ages` with none). `_LogTee.adopt` reads the winner's log as the
+  published solve's; `record.json` `age_search.stage_2_plan`. *Claiming ages, every pair tried*
+  still solves its decided cell again; `run_suite.py` still re-solves (its `nominal_gamma`).
+- **Checked.** Case_bill searched, through real workers on one core and on two: `plan.json`,
+  summary and options identical to the base commit's (`b07e2e7`) but for the engine's commit
+  stamp; 4 plans built in solve.log instead of 5. `check_library_cores.py` 7/7 (its third check
+  rewritten: `stage_2_plan`, the published score is the candidate's, one plan built for stage 1
+  and one per candidate): 70/70 at 109,150.60 again, 5 plans for 4 candidates, no clock cut,
+  the age job 1,300 s (1,189 s at `945c21f`; see the timing below).
+- **Timing** (`fork-notes/performance/ages_timing.py` and `ages_timing_parse.py`, one `ages` job of yonkers_2027_mortgage on a four-core queue, the base commit `b07e2e7` then `cfd26e1`, one after the other, nothing else running): base 1,467 s = stage 1 89 s + stage 2 1,163 s + the repeated 70/70 solve 214 s; new 1,255 s = stage 1 99 s + stage 2 1,155 s. The same four scores to the cent, the same pick, the 61 summary keys and the options identical. Stage 2 lasts as long as its slowest candidate (69/69y8m: 1,162 s and 1,154 s; the winner 70/70 took 242-252 s beside the others), so the saving is the winner's own solve alone. One pair of runs; the same job took 1,189 s at `945c21f` and 1,300 s in the check above, so that candidate's time varies by minutes from run to run.
+- Tests (Linux, `-n 4`): 4888 passed / 1 skipped at `cfd26e1` (9:43). With the worker solving
+  again and `candidate_options` dropping the job's options, 5 of the new tests fail.
+
+Next: the user's call on the same change for *Claiming ages, every pair tried*, and on an
+upstream issue for P2.

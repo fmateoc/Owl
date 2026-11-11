@@ -7,7 +7,9 @@ P8 are as written on 2026-11-10.
 
 **Built on 2026-11-11** (the user's call: "build both as recommended, one commit each"; section
 6): P3's budget (`668a730`) and the cores, which are P1, P4b and P5 with the tick of P6
-(`945c21f`). Not built: P2 (upstream's code), P4a, P6's pages, P7-P10, section 3b.
+(`945c21f`). Later the same day (the user's call, section 6b): the queue's default of 4 cores,
+no more than half the logical ones (`9063580`), and P4a (`cfd26e1`). Not built: P2 (upstream's
+code), P6's pages, P7-P10, section 3b; the same repeat in *Claiming ages, every pair tried*.
 
 The user's request: "review the project from a performance improvement perspective. Look for any
 significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
@@ -286,7 +288,8 @@ today). The worker reads its weight from its own record and sizes its pool by it
 
 Read in the code, not timed (a run is 20-35 min here).
 
-- **P4a, a repeated solve.** `agesearch.two_stage_ages` scores the pick and each searched
+- **P4a, a repeated solve** (built later on 2026-11-11, section 6b, for `ages` only).
+  `agesearch.two_stage_ages` scores the pick and each searched
   person's pick +-1 year with a full solve under the case's own model (local search for the
   template's options), and returns the ages and scores only. `Worker._solve` then builds the
   plan again at the chosen ages and solves it (`worker.py:317-332`). With no job overrides the options are the same ones
@@ -536,6 +539,65 @@ was.
   plans (its pool is tested with the sweep stubbed); the default on any machine but this one;
   Windows (`_follow_parent` waits on the parent's handle there, by the documentation).
 - P4a stands: the final solve of `ages` repeats the winning candidate (109,150.60 twice above).
+  (Built later the same day, section 6b.)
+
+## 6b. Built later on 2026-11-11: the default and P4a
+
+The user's two calls: "we should default to 4 but no more than half the computer's logical
+cores. Drop the repeated final solve of the age search." Two commits, each with its tests.
+
+**The default (`9063580`).** `jobs.default_cores`: `OWL_LIBRARY_CORES` when set (any number,
+above 4 too), else `min(4, os.cpu_count() // 2)`, at least 1 (a computer that does not say
+counts as 2 logical cores, as before). 8 logical cores give 4, as before; 16 or 32 give 4
+where they gave 8 or 16; 6 give 3. Not measured on any computer: the cap is the user's
+choice, the half is section 6's reasoning.
+
+**P4a (`cfd26e1`), for `ages`.** The worker publishes the winning stage-2 candidate's plan.
+For that plan to be the one the old final solve gave, every candidate now solves with the
+options the published solve uses: `agesearch.candidate_options` (the case's own, the job's
+overrides on top, the library's effort where local search is the method), which
+`presets.resolve_options("ages", ...)` now calls. Stage 2 did not take the job's overrides
+before; the interface queues `ages` with none, so nothing it queues changes.
+
+- `two_stage_ages(keep=True)` returns `agesearch.Winner` (plan, log, options). In a row it
+  keeps the best plan so far and drops the others; on the pool each solved candidate comes
+  back pickled (`score_trial`; 213 KB for Case_bill, 409 KB for the synthetic condo case,
+  measured) and only the winner's is loaded. One rule (`_winner`, the first of equal scores)
+  picks the ages and the plan.
+- The worker writes one line saying the plan is the candidate's own, reads the winner's log
+  (already in solve.log, written while the tee was quiet) as the published solve's
+  (`_LogTee.adopt`: warnings, loop iterations, the clock's cuts), and records
+  `age_search.stage_2_plan = true`.
+- Checked: Case_bill with its ages searched, through real workers, on one core (in a row)
+  and on two (the spawned pool): the same `plan.json`, summary and options as the base
+  commit `b07e2e7` gives, the engine's commit stamp aside, with four plans built in solve.log
+  instead of five. Tests: the kept plan equals a fresh solve at the chosen ages under
+  `resolve_options("ages")` (`plan_to_dict` and `plan_metrics`), in a row and through a
+  pickle round trip; the worker calls `Plan.solve` for nothing after the search. With the
+  worker solving again and `candidate_options` dropping the job's options, 5 tests fail.
+- Checked on the synthetic household: `check_library_cores.py` 7/7, its third check rewritten
+  (`stage_2_plan`; the published score is the candidate's, 109,150.60 at 70/70 again; 5 plans
+  built for 4 candidates: stage 1 and one each, none after; no clock cut).
+- Timed (`fork-notes/performance/ages_timing.py`, `ages_timing_parse.py`): one `ages` job of
+  yonkers_2027_mortgage on a four-core queue, at `b07e2e7` then at `cfd26e1`, one after the
+  other with nothing else running.
+
+  | | stage 1 | stage 2 | repeated solve | job |
+  |---|---|---|---|---|
+  | `b07e2e7` | 89 s | 1,163 s | 214 s | 1,467 s |
+  | `cfd26e1` | 99 s | 1,155 s | none | 1,255 s |
+
+  The same four scores to the cent and the same pick (70/70); the 61 summary keys, the
+  options, the iterations and the warnings identical. Stage 2 lasts as long as its slowest
+  candidate (69/69y8m: 1,162 s and 1,154 s; the winner took 242-252 s beside the others), so
+  on a pool the saving is the winner's own solve alone, 214 s here (14%); in a row it is the
+  same one solve. One pair of runs: the same job took 1,189 s at `945c21f` (section 6) and
+  1,300 s in the check above, so the slowest candidate's time varies by minutes between runs.
+- Not done: *Claiming ages, every pair tried* still re-solves its decided cell (its 81
+  candidates are scored in `work_sweep.score`, which returns rows, not plans; keeping the
+  best plan there means pickling each to a file in the pool's processes, or changing
+  `work_sweep`, which the CLI shares). `run_suite.py` still re-solves at the chosen ages
+  (its final solve can rescale the rates first, `nominal_gamma`).
 
 ## 7. Files
 
@@ -548,3 +610,5 @@ was.
 - `fork-notes/performance/audit/`: the 2026-11-11 scripts (its `README.md`).
 - `fork-notes/performance/lifted_budget.sh`: the two non-settling variants with the caps lifted.
 - `fork-notes/synthetic/check_library_cores.py`: the cores' check (section 6).
+- `fork-notes/performance/ages_timing.py`, `ages_timing_parse.py`: one timed `ages` job, split by
+  plan built (section 6b).

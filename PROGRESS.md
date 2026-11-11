@@ -8468,3 +8468,37 @@ The user's two questions on P3 and P1. Docs and one script; nothing in `src/` ch
 
 Next: the user's call on both, on the `ages` preset gaining forced keys (R4), and on the
 capacity default.
+
+## Performance review: the budget and the cores built (2026-11-11, same branch)
+
+The user's call: "build both as recommended, one commit each". Details and what was checked:
+`fork-notes/performance-review.md`, section 6; `fork-notes/CHANGELOG-fork.md`.
+
+- **`668a730`, the search budget.** `presets.LOCAL_SEARCH_EFFORT` (1,000 nodes a step,
+  `localSearchTime` 7,200 s, `localSearchStepTime` 1,800 s): *Careful* sets it over the case's
+  settings and under the job's own options; *Let Owl choose the claiming ages* forces nothing
+  still and fills in what the case does not state, where its model is local search, for stage
+  2 (`two_stage_ages(effort=...)`) and the final solve. `record.json` counts a search the
+  clock cut (`search_budget_cuts`, from upstream's log line; a test checks the wording), and
+  the Run page lists one among the result's problems. *Careful* on yonkers_2027_mortgage:
+  109,150.60 as before, 201 CPU-seconds (382 under the old preset), no cut.
+- **`945c21f`, the cores.** `JobManager(cores=...)`; a job's record states what it wants
+  (`cores_wanted`: 1, 5 for `ages`, every core for `ages_thorough`, 2 for `regret`), is given
+  that or all the queue has at dispatch (`cores`) and counted for it; first come, first
+  served. The worker's pool (`worker._ProcessPool`: spawned, ended on a cancel, ending with a
+  killed worker) scores the stage-2 candidates of `ages` and the sweep of `ages_thorough`. A
+  tick reads the library once. The interface's queue uses `OWL_LIBRARY_CORES`, else half the
+  logical cores: **a default chosen, not measured**; `OWL_LIBRARY_CORES=1` is the old queue.
+- **Check** `fork-notes/synthetic/check_library_cores.py`, 7/7 through real workers: four Quick
+  looks side by side with one result; one after the other on one core; the age search on four
+  cores (1,189 s) picks 70/70 at 109,150.60 over the stage-1 pick's 109,101.30, and the plan
+  published alone scores the same to the cent.
+- **Not done or not measured:** the age search on one core for a speed-up figure;
+  `ages_thorough` on a pool with real plans; Windows (the pool's follow-the-parent thread
+  included); a mark for a single step ended by its time cap; P2, P4a, P6's pages, P7-P10, 3b.
+- A *Careful* result solved before `668a730` was searched at 3,000 nodes under the 300 s
+  budget; the same run solved again can differ from it by dollars.
+- Tests (Linux, `-n 4`): 4855 passed / 1 skipped at `668a730` (8:48). The cores: 4876 passed / 1 failed / 1 skipped (12:57) before a one-word fix to the Queue page's tooltip (`test_no_score_word`: no page says "score"), then the 561 tests of `tests/ui` and `test_text_encoding.py` passed at `945c21f`; the full suite was not run again after the fix.
+
+Next: the user's call on the default for the cores after a batch on the machine that will run
+it, on P4a (the repeated final solve) and on an upstream issue for P2.

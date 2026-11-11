@@ -5,6 +5,10 @@ Revised on 2026-11-11 after a second review of the same request was audited clai
 tick, P9, P10 and section 3b are new, section 4 carries the per-function timings. P1-P5, P7 and
 P8 are as written on 2026-11-10.
 
+**Built on 2026-11-11** (the user's call: "build both as recommended, one commit each"; section
+6): P3's budget (`668a730`) and the cores, which are P1, P4b and P5 with the tick of P6
+(`945c21f`). Not built: P2 (upstream's code), P4a, P6's pages, P7-P10, section 3b.
+
 The user's request: "review the project from a performance improvement perspective. Look for any
 significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
 
@@ -481,7 +485,59 @@ Small, in the same module:
   Quick-look options; the bequest frontier and the regret sweep.
 - MOSEK (no license here).
 
-## 6. Files
+## 6. Built on 2026-11-11
+
+Two commits, each with its tests. The full suite: 4855 passed, 1 skipped after the first; after
+the second 4876 passed and 1 failed, a wording check on the Queue page's new tooltip (no page
+says "score"), fixed in the commit, after which the 561 UI and text-encoding tests passed (the
+full suite was not run again).
+
+**The search budget (`668a730`).** `presets.LOCAL_SEARCH_EFFORT`: 1,000 nodes a step,
+`localSearchTime` 7,200 s, `localSearchStepTime` 1,800 s.
+
+- *Careful* (`decision`) sets it over the case's own settings and under an option given for
+  the one job.
+- *Let Owl choose the claiming ages* (`ages`) still forces nothing: where the case's model is
+  local search it fills in the settings the case does not state, for stage 2
+  (`two_stage_ages(effort=...)`) and for the final solve.
+- `record.json` has `search_budget_cuts` (`{"solve": n, "stages": m}`), counted by the worker
+  from upstream's log line (a test checks upstream still words it so); the Run page lists a cut
+  among the result's problems.
+- Checked: *Careful* on yonkers_2027_mortgage through the preset gives 109,150.60, the value of
+  every configuration measured on 2026-11-10, in 201 CPU-seconds with the test suite running
+  beside it (382 alone under the old preset), no step over 1,000 nodes, no cut.
+- Not done: nothing marks a single step ended by its own time cap (no log line exists for it;
+  at 1,800 s it would take a step 37 times the longest seen).
+
+**The cores (`945c21f`).** `JobManager(cores=...)`; the interface uses `OWL_LIBRARY_CORES`, else
+half the computer's logical cores (`jobs.default_cores`). That default is a choice, not a
+measurement: `os.cpu_count()` counts logical cores, half of it is the physical count on most
+desktop processors and leaves the browser room. With `OWL_LIBRARY_CORES=1` the queue is what it
+was.
+
+- A job's record states what it wants (`cores_wanted`: 1 for a single solve, 5 for `ages`,
+  every core for `ages_thorough`, 2 for `regret`'s thread pool), the queue gives it that or all
+  it has at dispatch (`cores`) and counts it while it runs; first come, first served, nothing
+  jumps a job that waits for room.
+- `worker._ProcessPool`: spawned processes, one plan each, ended at once on a cancel, ending
+  with the worker when it is killed (`_follow_parent`; the test for it fails without the
+  initializer, and the process it then leaves behind was seen sleeping on for its five
+  minutes). `ages` scores stage 2 on it (P4b), `ages_thorough` its sweep (P5).
+- A tick reads the library once (P6's three scans).
+- Checked on the synthetic household through real workers
+  (`fork-notes/synthetic/check_library_cores.py`, 7/7): four Quick looks side by side on four
+  cores, one result; one after the other on one core; and *Let Owl choose the claiming ages*
+  on yonkers_2027_mortgage, given four of the five cores it wants, 1,189 s in all: stage 1
+  picked 70y0m / 69y8m, stage 2 scored it at 109,101.30 beside 108,816.38, 108,844.94 and
+  109,150.60 for 70/70, which it chose; the plan then published alone, at 70/70, scores
+  109,150.60 to the cent, with no search cut.
+- Not measured: the same search on one core (so no speed-up figure: P4b's "one or two solves'
+  time instead of three to five" stays an inference); `ages_thorough` on a pool with real
+  plans (its pool is tested with the sweep stubbed); the default on any machine but this one;
+  Windows (`_follow_parent` waits on the parent's handle there, by the documentation).
+- P4a stands: the final solve of `ages` repeats the winning candidate (109,150.60 twice above).
+
+## 7. Files
 
 - `fork-notes/performance/solve_probe.py`: one timed solve, every HiGHS call recorded, optional
   dumps and the experiment knobs.
@@ -490,3 +546,5 @@ Small, in the same module:
 - `fork-notes/performance/library_bench.py`, `page_profile.py`: the 120-run library and the page
   profiles (the second needs `yappi`).
 - `fork-notes/performance/audit/`: the 2026-11-11 scripts (its `README.md`).
+- `fork-notes/performance/lifted_budget.sh`: the two non-settling variants with the caps lifted.
+- `fork-notes/synthetic/check_library_cores.py`: the cores' check (section 6).

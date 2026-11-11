@@ -13,6 +13,7 @@ import pytest
 
 from owlplanner.library import results as R
 from owlplanner.library import agesearch
+from owlplanner.library.presets import LOCAL_SEARCH_EFFORT
 from owlplanner.library.worker import run_job
 
 BILL = "examples/Case_bill.toml"
@@ -69,6 +70,46 @@ class TestTrials:
         ages, scored = agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".")
         assert [round(a[0], 4) for a, _ in scored] == [62.75, 62.5833, 63.75]
         assert round(ages[0], 4) == 62.5833  # the closest open month, never 62y0m
+
+    def _stage2_options(self, monkeypatch, case_options, effort):
+        import types
+
+        seen = []
+
+        def plan(diconf, dirname, log, sets=()):
+            fixed = any(x == "solver_options.withSSAges=fixed" for x in sets)
+            return types.SimpleNamespace(ssecAges=[66.0], caseStatus="solved", inames=["Ari"], fixed=fixed,
+                                         _ssaOpenAges=lambda i: [62.0], solverOptions=dict(case_options))
+
+        def solve(p, options=None):
+            if p.fixed:
+                seen.append(options)
+            return p
+
+        monkeypatch.setattr(agesearch, "_plan", plan)
+        monkeypatch.setattr(agesearch, "_solve", solve)
+        monkeypatch.setattr(agesearch, "score_plan", lambda p: 1.0)
+        agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".", effort=effort)
+        return seen
+
+    def test_stage_2_searches_at_the_effort_given(self, monkeypatch):
+        """Stage 2 picks by the raw score, so where the case's model is local search its
+        candidates run at the caller's effort (the library's: wall-clock caps lifted), and the
+        settings the case states itself are kept (the Ages presets force nothing, R4)."""
+        case = {"breakpointMethod": "local-search", "localSearchTime": 600}
+        seen = self._stage2_options(monkeypatch, case, LOCAL_SEARCH_EFFORT)
+        assert len(seen) == 3 and all(o == seen[0] for o in seen)  # the pick and its two neighbours
+        assert seen[0]["localSearchTime"] == 600
+        assert seen[0]["localSearchStepNodes"] == LOCAL_SEARCH_EFFORT["localSearchStepNodes"]
+        assert seen[0]["localSearchStepTime"] == LOCAL_SEARCH_EFFORT["localSearchStepTime"]
+
+    def test_stage_2_leaves_another_method_alone(self, monkeypatch):
+        seen = self._stage2_options(monkeypatch, {"breakpointMethod": "loop"}, LOCAL_SEARCH_EFFORT)
+        assert seen == [{"breakpointMethod": "loop"}] * 3
+
+    def test_without_an_effort_stage_2_is_the_case_s_own(self, monkeypatch):
+        """`run_suite.py` calls it so: `_solve`'s own reading of the plan's options."""
+        assert self._stage2_options(monkeypatch, {"breakpointMethod": "local-search"}, None) == [None] * 3
 
 
 class TestOptions:
@@ -142,7 +183,8 @@ class TestWorkerWiring:
     def test_the_search_picks_and_the_final_solve_uses_them(self, searched_case, monkeypatch):
         calls = {}
 
-        def fake_search(diconf, dirname, log=None, *, check=None):
+        def fake_search(diconf, dirname, log=None, *, check=None, effort=None):
+            calls["effort"] = effort
             calls["withSSAges"] = diconf.get("solver_options", {}).get("withSSAges")
             return [66.0], [([66.0], 123.0), ([67.0], 100.0)]
 
@@ -155,6 +197,8 @@ class TestWorkerWiring:
                                         "candidates": [[[66.0], 123.0], [[67.0], 100.0]]}
         # The search saw the case's own ages choice; the final solve pinned the pick.
         assert calls["withSSAges"] == "optimize"
+        # Stage 2 runs at the library's search effort (performance review, 2026-11-11).
+        assert calls["effort"] == LOCAL_SEARCH_EFFORT
         assert record["method"]["options"]["withSSAges"] == "fixed"
         plan_doc = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))
         assert plan_doc["claiming_ages"] == [66.0]

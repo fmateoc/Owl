@@ -171,6 +171,62 @@ class TestPresetsInTheWorker:
         assert record["method"]["breakpoint_method"] == "loop"
 
 
+class TestSearchBudget:
+    """Performance review, 2026-11-11: local search has a wall-clock budget; a search it cuts
+    did not run to its node caps, so its result can depend on how busy the computer was. The
+    record counts the cuts (the worker reads upstream's log line)."""
+
+    def test_upstream_still_words_the_cut_as_the_worker_reads_it(self):
+        import inspect
+
+        from owlplanner import localsearch
+        from owlplanner.library.worker import BUDGET_CUT_MARK
+
+        assert BUDGET_CUT_MARK in inspect.getsource(localsearch.LocalSearch.solve)
+
+    def test_the_tee_counts_the_cuts_of_the_solve_and_of_the_stages_apart(self, tmp_path):
+        from owlplanner.library.worker import BUDGET_CUT_MARK, _LogTee
+
+        tee = _LogTee(tmp_path / "solve.log")
+        try:
+            tee.write(f"12:00 | INFO | {BUDGET_CUT_MARK}; keeping the current plan.\n")
+            tee.quiet = True
+            tee.write(f"12:01 | INFO | {BUDGET_CUT_MARK}; keeping")
+            tee.write(" the current plan.\n12:02 | WARNING | a candidate's own warning\n")
+            tee.write(f"12:03 | INFO | {BUDGET_CUT_MARK}; keeping the current plan.\n")
+            tee.quiet = False
+            tee.write("12:04 | INFO | Iter: 3\n")
+        finally:
+            tee.close()
+        assert (tee.budget_cuts, tee.budget_cuts_stages) == (1, 2)
+        assert tee.warnings == set() and tee.iteration == 3  # quiet lines are still not the solve's
+        assert (tmp_path / "solve.log").read_text(encoding="utf-8").count(BUDGET_CUT_MARK) == 3
+
+    def test_a_search_cut_by_the_clock_is_in_the_record(self, run):
+        """A real solve: local search with no time at all finds its budget spent at once."""
+        job = make_job(run, name="2026-01-01T00-00-00_custom", preset="custom",
+                       options={"withSSAges": "fixed", "breakpointMethod": "local-search",
+                                "localSearchTime": 0})
+        assert run_job(job.results_dir, job.token) == R.DONE
+        record = R.read_record(job.results_dir)
+        assert record["search_budget_cuts"]["solve"] >= 1 and record["search_budget_cuts"]["stages"] == 0
+
+    def test_a_solve_that_is_not_cut_records_zero(self, run):
+        job = make_job(run)
+        assert run_job(job.results_dir, job.token) == R.DONE
+        assert R.read_record(job.results_dir)["search_budget_cuts"] == {"solve": 0, "stages": 0}
+
+    def test_careful_runs_at_the_library_s_effort(self, run, monkeypatch):
+        """The "decision" preset's record says what the search ran with."""
+        from owlplanner.library.presets import LOCAL_SEARCH_EFFORT
+
+        job = make_job(run, name="2026-01-01T00-00-00_decision", preset="decision",
+                       options={"withSSAges": "fixed", "breakpointMethod": "local-search"})
+        assert run_job(job.results_dir, job.token) == R.DONE
+        options = R.read_record(job.results_dir)["method"]["options"]
+        assert {key: options[key] for key in LOCAL_SEARCH_EFFORT} == LOCAL_SEARCH_EFFORT
+
+
 class TestCancelPending:
     def test_the_heartbeat_goes_on_while_a_cancel_is_pending(self, run):
         """N1: the worker stops at its next check, which a long MIP can delay; meanwhile it

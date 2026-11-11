@@ -33,7 +33,7 @@ from . import results as R
 from .agesearch import fixed_ages, two_stage_ages
 from .casefiles import check_plan_year
 from .scenario import ScenarioError
-from .presets import resolve_options
+from .presets import LOCAL_SEARCH_EFFORT, resolve_options
 from .procs import process_start_token
 
 HEARTBEAT_SECONDS = 30.0
@@ -91,6 +91,12 @@ class _SerialPool:
 
 _ITER_RE = re.compile(r"\bIter:\s*(\d+)")
 _WARN_RE = re.compile(r"WARNING|ERROR")
+# Upstream's line when local search finds its wall-clock budget spent at the start of a
+# round (`localsearch.LocalSearch.solve`, a verbose line): the search stopped by the clock,
+# not by its node caps, so the result can depend on how busy the computer was. The record
+# counts them (`search_budget_cuts`); `tests/library/test_worker.py` checks upstream still
+# words it so. No such line exists for a single step ended by its own time cap.
+BUDGET_CUT_MARK = "Local search: time budget spent"
 
 
 def _open_log(path):
@@ -142,6 +148,10 @@ class _LogTee:
     runs, but the line is not read as the solve's own: run_suite.py keeps the stage warnings
     out of the record ("their warnings are not in the report"), and an unsettled candidate or
     historical scenario is not a problem with the published solve.
+
+    Local search's "time budget spent" lines are counted either way, apart: `budget_cuts`
+    for the published solve, `budget_cuts_stages` while quiet (a candidate cut by the clock
+    is scored on a shorter search than its neighbours).
     """
 
     def __init__(self, path, check=None):
@@ -153,20 +163,24 @@ class _LogTee:
         self.last_line = ""
         self.iteration = None
         self.warnings = set()
+        self.budget_cuts = 0
+        self.budget_cuts_stages = 0
 
     def write(self, text):
         self._fh.write(text)
         self._fh.flush()
-        if self.quiet:
-            if self._check is not None and time.monotonic() - self._checked > CHECK_SECONDS:
-                self._checked = time.monotonic()
-                self._check()
-            return
         self._pending += text
         *lines, self._pending = self._pending.split("\n")
         for line in lines:
             stripped = line.strip()
             if not stripped:
+                continue
+            if BUDGET_CUT_MARK in stripped:
+                if self.quiet:
+                    self.budget_cuts_stages += 1
+                else:
+                    self.budget_cuts += 1
+            if self.quiet:
                 continue
             self.last_line = stripped
             if _WARN_RE.search(stripped):
@@ -301,7 +315,8 @@ class Worker:
                     self.job.touch(self.token, step="the claiming-age sweep (every whole-year pair)")
                     ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname)
                 else:
-                    ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check)
+                    ages, candidates = two_stage_ages(diconf, dirname, log=self.tee, check=self.check,
+                                                      effort=LOCAL_SEARCH_EFFORT)
             finally:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
@@ -520,6 +535,7 @@ class Worker:
             finished=finished or self.job.doc.get("finished"),
             wall_time_seconds=wall_time_seconds,
             warnings=sorted(self.tee.warnings),
+            search_budget_cuts={"solve": self.tee.budget_cuts, "stages": self.tee.budget_cuts_stages},
             iterations=iterations,
             inputs_hash=self._inputs_hash(),
             solver=solver,

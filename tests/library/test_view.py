@@ -157,6 +157,20 @@ class TestQuality:
         assert quality_notes(make_result()) == []
         assert quality_line(make_result()) == "settled"
 
+    def test_a_search_cut_by_the_clock_is_a_problem_to_read(self):
+        """Performance review, 2026-11-11: `record.json` counts local search's budget cuts;
+        a cut search can give another result on a busier computer, and the page says so."""
+        assert quality_notes(make_result(record={"search_budget_cuts": {"solve": 0, "stages": 0}})) == []
+        assert quality_notes(make_result(record={"search_budget_cuts": None})) == []  # an older record
+        notes = quality_notes(make_result(record={"search_budget_cuts": {"solve": 2, "stages": 0}}))
+        assert len(notes) == 1 and "time limit (2 time(s))" in notes[0] and "busier" in notes[0]
+        notes = quality_notes(make_result(record={"preset": "ages",
+                                                  "search_budget_cuts": {"solve": 0, "stages": 3}}))
+        assert len(notes) == 1 and "claiming ages were compared" in notes[0]
+        notes = quality_notes(make_result(record={"preset": "regret",
+                                                  "search_budget_cuts": {"solve": 0, "stages": 1}}))
+        assert len(notes) == 1 and "other solves" in notes[0]
+
     def test_an_unsettled_loop_warns_that_small_differences_mean_nothing(self):
         result = make_result(record={"convergence": {"convergence": "oscillatory",
                                                      "objective_error_bar_today_dollars": 2782.0}})

@@ -7,6 +7,29 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Run library: Careful's search no longer depends on how busy the computer is (2026-11-11)
+
+Performance review P3 (`fork-notes/performance-review.md`). Upstream's local search caps each
+step by branch-and-bound nodes so that the answer does not depend on the machine, with two
+wall-clock backstops behind the cap (300 s a search, 60 s a step). On the synthetic household
+both backstops bound: four of six *Careful* solves ran into the 300 s when four ran at once, a
+step took 81 s under load, and the result moved by dollars with nothing marking it.
+
+- `presets.LOCAL_SEARCH_EFFORT`: 1,000 nodes a step, `localSearchTime` 7,200 s,
+  `localSearchStepTime` 1,800 s (the caps `work_sweep.py` already used). *Careful* (`decision`)
+  sets it over the case's own settings; an option given for the one job still wins.
+- *Let Owl choose the claiming ages* (`ages`) still forces nothing: where the case's model is
+  local search it fills in the settings the case does not state, for the stage-2 candidates
+  (`agesearch.two_stage_ages(effort=...)`, which picks by the raw score) and the final solve.
+- `record.json` gains `search_budget_cuts` (`{"solve": n, "stages": m}`): how often local search
+  found its budget spent, counted from upstream's log line. The Run page lists a cut among the
+  result's problems (`view.budget_cut_notes`).
+
+Measured on the two variants whose search keeps moving and two that settle: the identical plan
+on three of the four and \$1.06/yr less on the fourth against the 3,000-node search run to its
+node caps; 37% less time where the search settles, about 18% and 53% more where it does not.
+A *Careful* result solved before this change was searched at 3,000 nodes with the 300 s budget.
+
 ### Run library: review of the new year and the first-time setup (2026-11-10)
 
 `fork-notes/local-use-build-review.md` (AQ1-AQ12; AQ1-AQ8 fixed).

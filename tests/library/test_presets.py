@@ -8,6 +8,7 @@ companion (`decision_exact`, the comparison's agreement check, R2). Step 6 adds 
 import pytest
 
 from owlplanner.library.presets import (
+    LOCAL_SEARCH_EFFORT,
     LOOP_FAMILIES,
     PRESETS,
     SOLVE_PRESETS,
@@ -70,6 +71,39 @@ def test_decision_is_local_search_with_the_ages_held():
     assert resolve_options("decision", {"withMedicare": "none"})["withMedicare"] == "none"
 
 
+def test_decision_searches_at_the_library_s_effort():
+    """Performance review, 2026-11-11: upstream's two wall-clock backstops (300 s a search,
+    60 s a step) bind on the synthetic household, so a Careful result depended on how busy
+    the computer was. The preset lifts both and caps a step at 1,000 nodes, whatever the
+    case's own settings; an option given for the one job still wins."""
+    assert LOCAL_SEARCH_EFFORT == {"localSearchStepNodes": 1000, "localSearchTime": 7200.0,
+                                   "localSearchStepTime": 1800.0}
+    options = resolve_options("decision", dict(TEMPLATE_LIKE, localSearchTime=300, localSearchStepNodes=3000))
+    assert {key: options[key] for key in LOCAL_SEARCH_EFFORT} == LOCAL_SEARCH_EFFORT
+    options = resolve_options("decision", TEMPLATE_LIKE, {"localSearchStepNodes": 300})
+    assert options["localSearchStepNodes"] == 300 and options["localSearchTime"] == 7200.0
+    # The job record's own options stay what was asked for: the effort is resolved at the solve.
+    assert preset_options("decision") == {"withSSAges": "fixed", "breakpointMethod": "local-search"}
+
+
+def test_ages_fills_in_the_effort_where_the_case_searches_locally():
+    """The Ages preset forces nothing (R4): the settings the case states are kept, the ones
+    it does not state are the library's -- and only where its model is local search."""
+    options = resolve_options("ages", dict(TEMPLATE_LIKE, localSearchTime=600))
+    assert options["localSearchTime"] == 600
+    assert options["localSearchStepNodes"] == 1000 and options["localSearchStepTime"] == 1800.0
+    loop_case = dict(TEMPLATE_LIKE, breakpointMethod="loop")
+    assert resolve_options("ages", loop_case) == loop_case
+    # A job's own option that makes it a local search brings the effort with it.
+    assert resolve_options("ages", loop_case, {"breakpointMethod": "local-search"})["localSearchStepNodes"] == 1000
+
+
+@pytest.mark.parametrize("preset", ["quick", "custom", "regret", "decision_exact", "exact_medicare", "ages_thorough"])
+def test_the_other_presets_carry_no_search_effort(preset):
+    options = resolve_options(preset, TEMPLATE_LIKE)
+    assert not set(LOCAL_SEARCH_EFFORT) & set(options)
+
+
 def test_decision_exact_is_run_suite_s_exact_model():
     """The EXACT_GROUP of run_suite.py: loop, Medicare off, SS taxability 0.85, LTCG exact."""
     options = resolve_options("decision_exact", TEMPLATE_LIKE)
@@ -92,9 +126,11 @@ def test_decision_queues_two_solves_and_the_others_one():
 def test_ages_is_the_case_s_own_model_with_its_own_ages_choice():
     """Section 8.1's "Ages": the search and the candidates run under the case's own options
     (R4's exception: this preset does not fix the claiming ages)."""
-    assert resolve_options("ages", TEMPLATE_LIKE) == TEMPLATE_LIKE
+    # Nothing the case states is changed; where its model is local search, the effort
+    # settings it does not state are the library's (performance review, 2026-11-11).
+    assert resolve_options("ages", TEMPLATE_LIKE) == dict(TEMPLATE_LIKE, **LOCAL_SEARCH_EFFORT)
     assert resolve_options("ages", TEMPLATE_LIKE, {"mipStrategy": None}) == dict(
-        TEMPLATE_LIKE, mipStrategy=None)
+        TEMPLATE_LIKE, mipStrategy=None, **LOCAL_SEARCH_EFFORT)
     assert preset_options("ages", {"withSSAges": "optimize"}) == {"withSSAges": "optimize"}
     assert resolve_options("ages", {"withSSAges": "fixed"})["withSSAges"] == "fixed"
 

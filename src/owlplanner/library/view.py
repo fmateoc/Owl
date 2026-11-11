@@ -345,7 +345,40 @@ def quality_notes(result: Result) -> list:
     for w in result.record.get("warnings") or []:
         if "Cash flow balance" in w or "infeasible" in w.lower() or "maximum iterations" in w:
             issues.append(w)
+    issues.extend(budget_cut_notes(result))
     return issues
+
+
+def budget_cut_notes(result: Result) -> list:
+    """What to say when the clock, not the search, ended local search (`record.json`'s
+    `search_budget_cuts`; performance review, 2026-11-11). Nothing for the normal case and
+    for records written before the count existed."""
+    cuts = result.record.get("search_budget_cuts") or {}
+    notes = []
+
+    def count(key):
+        try:
+            return max(0, int(cuts.get(key) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    if count("solve"):
+        notes.append(
+            f"the search was stopped by its time limit ({count('solve')} time(s)), not by its own "
+            "rule: on a busier or slower computer this solve can give a slightly different result"
+        )
+    if count("stages"):
+        if str(result.record.get("preset") or "").startswith("ages"):
+            notes.append(
+                f"while the claiming ages were compared, the search was stopped by its time limit "
+                f"({count('stages')} time(s)): the ages compared were not all searched equally long"
+            )
+        else:
+            notes.append(
+                f"in this job's other solves the search was stopped by its time limit "
+                f"({count('stages')} time(s))"
+            )
+    return notes
 
 
 def quality_line(result: Result) -> str:

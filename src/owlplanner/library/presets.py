@@ -31,6 +31,9 @@ step 6.
   local search solves each tax family exactly itself (it also overrides a pinned SS taxable
   fraction and sets Medicare, SS taxability, LTCG, NIIT, senior bonus and ACA to "optimize";
   CLAUDE.md, "Loop noise"). Anything keyed on loop-mode Medicare does not hold under it.
+  Its search runs at the library's own effort (`LOCAL_SEARCH_EFFORT`: 1,000 nodes a step,
+  both wall-clock caps lifted), whatever the case says; the job's own options can change
+  it.
 - ``decision_exact`` is the exact model of `run_suite.py`'s condo-exact group (CLAUDE.md,
   "Loop noise"): the loop with Medicare off, the SS taxable fraction pinned at 0.85 and
   capital gains priced exactly (`withLTCG = "optimize"`). A different *model*, so only its
@@ -40,7 +43,10 @@ step 6.
   (`withSSAges` not ``fixed``), then solves at the ages it picked: the exact LP searches,
   and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
   model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
-  "fixed"`` just solves, under its own model.
+  "fixed"`` just solves, under its own model. Where that model is local search, the effort
+  settings the case does not state are the library's (`LOCAL_SEARCH_EFFORT`), in stage 2
+  and in the final solve alike: stage 2 picks by the raw score, so its candidates must not
+  be cut short by the clock.
 - ``ages_thorough`` (section 8.1's "Ages, thorough") runs `owlplanner.work_sweep`'s
   own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
   gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
@@ -70,7 +76,7 @@ step 6.
 
 from __future__ import annotations
 
-from .agesearch import EXACT_GROUP
+from .agesearch import EXACT_GROUP, search_effort
 
 # The tornado's medical-inflation model (review AJ1): the exact model with Medicare priced
 # exactly. The other movers stay on `decision_exact` (EXACT_GROUP), which has Medicare off.
@@ -111,6 +117,27 @@ COMPANION_PRESETS = ("decision_exact", "exact_medicare")
 # each on the loop.
 LOOP_FAMILIES = ("withMedicare", "withACA", "withLTCG", "withNIIT", "withSSTaxability",
                  "withSeniorBonus", "withSTAR")
+
+# Local search's effort where the library runs it (performance review, 2026-11-11; the
+# figures are `fork-notes/performance-review.md`'s, on the synthetic household).
+#
+# Upstream caps each restricted solve by branch-and-bound nodes "so that the answer does not
+# depend on machine speed or load" (`localsearch.py`), with two wall-clock backstops behind
+# the cap: 300 s for the whole search (`TOTAL_TIME`) and 60 s a step (`STEP_TIME`). On the
+# synthetic household both backstops bind: 4 of 6 Careful solves ran into the 300 s when
+# four ran at once, and a step took 81 s at 3,000 nodes under load. A result then depends on
+# how busy the computer is (by dollars: +2.81/yr on one variant), the same run solved twice
+# on one day can show two numbers, and nothing marks it. So the two caps are lifted to
+# `work_sweep.py`'s values (they stay as backstops; `record.json` counts a search they cut,
+# `search_budget_cuts`), and the node cap goes from upstream's 3,000 to 1,000, which pays
+# for the lift: the identical plan on three of four variants measured and 1.06/yr less on
+# the fourth, 37% less time where the search settles, about 18% and 53% more on the two
+# variants where it keeps moving.
+LOCAL_SEARCH_EFFORT = {
+    "localSearchStepNodes": 1000,
+    "localSearchTime": 7200.0,
+    "localSearchStepTime": 1800.0,
+}
 
 # What each solve forces whatever the case says (R4: ages fixed, except the Ages presets).
 _FORCED = {
@@ -167,10 +194,19 @@ def resolve_options(preset: str, case_options=None, overrides=None) -> dict:
     breakpoint method and the ages fixed (N5); for ``decision``, ``decision_exact`` and
     ``ages``, the forced options only (solve presets, not queue-time choices; ``ages``
     forces nothing and keeps the case's own model).
+
+    Local search's effort (`LOCAL_SEARCH_EFFORT`): ``decision`` sets it over the case's own
+    settings and under the job's overrides (the preset is the method; an override is a
+    choice made for one job). ``ages`` fills in only what neither states, where the model is
+    local search (it forces nothing).
     """
     _check(preset)
     options = dict(case_options or {})
+    if preset == "decision":
+        options.update(LOCAL_SEARCH_EFFORT)
     options.update(dict(overrides or {}))
+    if preset == "ages":
+        options = search_effort(options, LOCAL_SEARCH_EFFORT)
     if preset == "quick":
         for key in LOOP_FAMILIES:
             if str(options.get(key, "")).strip().lower() == "optimize":

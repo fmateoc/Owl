@@ -549,6 +549,7 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
                  solver: Optional[str] = None, gap: Optional[float] = None,
                  rates: Optional[dict] = None, plan_pkl_sha256: Optional[str] = None,
                  age_search: Optional[dict] = None, regret: Optional[dict] = None,
+                 search_budget_cuts: Optional[dict] = None,
                  error: Optional[str] = None) -> dict:
     """The record.json of one solve (design section 5).
 
@@ -560,6 +561,10 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
     [[ages, score or None], ...]} (step 6). `regret` is the "regret" preset's sweep summary
     (`stresstests.summarize_conversion_regret`, I8), or {"error": ...} when the sweep failed
     and the base results stand; its full curve is `regret.json` beside the record.
+    `search_budget_cuts` is how many times local search found its wall-clock budget spent
+    (the worker counts upstream's log line): {"solve": in the published solve, "stages":
+    while a preset scored candidates}. Zero is the normal case; a cut search did not run to
+    its node caps, so its result can depend on how busy the computer was.
     """
     from owlplanner.version import engine_provenance
 
@@ -602,6 +607,9 @@ def build_record(*, run_id: str, results_id: str, plan_year: Optional[int], pres
         "convergence": convergence,
         "wall_time_seconds": wall_time_seconds,
         "warnings": list(warnings),
+        # Local search stopped by the clock (performance review, 2026-11-11): counts, zero
+        # when it ran to its node caps. None in records written before the count existed.
+        "search_budget_cuts": dict(search_budget_cuts) if search_budget_cuts is not None else None,
         "rates": rates,
         # The "Ages" preset's two-stage search (step 6): what it picked and what each
         # candidate scored. None for every other preset.

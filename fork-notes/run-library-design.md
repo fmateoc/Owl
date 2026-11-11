@@ -345,6 +345,17 @@ and every candidate's score in its `age_search` block). "Ages, thorough" is the
 whole-year sweep decides the ages, the final solve runs at them, and the sweep's
 `scores.json` lands in the results folder -- which the claiming-age map (I7) reads.)*
 
+*(Amended 2026-11-11, performance review P3: "Decision" runs local search at the library's own
+effort, `presets.LOCAL_SEARCH_EFFORT` -- 1,000 nodes a step and upstream's two wall-clock
+backstops lifted (`localSearchTime` 7,200 s, `localSearchStepTime` 1,800 s) -- over the case's
+own settings and under an option given for the one job. Both backstops bound on the synthetic
+household, so a result depended on how busy the computer was. "Ages" still forces nothing (R4)
+but, where the case's model is local search, fills in the same effort for the settings the
+case does not state, in stage 2 and in the final solve: stage 2 picks by the raw score.
+`record.json` counts a search the clock still cut (`search_budget_cuts`: in the published
+solve, and while a preset scored other solves), and the Run page lists it among the result's
+problems.)*
+
 The preset is part of the scenario, so it is in the inputs hash and in the change summary.
 Every preset except the two Ages presets fixes the claiming ages (R4). The template's
 `withSSAges = "optimize"` with `withMedicare = "optimize"` would make every age candidate a

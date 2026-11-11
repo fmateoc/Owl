@@ -23,6 +23,11 @@ the ``ages`` preset before the final solve at the chosen ages.
 ``check`` (optional) is called between steps and may raise to stop the search (the worker's
 cancellation hook, S8); ``log`` is a stream for the stages' own solve logs (their warnings
 are not part of the record).
+
+``effort`` (optional) is local search's effort for stage 2, where the case's own model is
+local search (`search_effort`; the library passes `presets.LOCAL_SEARCH_EFFORT`): stage 2
+picks by the raw score, so a candidate whose search a wall-clock cap cut short can lose to
+its neighbour by a dollar (performance review, 2026-11-11).
 """
 
 from __future__ import annotations
@@ -101,6 +106,25 @@ def _solve(plan, options=None):
     return plan
 
 
+def is_local_search(options) -> bool:
+    """True when these solver options solve by local search (the option is normalized)."""
+    return str((options or {}).get("breakpointMethod", "")).strip().lower() == "local-search"
+
+
+def search_effort(options, effort) -> dict:
+    """`options` with local search's effort settings filled in, where it is the method.
+
+    The settings the options already state are kept (the Ages presets force nothing, R4):
+    `effort` supplies only what is missing, in place of upstream's defaults. Options that do
+    not solve by local search come back as they are.
+    """
+    options = dict(options or {})
+    if effort and is_local_search(options):
+        for key, value in effort.items():
+            options.setdefault(key, value)
+    return options
+
+
 def searched_names(option, names) -> list:
     """The people a ``withSSAges`` value searches (plan._parseSSAgesOption's reading)."""
     if isinstance(option, str):
@@ -133,7 +157,8 @@ def _trials(pick, free, first=None) -> list:
     return trials
 
 
-def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], Any]] = None):
+def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], Any]] = None,
+                   effort: Optional[dict] = None):
     """Claiming ages for a case that searches them (run_suite's `two_stage_ages`).
 
     Returns ``(ages, candidates)`` with ``candidates = [(ages, score or None)]``. ``ages`` is
@@ -156,7 +181,8 @@ def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], An
     for t in _trials(pick, free, first):
         if check is not None:
             check()
-        q = _solve(_plan(diconf, dirname, log, fixed_ages(t)))
+        q = _plan(diconf, dirname, log, fixed_ages(t))
+        q = _solve(q, search_effort(q.solverOptions, effort) if effort else None)
         scored.append(([round(float(a), 4) for a in q.ssecAges],
                        score_plan(q) if q.caseStatus == "solved" else None))
     good = [c for c in scored if c[1] is not None]

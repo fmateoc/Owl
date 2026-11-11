@@ -6,6 +6,10 @@ Run `fork-notes/synthetic/make_cases.py` first. Knobs (environment): OWL_AGES (J
 OWL_QUIET=1 (the `quiet_patch.py` prototype), OWL_STEP_GAP (localsearch.STEP_GAP), OWL_DUMP=<folder>
 (pickle every HiGHS call over 5 s, for `mip_probe.py`). The options JSON is laid over the preset's
 options (`{"localSearchStepNodes": 1000}`). Performance review 2026-11-10 (`fork-notes/performance-review.md`).
+
+Since 2026-11-11 the `decision` preset carries `presets.LOCAL_SEARCH_EFFORT` (1,000 nodes, both wall-clock
+caps lifted). The review's "base" figures were measured before it; to repeat them pass upstream's defaults:
+`{"localSearchStepNodes": 3000, "localSearchTime": 300, "localSearchStepTime": 60}`.
 """
 import io
 import json

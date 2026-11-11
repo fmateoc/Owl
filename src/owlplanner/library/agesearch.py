@@ -18,7 +18,7 @@ two stages, as `fork-notes/synthetic/run_suite.py` runs it:
 
 The search is one implementation, shared by the suite and the interface (the fork's rule,
 run-library-design.md section 6.2): `run_suite.py` imports it, and the worker runs it for
-the ``ages`` preset before the final solve at the chosen ages.
+the ``ages`` preset and publishes the winning candidate's own plan (``keep``).
 
 ``check`` (optional) is called between steps and may raise to stop the search (the worker's
 cancellation hook, S8); ``log`` is a stream for the stages' own solve logs (their warnings
@@ -29,10 +29,21 @@ local search (`search_effort`; the library passes `presets.LOCAL_SEARCH_EFFORT`)
 picks by the raw score, so a candidate whose search a wall-clock cap cut short can lose to
 its neighbour by a dollar (performance review, 2026-11-11).
 
+``overrides`` (optional) are options given for the one job (the worker's job record), put
+over the case's own in every stage-2 solve, as the worker's published solve puts them
+(`candidate_options`).
+
 ``pool`` (optional) scores stage 2's candidates side by side: an object with
 ``map(fn, items) -> list`` whose `fn` runs in another process (`score_trial`, the worker's
 pool on the cores the queue gave the job). The candidates are independent solves, so the
 scores are the serial ones; each candidate's log reaches ``log`` when it ends.
+
+``keep`` (optional) returns the winning candidate's solved plan with the ages and scores
+(`Winner`; performance review P4a, 2026-11-11). The worker used to build the plan again at
+the chosen ages and solve it with the same options: one of the four to six solves of the
+search, done twice. A plan solved on the pool comes back pickled (a solved Plan pickles, its
+logger without its streams: `Logger.__getstate__`, the plan cache's route); the others are
+dropped where they were solved.
 """
 
 from __future__ import annotations
@@ -40,7 +51,8 @@ from __future__ import annotations
 import copy
 import io
 import json
-from typing import Any, Callable, Optional
+import pickle
+from typing import Any, Callable, NamedTuple, Optional
 
 # The exact model of the stage-1 search and of "decision"'s exact companion (run_suite.py's
 # EXACT / EXACT_GROUP; `presets._FORCED["decision_exact"]` and `run_suite.EXACT_GROUP` read
@@ -116,6 +128,14 @@ def is_local_search(options) -> bool:
     return str((options or {}).get("breakpointMethod", "")).strip().lower() == "local-search"
 
 
+class Winner(NamedTuple):
+    """The winning stage-2 candidate, kept (``two_stage_ages(keep=True)``, P4a)."""
+
+    plan: Any  # the solved Plan, logging to the search's `log` stream
+    log: str  # its own solve log, as the search wrote it to `log` among the others
+    options: dict  # the solver options it was solved with (`candidate_options`)
+
+
 def search_effort(options, effort) -> dict:
     """`options` with local search's effort settings filled in, where it is the method.
 
@@ -128,6 +148,18 @@ def search_effort(options, effort) -> dict:
         for key, value in effort.items():
             options.setdefault(key, value)
     return options
+
+
+def candidate_options(case_options, overrides=None, effort=None) -> dict:
+    """The options a stage-2 candidate solves with: the case's own (the candidate plan's, its
+    ages fixed), the job's `overrides` on top, then local search's `effort` where it is the
+    method (`search_effort`).
+
+    `presets.resolve_options` reads this for the ``ages`` preset, so the candidate stage 2
+    picks is solved exactly as the plan the worker publishes, which is that candidate's own
+    plan (P4a).
+    """
+    return search_effort({**dict(case_options or {}), **dict(overrides or {})}, effort)
 
 
 def searched_names(option, names) -> list:
@@ -163,27 +195,61 @@ def _trials(pick, free, first=None) -> list:
 
 
 def score_trial(job) -> tuple:
-    """One stage-2 candidate, start to finish: `(ages, score or None, its solve log)`.
+    """One stage-2 candidate, start to finish: `(ages, score or None, its solve log, kept)`.
 
-    `job` is `(diconf, dirname, ages, effort)`, all plain data: this is what a pool runs in
-    another process, where the caller's log stream does not exist -- the log comes back as
-    text for the caller to write.
+    `job` is `(diconf, dirname, ages, effort, overrides, keep)`, all plain data: this is what
+    a pool runs in another process, where the caller's log stream does not exist -- the log
+    comes back as text for the caller to write. With `keep`, a solved plan comes back too, as
+    `kept = (its pickle, the options it was solved with)` (P4a); else `kept` is None.
     """
-    diconf, dirname, ages, effort = job
+    diconf, dirname, ages, effort, overrides, keep = job
     buf = io.StringIO()
     q = _plan(diconf, dirname, buf, fixed_ages(ages))
-    q = _solve(q, search_effort(q.solverOptions, effort) if effort else None)
-    return ([round(float(a), 4) for a in q.ssecAges],
-            score_plan(q) if q.caseStatus == "solved" else None, buf.getvalue())
+    options = candidate_options(q.solverOptions, overrides, effort)
+    q = _solve(q, options)
+    value = score_plan(q) if q.caseStatus == "solved" else None
+    kept = None
+    if keep and value is not None:
+        q.setLogger(None)  # its log is the text returned; its stream is this process's
+        kept = (pickle.dumps(q), options)
+    return [round(float(a), 4) for a in q.ssecAges], value, buf.getvalue(), kept
+
+
+class _Copy:
+    """A log stream that writes through to another and keeps a copy (a kept candidate's log)."""
+
+    def __init__(self, stream):
+        self._stream = stream
+        self._copy = io.StringIO()
+
+    def write(self, text):
+        self._copy.write(text)
+        return self._stream.write(text)
+
+    def flush(self):
+        flush = getattr(self._stream, "flush", None)
+        if flush is not None:
+            flush()
+
+    def text(self) -> str:
+        return self._copy.getvalue()
+
+
+def _winner(scored) -> Optional[int]:
+    """The index of the best score (the first of equal ones), None when none solved."""
+    good = [i for i, (_, value) in enumerate(scored) if value is not None]
+    return max(good, key=lambda i: scored[i][1]) if good else None
 
 
 def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], Any]] = None,
-                   effort: Optional[dict] = None, pool=None):
+                   effort: Optional[dict] = None, overrides: Optional[dict] = None, pool=None,
+                   keep: bool = False):
     """Claiming ages for a case that searches them (run_suite's `two_stage_ages`).
 
     Returns ``(ages, candidates)`` with ``candidates = [(ages, score or None)]``. ``ages`` is
-    the best-scoring candidate's (the stage-1 pick when its neighbours do not beat it).
-    Raises RuntimeError when a stage does not solve.
+    the best-scoring candidate's (the stage-1 pick when its neighbours do not beat it; the
+    first of equal scores). With ``keep``, ``(ages, candidates, Winner)``: that candidate's
+    solved plan, its log and its options. Raises RuntimeError when a stage does not solve.
     """
     log = log if log is not None else io.StringIO()
     if check is not None:
@@ -198,22 +264,38 @@ def two_stage_ages(diconf, dirname, log=None, *, check: Optional[Callable[[], An
     # Each person's first open claiming age (review AJ4); 70 for someone with none left.
     first = [(p._ssaOpenAges(i) or [70.0])[0] for i in range(len(names))]
     scored = []
+    best = None  # with `keep`: the best candidate so far, (index, plan or pickle, log, options)
     trials = _trials(pick, free, first)
     if pool is not None:
         if check is not None:
             check()
-        for ages, value, text in pool.map(score_trial, [(diconf, dirname, t, effort) for t in trials]):
+        jobs = [(diconf, dirname, t, effort, overrides, keep) for t in trials]
+        for ages, value, text, kept in pool.map(score_trial, jobs):
             log.write(text)
             scored.append((ages, value))
+            if kept is not None and _winner(scored) == len(scored) - 1:
+                best = (len(scored) - 1, kept[0], text, kept[1])
         trials = []  # all scored
     for t in trials:
         if check is not None:
             check()
-        q = _plan(diconf, dirname, log, fixed_ages(t))
-        q = _solve(q, search_effort(q.solverOptions, effort) if effort else None)
+        stream = _Copy(log) if keep else log
+        q = _plan(diconf, dirname, stream, fixed_ages(t))
+        options = candidate_options(q.solverOptions, overrides, effort)
+        q = _solve(q, options)
         scored.append(([round(float(a), 4) for a in q.ssecAges],
                        score_plan(q) if q.caseStatus == "solved" else None))
-    good = [c for c in scored if c[1] is not None]
-    if not good:
+        if keep and scored[-1][1] is not None and _winner(scored) == len(scored) - 1:
+            best = (len(scored) - 1, q, stream.text(), options)  # the plan it beat is dropped
+    chosen = _winner(scored)
+    if chosen is None:
         raise RuntimeError("stage 2: no candidate ages solved")
-    return max(good, key=lambda c: c[1])[0], scored
+    ages = scored[chosen][0]
+    if not keep:
+        return ages, scored
+    index, plan, text, options = best
+    assert index == chosen, (index, chosen)  # one rule picks both (`_winner`)
+    if isinstance(plan, bytes):
+        plan = pickle.loads(plan)  # the pool's own pickle (`score_trial`), never one read from disk
+    plan.setLogstreams(True, [log])
+    return ages, scored, Winner(plan, text, options)

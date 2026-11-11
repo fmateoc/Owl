@@ -8,10 +8,13 @@ by its record. Through real detached workers:
    overlap), each with one core, and give one result to the cent;
 2. on a one-core queue two Quick looks run one after the other, as before;
 3. "Let Owl choose the claiming ages" on a condo variant (local search) gets the queue's four
-   cores, scores its stage-2 candidates on a pool of processes, and the plan it publishes --
-   solved alone, at the ages it picked -- scores what that candidate scored among its
-   neighbours, to the cent: the result does not depend on what ran beside it. No search was
-   cut by the clock, and every candidate's log is in solve.log.
+   cores, scores its stage-2 candidates on a pool of processes, and publishes the chosen
+   candidate's own plan, brought back from its process (P4a, 2026-11-11): the record says
+   so, the published plan scores what the candidate scored, and solve.log shows one plan
+   built for stage 1 and one per candidate, none after. (Before P4a the plan was built and
+   solved again at the chosen ages; that solve, alone, scored what the candidate had scored
+   beside the others, to the cent.) No search was cut by the clock, and every candidate's
+   log is in solve.log.
 
 Run after `make_cases.py`, from the repository root:
 
@@ -122,9 +125,12 @@ def main(skip_ages):
                f"state {job.state}, wanted {job.cores_wanted}, given {job.cores}, {wall:.0f} s")
         report("every stage-2 candidate is scored", len(candidates) >= 3 and all(v is not None for _, v in candidates),
                "; ".join(f"{ages} {value:,.2f}" for ages, value in candidates if value is not None))
-        report("the plan published alone scores what its candidate scored beside the others",
-               published is not None and picked is not None and abs(published - picked) < 0.005,
-               f"ages {chosen}: candidate {picked}, published {published}")
+        builds = log.count("Preparing scenario")  # Plan.__init__'s line: one per plan built
+        report("the plan published is the chosen candidate's own, not solved again",
+               search.get("stage_2_plan") is True and published is not None and picked is not None
+               and abs(published - picked) < 0.005 and builds == 1 + len(candidates),
+               f"ages {chosen}: candidate {picked}, published {published}; {builds} plans built for "
+               f"{len(candidates)} candidates; stage_2_plan {search.get('stage_2_plan')}")
         report("the search ran at the library's effort and was not cut by the clock",
                all(options.get(key) == value for key, value in LOCAL_SEARCH_EFFORT.items())
                and record.get("search_budget_cuts") == {"solve": 0, "stages": 0} and BUDGET_CUT_MARK not in log,

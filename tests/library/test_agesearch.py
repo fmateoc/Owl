@@ -3,8 +3,8 @@
 `library.agesearch` is `run_suite.py`'s two-stage search, one implementation shared by the
 suite and the interface. The search itself needs solves, so the acceptance check runs it
 (`fork-notes/synthetic/check_library_variants.py`); these tests pin the pieces: the trial
-set stage 2 scores, the option sets, the score rule, and the worker's wiring (the chosen
-ages reach the final solve and the record's `age_search` block).
+set stage 2 scores, the option sets, the score rule, and the worker's wiring (the winning
+candidate's plan is the one published, and the record's `age_search` block).
 """
 
 import io
@@ -63,7 +63,8 @@ class TestTrials:
                          if x.startswith("fixed_income.social_security_ages=")), [62.75, 70.0])
             tried.append(ages)
             return types.SimpleNamespace(ssecAges=ages, caseStatus="solved", inames=["Ari", "Noa"],
-                                         _ssaOpenAges=lambda i: open_ages[i], objective="maxSpending")
+                                         _ssaOpenAges=lambda i: open_ages[i], objective="maxSpending",
+                                         solverOptions={})
 
         monkeypatch.setattr(agesearch, "_plan", plan)
         monkeypatch.setattr(agesearch, "_solve", lambda p, options=None: p)
@@ -72,7 +73,7 @@ class TestTrials:
         assert [round(a[0], 4) for a, _ in scored] == [62.75, 62.5833, 63.75]
         assert round(ages[0], 4) == 62.5833  # the closest open month, never 62y0m
 
-    def _stage2_options(self, monkeypatch, case_options, effort):
+    def _stage2_options(self, monkeypatch, case_options, effort, overrides=None):
         import types
 
         seen = []
@@ -90,7 +91,8 @@ class TestTrials:
         monkeypatch.setattr(agesearch, "_plan", plan)
         monkeypatch.setattr(agesearch, "_solve", solve)
         monkeypatch.setattr(agesearch, "score_plan", lambda p: 1.0)
-        agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".", effort=effort)
+        agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".", effort=effort,
+                                 overrides=overrides)
         return seen
 
     def test_stage_2_searches_at_the_effort_given(self, monkeypatch):
@@ -109,8 +111,69 @@ class TestTrials:
         assert seen == [{"breakpointMethod": "loop"}] * 3
 
     def test_without_an_effort_stage_2_is_the_case_s_own(self, monkeypatch):
-        """`run_suite.py` calls it so: `_solve`'s own reading of the plan's options."""
-        assert self._stage2_options(monkeypatch, {"breakpointMethod": "local-search"}, None) == [None] * 3
+        """`run_suite.py` calls it so: the plan's own options."""
+        case = {"breakpointMethod": "local-search"}
+        assert self._stage2_options(monkeypatch, case, None) == [case] * 3
+
+    def test_stage_2_puts_the_job_s_options_over_the_case_s(self, monkeypatch):
+        """P4a: the plan published is the winning candidate's, so every candidate solves as
+        the published solve would, the job's own options included (`candidate_options`,
+        which `presets.resolve_options` reads for "ages")."""
+        from owlplanner.library.presets import resolve_options
+
+        case = {"breakpointMethod": "loop", "withMedicare": "loop"}
+        overrides = {"breakpointMethod": "local-search", "localSearchStepNodes": 500}
+        seen = self._stage2_options(monkeypatch, case, LOCAL_SEARCH_EFFORT, overrides)
+        assert seen == [resolve_options("ages", case, overrides)] * 3
+        assert seen[0]["localSearchStepNodes"] == 500  # the job's own setting is kept
+        assert seen[0]["localSearchTime"] == LOCAL_SEARCH_EFFORT["localSearchTime"]
+
+
+class TestKeep:
+    """Performance review P4a (2026-11-11): the search returns the winning candidate's own
+    plan, which the worker publishes instead of solving it again."""
+
+    def test_the_first_of_equal_scores_wins(self):
+        assert agesearch._winner([([1.0], None), ([2.0], 5.0), ([3.0], 5.0), ([4.0], 4.0)]) == 1
+        assert agesearch._winner([([1.0], None)]) is None
+
+    def _stubbed(self, monkeypatch, scores):
+        """Stage 2 on stubs: candidate ages [66, 65, 67] score `scores[age]`."""
+        import types
+
+        def plan(diconf, dirname, log, sets=()):
+            ages = [66.0]
+            for spec in sets:
+                if spec.startswith("fixed_income.social_security_ages="):
+                    ages = json.loads(spec.split("=", 1)[1])
+            log.write(f"solving at {ages}\n")
+            return types.SimpleNamespace(ssecAges=ages, caseStatus="solved", inames=["Ari"],
+                                         _ssaOpenAges=lambda i: [62.0], solverOptions={"x": 1},
+                                         streams=None, setLogstreams=None)
+
+        def solve(p, options=None):
+            p.setLogstreams = lambda verbose, streams, p=p: setattr(p, "streams", streams)
+            return p
+
+        monkeypatch.setattr(agesearch, "_plan", plan)
+        monkeypatch.setattr(agesearch, "_solve", solve)
+        monkeypatch.setattr(agesearch, "score_plan", lambda p: scores[p.ssecAges[0]])
+
+    def test_the_winner_is_the_best_candidate_s_own_plan(self, monkeypatch):
+        self._stubbed(monkeypatch, {66.0: 1.0, 65.0: 3.0, 67.0: 3.0})
+        log = io.StringIO()
+        ages, scored, winner = agesearch.two_stage_ages(
+            {"solver_options": {"withSSAges": "Ari"}}, ".", log, overrides={"y": 2}, keep=True)
+        assert ages == [65.0] and [a for a, _ in scored] == [[66.0], [65.0], [67.0]]
+        assert winner.plan.ssecAges == [65.0]  # the first of the two best, as `ages` says
+        assert winner.log == "solving at [65.0]\n" and winner.log in log.getvalue()
+        assert winner.options == {"x": 1, "y": 2}
+        assert winner.plan.streams == [log]  # it logs to the caller's stream from now on
+
+    def test_without_keep_the_result_is_as_before(self, monkeypatch):
+        self._stubbed(monkeypatch, {66.0: 1.0, 65.0: 3.0, 67.0: 2.0})
+        result = agesearch.two_stage_ages({"solver_options": {"withSSAges": "Ari"}}, ".")
+        assert result == ([65.0], [([66.0], 1.0), ([65.0], 3.0), ([67.0], 2.0)])
 
 
 class TestOptions:
@@ -181,27 +244,55 @@ class TestWorkerWiring:
         return R.JobRecord.create(run.path / "results" / name, run_id=run.id, run_name=run.name,
                                   preset="ages", options={}, plan_year=2026)
 
-    def test_the_search_picks_and_the_final_solve_uses_them(self, searched_case, monkeypatch):
-        calls = {}
+    def test_the_search_s_plan_is_the_one_published(self, searched_case, monkeypatch):
+        """P4a: the winning candidate's plan is published as it is; nothing is solved again."""
+        from owlplanner.plan import Plan
 
-        def fake_search(diconf, dirname, log=None, *, check=None, effort=None, pool=None):
-            calls["effort"], calls["pool"] = effort, pool
-            calls["withSSAges"] = diconf.get("solver_options", {}).get("withSSAges")
-            return [66.0], [([66.0], 123.0), ([67.0], 100.0)]
+        calls = {}
+        solves = []
+        real_solve = Plan.solve
+
+        def counted(self, *args, **kwargs):
+            solves.append(self)
+            return real_solve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Plan, "solve", counted)
+
+        def fake_search(diconf, dirname, log=None, *, check=None, effort=None, overrides=None,
+                        pool=None, keep=False):
+            calls.update(effort=effort, pool=pool, overrides=overrides, keep=keep,
+                         withSSAges=diconf.get("solver_options", {}).get("withSSAges"))
+            own = io.StringIO()
+            plan = agesearch._plan(diconf, dirname, own, agesearch.fixed_ages([66.0]))
+            options = agesearch.candidate_options(plan.solverOptions, overrides, effort)
+            agesearch._solve(plan, options)
+            own.write("12:00 | WARNING | the kept solve's own warning\n")
+            log.write(own.getvalue())
+            plan.setLogstreams(True, [log])
+            calls["plan"] = plan
+            return ([66.0], [([66.0], 123.0), ([67.0], 100.0)],
+                    agesearch.Winner(plan, own.getvalue(), options))
 
         monkeypatch.setattr("owlplanner.library.worker.two_stage_ages", fake_search)
         job = self._job(searched_case)
         assert run_job(job.results_dir, job.token) == R.DONE
         record = json.loads((job.results_dir / R.RECORD_JSON).read_text(encoding="utf-8"))
         assert record["preset"] == "ages"
-        assert record["age_search"] == {"chosen": [66.0],
+        assert record["age_search"] == {"chosen": [66.0], "stage_2_plan": True,
                                         "candidates": [[[66.0], 123.0], [[67.0], 100.0]]}
-        # The search saw the case's own ages choice; the final solve pinned the pick.
+        assert solves == [calls["plan"]]  # the stage's own solve, and no other
+        # The search saw the case's own ages choice and the job's options (none here).
         assert calls["withSSAges"] == "optimize"
+        assert calls["overrides"] == {} and calls["keep"] is True
         # Stage 2 runs at the library's search effort (performance review, 2026-11-11).
         assert calls["effort"] == LOCAL_SEARCH_EFFORT
         assert calls["pool"] is None  # a job with one core scores its candidates in a row
         assert record["method"]["options"]["withSSAges"] == "fixed"
+        # The kept solve's log is read as the published solve's; it is in solve.log once.
+        assert "the kept solve's own warning" in record["warnings"]
+        log = (job.results_dir / R.SOLVE_LOG).read_text(encoding="utf-8")
+        assert log.count("the kept solve's own warning") == 1
+        assert "published as solved there (not solved again)" in log
         plan_doc = json.loads((job.results_dir / R.PLAN_JSON).read_text(encoding="utf-8"))
         assert plan_doc["claiming_ages"] == [66.0]
 
@@ -268,14 +359,68 @@ class TestStageTwoOnAPool:
         assert log_b.getvalue().count("Objective:") == log_a.getvalue().count("Objective:") > 0
 
     def test_a_candidate_is_plain_data(self, searched):
-        """What crosses to another process pickles, and comes back as (ages, score, log)."""
+        """What crosses to another process pickles, and comes back as (ages, score, log, kept):
+        with `keep`, the solved plan's pickle and its options (P4a)."""
         import pickle
 
         diconf, dirname = searched
-        job = (diconf, dirname, [67.0], LOCAL_SEARCH_EFFORT)
-        ages, value, text = agesearch.score_trial(pickle.loads(pickle.dumps(job)))
-        assert ages == [67.0] and value > 0 and isinstance(text, str) and text
-        pickle.dumps((ages, value, text))
+        for keep in (False, True):
+            job = (diconf, dirname, [67.0], LOCAL_SEARCH_EFFORT, None, keep)
+            ages, value, text, kept = agesearch.score_trial(pickle.loads(pickle.dumps(job)))
+            assert ages == [67.0] and value > 0 and isinstance(text, str) and text
+            pickle.dumps((ages, value, text, kept))
+            if not keep:
+                assert kept is None
+                continue
+            blob, options = kept
+            plan = pickle.loads(blob)
+            assert plan.caseStatus == "solved" and list(plan.ssecAges) == [67.0]
+            assert options["withSSAges"] == "fixed"
+            assert agesearch.score_plan(plan) == value
+
+    class PicklingPool(Pool):
+        """`map` in this process, every item and result through a pickle, as a process pool
+        sends them."""
+
+        def map(self, fn, items):
+            import pickle
+
+            self.jobs = list(items)
+            return [pickle.loads(pickle.dumps(fn(pickle.loads(pickle.dumps(item))))) for item in self.jobs]
+
+    @pytest.mark.parametrize("on_a_pool", [False, True])
+    def test_the_kept_plan_is_what_solving_again_gives(self, searched, on_a_pool):
+        """P4a: the plan kept is the plan the worker used to build again at the chosen ages and
+        solve with `resolve_options("ages", ...)`: the same results, to the last figure."""
+        from owlplanner.cli.formatters import plan_to_dict
+        from owlplanner.config.schema import parse_solver_options
+        from owlplanner.export import plan_metrics
+        from owlplanner.library.presets import resolve_options
+
+        diconf, dirname = searched
+        log = io.StringIO()
+        pool = self.PicklingPool() if on_a_pool else None
+        ages, scored, winner = agesearch.two_stage_ages(diconf, dirname, log, effort=LOCAL_SEARCH_EFFORT,
+                                                        pool=pool, keep=True)
+        assert (ages, scored) == agesearch.two_stage_ages(diconf, dirname, effort=LOCAL_SEARCH_EFFORT)
+        again = agesearch._plan(diconf, dirname, io.StringIO(), agesearch.fixed_ages(ages))
+        options = resolve_options("ages", again.solverOptions, None)
+        again.solve(again.objective, parse_solver_options(options))
+        assert winner.options == options
+
+        def doc(plan):
+            out = plan_to_dict(plan)
+            out.pop("solve_time_seconds", None)  # load-dependent
+            return json.dumps(out, sort_keys=True, default=str)
+
+        assert doc(winner.plan) == doc(again)
+        assert json.dumps(plan_metrics(winner.plan), sort_keys=True, default=str) == \
+            json.dumps(plan_metrics(again), sort_keys=True, default=str)
+        # Its own log is among the candidates' in the caller's stream, and it logs there now.
+        assert winner.log and winner.log in log.getvalue()
+        before = len(log.getvalue())
+        winner.plan.mylog.vprint("after the search")
+        assert "after the search" in log.getvalue()[before:]
 
     def test_the_check_still_runs_before_the_pool(self, searched):
         diconf, dirname = searched

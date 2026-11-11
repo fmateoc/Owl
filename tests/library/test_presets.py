@@ -135,6 +135,20 @@ def test_decision_queues_two_solves_and_the_others_one():
     assert preset_solves("custom") == ("custom",)
 
 
+@pytest.mark.parametrize("case, overrides", [
+    (TEMPLATE_LIKE, None),
+    ({"breakpointMethod": "loop"}, None),
+    ({"breakpointMethod": "loop"}, {"breakpointMethod": "local-search"}),
+    (dict(TEMPLATE_LIKE, localSearchTime=600), {"localSearchStepNodes": 500}),
+])
+def test_ages_solves_as_its_stage_2_candidates(case, overrides):
+    """P4a: "ages" publishes the winning stage-2 candidate's plan, so its options are the
+    rule the candidates solve by (`agesearch.candidate_options`), whatever the job adds."""
+    from owlplanner.library.agesearch import candidate_options
+
+    assert resolve_options("ages", case, overrides) == candidate_options(case, overrides, LOCAL_SEARCH_EFFORT)
+
+
 def test_ages_is_the_case_s_own_model_with_its_own_ages_choice():
     """Section 8.1's "Ages": the search and the candidates run under the case's own options
     (R4's exception: this preset does not fix the claiming ages)."""

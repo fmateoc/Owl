@@ -202,6 +202,28 @@ class TestSearchBudget:
         assert tee.warnings == set() and tee.iteration == 3  # quiet lines are still not the solve's
         assert (tmp_path / "solve.log").read_text(encoding="utf-8").count(BUDGET_CUT_MARK) == 3
 
+    def test_a_kept_candidate_s_log_is_read_as_the_published_solve_s(self, tmp_path):
+        """P4a: "ages" publishes its winning candidate's plan, whose log was written while the
+        tee was quiet; `adopt` reads it as the published solve's, without writing it again."""
+        from owlplanner.library.worker import BUDGET_CUT_MARK, _LogTee
+
+        kept = (f"12:00 | INFO | {BUDGET_CUT_MARK}; keeping the current plan.\n"
+                "12:01 | WARNING | the kept candidate's warning\n12:02 | INFO | Iter: 4\n12:03 | INFO | done")
+        tee = _LogTee(tmp_path / "solve.log")
+        try:
+            tee.quiet = True
+            tee.write("12:00 | WARNING | another candidate's warning\n")
+            tee.write(kept + "\n")
+            tee.quiet = False
+            assert tee.warnings == set() and tee.iteration is None
+            tee.adopt(kept)
+        finally:
+            tee.close()
+        assert tee.warnings == {"the kept candidate's warning"}
+        assert tee.iteration == 4 and tee.last_line == "12:03 | INFO | done"
+        assert (tee.budget_cuts, tee.budget_cuts_stages) == (1, 1)
+        assert (tmp_path / "solve.log").read_text(encoding="utf-8").count("the kept candidate's warning") == 1
+
     def test_a_search_cut_by_the_clock_is_in_the_record(self, run):
         """A real solve: local search with no time at all finds its budget spent at once."""
         job = make_job(run, name="2026-01-01T00-00-00_custom", preset="custom",

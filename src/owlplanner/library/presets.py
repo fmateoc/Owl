@@ -40,13 +40,15 @@ step 6.
   differences compare (it mis-prices the ACA trade in marketplace years): it is read as
   "does it order the variants the same way?", never as a tolerance (R2).
 - ``ages`` runs `library.agesearch`'s two-stage search when the case searches claiming ages
-  (`withSSAges` not ``fixed``), then solves at the ages it picked: the exact LP searches,
-  and the pick and its +-1-year neighbours are scored at fixed ages under the case's own
-  model (section 8.1). It forces nothing (R4's exception): a case with ``withSSAges =
-  "fixed"`` just solves, under its own model. Where that model is local search, the effort
-  settings the case does not state are the library's (`LOCAL_SEARCH_EFFORT`), in stage 2
-  and in the final solve alike: stage 2 picks by the raw score, so its candidates must not
-  be cut short by the clock.
+  (`withSSAges` not ``fixed``): the exact LP searches, and the pick and its +-1-year
+  neighbours are scored at fixed ages under the case's own model (section 8.1). The plan
+  published is the winning candidate's own, not solved again (performance review P4a,
+  2026-11-11): every candidate solves with the options the published solve would have
+  (`agesearch.candidate_options`, which `resolve_options` reads). It forces nothing (R4's
+  exception): a case with ``withSSAges = "fixed"`` just solves, under its own model. Where
+  that model is local search, the effort settings the case does not state are the
+  library's (`LOCAL_SEARCH_EFFORT`): stage 2 picks by the raw score, so its candidates must
+  not be cut short by the clock.
 - ``ages_thorough`` (section 8.1's "Ages, thorough") runs `owlplanner.work_sweep`'s
   own sweep -- every whole-year pair of the searched people scored by branch-and-bound at
   gap 1e-5 (`run_variant`, stage (a)'s exact-LP search plus stage (c); the loop search is
@@ -76,7 +78,7 @@ step 6.
 
 from __future__ import annotations
 
-from .agesearch import EXACT_GROUP, search_effort
+from .agesearch import EXACT_GROUP, candidate_options
 
 # The tornado's medical-inflation model (review AJ1): the exact model with Medicare priced
 # exactly. The other movers stay on `decision_exact` (EXACT_GROUP), which has Medicare off.
@@ -217,15 +219,16 @@ def resolve_options(preset: str, case_options=None, overrides=None) -> dict:
     Local search's effort (`LOCAL_SEARCH_EFFORT`): ``decision`` sets it over the case's own
     settings and under the job's overrides (the preset is the method; an override is a
     choice made for one job). ``ages`` fills in only what neither states, where the model is
-    local search (it forces nothing).
+    local search (it forces nothing): `agesearch.candidate_options`, the rule its stage-2
+    candidates solve by, since the plan published is the winning candidate's (P4a).
     """
     _check(preset)
+    if preset == "ages":
+        return {**candidate_options(case_options, overrides, LOCAL_SEARCH_EFFORT), **_FORCED[preset]}
     options = dict(case_options or {})
     if preset == "decision":
         options.update(LOCAL_SEARCH_EFFORT)
     options.update(dict(overrides or {}))
-    if preset == "ages":
-        options = search_effort(options, LOCAL_SEARCH_EFFORT)
     if preset == "quick":
         for key in LOOP_FAMILIES:
             if str(options.get(key, "")).strip().lower() == "optimize":

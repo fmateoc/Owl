@@ -241,6 +241,9 @@ class _LogTee:
     Local search's "time budget spent" lines are counted either way, apart: `budget_cuts`
     for the published solve, `budget_cuts_stages` while quiet (a candidate cut by the clock
     is scored on a shorter search than its neighbours).
+
+    `adopt` reads a log already written, quietly, as the published solve's (the "Ages"
+    preset publishes its winning candidate's plan, P4a): the file is not written again.
     """
 
     def __init__(self, path, check=None):
@@ -260,16 +263,33 @@ class _LogTee:
         self._fh.flush()
         self._pending += text
         *lines, self._pending = self._pending.split("\n")
+        self._read(lines, self.quiet)
+        if self._check is not None and time.monotonic() - self._checked > CHECK_SECONDS:
+            self._checked = time.monotonic()
+            self._check()
+
+    def adopt(self, text):
+        """Read `text`, a solve's log that is already in solve.log (written while quiet), as
+        the published solve's own: its warnings, loop iterations, last line and clock cuts.
+
+        The "Ages" preset publishes the winning stage-2 candidate's plan instead of solving it
+        again (P4a); the record must say what that solve's log says, as it said what the
+        repeated solve's did. Its clock cuts were counted among the stages' when it was
+        written, and are the published solve's too.
+        """
+        self._read(text.split("\n"), False)
+
+    def _read(self, lines, quiet):
         for line in lines:
             stripped = line.strip()
             if not stripped:
                 continue
             if BUDGET_CUT_MARK in stripped:
-                if self.quiet:
+                if quiet:
                     self.budget_cuts_stages += 1
                 else:
                     self.budget_cuts += 1
-            if self.quiet:
+            if quiet:
                 continue
             self.last_line = stripped
             if _WARN_RE.search(stripped):
@@ -277,9 +297,6 @@ class _LogTee:
             match = _ITER_RE.search(stripped)
             if match:
                 self.iteration = max(self.iteration or 0, int(match.group(1)))
-        if self._check is not None and time.monotonic() - self._checked > CHECK_SECONDS:
-            self._checked = time.monotonic()
-            self._check()
 
     def flush(self):
         self._fh.flush()
@@ -395,15 +412,19 @@ class Worker:
         self.check()
         diconf, dirname, _ = load_toml(str(self.run_dir / "inputs" / "Case.toml"))
 
-        # The Ages presets (design 8.1, step 6): the search first, then the final solve at
-        # the ages it picked. "ages" runs run_suite.py's two-stage search
-        # (`library.agesearch`); "ages_thorough" runs work_sweep.py's whole-year sweep
-        # (`_ages_thorough`, section 8.1's "Ages, thorough"). The stages' logs go to
-        # solve.log but their warnings stay out of the record (run_suite.py's rule).
+        # The Ages presets (design 8.1, step 6): the search first, then the plan at the ages
+        # it picked. "ages" runs run_suite.py's two-stage search (`library.agesearch`) and
+        # publishes the winning candidate's own plan (P4a: it was solved again here, with
+        # the same options); "ages_thorough" runs work_sweep.py's whole-year sweep
+        # (`_ages_thorough`, section 8.1's "Ages, thorough") and solves the decided cell
+        # again. The stages' logs go to solve.log but their warnings stay out of the record
+        # (run_suite.py's rule); the kept candidate's are read as the published solve's.
         preset = str(self.job.doc.get("preset") or "custom")
+        overrides = self.job.doc.get("options")
         age_search = None
         scores = None
         thorough = None  # "Ages, thorough": (work_sweep, its scorer config, the decided cell)
+        winner = None  # "ages": the winning stage-2 candidate (`agesearch.Winner`), published as it is
         if preset in ("ages", "ages_thorough") and str(
                 diconf.get("solver_options", {}).get("withSSAges", "fixed")
         ).strip().lower() != "fixed":
@@ -416,26 +437,40 @@ class Worker:
                     ages, candidates, scores, thorough = self._ages_thorough(diconf, dirname)
                 else:
                     pool = self._pool()
-                    ages, candidates = two_stage_ages(
+                    ages, candidates, winner = two_stage_ages(
                         diconf, dirname, log=self.tee, check=self.check, effort=LOCAL_SEARCH_EFFORT,
+                        overrides=overrides, keep=True,
                         pool=pool if isinstance(pool, _ProcessPool) else None)
             finally:
                 self.tee.quiet = False
             age_search = {"chosen": ages, "candidates": candidates}
+            if winner is not None:
+                age_search["stage_2_plan"] = True  # published as scored, not solved again (P4a)
             if thorough is not None:
                 # What scored the decided cell (review AH1): the final solve repeats it.
                 cell = thorough[2]
                 age_search["decided"] = {"used": cell.get("used"), "value": cell.get("value"),
                                          "proved": cell.get("proved"), "gap": cell.get("gap")}
-            diconf = apply_overrides(diconf, fixed_ages(ages))
-            self.job.touch(self.token, step="building the plan")
+            if winner is None:
+                diconf = apply_overrides(diconf, fixed_ages(ages))
+                self.job.touch(self.token, step="building the plan")
+                self.check()
+
+        if winner is not None:
+            # P4a: the winning candidate was solved at these ages with the options this solve
+            # would use (`agesearch.candidate_options`, which `resolve_options` reads for
+            # "ages"), so its plan is the one published. Its log is in solve.log among the
+            # candidates'; the record reads it as this solve's.
+            plan, options = winner.plan, winner.options
+            self.tee.write(f"The plan at claiming ages {ages} is the stage-2 candidate's own, "
+                           "published as solved there (not solved again).\n")
+            self.tee.adopt(winner.log)
             self.check()
-
-        plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
-
-        self.job.touch(self.token, step="solving")
-        self.check()
-        options = resolve_options(preset, plan.solverOptions, self.job.doc.get("options"))
+        else:
+            plan = config_to_plan(diconf, dirname, verbose=True, logstreams=[self.tee], loadHFP=True)
+            self.job.touch(self.token, step="solving")
+            self.check()
+            options = resolve_options(preset, plan.solverOptions, overrides)
         if thorough is not None:
             # "Ages, thorough" publishes the plan its sweep decided on (review AH1): the decided
             # cell re-solved with the options that scored it (branch-and-bound at the sweep's
@@ -446,7 +481,8 @@ class Worker:
             options = {k: v for k, v in options.items() if k not in ws.PRESET_KEYS}
             options.update(ws.scorer_options(plan, cfg, cell.get("used") or "branch-and-bound"))
         options = parse_solver_options(options)
-        plan.solve(plan.objective, options)
+        if winner is None:
+            plan.solve(plan.objective, options)
         wall = time.time() - t0
         if thorough is not None and plan.caseStatus == "solved":
             age_search["published_value"] = float(plan._objectiveValue(plan.objective))

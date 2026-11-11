@@ -8419,8 +8419,13 @@ items, no timings) and asked for its claims to be checked one by one and for
   corrected index `ceil(S / lam) - 1` matches the LP except at one tie); a `_repairAmo` call
   "on every intermediate SC-loop iteration" (no such method or `self.amo` in the repository;
   the real repairs run once after the loop); `load_historical_slice` reading the CSV on every
-  call (it is `lru_cache`d); the tornado's results loaded twice (once each); 700 school
-  districts (75 in the data).
+  call (it is `lru_cache`d); the tornado's results loaded twice (once each).
+- **Partly wrong:** "~700 NY school districts" scanned per year. New York has about that many
+  (730, the user from data.nysed.gov; the site is refused by this container's proxy), but the
+  list the code scans is the fork's `data/property_tax_relief.toml`, 75 rows (Westchester and
+  New York City). `star_schedule` runs once per solve: 0.16 ms on 75 rows, 2.4 ms on a table
+  padded to 730 (`audit/star_scan.py`). The first write-up of this said "the data file has 75"
+  without naming the file or granting the state's count; corrected after the user's objection.
 - **Its priorities, measured:** timers on a real Careful solve (129.4 s at a 300-node cap):
   99.48% in `_run_highs`; every deep copy 0.126 s, every CSR build 0.061 s, money scaling
   0.014 s, the SS streams 0.002 s. Its P0 "cache CSR and money scaling, stop deep-copying" is

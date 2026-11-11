@@ -153,7 +153,7 @@ measured to be much smaller), **false**, **not checkable here**.
 | M10 | "move `_repairAmo` outside intermediate SC iterations ... Saves 1 extra LP solve + 2 Python row scans per intermediate SC iteration" | **false** | section 4, F2 |
 | M11 | 15-25 throwaway `Plan` objects per sensitivity / export workflow | **verified; irrelevant in size** | read `builder.py:720`, `758`, `842`. 3.7 ms each (run): under 0.1 s |
 | M12 | Vectorize `_conditionTimetables`, `thresholds.py`, `tax_federal.py`: "25-50x", "10-30x" | **structure verified; factors unsupported** | read `hfp_io.py:373`, `380`, `thresholds.py:124-131`, `tax_federal.py:1089-1095`. Base times: 41 ms, 32 ms once per result, and all of `_adjustParameters` 0.4 ms per call. Only the 41 ms recurs (per longevity clone) |
-| M13 | `star.py`: "700 districts scanned per year ... 28,000 string formats/solve"; uncached rate-model fits | **the scan is verified; the count is false; the fits are supported** | section 4, F5; `grep -c lru_cache`: 0 in `copula.py`, `garch_dcc.py`, `vector_ar.py` |
+| M13 | `star.py`: "700 districts scanned per year ... 28,000 string formats/solve"; uncached rate-model fits | **the scan is verified; the count is New York's, not the table's (75 rows today); the fits are supported** | section 4, F5: 0.16 ms per solve today, 2.4 ms with a 730-row table; `grep -c lru_cache`: 0 in `copula.py`, `garch_dcc.py`, `vector_ar.py` |
 
 ### 3.2 Other load-bearing claims
 
@@ -184,7 +184,10 @@ measured to be much smaller), **false**, **not checkable here**.
 | S23 | Collections: making K variants triggers "4K full library scans and 3K full job scans" | **supported** | `enqueue` ends with `self.tick()` (read `jobs.py:141`), three scans each; the page's loop was not read |
 | S24 | `generate_historical_series`, `debts.py`, `fixedassets.py`, `copula.py` details; `_regret_objective_value`; `plan_to_excel` formatting twice; `clone` generating a throwaway rate series | **not checked** | |
 
-## 4. The false claims, quoted
+## 4. The false and partly wrong claims, quoted
+
+F1-F4 are false as quoted. F5 and F6 are partly wrong: each states something true beside
+something that does not hold for this code.
 
 **F1. The closed form.** "If lambda > 1: g* = max(0.0, b_(min(floor(S(1 - 1/lambda)), S-1)))" with
 "b_(0) <= b_(1) <= ... <= b_(S-1)".
@@ -242,13 +245,34 @@ inside the loop that starts at 992). Lines 988-992 load the bases and 997-1001 l
 children: each result once. The quoted dictionary comprehension is not in the file. That these
 loads run with the expander collapsed is true, as for every Streamlit expander.
 
-**F5. 700 school districts.** "it linearly scans all ~700 NY school district dicts ... (~28,000
+**F5. 700 school districts (partly wrong; corrected 2026-11-11 after the user's objection).** "it
+linearly scans all ~700 NY school district dicts in `program(state)["districts"]` ... (~28,000
 string formats per NY solve!)".
 
-`len(star.program("NY")["districts"])` is 75 (run); the data file's own error text says
-"Westchester and New York City so far" (`star.py:93`). With 28 plan years that is at most 2,100
-key comparisons per call of `star_schedule`. The scan itself (`star.py:97-101`, inside the year
-loop at 230-233) is as described.
+Two different counts are in play, and the first version of this audit named only one of them:
+
+- *New York's districts.* About 700 is right for the state: the user reports 730 from
+  data.nysed.gov. Not verified here (`curl https://data.nysed.gov/` is refused by this
+  container's proxy, "CONNECT tunnel failed, response 403"); nothing here disputes it.
+- *The rows the code scans.* `program(state)["districts"]` is the list in the fork's own data
+  file, `src/owlplanner/data/property_tax_relief.toml`, which holds the STAR credit amounts
+  typed in from tax.ny.gov's county pages. `grep -c '^\[\[NY\.districts\]\]'` on it gives 75
+  (27 municipalities); its line 34 says "Only Westchester County and New York City are here; to
+  add a county, copy its page's rows." So the quoted sentence is wrong about what runs today:
+  at most 75 x 28 = 2,100 key comparisons per solve, not 28,000.
+
+The scan itself (`star.py:97-101`, inside the year loop at 230-233) is as described, and
+`star_schedule` runs once per solve. Measured (`audit/star_scan.py`, the plan's district placed
+last, the worst case):
+
+```
+data file as it is: 75 district rows; Quick look 0.67 s; star_schedule called 1 times, 0.16 ms in total (0.02% of the solve)
+padded to a statewide table: 730 district rows; Quick look 0.59 s; star_schedule called 1 times, 2.38 ms in total (0.41% of the solve)
+```
+
+So if the table is ever filled for the whole state, the second review's count becomes about
+right (730 x 28 = 20,440) and the scan costs 2.4 ms per solve. A dictionary by key is a
+three-line change and harmless; it is not a performance item at either size.
 
 **F6. `git` on every `load_plan`.** Quoted in S20. `version.engine_commit` is
 `@lru_cache(maxsize=1)` (`version.py:28`): `git rev-parse` and `git status` run once per
@@ -325,7 +349,8 @@ every result of the run.
 
 | Statement | Confidence | Why |
 |---|---|---|
-| F1-F5 are false as quoted | high | each reproduced by a run or a grep shown above |
+| F1-F4 are false as quoted | high | each reproduced by a run or a grep shown above |
+| F5: the code scans 75 rows today, whatever the state's count | high | grep and run on the data file; the state's 730 is the user's figure, not checked here |
 | F6 is partly false | high for the caching (read); none for Windows timings |
 | 25 claims are as stated in structure | high | cited lines read at the same commit |
 | Python-side caching is under 0.5% of a Careful solve | high | timers on a real solve |

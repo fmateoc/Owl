@@ -9,6 +9,7 @@ Run from the repository root after `fork-notes/synthetic/make_cases.py`. They ch
   and on the Python the audited review wants cached (`deepcopy`, `to_csr`, money scaling, ...).
 - `micro_timings.py`: single-call times (plan build, `readHFP`, `clone`, SS streams, `plan.json`
   blocks, the code stamp, ...), and the number of school districts in the STAR data.
+- `star_scan.py`: `star.star_schedule` with the STAR table as it is (75 rows) and padded to 730.
 - `workbook_read.py`: the Run page's `pd.read_excel(sheet_name=None)` on a results workbook.
 - `stress_probe.py <n>`: `run_stochastic_spending` over `n` historical start years at Quick-look
   options, four worker threads then one.

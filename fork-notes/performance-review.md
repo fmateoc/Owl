@@ -361,7 +361,8 @@ Small, in the same module:
   candidate, 89 ms a read, in a sweep whose scored plans take 94-288 s each.
 - **Throwaway plans in `library/builder.py`**: 3.7 ms each.
 - **`thresholds.threshold_proximity`**: 32 ms, once per result. **`star.star_schedule`'s district
-  scan**: 75 districts in the data.
+  scan**: 0.16 ms per solve on the 75 rows of `data/property_tax_relief.toml` (Westchester and New
+  York City), 2.4 ms if the table held all of the state's roughly 730 districts.
 - **`git` in `code_stamp`**: `version.engine_commit` is cached per process; a dirty tree adds a
   3 ms `git diff` per call.
 - **`STEP_GAP`**: see P3.

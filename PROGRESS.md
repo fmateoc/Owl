@@ -8604,7 +8604,7 @@ The user's call: "build P9, P6's pages and P8, and prepare P2 issue". Details:
   cut. Upstream's suite with the patch: 3318 passed, 1 skipped. Draft
   `fork-notes/issue-ls-settled-steps.md` with the repro (`issue-ls-settled-steps-repro.py`,
   output beside it), **not filed**.
-- Tests: FORK_SUITE_LINE
+- Tests: 4910 passed / 1 skipped (11:48, Linux, `-n 4`; 4903 + the 7 new; code as at `b5c2d7b`).
 
 Next: the user's call on filing the P2 issue, on P8 (a `deep` mark on the two fork tests, or
 nothing), and on fast-forwarding `main`.

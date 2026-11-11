@@ -14,6 +14,9 @@ does:
 - every example measured with `fork-notes/performance/p2_stock_run.sh` (both checkouts
   interleaved, three solves at a time), table by `p2_stock_table.py`.
 
+Upstream suite on `8ec9c43` with the patch: 3318 passed, 1 skipped (10:53, `-n 2`, beside other
+solves). The patch's own test is the one more test than stock's.
+
 Check before filing (CLAUDE.md, "prevent at the input"): this is a performance finding, not a
 bad input; the root cause is named first and the patch is kept to it. The open point (no
 confirming search once the loop has settled) is stated, not hidden.

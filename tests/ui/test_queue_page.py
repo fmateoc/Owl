@@ -122,8 +122,8 @@ def test_the_queue_says_what_a_job_is_doing_in_words(library):
 
 
 def test_the_queue_says_how_many_solves_run_at_once(library, monkeypatch):
-    """Performance review, 2026-11-11: the queue has cores (`OWL_LIBRARY_CORES`, else half the
-    computer's), and the page says what that means for the jobs listed."""
+    """Performance review, 2026-11-11: the queue has cores (`OWL_LIBRARY_CORES`, else 4 but no
+    more than half the computer's), and the page says what that means for the jobs listed."""
     monkeypatch.setenv("OWL_LIBRARY_CORES", "3")
     _running_job(library, "running")
     at = _page()

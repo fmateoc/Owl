@@ -14,8 +14,8 @@
 # only (R11). Other arguments pass through to streamlit; the plain launcher (owlplanner.sh)
 # has no library.
 #
-# Solves run side by side on half of this computer's cores. To choose the number, set
-# OWL_LIBRARY_CORES before starting (OWL_LIBRARY_CORES=1 for one solve at a time).
+# Up to 4 solves run side by side, no more than half of this computer's cores. To choose the
+# number, set OWL_LIBRARY_CORES before starting (OWL_LIBRARY_CORES=1 for one solve at a time).
 #
 # Copyright (C) 2024-2026 Martin-D. Lacasse and The Owl Authors
 #

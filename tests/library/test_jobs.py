@@ -253,20 +253,22 @@ class TestCores:
         assert fresh(job).doc["cores"] == 2
 
     def test_the_interface_s_cores(self, monkeypatch):
-        monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 8)
+        """4, but no more than half the logical cores (the user's call, 2026-11-11)."""
         monkeypatch.delenv(jobs_module.CORES_ENV, raising=False)
-        assert jobs_module.default_cores() == 4  # half the logical cores
+        for logical, cores in ((8, 4), (16, 4), (32, 4), (6, 3), (4, 2), (3, 1), (2, 1)):
+            monkeypatch.setattr(jobs_module.os, "cpu_count", lambda n=logical: n)
+            assert jobs_module.default_cores() == cores, logical
         monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 1)
         assert jobs_module.default_cores() == 1
         monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: None)
         assert jobs_module.default_cores() == 1
         monkeypatch.setenv(jobs_module.CORES_ENV, "6")
-        assert jobs_module.default_cores() == 6
+        assert jobs_module.default_cores() == 6  # the setting is not capped at 4
         monkeypatch.setenv(jobs_module.CORES_ENV, "0")
         assert jobs_module.default_cores() == 1  # at least one
         monkeypatch.setenv(jobs_module.CORES_ENV, "many")
         monkeypatch.setattr(jobs_module.os, "cpu_count", lambda: 12)
-        assert jobs_module.default_cores() == 6  # an unreadable setting is no setting
+        assert jobs_module.default_cores() == 4  # an unreadable setting is no setting
 
     def test_a_tick_reads_the_library_once(self, wide, run, monkeypatch):
         """Performance review P6: a tick scanned every run and every job record three times."""

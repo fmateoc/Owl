@@ -93,7 +93,8 @@ def run_zip_bytes(run) -> bytes:
 
 @st.cache_resource
 def _manager(root: str):
-    # The queue's cores: `OWL_LIBRARY_CORES`, else half the computer's (`jobs.default_cores`).
+    # The queue's cores: `OWL_LIBRARY_CORES`, else 4 but no more than half the computer's
+    # logical cores (`jobs.default_cores`).
     manager = JobManager(Library.open(root), cores=default_cores())
     manager.start_ticker()
     return manager

@@ -49,14 +49,21 @@ RESULTS_DIR = "results"
 CORES_ENV = "OWL_LIBRARY_CORES"
 
 
+# The interface's default: this many solves at once, fewer on a computer with fewer than
+# twice as many logical cores (the user's call, 2026-11-11).
+DEFAULT_CORES = 4
+
+
 def default_cores() -> int:
-    """The cores the interface's queue uses: `OWL_LIBRARY_CORES`, else half the computer's.
+    """The cores the interface's queue uses: `OWL_LIBRARY_CORES`, else 4 but no more than half
+    the computer's logical cores.
 
     `os.cpu_count()` counts logical cores, and two solves on the two threads of one physical
     core are not two cores' worth; half of it is the physical count on most desktop
-    processors, and leaves the browser and the server room on the others. Not measured on any
-    computer but the four-core container the review ran in: set the variable after timing a
-    batch (four solves at once cost 5% of wall each there; six cost 17-18% of CPU).
+    processors, and leaves the browser and the server room on the others. The cap of 4 is
+    the user's call (2026-11-11), not a measurement: the only computer timed is the
+    four-core container the review ran in (four solves at once cost 5% of wall each there;
+    six cost 17-18% of CPU). The variable sets any number, above 4 included.
     """
     raw = os.environ.get(CORES_ENV, "").strip()
     if raw:
@@ -64,7 +71,7 @@ def default_cores() -> int:
             return max(1, int(raw))
         except ValueError:
             pass  # an unreadable setting is no setting
-    return max(1, (os.cpu_count() or 2) // 2)
+    return max(1, min(DEFAULT_CORES, (os.cpu_count() or 2) // 2))
 
 
 def _queued_order(job: R.JobRecord):

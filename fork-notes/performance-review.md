@@ -11,9 +11,10 @@ P8 are as written on 2026-11-10.
 no more than half the logical ones (`9063580`), and P4a (`cfd26e1`); then P4a for *Claiming
 ages, every pair tried* and `run_suite.py` (`9e35def`, section 6c). Later still (the user's call
 "build P9, P6's pages and P8, and prepare P2 issue", section 6d): P9 (`1628a9e`) and P6's pages
-(`b5c2d7b`) built; P8 measured and not built (the node cap does not shorten those tests); P2
-measured on stock upstream and drafted as an issue (`fork-notes/issue-ls-settled-steps.md`, not
-filed). Not built: P7, P10, section 3b.
+(`b5c2d7b`) built; P8 measured, not built, then dropped (the user's call: the node cap does not
+shorten those tests); P2 measured on stock upstream, with and without a confirming search
+(section 6e), and filed by the user as **#252** with the two options and no patch
+(`fork-notes/issue-ls-settled-steps.md`). Not built: P7, P10, section 3b.
 
 The user's request: "review the project from a performance improvement perspective. Look for any
 significant opportunities: architectural, algorithmic, memoization, dropping redundant steps."
@@ -370,9 +371,10 @@ for `owlcli`). Irrelevant for Careful. Low priority.
 
 ### P8. Test suite
 
-**Measured, not built** (section 6d): a node cap does not shorten the two fork tests below; what
-they spend is P2's pattern (loop iterations re-running steps that find nothing) and the size of
-each restricted solve, not the node count.
+**Dropped** (the user's call, 2026-11-11, after section 6d's measurement): a node cap does not
+shorten the two fork tests below; what they spend is P2's pattern (loop iterations re-running
+steps that find nothing) and the size of each restricted solve, not the node count. The tests
+stay as they are, in the default run.
 
 One run with `--durations=60` (4,838 passed, 1 skipped, 879 s; two solves were running beside it,
 so the seconds are inflated and the shares are what to read): the 60 slowest tests are 2,061 of
@@ -734,7 +736,7 @@ start from the previous binaries, move nothing, and spend 16 of their 17 s each 
 (a'), which is P2's pattern. The STAR test is bounded today by its wall-clock budget; a node cap
 alone makes it slower. So the cap gives at most a fifth of these tests' time, and the options
 left change what the default run covers (a `deep` mark: about 170 worker-seconds, some 40 s of
-wall at `-n 4`) or wait for P2 upstream. The user's call; nothing changed.
+wall at `-n 4`) or wait for P2 upstream. **Dropped** (the user's call): nothing changed.
 
 **P2 on stock upstream.** The issue needs a stock repro, so the prototype was written as a
 patch to upstream's `localsearch.py` (`fork-notes/issue-ls-settled-steps.patch`, with a test)
@@ -791,8 +793,9 @@ moved nothing runs (a) and (c) only.
 - **Upstream's suite** on the patched checkout: 3318 passed, 1 skipped (10:53, `-n 2`, beside
   other solves).
 
-The draft: `fork-notes/issue-ls-settled-steps.md` (not filed; the user's call). The open point
-it states is section P2's: no full search confirms the plan once the loop has settled.
+The draft: `fork-notes/issue-ls-settled-steps.md`, **filed by the user as #252** with the two
+options of section 6e and no patch. The open point it states is section P2's: no full search
+confirms the plan once the loop has settled.
 
 ## 6e. Later on 2026-11-11: P2 with a confirming search
 

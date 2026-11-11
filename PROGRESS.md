@@ -8631,3 +8631,15 @@ Next: the user's call on whether to file, and with which patch.
 
 `main` fast-forwarded to this branch the same day (the user's call), from `b4f1a11`: P9, P6's pages,
 P8 measured, the P2 issue draft with both patches.
+
+## P2 filed as #252; P8 dropped (2026-11-11, same branch)
+
+- **P2** filed by the user as **#252**, without a patch: the issue presents the two options (skip
+  the capped steps in a loop iteration that follows one where nothing moved; the same plus one full
+  search that confirms the converged plan) with their measurements. The patches
+  (`fork-notes/issue-ls-settled-steps.patch`, `issue-ls-settled-steps-confirm.patch`) stay in
+  `fork-notes/`, not attached. Status in `fork-notes/issue-ls-settled-steps.md`.
+- **P8 dropped** (the user's call): the two fork local-search tests stay as they are, in the
+  default run.
+
+Next: the maintainer's answer on #252.

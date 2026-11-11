@@ -1,6 +1,8 @@
 # Draft upstream issue: local search re-runs its node-capped steps in loop iterations where nothing moved
 
-Status: **draft, not filed** (2026-11-11). From the fork's performance review, P2
+Status: **filed by the user as #252** (2026-11-11) **without a patch**: the issue presents the two
+options (skip the capped steps; skip them and confirm the converged plan with one full search)
+with their measurements. The patches below stay here, unattached. From the fork's performance review, P2
 (`fork-notes/performance-review.md`, section "P2 on stock upstream"). Every number below comes
 from stock upstream `dev` `8ec9c43` and the same checkout with the patch, HiGHS 1.15.1, this
 container (4 cores, Linux), on 2026-11-11 with the date frozen at 2026-01-01 as the test suite

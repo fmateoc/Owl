@@ -252,6 +252,10 @@ class Library:
         self.root = Path(root)
         # Lock timings are instance attributes so tests can shorten them.
         self.lock_wait = 5.0
+        # Where each run was last seen (id -> folder), refreshed by every listing. `get` reads
+        # only that folder's run.json and checks its id (performance review P6): a page that
+        # names one run per row used to read the whole library once per row.
+        self._folder_of = {}
 
     # -- layout ---------------------------------------------------------
 
@@ -405,7 +409,12 @@ class Library:
         """
         good, _ = self._scan()
         rank = {rid: i for i, rid in enumerate(self._library_doc().get("order", []))}
-        return sorted(good, key=lambda r: (rank.get(r.id, len(rank)), r.created, r.id))
+        ordered = sorted(good, key=lambda r: (rank.get(r.id, len(rank)), r.created, r.id))
+        folder_of = {}
+        for info in ordered:
+            folder_of.setdefault(info.id, info.path)  # two folders with one id: the first listed
+        self._folder_of = folder_of
+        return ordered
 
     def damaged(self) -> list:
         """Run folders whose run.json cannot be read (V7). Their files may still be useful."""
@@ -413,6 +422,16 @@ class Library:
         return damaged
 
     def get(self, run_id: str) -> RunInfo:
+        """The run with this id, read from its own run.json (never a stale copy).
+
+        The folder where the last listing saw it is read first; a run it does not hold any more
+        (deleted, damaged, never listed by this instance) costs one listing, as every call did.
+        """
+        folder = self._folder_of.get(run_id)
+        if folder is not None:
+            info = self._info_from_dir(folder)
+            if info is not None and info.id == run_id:
+                return info
         for info in self.runs():
             if info.id == run_id:
                 return info

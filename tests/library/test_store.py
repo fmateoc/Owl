@@ -205,6 +205,65 @@ class TestLineage:
         assert [r.id for r in lib.runs()] == [child.run.id]
 
 
+class TestGet:
+    """Performance review P6: `get` reads the one run's folder, not the whole library, and is
+    never stale (it reads run.json every time)."""
+
+    def _count_reads(self, lib, monkeypatch):
+        reads = []
+        real = Library._info_from_dir
+        monkeypatch.setattr(Library, "_info_from_dir",
+                            lambda self, folder: reads.append(folder.name) or real(self, folder))
+        return reads
+
+    def test_a_listed_run_is_read_from_its_own_folder(self, lib, monkeypatch):
+        saved = [lib.save_run(name=f"run {k}", scenario=_scenario(str(k)), generate=_generate).run
+                 for k in range(5)]
+        lib.runs()
+        reads = self._count_reads(lib, monkeypatch)
+        for run in saved:
+            assert lib.get(run.id) == run
+        assert reads == [run.folder_name for run in saved]  # one read each (it was five each)
+
+    def test_a_new_instance_and_a_run_saved_by_another_find_it(self, lib):
+        first = lib.save_run(name="first", scenario=_scenario("a"), generate=_generate).run
+        other = Library.open(lib.root)
+        assert other.get(first.id) == first  # nothing listed yet: one listing
+        lib.runs()
+        second = other.save_run(name="second", scenario=_scenario("b"), generate=_generate).run
+        assert lib.get(second.id) == second  # not where the listing saw it: one listing
+
+    def test_a_rename_is_read_not_remembered(self, lib):
+        run = lib.save_run(name="old", scenario=_scenario(), generate=_generate).run
+        lib.runs()
+        Library.open(lib.root).rename_run(run.id, "new")  # through another instance
+        assert lib.get(run.id).name == "new"
+
+    def test_a_deleted_run_is_gone(self, lib):
+        run = lib.save_run(name="gone", scenario=_scenario(), generate=_generate).run
+        lib.runs()
+        Library.open(lib.root).delete_run(run.id)
+        with pytest.raises(LibraryError, match="no run with id"):
+            lib.get(run.id)
+
+    def test_a_damaged_run_is_gone(self, lib):
+        run = lib.save_run(name="damaged", scenario=_scenario(), generate=_generate).run
+        lib.runs()
+        (run.path / "run.json").write_text("{", encoding="utf-8")
+        with pytest.raises(LibraryError, match="no run with id"):
+            lib.get(run.id)
+
+    def test_a_folder_holding_another_run_is_not_taken_for_it(self, lib):
+        """A folder copied over another by hand: the id in run.json decides."""
+        one = lib.save_run(name="one", scenario=_scenario("a"), generate=_generate).run
+        two = lib.save_run(name="two", scenario=_scenario("b"), generate=_generate).run
+        lib.runs()
+        shutil.copyfile(two.path / "run.json", one.path / "run.json")
+        with pytest.raises(LibraryError, match="no run with id"):
+            lib.get(one.id)
+        assert lib.get(two.id).id == two.id
+
+
 class TestRenameAndDelete:
     def test_rename_changes_the_name_not_the_folder(self, lib):
         result = lib.save_run(name="old", scenario=_scenario(), generate=_generate)

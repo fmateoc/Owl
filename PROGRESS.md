@@ -8569,4 +8569,8 @@ The user's call: the two items left at the end of "the default and P4a built". D
 - Tests: 4903 passed / 1 skipped at `9e35def` (10:43, Linux, `-n 3` beside the Case_robin check; 4888
   + the 15 new).
 
-Next: the user's call on fast-forwarding `main`, and on an upstream issue for P2.
+`main` fast-forwarded to this branch the same day (the user's call), from `abd8b6c`: the
+performance review, its audit, the search budget, the cores, and P4a for both claiming-age
+presets and the suite.
+
+Next: the user's call on an upstream issue for P2.

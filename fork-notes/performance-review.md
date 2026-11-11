@@ -597,7 +597,78 @@ before; the interface queues `ages` with none, so nothing it queues changes.
   candidates are scored in `work_sweep.score`, which returns rows, not plans; keeping the
   best plan there means pickling each to a file in the pool's processes, or changing
   `work_sweep`, which the CLI shares). `run_suite.py` still re-solves at the chosen ages
-  (its final solve can rescale the rates first, `nominal_gamma`).
+  (its final solve can rescale the rates first, `nominal_gamma`). (Both built later the same
+  day, section 6c.)
+
+## 6c. Built later on 2026-11-11: P4a for "every pair tried" and for `run_suite.py`
+
+The user's call: the two items 6b left. One commit.
+
+**`ages_thorough`.** `work_sweep.score` keeps the plan it scores when the caller names a
+folder (`cfg["keep_dir"]`, from `args.keep_dir` in `scorer_config`): the plan whose value the
+cell records (branch-and-bound's, or local search's where that was kept instead) is pickled to
+`kept_plan_path(keep_dir, ages)` with its own log and options (`KeptPlan`), written aside and
+renamed. The worker names a staging folder of the attempt's (`.attempt-<token8>-plans`, so
+`results.drop_staging` clears it after a kill and `store.run_zip` skips it), loads the decided
+cell's plan (`load_kept_plan(keep_dir, row["best"])`), removes the folder, and publishes that
+plan: one line in solve.log says so and the plan's own log follows it (the sweep's plans log
+to their own buffers, so it was not in solve.log yet); `record.json`'s `age_search` has
+`decided_plan: true`, and the Run page says "the decided cell's own, not solved again". Where
+no plan was kept at the decided cell (it did not solve), the cell is solved again as before
+(review AH1's route). The command (`python -m owlplanner.work_sweep`) names no folder: its
+config, its cells and its `--json` are what they were.
+
+- **The job's options.** For the plan published to be the one a solve again gave, the job's
+  options must reach the sweep, as P4a made them reach stage 2 of `ages`. They now go into
+  every scored plan (`scorer_config`'s `overrides`; `scorer_options`: the case's options less
+  the method keys, the job's less the same keys, then the scorer's own). Before, they reached
+  only the final solve, and only where the case did not state them: a job with
+  `spendingSlack = 3` on Case_bill (whose case says 0) recorded 0 at `9648b7e` and records 3
+  now (a scratch run on each checkout, not kept). The interface queues this preset with no
+  options.
+- **Deposit-split cells** (`eta_check`, off in the library) are not kept: they share the
+  decided cell's ages.
+- **Disk.** One file a scored cell while the sweep runs, removed at the end of the job:
+  368-371 KB each on Case_cameron (measured: the plan and its log). Not measured on the
+  synthetic household; section 6b measured 409 KB for one of its local-search candidates,
+  which would make 81 cells about 33 MB (inferred).
+- **What it saves:** the decided cell's own solve, whatever it took in the sweep (its
+  `seconds` in `scores.json`): 94-288 s a plan on the chris+pat dry run. Not timed end to end
+  (a synthetic `ages_thorough` is hours).
+
+**`run_suite.py`.** `solve_one` calls `two_stage_ages(keep=True)` and publishes the winning
+candidate's plan (its log reattached to the run's, its warnings read from its own solve's
+log), except on a row that rescales the workbook's nominal amounts first (`nominal_gamma`),
+where the candidates were scored on the amounts as written: there the plan is built and
+solved again, as before. No row of the suite does both (the rate groups take the baseline's
+ages). `results.json` records `stage_2_plan`.
+
+**Checked.**
+
+- Tests: `tests/library/test_work_sweep_keep.py` (12: the config, the rule for which plan a
+  cell keeps, the deposit-split cells, the command's route, and a real sweep of Case_cameron:
+  one file per scored cell, each holding its cell's plan, and the decided cell's plan equal to
+  a solve again in every number of `plan_to_dict` and `plan_metrics`, the solve's clock
+  aside); `tests/library/test_worker.py` (3 new: Case_bill's real sweep published without a
+  solve after it, its `plan.json`, `summary.json`, options, warnings and iterations equal to
+  the same job forced down the solve-again route; the job's options in the scored plans; the
+  plans folder gone after a cancel). The stubbed sweeps of the AH1 tests now take the
+  solve-again route (no plan kept), which they still check.
+- Through real workers, outside pytest (`fork-notes/performance/thorough_kept_check.py`; the
+  spawned pool cannot run under pytest's frozen date): three jobs of one run, on one core, on
+  two (each cell pickled in a spawned process) and forced to solve again. Case_cameron (six
+  cells, the decided cell the first scored): 8/8, the same `plan.json`, `summary.json` and
+  options, `decided_plan` on the first two only, no staging folder left. Case_robin (six cells; stage (a) picked 65y10m, the sweep decided 66y0m, so the published file
+  is not the first cell scored): 8/8, 44,225.35 on all three routes; 60.3 s on one core, 53.1 s on
+  two, 71.0 s solved again (one run each, beside the test suite).
+- `run_suite.py`'s baseline row (the synthetic household, `main/base`) through the suite at
+  `9648b7e` and through the edited one, one after the other the same day
+  (`fork-notes/performance/suite_winner_check.py`): the same ages (70/70), the same four
+  candidates and scores, every key of the record equal (metrics, warnings, convergence, error
+  bar), and the synopses equal but for "Case executed on" and "Solve time" (the published plan
+  is the one solved during stage 2). 139.2 s and 127.7 s, one run each; the final solve the
+  old suite repeated took 10.5 s.
+- The full suite: 4903 passed, 1 skipped at `9e35def` (Linux, `-n 3`).
 
 ## 7. Files
 
@@ -612,3 +683,7 @@ before; the interface queues `ages` with none, so nothing it queues changes.
 - `fork-notes/synthetic/check_library_cores.py`: the cores' check (section 6).
 - `fork-notes/performance/ages_timing.py`, `ages_timing_parse.py`: one timed `ages` job, split by
   plan built (section 6b).
+- `fork-notes/performance/thorough_kept_check.py`: "every pair tried" through real workers, kept
+  plan against a solve again, on one core and on two (section 6c).
+- `fork-notes/performance/suite_winner_check.py`: `run_suite.py`'s baseline row through two
+  versions of the suite (section 6c).

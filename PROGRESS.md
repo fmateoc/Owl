@@ -8532,3 +8532,41 @@ section 6b; `fork-notes/CHANGELOG-fork.md`.
 
 Next: the user's call on the same change for *Claiming ages, every pair tried*, and on an
 upstream issue for P2.
+
+## Performance review: P4a for "every pair tried" and for the suite (2026-11-11, same branch)
+
+The user's call: the two items left at the end of "the default and P4a built". Details:
+`fork-notes/performance-review.md`, section 6c; `fork-notes/CHANGELOG-fork.md`.
+
+- **"Claiming ages, every pair tried" (`ages_thorough`)** publishes the decided cell's own plan
+  instead of solving it again. `work_sweep.score` pickles the plan whose value a cell records
+  when the caller names a folder (`cfg["keep_dir"]`; `KeptPlan`, `kept_plan_path`,
+  `load_kept_plan`); the worker gives it `.attempt-<token8>-plans` (cleared by `drop_staging`
+  after a kill, skipped by `run_zip`, removed with the job), loads the decided cell's plan and
+  writes its log after one line saying so; `record.json` `age_search.decided_plan`; the Run
+  page's caption says "the decided cell's own, not solved again". No plan kept there (the
+  cell did not solve): solved again as before. The command keeps nothing; its output is
+  unchanged.
+- **The job's options** now reach every scored plan (`work_sweep.scorer_options`: case, job,
+  scorer). Before, they reached the final solve only where the case did not state them:
+  `spendingSlack = 3` on Case_bill (case 0) recorded 0 at `9648b7e`, 3 now. The interface
+  queues this preset with none.
+- **`run_suite.py`** publishes the winning stage-2 candidate's plan (`two_stage_ages(keep=True)`),
+  except on a row with `nominal_gamma` (none searches the ages); `results.json` `stage_2_plan`.
+- **Checked:** 15 new tests (`tests/library/test_work_sweep_keep.py` 12, `test_worker.py` 3;
+  the real sweep of Case_cameron: each file holds its cell's plan, the decided one equal to a
+  solve again in every `plan_to_dict` / `plan_metrics` number but the clock; Case_bill through
+  the worker: `plan.json`, `summary.json`, options, warnings and iterations equal to the
+  solve-again route, nothing solved after the sweep). `thorough_kept_check.py` through real
+  workers (one core, two spawned, solve again): Case_cameron 8/8. Case_robin 8/8 (decided 66y0m, not the stage-(a) pick 65y10m, so not the first cell scored;
+  44,225.35 on all three routes).
+  `suite_winner_check.py`, the synthetic baseline row through the suite at `9648b7e` and now:
+  the same ages, candidates and record, the synopsis different only in "Case executed on" and
+  "Solve time"; 139.2 s and 127.7 s (one run each; the repeated final solve was 10.5 s).
+- **Not measured:** an `ages_thorough` job on the synthetic household (hours); the saving there
+  is the decided cell's own solve (94-288 s a plan on the chris+pat dry run); the kept files'
+  size on that household (368-371 KB each on Case_cameron). Windows.
+- Tests: 4903 passed / 1 skipped at `9e35def` (10:43, Linux, `-n 3` beside the Case_robin check; 4888
+  + the 15 new).
+
+Next: the user's call on fast-forwarding `main`, and on an upstream issue for P2.

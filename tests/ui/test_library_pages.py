@@ -496,6 +496,33 @@ class TestRunPage:
         at = _page("Run.py")
         assert any(d.label == "Download everything" for d in at.get("download_button"))
 
+    def test_the_workbook_is_read_only_while_its_expander_is_open(self, library, monkeypatch):
+        """Performance review P9: the page parsed every sheet of the results workbook on every
+        render (93 ms of 260), the expander closed or not. Now it reads while open, once per file."""
+        import pandas as pd
+
+        run = library.runs()[-1]  # the page's default run, its newest result
+        folder = run.path / "results" / "2026-11-02T11-00-00_decision"
+        with pd.ExcelWriter(folder / R.RESULTS_XLSX) as writer:
+            pd.DataFrame({"Year": [2027, 2028]}).to_excel(writer, sheet_name="Income", index=False)
+            pd.DataFrame({"Year": [2027]}).to_excel(writer, sheet_name="Taxes", index=False)
+        reads = []
+        real = pd.read_excel
+        monkeypatch.setattr(pd, "read_excel", lambda *a, **k: reads.append(1) or real(*a, **k))
+        at = _page("Run.py")
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(e.label == "Results workbook" for e in at.expander)
+        assert reads == [], "the workbook was read with its expander closed"
+        at.session_state["run_page_workbook"] = True  # the person opens it
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        sheet = next(s for s in at.selectbox if s.label == "Sheet")
+        assert list(sheet.options) == ["Income", "Taxes"]
+        assert len(reads) == 1
+        sheet.set_value("Taxes").run()  # another sheet, the same file: no second read
+        assert not at.exception, [e.value for e in at.exception]
+        assert len(reads) == 1
+
 
 class TestRunPageDetails:
     """The second increment of step 3: I3 (threshold proximity), I6 (the one-year Sankey)

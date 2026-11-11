@@ -191,6 +191,12 @@ def _solving(manager, run, parent=None):
         st.switch_page("Queue.py")
 
 
+@st.cache_data(max_entries=4, show_spinner=False)
+def _workbook_sheets(path: str, mtime_ns: int) -> dict:
+    """Every sheet of a result's workbook, read once per file and modification time (P9)."""
+    return pd.read_excel(BytesIO(Path(path).read_bytes()), sheet_name=None)
+
+
 def _usd(value):
     """A metric's value: plain text (st.metric is not markdown), "-" when there is none."""
     return "-" if value is None else f"{value:,.0f}"
@@ -818,10 +824,14 @@ if entries:
     # -- the workbook's sheets -----------------------------------------
     xlsx = job.results_dir / R.RESULTS_XLSX
     if xlsx.exists():
-        with st.expander("Results workbook"):
-            sheets = pd.read_excel(BytesIO(xlsx.read_bytes()), sheet_name=None)
-            sheet = st.selectbox("Sheet", list(sheets), key="run_page_sheet")
-            st.dataframe(sheets[sheet], width="stretch")
+        # Performance review P9: an expander runs its body open or closed, and parsing every sheet
+        # took 93 ms of a 260 ms render. Read only while it is open, once per file.
+        box = st.expander("Results workbook", key="run_page_workbook", on_change="rerun")
+        with box:
+            if box.open:
+                sheets = _workbook_sheets(str(xlsx), xlsx.stat().st_mtime_ns)
+                sheet = st.selectbox("Sheet", list(sheets), key="run_page_sheet")
+                st.dataframe(sheets[sheet], width="stretch")
     else:
         st.caption("The Results workbook is gone from this folder; solve again to get it.")
 

@@ -65,7 +65,31 @@ The plan is the same to the cent; the CPU time halves.
 **All 19 examples** (same settings; CPU seconds; "searches" counts the loop iterations that
 called the search, a repeated problem included):
 
-EXAMPLES_TABLE
+| Example | Objective | Value, stock | Patched | Searches | Skipped | CPU stock | CPU patched | |
+|---|---|---|---|---|---|---|---|---|
+| Case_alex+jamie | maxSpending | 226,712.00 | same | 3 | 0 | 100.8 | 101.2 | +0% |
+| Case_avery+quinn | maxBequest | 2,407,939.88 | same | 3 | 0 | 143.5 | 143.8 | +0% |
+| Case_bill | maxSpending | 36,665.93 | same | 2 | 0 | 0.4 | 0.3 | -25% |
+| Case_cameron | maxSpending | 18,996.31 | same | 2 | 0 | 1.0 | 1.1 | +10% |
+| Case_chris+pat | maxSpending | 114,326.15 | same | 2 | 0 | 109.3 | 108.4 | -1% |
+| Case_dana | maxSpending | 81,273.00 | same | 2 | 0 | 43.5 | 43.7 | +0% |
+| Case_devon | maxSpending | 248,576.00 | same | 2 | 0 | 77.5 | 77.6 | +0% |
+| Case_helen+ruth | maxSpending | 195,598.42 | same | 2 | 0 | 99.2 | 100.2 | +1% |
+| Case_jack+jill | maxSpending | 111,038.88 | same | 4 | 1 | 291.6 | 239.0 | -18% |
+| Case_joe | maxSpending | 99,080.90 | same | 5 | 3 | 191.1 | 97.2 | -49% |
+| Case_john+sally | maxBequest | 14,013.49 | same | 2 | 0 | 51.8 | 51.6 | -0% |
+| Case_jon+jane | maxSpending | 155,605.94 | same | 2 | 0 | 34.4 | 34.4 | +0% |
+| Case_jordan+taylor-qcd | maxBequest | 1,206,372.88 | same | 2 | 0 | 69.2 | 69.2 | +0% |
+| Case_jordan+taylor | maxBequest | 1,559,336.31 | same | 2 | 0 | 58.5 | 59.0 | +1% |
+| Case_kim+sam-bequest | maxBequest | 1,962,072.42 | same | 2 | 0 | 250.6 | 251.7 | +0% |
+| Case_kim+sam-spending | maxSpending | 186,383.24 | same | 2 | 0 | 219.7 | 220.3 | +0% |
+| Case_morgan | maxSpending | 47,656.11 | same | 2 | 0 | 306.3 | 307.0 | +0% |
+| Case_riley+casey | maxSpending | 118,949.85 | same | 4 | 0 | 769.3 | 767.7 | -0% |
+| Case_robin | maxSpending | 44,159.28 | same | 2 | 0 | 18.6 | 19.4 | +4% |
+| All 19 | | | 19 same | | 4 | 2,836.3 | 2,692.8 | -5.1% |
+
+The CPU seconds were measured three solves at a time on four cores, both checkouts interleaved;
+changes of a few percent either way where nothing was skipped are that noise.
 
 Every plan is the same to the cent. The patch changes nothing where the loop converges in two
 iterations (the second rebuilds the first problem and reuses its plan, `785217c`), which is most

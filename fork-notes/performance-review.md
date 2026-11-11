@@ -744,7 +744,50 @@ date frozen at 2026-01-01; table by `performance/p2_stock_table.py`). The patch'
 prototype's: an iteration that follows one whose search started from the previous binaries and
 moved nothing runs (a) and (c) only.
 
-P2_STOCK_RESULTS
+| Example | Objective | Value, stock | Patched | Searches | Skipped | CPU stock | CPU patched | |
+|---|---|---|---|---|---|---|---|---|
+| Case_alex+jamie | maxSpending | 226,712.00 | same | 3 | 0 | 100.8 | 101.2 | +0% |
+| Case_avery+quinn | maxBequest | 2,407,939.88 | same | 3 | 0 | 143.5 | 143.8 | +0% |
+| Case_bill | maxSpending | 36,665.93 | same | 2 | 0 | 0.4 | 0.3 | -25% |
+| Case_cameron | maxSpending | 18,996.31 | same | 2 | 0 | 1.0 | 1.1 | +10% |
+| Case_chris+pat | maxSpending | 114,326.15 | same | 2 | 0 | 109.3 | 108.4 | -1% |
+| Case_dana | maxSpending | 81,273.00 | same | 2 | 0 | 43.5 | 43.7 | +0% |
+| Case_devon | maxSpending | 248,576.00 | same | 2 | 0 | 77.5 | 77.6 | +0% |
+| Case_helen+ruth | maxSpending | 195,598.42 | same | 2 | 0 | 99.2 | 100.2 | +1% |
+| Case_jack+jill | maxSpending | 111,038.88 | same | 4 | 1 | 291.6 | 239.0 | -18% |
+| Case_joe | maxSpending | 99,080.90 | same | 5 | 3 | 191.1 | 97.2 | -49% |
+| Case_john+sally | maxBequest | 14,013.49 | same | 2 | 0 | 51.8 | 51.6 | -0% |
+| Case_jon+jane | maxSpending | 155,605.94 | same | 2 | 0 | 34.4 | 34.4 | +0% |
+| Case_jordan+taylor-qcd | maxBequest | 1,206,372.88 | same | 2 | 0 | 69.2 | 69.2 | +0% |
+| Case_jordan+taylor | maxBequest | 1,559,336.31 | same | 2 | 0 | 58.5 | 59.0 | +1% |
+| Case_kim+sam-bequest | maxBequest | 1,962,072.42 | same | 2 | 0 | 250.6 | 251.7 | +0% |
+| Case_kim+sam-spending | maxSpending | 186,383.24 | same | 2 | 0 | 219.7 | 220.3 | +0% |
+| Case_morgan | maxSpending | 47,656.11 | same | 2 | 0 | 306.3 | 307.0 | +0% |
+| Case_riley+casey | maxSpending | 118,949.85 | same | 4 | 0 | 769.3 | 767.7 | -0% |
+| Case_robin | maxSpending | 44,159.28 | same | 2 | 0 | 18.6 | 19.4 | +4% |
+| All 19 | | | 19 same | | 4 | 2,836.3 | 2,692.8 | -5.1% |
+
+- **Every plan is the same to the cent** (19 of 19), as on the six fork variants of section P2.
+- **The saving is concentrated** (read from each search's first step): in 14 examples the loop
+  converges in two iterations, the second reusing the first plan (upstream's `785217c`), so there
+  is nothing to skip. In `Case_alex+jamie`, `Case_avery+quinn` and `Case_riley+casey` the search
+  that starts from the previous binaries and moves nothing is the last one, or is followed by a
+  reuse. Only `Case_joe` (three searches skipped, -49% of CPU) and `Case_jack+jill` (one, -18%)
+  have a search after one that moved nothing. Over the 19, -5.1%; on the six fork variants it
+  was -20% (section P2), so the synthetic household's cases are among those that gain.
+- **The repro** (`issue-ls-settled-steps-repro.py`, output in
+  `issue-ls-settled-steps-repro-output.txt`, run beside other solves): `Case_joe`'s searches 2-4
+  start from the previous binaries, move nothing and spend 89-91% of their time in (b), (b') and
+  (a'); patched they take 3.5-4.9 s instead of 30-36 s, and the solve 102 instead of 199
+  CPU-seconds.
+- **The test** in the patch (`test_a_settled_search_skips_its_capped_steps`: Case_bill with the
+  loop's convergence deferred to four iterations and the same-problem reuse turned off, 2.4 s)
+  fails on stock `dev` and passes with the patch.
+
+DEFAULTS_RESULTS
+
+The draft: `fork-notes/issue-ls-settled-steps.md` (not filed; the user's call). The open point
+it states is section P2's: no full search confirms the plan once the loop has settled.
 
 ## 7. Files
 

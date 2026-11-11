@@ -8594,4 +8594,17 @@ The user's call: "build P9, P6's pages and P8, and prepare P2 issue". Details:
   300 nodes with the budget lifted). Their time is per restricted solve, and their later loop
   iterations are P2's pattern. Left: a `deep` mark (drops them from the default run) or nothing;
   the user's call.
-- **P2 on stock upstream**: P2_PROGRESS_LINE
+- **P2 on stock upstream** (`dev` `8ec9c43`, all 19 examples, both wall-clock caps lifted, the
+  date frozen at 2026-01-01; `performance/p2_stock_run.sh`, `p2_stock_probe.py`,
+  `p2_stock_table.py`): the prototype written as a patch to `localsearch.py`
+  (`fork-notes/issue-ls-settled-steps.patch`, +14/-3, with a test that fails on stock). Every
+  plan the same to the cent; CPU -5.1% over the 19, all of it in `Case_joe` (-49%, three searches
+  skipped) and `Case_jack+jill` (-18%, one); 14 examples converge in two loop iterations and have
+  nothing to skip. At upstream's default caps the two give the same plans and savings, no budget
+  cut. Upstream's suite with the patch: 3318 passed, 1 skipped. Draft
+  `fork-notes/issue-ls-settled-steps.md` with the repro (`issue-ls-settled-steps-repro.py`,
+  output beside it), **not filed**.
+- Tests: FORK_SUITE_LINE
+
+Next: the user's call on filing the P2 issue, on P8 (a `deep` mark on the two fork tests, or
+nothing), and on fast-forwarding `main`.

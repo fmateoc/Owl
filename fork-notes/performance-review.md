@@ -784,7 +784,12 @@ moved nothing runs (a) and (c) only.
   loop's convergence deferred to four iterations and the same-problem reuse turned off, 2.4 s)
   fails on stock `dev` and passes with the patch.
 
-DEFAULTS_RESULTS
+- **At upstream's default caps** (300 s per search, 60 s per step; `p2_stock_run.sh` with
+  `CASES="Case_joe Case_jack+jill"` and `'{}'`, two solves at a time on an otherwise idle
+  machine): the same plans, no budget cut on either side, `Case_joe` 190.2 -> 98.6 CPU-seconds
+  (167 -> 84 s of wall), `Case_jack+jill` 291.4 -> 240.2 (269 -> 220 s).
+- **Upstream's suite** on the patched checkout: 3318 passed, 1 skipped (10:53, `-n 2`, beside
+  other solves).
 
 The draft: `fork-notes/issue-ls-settled-steps.md` (not filed; the user's call). The open point
 it states is section P2's: no full search confirms the plan once the loop has settled.

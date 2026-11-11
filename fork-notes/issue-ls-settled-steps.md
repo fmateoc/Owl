@@ -95,15 +95,22 @@ The CPU seconds were measured three solves at a time on four cores, both checkou
 changes of a few percent either way where nothing was skipped are that noise.
 
 Every plan is the same to the cent. The patch changes nothing where the loop converges in two
-iterations (the second rebuilds the first problem and reuses its plan, `785217c`), which is most
-examples; it matters where the fed-back parameters keep moving after the binaries have stopped.
+iterations (the second rebuilds the first problem and reuses its plan, `785217c`): 14 of the 19.
+In `Case_alex+jamie`, `Case_avery+quinn` and `Case_riley+casey` the search that moves nothing
+is the last one, or is followed by that reuse. It matters where the fed-back parameters keep
+moving after the binaries have stopped: `Case_joe` and `Case_jack+jill` here.
 
-DEFAULTS_PARAGRAPH
+With upstream's default caps (300 s per search, 60 s per step), two solves at a time, the two
+examples where it applies give the same plans, no budget cut on either side, and the same
+saving: `Case_joe` 190 -> 99 CPU-seconds (167 -> 84 s of wall), `Case_jack+jill` 291 -> 240
+(269 -> 220 s of wall). On a slower machine or under load, where the 300 s budget cuts the stock
+search short, the patch spends the freed time on the searches that move, so there the plans could
+differ (the budget being wall-clock, not measured here).
 
 **Suggested patch** (`localsearch.py`, attached with a test): remember whether the iteration
 started from the previous binaries and moved none of them, and in the next iteration skip (b),
-(b') and (a'). The (a) steps and (c) still run, and the first iteration in which one of them
-moves runs the full search again.
+(b') and (a'). The (a) steps and (c) still run; when one of them moves the plan, the iteration
+after it runs the full search again.
 
 **What it leaves open:** once the loop has settled, no full search confirms the plan, so a move
 that the parameters' last changes opened to (b) would be missed. It changed no plan in the 19

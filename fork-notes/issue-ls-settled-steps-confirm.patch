@@ -154,10 +154,10 @@ index 4f36c0c..10a3c6d 100644
              if decision is not None:
                  self.convergenceType = decision["convergenceType"]
 diff --git a/tests/plan/test_local_search.py b/tests/plan/test_local_search.py
-index b31045e..893097b 100644
+index b31045e..548e267 100644
 --- a/tests/plan/test_local_search.py
 +++ b/tests/plan/test_local_search.py
-@@ -236,6 +236,41 @@ def test_repeated_problem_is_not_searched_again():
+@@ -236,6 +236,73 @@ def test_repeated_problem_is_not_searched_again():
      assert log[-1]["steps"] == [], log[-1]
  
  
@@ -194,6 +194,38 @@ index b31045e..893097b 100644
 +    confirms = [it for it in p.localSearchLog if it.get("confirm")]
 +    assert len(confirms) == 1 and p.localSearchLog[-1] is confirms[0]
 +    assert any(s["step"].split(": ")[0].endswith(capped) for s in confirms[0]["steps"])
++
++
++@pytest.mark.toml
++def test_a_confirming_search_that_moves_sends_the_loop_on(monkeypatch):
++    """When the search that confirms the converged plan finds a better one, the loop does not stop:
++    it goes on, and searches its next problem in full."""
++    from owlplanner.plan import Plan
++
++    real = Plan._check_obj_convergence
++    monkeypatch.setattr(Plan, "_check_obj_convergence",
++                        lambda self, it, *a, **k: None if it < 3 else real(self, it, *a, **k))
++    fresh = iter(range(1_000_000))
++    monkeypatch.setattr(localsearch.LocalSearch, "_fingerprint", lambda self: next(fresh))
++    real_confirm = localsearch.LocalSearch.confirm
++
++    def confirm_moves_once(self, options):  # the first confirmation reports a better plan
++        found = real_confirm(self, options)
++        if self.log and self.log[-1].get("confirm") and not getattr(self, "_moved_once", False):
++            self._moved_once = True
++            self.settled, self._last = False, None
++            return True
++        return found
++
++    monkeypatch.setattr(localsearch.LocalSearch, "confirm", confirm_moves_once)
++    p = _load("Case_bill.toml")
++    p.solve(p.objective, options={**p.solverOptions, "breakpointMethod": "local-search"})
++    assert p.caseStatus == "solved"
++    log = p.localSearchLog
++    k = next(i for i, it in enumerate(log) if it.get("confirm"))
++    assert k < len(log) - 1, "the loop stopped at the confirmation"
++    after = [s["step"].split(": ")[0] for s in log[k + 1]["steps"]]
++    assert after[0] == "start" and any(x.endswith(("(b)", "(b')", "(a')")) for x in after), after
 +
 +
  def _john_sally_without_payroll_tax(monkeypatch):

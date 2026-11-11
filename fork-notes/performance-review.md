@@ -794,6 +794,54 @@ moved nothing runs (a) and (c) only.
 The draft: `fork-notes/issue-ls-settled-steps.md` (not filed; the user's call). The open point
 it states is section P2's: no full search confirms the plan once the loop has settled.
 
+## 6e. Later on 2026-11-11: P2 with a confirming search
+
+The user's question: "how do the P2 numbers change if we add a full search re-run to confirm the
+plan? Is it still worth doing?"
+
+**The variant** (`fork-notes/issue-ls-settled-steps-confirm.patch`, on upstream `dev` `8ec9c43`;
+`localsearch.py` and four lines of `plan.py`). The rounds of the search move into
+`LocalSearch._rounds`. When the loop's decision is "converged" and the search of that iteration
+skipped its capped steps, `LocalSearch.confirm` runs the full rounds once on the same problem (the
+plan's rows are still the last iteration's) from the accepted plan. It finds nothing: the loop
+stops with the plan it had. It finds a better plan: the loop goes on from it, and its next
+problem is searched in full. So at convergence the plan has had a full search on its own
+problem, as on stock. Not covered: a loop that ends on a cycle, stagnation or its iteration cap
+accepts an earlier iterate, whose problem is not the one in memory; there nothing is confirmed.
+Two tests: the settled test extended (one confirmation, last in the log, with the capped steps);
+a confirmation that finds a better plan sends the loop on (fails when the loop stops at it).
+
+**Measured.** Same plans to the cent in every run; the confirming search found nothing in all 8
+runs where it ran.
+
+| | Base | P2 | P2 + confirmation | Confirming search |
+|---|---|---|---|---|
+| `Case_joe` (stock, caps lifted) | 193.5 | 99.6 (-49%) | 133.3 (-31%) | one full search |
+| `Case_jack+jill` (stock, caps lifted) | 298.7 | 247.7 (-17%) | 303.9 (+2%) | one full search |
+| Six synthetic variants, *Careful* (CPU) | 2,112 | 1,565 (-25.9%) | 1,841 (-12.8%) | 38-46 s each |
+| Six synthetic variants, *Careful* (wall) | 1,893 | 1,386 (-26.8%) | 1,634 (-13.7%) | |
+
+Stock: `p2_stock_run.sh` with `CASES="Case_joe Case_jack+jill"` and
+`EXTRA="confirm=<checkout>"`, three at a time, interleaved; the other 17 examples skip nothing,
+so the confirmation never runs there and their numbers are section 6d's. Over the 19, computed
+from the two runs (the 17 from 6d, the two scaled by this run's ratios): about -1.9% of CPU with
+the confirmation, against -5.1% without. Synthetic: `p2_fork_run.sh` (`solve_probe.py decision`,
+today's preset: 1,000 nodes, both wall-clock caps lifted; ages 70/70), three checkouts of the
+fork (`b5c2d7b` + nothing, + the patch, + the variant), three at a time, interleaved; table by
+`p2_fork_table.py`. Per variant (CPU): queens_2027_arm5 -29% / -12%, queens_2031_cash -42% / -24%,
+whiteplains_2029_mortgage -17% / -7%, whiteplains_2038_cash -15% / -6%, yonkers_2027_mortgage
+-25% / -10%, yonkers_2034_cash -46% / -30%.
+
+**What follows.** The confirmation costs one full search per solve that skipped anything, about
+what a skipped iteration saved. So it halves the saving where two or three iterations were skipped
+and cancels it where one was (`Case_jack+jill`). On the household's Careful solves: about 13%,
+some 40 s of a 4-5 minute solve; on a 36-cell grid at four solves at a time (P1), about 7 minutes
+of 50 (computed from the table, not run). On upstream's examples it is a `Case_joe` improvement and
+nothing else.
+
+The risk it insures against was not seen: in 25 cases (19 stock, 6 synthetic) the plan without the
+confirmation was the stock plan to the cent, and in 8 confirmations nothing better was found.
+
 ## 7. Files
 
 - `fork-notes/performance/solve_probe.py`: one timed solve, every HiGHS call recorded, optional
@@ -811,3 +859,11 @@ it states is section P2's: no full search confirms the plan once the loop has se
   plan against a solve again, on one core and on two (section 6c).
 - `fork-notes/performance/suite_winner_check.py`: `run_suite.py`'s baseline row through two
   versions of the suite (section 6c).
+- `fork-notes/performance/page_timing.py`: plain AppTest rerun times of the library pages (P6,
+  section 6d).
+- `fork-notes/performance/p2_stock_probe.py`, `p2_stock_run.sh`, `p2_stock_table.py`: P2 on the
+  shipped examples, from checkouts of upstream `dev` (sections 6d, 6e).
+- `fork-notes/performance/p2_fork_run.sh`, `p2_fork_table.py`: P2 on the six synthetic variants,
+  from fork checkouts (section 6e).
+- `fork-notes/issue-ls-settled-steps.patch`, `issue-ls-settled-steps-confirm.patch`: P2 without
+  and with the confirming search, on upstream `dev` `8ec9c43`.

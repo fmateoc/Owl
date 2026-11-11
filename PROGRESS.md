@@ -8608,3 +8608,23 @@ The user's call: "build P9, P6's pages and P8, and prepare P2 issue". Details:
 
 Next: the user's call on filing the P2 issue, on P8 (a `deep` mark on the two fork tests, or
 nothing), and on fast-forwarding `main`.
+
+## Performance review: P2 with a confirming search (2026-11-11, same branch)
+
+The user's question: how P2's numbers change with a full search that confirms the plan, and
+whether it is still worth doing. Details: `fork-notes/performance-review.md`, section 6e.
+
+- **The variant** (`fork-notes/issue-ls-settled-steps-confirm.patch`, on upstream `dev`
+  `8ec9c43`): the search's rounds in `LocalSearch._rounds`; `LocalSearch.confirm` runs them in
+  full on the last problem when the loop converges on a search that skipped its capped steps; a
+  better plan sends the loop on (four lines in `_scSolve`). Not confirmed: a loop ending on a
+  cycle, stagnation or its cap. Two tests (one fails when the loop ignores a better plan).
+- **Measured** (CPU seconds; same plans to the cent everywhere; the confirming search found
+  nothing in 8 of 8): `Case_joe` 193.5 -> 99.6 (-49%) without, 133.3 (-31%) with;
+  `Case_jack+jill` 298.7 -> 247.7 (-17%) without, 303.9 (+2%) with; the six synthetic variants at
+  today's *Careful* preset 2,112 -> 1,565 (-25.9%) without, 1,841 (-12.8%) with (wall -26.8% /
+  -13.7%; the confirming search 38-46 s each). Over the 19 stock examples about -2% with, -5%
+  without (computed from two runs).
+- **Upstream's suite** with the variant: UPSTREAM_CONFIRM_SUITE.
+
+Next: the user's call on whether to file, and with which patch.

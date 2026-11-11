@@ -11,6 +11,9 @@ does:
 - the patch `fork-notes/issue-ls-settled-steps.patch` (`localsearch.py` +14/-3, one test in
   `tests/plan/test_local_search.py`, 2.4 s; applies cleanly on `8ec9c43`; the test fails on stock
   and passes with the patch);
+- the variant with a confirming search `fork-notes/issue-ls-settled-steps-confirm.patch`
+  (`localsearch.py`, `plan.py` +4, two tests; also applies cleanly on `8ec9c43`; measured in
+  `performance-review.md` section 6e, the user's question of 2026-11-11);
 - every example measured with `fork-notes/performance/p2_stock_run.sh` (both checkouts
   interleaved, three solves at a time), table by `p2_stock_table.py`.
 
@@ -112,8 +115,22 @@ started from the previous binaries and moved none of them, and in the next itera
 (b') and (a'). The (a) steps and (c) still run; when one of them moves the plan, the iteration
 after it runs the full search again.
 
-**What it leaves open:** once the loop has settled, no full search confirms the plan, so a move
-that the parameters' last changes opened to (b) would be missed. It changed no plan in the 19
-examples. A confirming search would need the loop to tell the search that it is the last
-iteration (the loop decides convergence after the solve); it would cost one full search, about
-the time of the iterations above.
+**What it leaves open, and a variant that closes it:** with the patch alone, once the loop has
+settled no full search confirms the plan, so a move that the parameters' last changes opened to
+(b) would be missed. It changed no plan in the 19 examples. The variant (attached as a second
+patch, `localsearch.py` and four lines of `plan.py`, two tests) confirms it: when the loop's
+decision is "converged" and that iteration's search skipped its capped steps, the full search runs
+once on the same problem from the accepted plan (the rows are still that iteration's); if it finds
+a better plan the loop goes on, and searches its next problem in full. A loop that ends on a cycle,
+stagnation or its cap accepts an earlier iterate and is not confirmed. The confirmation costs one
+full search, about what one skipped iteration saved, and found nothing in any run below:
+
+| Example (caps lifted, CPU s) | Stock | Patch | Patch + confirmation |
+|---|---|---|---|
+| `Case_joe` | 193.5 | 99.6 (-49%) | 133.3 (-31%) |
+| `Case_jack+jill` | 298.7 | 247.7 (-17%) | 303.9 (+2%) |
+
+(The same three checkouts interleaved, three solves at a time; the plans the same to the cent.
+The other 17 examples skip nothing, so the confirmation never runs there.) Over the 19 that is
+about -2% with the confirmation, against -5% without. On six larger cases from a fork, which carry
+fork-only features and so are not a repro here, it was -26% without and -13% with.

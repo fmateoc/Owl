@@ -36,10 +36,31 @@ depend on load, `withSSAges = "fixed"`, the date frozen at 2026-01-01):
 python issue-ls-settled-steps-repro.py examples/Case_joe.toml
 ```
 
-REPRO_OUTPUT
+Stock `dev`:
+
+```
+maxSpending: 99,080.90   CPU 198.8 s   local search (SS, IRMAA, LTCG, NIIT)
+  search 0: start: repair from the loop plan, withdrawals and conversions +-$1; moved; 54.6 s, of which (b), (b'), (a') 46.6 s
+  search 1: start: previous binaries (LP); no move; 39.2 s, of which (b), (b'), (a') 34.5 s
+  search 2: start: previous binaries (LP); no move; 35.5 s, of which (b), (b'), (a') 32.1 s
+  search 3: start: previous binaries (LP); no move; 32.1 s, of which (b), (b'), (a') 28.5 s
+  search 4: start: previous binaries (LP); no move; 30.0 s, of which (b), (b'), (a') 27.2 s
+```
+
+With the patch:
+
+```
+maxSpending: 99,080.90   CPU 102.1 s   local search (SS, IRMAA, LTCG, NIIT)
+  search 0: start: repair from the loop plan, withdrawals and conversions +-$1; moved; 52.3 s, of which (b), (b'), (a') 44.7 s
+  search 1: start: previous binaries (LP); no move; 39.4 s, of which (b), (b'), (a') 34.7 s
+  search 2: start: previous binaries (LP); no move; 3.5 s, of which (b), (b'), (a') 0.0 s
+  search 3: start: previous binaries (LP); no move; 4.9 s, of which (b), (b'), (a') 0.0 s
+  search 4: start: previous binaries (LP); no move; 3.6 s, of which (b), (b'), (a') 0.0 s
+```
 
 Searches 2 to 4 each start from the binaries the search before returned, move nothing, and spend
-over 85% of their time in (b), (b') and (a').
+89-91% of their time in (b), (b') and (a'), which found nothing on the same binaries in search 1.
+The plan is the same to the cent; the CPU time halves.
 
 **All 19 examples** (same settings; CPU seconds; "searches" counts the loop iterations that
 called the search, a repeated problem included):

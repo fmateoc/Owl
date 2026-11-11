@@ -1,0 +1,16 @@
+# issue-ls-settled-steps-repro.py examples/Case_joe.toml, 2026-11-11, beside other solves (CPU seconds are inflated by load)
+# stock upstream dev 8ec9c43
+maxSpending: 99,080.90   CPU 198.8 s   local search (SS, IRMAA, LTCG, NIIT)
+  search 0: start: repair from the loop plan, withdrawals and conversions +-$1; moved; 54.6 s, of which (b), (b'), (a') 46.6 s
+  search 1: start: previous binaries (LP); no move; 39.2 s, of which (b), (b'), (a') 34.5 s
+  search 2: start: previous binaries (LP); no move; 35.5 s, of which (b), (b'), (a') 32.1 s
+  search 3: start: previous binaries (LP); no move; 32.1 s, of which (b), (b'), (a') 28.5 s
+  search 4: start: previous binaries (LP); no move; 30.0 s, of which (b), (b'), (a') 27.2 s
+
+# the same checkout with issue-ls-settled-steps.patch
+maxSpending: 99,080.90   CPU 102.1 s   local search (SS, IRMAA, LTCG, NIIT)
+  search 0: start: repair from the loop plan, withdrawals and conversions +-$1; moved; 52.3 s, of which (b), (b'), (a') 44.7 s
+  search 1: start: previous binaries (LP); no move; 39.4 s, of which (b), (b'), (a') 34.7 s
+  search 2: start: previous binaries (LP); no move; 3.5 s, of which (b), (b'), (a') 0.0 s
+  search 3: start: previous binaries (LP); no move; 4.9 s, of which (b), (b'), (a') 0.0 s
+  search 4: start: previous binaries (LP); no move; 3.6 s, of which (b), (b'), (a') 0.0 s

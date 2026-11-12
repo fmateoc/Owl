@@ -8673,4 +8673,4 @@ Next: the maintainer's answer on #252.
 - Tests: 4911 passed / 1 skipped (10:12, Linux, `-n 4`; 4910 + upstream's new test). flake8: only
   upstream's known E301/E304 in `test_spending_bequest_frontier.py`.
 
-Next: the user's call on fast-forwarding `main`.
+`main` fast-forwarded to this branch the same day (the user's call), from `07b6c28`.

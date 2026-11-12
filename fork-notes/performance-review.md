@@ -120,6 +120,8 @@ responsiveness.
 
 ### P2. Local search: no capped steps while the binaries stand still (upstream's code)
 
+**Fixed upstream** as `1d91494` (#252, filed 2026-11-11), merged here on 2026-11-12: section 6f.
+
 Prototype (`quiet_patch.py`, an in-memory rewrite of `LocalSearch.solve`, nothing in `src/`): in
 a loop iteration that follows one whose search made no move from its LP start, run the LP start
 and the (a) steps and skip (b), (b') and (a'). Step (c) still runs.
@@ -846,11 +848,46 @@ nothing else.
 The risk it insures against was not seen: in 25 cases (19 stock, 6 synthetic) the plan without the
 confirmation was the stock plan to the cent, and in 8 confirmations nothing better was found.
 
+## 6f. 2026-11-12: P2 fixed upstream (#252), checked on the fork
+
+Upstream fixed #252 as `1d91494` ("Local search skips the capped steps once the binaries have
+settled"), the first of the issue's two options: no confirming search. Merged here on 2026-11-12
+(`c8a7d2e`, branch `claude/nice-euler-qy6161`; clean: `localsearch.py` is upstream's with the fork's
+STAR family lines). Its code against `fork-notes/issue-ls-settled-steps.patch`: the same three
+skips under the same condition; a `moved` flag set wherever a step is better replaces the patch's
+comparison of the final objective with the start's (they differ only inside the `_IMPROVE` band,
+1e-7 relative); the log line comes before the steps ("binaries settled; skipping (b), (b') and
+(a')"). Its test runs `Case_joe` at `localSearchStepNodes = 100` with no monkeypatch.
+
+**Checked on the six synthetic variants** (`p2_fork_run.sh`, `solve_probe.py decision`: today's
+*Careful*, 1,000 nodes, both wall-clock caps lifted, ages 70/70; three checkouts, three at a time,
+interleaved, 2026-11-12 00:58-01:21 UTC): `base` = the fork before the merge (`07b6c28`), `ours` =
+the same with the draft patch, `upstream` = the merge (`c8a7d2e`). Table by `p2_fork_table.py`
+(which now counts upstream's log line too).
+
+| Variant | Spending (all three) | Searches | Skipped | CPU base | ours | upstream |
+|---|---|---|---|---|---|---|
+| queens_2027_arm5 | 106,893.12 | 5 | 2 | 255.8 | 180.6 (-29%) | 181.2 (-29%) |
+| queens_2031_cash | 104,511.03 | 5 | 3 | 219.2 | 126.8 (-42%) | 127.7 (-42%) |
+| whiteplains_2029_mortgage | 105,853.35 | 6 | 2 | 387.0 | 323.7 (-16%) | 324.3 (-16%) |
+| whiteplains_2038_cash | 105,259.28 | 8 | 2 | 499.5 | 426.4 (-15%) | 426.0 (-15%) |
+| yonkers_2027_mortgage | 109,150.60 | 5 | 2 | 247.2 | 183.6 (-26%) | 182.5 (-26%) |
+| yonkers_2034_cash | 108,098.01 | 5 | 3 | 231.2 | 123.7 (-47%) | 123.8 (-46%) |
+| Sum (CPU) | | | | 1,839.9 | 1,364.7 (-25.8%) | 1,365.5 (-25.8%) |
+| Sum (wall) | | | | 1,637.3 | 1,193.1 (-27.1%) | 1,195.4 (-27.0%) |
+
+Every plan the same to the cent in the three checkouts; every search of `upstream` has the same
+steps, in the same order, with the same objectives, as `ours`; no search found its time budget
+spent. The saving matches section 6e's (-25.9% CPU, -26.8% wall, another day's load: its base
+summed 2,112 s). So the fork's *Careful* solves of these variants take about a quarter less, with
+no change of plan; the confirming search (6e) is not in upstream and not in the fork.
+
 ## 7. Files
 
 - `fork-notes/performance/solve_probe.py`: one timed solve, every HiGHS call recorded, optional
   dumps and the experiment knobs.
-- `fork-notes/performance/quiet_patch.py`: P2's prototype.
+- `fork-notes/performance/quiet_patch.py`: P2's prototype (superseded by upstream's `1d91494`; it
+  matches only the source before it).
 - `fork-notes/performance/mip_probe.py`: one dumped HiGHS call re-solved with other options.
 - `fork-notes/performance/library_bench.py`, `page_profile.py`: the 120-run library and the page
   profiles (the second needs `yappi`).
@@ -868,6 +905,6 @@ confirmation was the stock plan to the cent, and in 8 confirmations nothing bett
 - `fork-notes/performance/p2_stock_probe.py`, `p2_stock_run.sh`, `p2_stock_table.py`: P2 on the
   shipped examples, from checkouts of upstream `dev` (sections 6d, 6e).
 - `fork-notes/performance/p2_fork_run.sh`, `p2_fork_table.py`: P2 on the six synthetic variants,
-  from fork checkouts (section 6e).
+  from fork checkouts (sections 6e, 6f).
 - `fork-notes/issue-ls-settled-steps.patch`, `issue-ls-settled-steps-confirm.patch`: P2 without
   and with the confirming search, on upstream `dev` `8ec9c43`.

@@ -7,6 +7,14 @@ has) is logged in `PROGRESS.md` only.
 
 ## Unreleased
 
+### Upstream `1d91494` merged: local search skips its settled steps (#252, ours) (2026-11-12)
+
+- Upstream's fix for our #252 (performance review P2): under local search, a loop iteration that
+  follows one which started from its predecessor's binaries and moved none of them skips steps
+  (b), (b') and (a'). The library's *Careful* solves of the six synthetic condo variants take
+  25.8% less CPU (27% less wall time), the same plans to the cent
+  (`fork-notes/performance-review.md`, section 6f). No fork code changed.
+
 ### Run library: faster Library, Collections and Run pages (2026-11-11)
 
 Performance review P6 (the pages) and P9 (`fork-notes/performance-review.md`, section 6d).

@@ -8643,3 +8643,34 @@ P8 measured, the P2 issue draft with both patches.
   default run.
 
 Next: the maintainer's answer on #252.
+
+## Upstream `dev` `1d91494` merged: #252 fixed upstream (2026-11-12, branch `claude/nice-euler-qy6161`)
+
+- **The fix** (`1d91494`, "Local search skips the capped steps once the binaries have settled",
+  `Fixes #252`; authored as the user's, the maintainer co-author): the first of the issue's two
+  options, no confirming search. A loop iteration that follows one which started from its
+  predecessor's binaries and moved none of them skips (b), (b') and (a'); (a) and (c) still run,
+  and a move by either restores the full search. Upstream's CHANGELOG gives the issue's figures
+  (`Case_joe` half the CPU, `Case_jack+jill` about a fifth less, plans unchanged to the cent) and a
+  test on `Case_joe` at `localSearchStepNodes = 100`. The issue thread was not read (this session
+  cannot read upstream issues); the commit is the source.
+- **Against our draft** (`fork-notes/issue-ls-settled-steps.patch`): the same three skips under the
+  same condition; a `moved` flag set where a step is better instead of comparing the final
+  objective with the start's (the same outside the 1e-7 `_IMPROVE` band); the log line before the
+  steps. Details in `fork-notes/issue-ls-settled-steps.md` (status) and `performance-review.md`
+  section 6f.
+- **Merge** (`c8a7d2e`): clean. `CHANGELOG.md` and `tests/plan/test_local_search.py` are
+  upstream's byte for byte; `localsearch.py` is upstream's with the fork's STAR family lines. No
+  fork code reads the skipped steps (`work_sweep._score_ls` sums step times; the library's
+  `search_budget_cuts` reads the budget line, which is unchanged).
+- **Checked on the fork** (`p2_fork_run.sh`, the six synthetic condo variants at today's *Careful*,
+  three checkouts interleaved three at a time: before the merge, with the draft, the merge):
+  every plan the same to the cent in all three; upstream's searches have the draft's steps and
+  objectives, search by search; CPU 1,839.9 -> 1,365.5 s (-25.8%; the draft 1,364.7), wall -27.0%;
+  no budget cut. Section 6e had -25.9% for the draft.
+- `fork-notes/performance/p2_fork_table.py` counts upstream's log line too; `quiet_patch.py` marked
+  superseded (its rewrite matches only the source before the fix). Fork changelog entry.
+- Tests: 4911 passed / 1 skipped (10:12, Linux, `-n 4`; 4910 + upstream's new test). flake8: only
+  upstream's known E301/E304 in `test_spending_bequest_frontier.py`.
+
+Next: the user's call on fast-forwarding `main`.

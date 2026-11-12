@@ -4,6 +4,9 @@
 Local search skips its steps (b), (b') and (a') in a loop iteration that follows one whose search
 made no move from its LP start (the binaries the loop handed back are the ones it got). The cheap
 (a) steps and (c) still run. No final confirming search is run: see the review for what that leaves open.
+
+Superseded: upstream's fix for #252 (`1d91494`, merged here 2026-11-12) does this in `localsearch.py`.
+The rewrite below matches only the source before it, and stops with an AssertionError on later code.
 """
 import inspect, textwrap
 from owlplanner import localsearch as L

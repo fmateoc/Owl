@@ -2,7 +2,20 @@
 
 Status: **filed by the user as #252** (2026-11-11) **without a patch**: the issue presents the two
 options (skip the capped steps; skip them and confirm the converged plan with one full search)
-with their measurements. The patches below stay here, unattached. From the fork's performance review, P2
+with their measurements. The patches below stay here, unattached. **Fixed upstream** the same day
+as `1d91494` ("Local search skips the capped steps once the binaries have settled", `Fixes #252`,
+authored as the user's with the maintainer as co-author), the first option, with no confirming
+search; **merged here on 2026-11-12** (`c8a7d2e`, branch `claude/nice-euler-qy6161`). Its code
+against `issue-ls-settled-steps.patch`: the same three skips under the same condition; a
+`moved` flag set wherever a step is better replaces the patch's comparison of the final objective
+with the start's (the same except within the `_IMPROVE` band, 1e-7 relative); the log line comes
+before the steps ("binaries settled; skipping (b), (b') and (a')"); the module docstring describes
+the rule. Its test is on `Case_joe` at `localSearchStepNodes = 100` with no monkeypatch (ours
+forced four iterations on `Case_bill`). Its CHANGELOG entry gives the measurements of the issue
+(`Case_joe` half the CPU, `Case_jack+jill` about a fifth less, plans unchanged to the cent). Checked
+on the fork's synthetic variants against the draft patch: `performance-review.md`, section 6f.
+The issue thread itself was not read (this session cannot read upstream issues); the commit is the
+source. From the fork's performance review, P2
 (`fork-notes/performance-review.md`, section "P2 on stock upstream"). Every number below comes
 from stock upstream `dev` `8ec9c43` and the same checkout with the patch, HiGHS 1.15.1, this
 container (4 cores, Linux), on 2026-11-11 with the date frozen at 2026-01-01 as the test suite
